@@ -21,6 +21,8 @@ use dragonfruit_bluetooth::{
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
+use crate::shared::computer_name;
+
 /// The `kind` discriminator the view carries, so one decode path can reject a
 /// payload from an unexpected interface.
 const KIND_BLUETOOTH: &str = "bluetooth";
@@ -75,6 +77,11 @@ impl<B: BluetoothSource> BluetoothHost<B> {
     /// write.
     pub fn set_connected(&mut self, address: &str, connected: bool) -> Value {
         bluetooth_report(self.adapter.set_connected(address, connected))
+    }
+
+    /// Forget (remove) the device at `address`. One explicit write.
+    pub fn forget(&mut self, address: &str) -> Value {
+        bluetooth_report(self.adapter.forget(address))
     }
 
     /// The adapter (read-only), for tests and introspection.
@@ -138,6 +145,10 @@ pub fn bluetooth_snapshot_view(snapshot: &BluetoothSnapshot) -> Value {
         "discoverable": snapshot.discoverable(),
         "pairable": snapshot.pairable(),
         "adapterName": adapter.map(|a| a.display_name()).unwrap_or_default(),
+        // T271: the reference names the computer, not the adapter id. The
+        // adapter address stays available for the Advanced sheet.
+        "computerName": computer_name(),
+        "adapterAddress": adapter.map(|a| a.address.clone()).unwrap_or_default(),
         "connectedCount": snapshot.connected_count(),
         "knownCount": known.len(),
         "nearbyCount": nearby.len(),
@@ -157,6 +168,9 @@ fn device_view(device: &dragonfruit_bluetooth::BluetoothDevice) -> Value {
         "rssi": device.rssi,
         "signal": device.signal_percent(),
         "icon": device.icon,
+        // T271: the device sheet's type and battery rows.
+        "type": device.type_label(),
+        "battery": device.battery,
     })
 }
 
@@ -206,6 +220,7 @@ mod tests {
                     blocked: false,
                     rssi: -55,
                     icon: "audio-headset".to_owned(),
+                    battery: Some(82),
                 },
                 BluetoothDeviceData {
                     path: "/org/bluez/hci0/dev_11_22_33_44_55_66".to_owned(),
@@ -219,6 +234,7 @@ mod tests {
                     blocked: false,
                     rssi: 0,
                     icon: "audio-card".to_owned(),
+                    battery: None,
                 },
             ],
         }
@@ -248,6 +264,10 @@ mod tests {
         assert_eq!(view["knownDevices"][0]["name"], "WH-1000XM6");
         assert_eq!(view["knownDevices"][0]["connected"], true);
         assert_eq!(view["knownDevices"][0]["signal"], 64);
+        assert_eq!(view["knownDevices"][0]["type"], "Audio");
+        assert_eq!(view["knownDevices"][0]["battery"], 82);
+        assert!(!view["computerName"].as_str().unwrap_or_default().is_empty());
+        assert_eq!(view["adapterAddress"], "11:22:33:44:55:66");
         assert_eq!(view["nearbyDevices"][0]["name"], "Speaker");
         // RSSI 0 is unknown, never a real reading.
         assert_eq!(view["nearbyDevices"][0]["rssi"], Value::Null);

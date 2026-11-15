@@ -394,12 +394,32 @@ pub struct NetworkService {
     pub hardware: Option<String>,
     /// The first IPv4 address, when connected.
     pub address: Option<String>,
+    /// `802-11-wireless.mode`; `ap` marks a personal hotspot.
+    pub wireless_mode: Option<String>,
+    /// `connection.metered` (`NM_METERED_*`).
+    pub metered: Option<u32>,
+    /// `ipv6.method`.
+    pub ipv6_method: Option<String>,
+    /// `ipv4.dns`, as the configured addresses.
+    pub ipv4_dns: Vec<String>,
+    /// `proxy.method`.
+    pub proxy_method: Option<String>,
+    /// The cloned MAC policy (`802-11-wireless.cloned-mac-address` or the
+    /// wired equivalent).
+    pub cloned_mac: Option<String>,
+    /// `802-11-wireless-security.key-mgmt`; `wpa-eap` marks 802.1X.
+    pub key_mgmt: Option<String>,
 }
 
 impl NetworkService {
     /// Whether the service is up.
     pub const fn is_connected(&self) -> bool {
         self.state.is_connected()
+    }
+
+    /// Whether this is a personal hotspot (an AP-mode Wi-Fi connection).
+    pub fn is_hotspot(&self) -> bool {
+        self.kind == ServiceKind::Wifi && self.wireless_mode.as_deref() == Some("ap")
     }
 
     /// A short secondary label, e.g. `Ethernet · Connected`.
@@ -446,6 +466,10 @@ pub struct WifiSnapshot {
     pub known_networks: Vec<KnownNetwork>,
     /// The active Wi-Fi connection's first IPv4 address, when connected.
     pub active_address: Option<String>,
+    /// Whether a managed Wi-Fi device exists, so the personal-hotspot row has
+    /// a real owner. The row stays visible and disabled with a reason when it
+    /// is false.
+    pub hotspot_supported: bool,
 }
 
 impl WifiSnapshot {
@@ -527,7 +551,18 @@ impl WifiSnapshot {
             services,
             known_networks,
             active_address,
+            hotspot_supported: !devices.is_empty(),
         }
+    }
+
+    /// The saved personal-hotspot connection, when one exists.
+    pub fn hotspot(&self) -> Option<&NetworkService> {
+        self.services.iter().find(|service| service.is_hotspot())
+    }
+
+    /// Whether the saved personal hotspot is up right now.
+    pub fn hotspot_active(&self) -> bool {
+        self.hotspot().is_some_and(NetworkService::is_connected)
     }
 
     /// The signal strength of the active network, when connected.
@@ -638,6 +673,13 @@ fn build_services(data: &NetworkManagerData) -> Vec<NetworkService> {
                     .filter(|s| !s.is_empty()),
                 hardware: device.and_then(|device| device.hw_address.clone()),
                 address: device.and_then(|device| device.ip4_address.clone()),
+                wireless_mode: connection.wireless_mode.clone(),
+                metered: connection.metered,
+                ipv6_method: connection.ipv6_method.clone(),
+                ipv4_dns: connection.ipv4_dns.clone(),
+                proxy_method: connection.proxy_method.clone(),
+                cloned_mac: connection.cloned_mac.clone(),
+                key_mgmt: connection.key_mgmt.clone(),
             }
         })
         .collect();
@@ -668,6 +710,9 @@ fn build_known_networks(
         .connections
         .iter()
         .filter(|connection| connection.kind == "802-11-wireless")
+        // A personal hotspot is an AP-mode connection, not a network the user
+        // joined; it belongs to its own row.
+        .filter(|connection| connection.wireless_mode.as_deref() != Some("ap"))
         .filter_map(|connection| {
             let ssid = connection.ssid.clone()?;
             let active = active_for(data, &connection.uuid);
@@ -952,5 +997,71 @@ mod tests {
         let snapshot = WifiSnapshot::from_data(&raw);
         assert_eq!(snapshot.glyph(), "wifi-disabled");
         assert_eq!(snapshot.label(), "Wi-Fi Off");
+    }
+
+    #[test]
+    fn an_ap_mode_connection_is_the_hotspot_not_a_known_network() {
+        use crate::source::{ActiveConnectionData, ConnectionData};
+        let data = NetworkManagerData {
+            wireless_enabled: true,
+            devices: vec![WifiDeviceData {
+                managed: true,
+                state: 100,
+                active_ap: None,
+                access_points: vec![],
+            }],
+            connections: vec![ConnectionData {
+                id: "dragonfruit-hotspot".to_owned(),
+                uuid: "hotspot".to_owned(),
+                kind: "802-11-wireless".to_owned(),
+                ssid: Some("dragonfruit-hotspot".to_owned()),
+                wireless_mode: Some("ap".to_owned()),
+                ..ConnectionData::default()
+            }],
+            active: vec![ActiveConnectionData {
+                path: "/active/hotspot".to_owned(),
+                connection: "/conn/hotspot".to_owned(),
+                uuid: "hotspot".to_owned(),
+                state: 2,
+                ..ActiveConnectionData::default()
+            }],
+            ..Default::default()
+        };
+        let snapshot = WifiSnapshot::from_data(&data);
+        assert!(snapshot.hotspot_supported);
+        assert!(snapshot.hotspot_active());
+        assert_eq!(snapshot.hotspot().unwrap().id, "dragonfruit-hotspot");
+        assert!(snapshot.known_networks.is_empty());
+    }
+
+    #[test]
+    fn services_carry_the_linux_only_rows() {
+        use crate::source::ConnectionData;
+        let data = NetworkManagerData {
+            connections: vec![ConnectionData {
+                id: "home".to_owned(),
+                uuid: "home".to_owned(),
+                kind: "802-11-wireless".to_owned(),
+                ssid: Some("home".to_owned()),
+                wireless_mode: Some("infrastructure".to_owned()),
+                metered: Some(1),
+                ipv6_method: Some("auto".to_owned()),
+                ipv4_dns: vec!["1.1.1.1".to_owned()],
+                proxy_method: Some("none".to_owned()),
+                cloned_mac: Some("random".to_owned()),
+                key_mgmt: Some("wpa-psk".to_owned()),
+                ..ConnectionData::default()
+            }],
+            ..Default::default()
+        };
+        let snapshot = WifiSnapshot::from_data(&data);
+        let service = &snapshot.services[0];
+        assert_eq!(service.metered, Some(1));
+        assert_eq!(service.ipv6_method.as_deref(), Some("auto"));
+        assert_eq!(service.ipv4_dns, vec!["1.1.1.1".to_owned()]);
+        assert_eq!(service.proxy_method.as_deref(), Some("none"));
+        assert_eq!(service.cloned_mac.as_deref(), Some("random"));
+        assert_eq!(service.key_mgmt.as_deref(), Some("wpa-psk"));
+        assert!(!service.is_hotspot());
     }
 }

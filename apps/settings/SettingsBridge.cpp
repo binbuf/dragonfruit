@@ -250,6 +250,15 @@ BluetoothClient *SettingsBridge::ensureBluetooth()
             [this](const QVariantMap &) { emit bluetoothChanged(); });
     connect(m_bluetooth, &BluetoothClient::availableChanged, this,
             [this](bool) { emit bluetoothChanged(); });
+    connect(m_bluetooth, &BluetoothClient::writeFinished, this,
+            [this](const QString &operation, const QString &outcome,
+                   const QString &message) {
+                m_bluetoothWriteOperation = operation;
+                m_bluetoothWriteState = outcome.isEmpty()
+                    ? QStringLiteral("applied") : outcome;
+                m_bluetoothWriteError = message;
+                emit bluetoothWriteChanged();
+            });
     // The mock built its view before the signal was connected; one refresh
     // publishes it. The live client's constructor read is already in flight.
     if (qobject_cast<MockBluetoothClient *>(m_bluetooth))
@@ -518,6 +527,15 @@ WifiClient *SettingsBridge::ensureWifi()
             [this](const QVariantMap &) { emit wifiChanged(); });
     connect(m_wifi, &WifiClient::availableChanged, this,
             [this](bool) { emit wifiChanged(); });
+    connect(m_wifi, &WifiClient::writeFinished, this,
+            [this](const QString &operation, const QString &outcome,
+                   const QString &message) {
+                m_wifiWriteOperation = operation;
+                m_wifiWriteState = outcome.isEmpty()
+                    ? QStringLiteral("applied") : outcome;
+                m_wifiWriteError = message;
+                emit wifiWriteChanged();
+            });
     if (qobject_cast<MockWifiClient *>(m_wifi))
         m_wifi->refresh();
     noteAdapterCreated();
@@ -1272,28 +1290,73 @@ void SettingsBridge::refreshBluetooth()
         ensureBluetooth();
 }
 
+void SettingsBridge::beginBluetoothWrite(const QString &operation)
+{
+    m_bluetoothWriteOperation = operation;
+    m_bluetoothWriteState = QStringLiteral("busy");
+    m_bluetoothWriteError.clear();
+    emit bluetoothWriteChanged();
+}
+
 void SettingsBridge::setBluetoothPowered(bool powered)
 {
+    beginBluetoothWrite(QStringLiteral("power"));
     if (m_bluetooth)
         m_bluetooth->setPowered(powered);
 }
 
 void SettingsBridge::setBluetoothDiscovering(bool discovering)
 {
+    beginBluetoothWrite(QStringLiteral("discovery"));
     if (m_bluetooth)
         m_bluetooth->setDiscovering(discovering);
 }
 
 void SettingsBridge::pairBluetooth(const QString &address)
 {
-    if (m_bluetooth)
-        m_bluetooth->pair(address);
+    if (!m_bluetooth || address.isEmpty())
+        return;
+    beginBluetoothWrite(QStringLiteral("pair"));
+    m_bluetooth->pair(address);
 }
 
 void SettingsBridge::setBluetoothConnected(const QString &address, bool connected)
 {
+    if (!m_bluetooth || address.isEmpty())
+        return;
+    beginBluetoothWrite(QStringLiteral("connect"));
+    m_bluetooth->setConnected(address, connected);
+}
+
+void SettingsBridge::forgetBluetooth(const QString &address)
+{
+    if (!m_bluetooth || address.isEmpty())
+        return;
+    beginBluetoothWrite(QStringLiteral("forget"));
+    m_bluetooth->forget(address);
+}
+
+void SettingsBridge::resetBluetoothFixture()
+{
     if (m_bluetooth)
-        m_bluetooth->setConnected(address, connected);
+        m_bluetooth->resetForTest();
+    m_bluetoothWriteOperation.clear();
+    m_bluetoothWriteState = QStringLiteral("idle");
+    m_bluetoothWriteError.clear();
+    emit bluetoothWriteChanged();
+}
+
+void SettingsBridge::setBluetoothFixture(const QString &mode)
+{
+    if (m_bluetooth)
+        m_bluetooth->setFixture(mode);
+}
+
+void SettingsBridge::failNextBluetoothWrite(const QString &operation,
+                                            const QString &message)
+{
+    if (auto *mock = qobject_cast<MockBluetoothClient *>(m_bluetooth))
+        mock->failNextWrite(operation, message);
 }
 
 void SettingsBridge::refreshStorage()
@@ -1997,46 +2060,105 @@ void SettingsBridge::refreshWifi()
         ensureWifi();
 }
 
+void SettingsBridge::beginWifiWrite(const QString &operation)
+{
+    m_wifiWriteOperation = operation;
+    m_wifiWriteState = QStringLiteral("busy");
+    m_wifiWriteError.clear();
+    emit wifiWriteChanged();
+}
+
 void SettingsBridge::setWifiEnabled(bool enabled)
 {
+    beginWifiWrite(QStringLiteral("power"));
     if (m_wifi)
         m_wifi->setEnabled(enabled);
 }
 
 void SettingsBridge::joinWifi(const QString &ssid, const QString &secret)
 {
-    if (m_wifi && !ssid.isEmpty())
-        m_wifi->join(ssid, secret);
+    if (!m_wifi || ssid.isEmpty())
+        return;
+    beginWifiWrite(QStringLiteral("join"));
+    m_wifi->join(ssid, secret);
 }
 
 void SettingsBridge::joinHiddenWifi(const QString &ssid, const QString &secret)
 {
-    if (m_wifi && !ssid.isEmpty())
-        m_wifi->joinHidden(ssid, secret);
+    if (!m_wifi || ssid.isEmpty())
+        return;
+    beginWifiWrite(QStringLiteral("joinHidden"));
+    m_wifi->joinHidden(ssid, secret);
 }
 
 void SettingsBridge::forgetWifi(const QString &uuid)
 {
-    if (m_wifi && !uuid.isEmpty())
-        m_wifi->forget(uuid);
+    if (!m_wifi || uuid.isEmpty())
+        return;
+    beginWifiWrite(QStringLiteral("forget"));
+    m_wifi->forget(uuid);
 }
 
 void SettingsBridge::setWifiAutoconnect(const QString &uuid, bool enabled)
 {
-    if (m_wifi && !uuid.isEmpty())
-        m_wifi->setAutoconnect(uuid, enabled);
+    if (!m_wifi || uuid.isEmpty())
+        return;
+    beginWifiWrite(QStringLiteral("autoconnect"));
+    m_wifi->setAutoconnect(uuid, enabled);
+}
+
+void SettingsBridge::scanWifi()
+{
+    beginWifiWrite(QStringLiteral("scan"));
+    if (m_wifi)
+        m_wifi->scan();
+}
+
+void SettingsBridge::disconnectWifi(const QString &uuid)
+{
+    if (!m_wifi || uuid.isEmpty())
+        return;
+    beginWifiWrite(QStringLiteral("disconnect"));
+    m_wifi->disconnect(uuid);
+}
+
+void SettingsBridge::startWifiHotspot(const QString &ssid, const QString &secret)
+{
+    if (!m_wifi || ssid.isEmpty())
+        return;
+    beginWifiWrite(QStringLiteral("hotspot"));
+    m_wifi->startHotspot(ssid, secret);
+}
+
+void SettingsBridge::stopWifiHotspot(const QString &uuid)
+{
+    if (!m_wifi || uuid.isEmpty())
+        return;
+    beginWifiWrite(QStringLiteral("hotspot"));
+    m_wifi->stopHotspot(uuid);
 }
 
 void SettingsBridge::resetWifiFixture()
 {
     if (m_wifi)
         m_wifi->resetForTest();
+    m_wifiWriteOperation.clear();
+    m_wifiWriteState = QStringLiteral("idle");
+    m_wifiWriteError.clear();
+    emit wifiWriteChanged();
 }
 
 void SettingsBridge::setWifiFixture(const QString &mode)
 {
     if (m_wifi)
         m_wifi->setFixture(mode);
+}
+
+void SettingsBridge::failNextWifiWrite(const QString &operation,
+                                       const QString &message)
+{
+    if (auto *mock = qobject_cast<MockWifiClient *>(m_wifi))
+        mock->failNextWrite(operation, message);
 }
 
 void SettingsBridge::refreshNetwork()

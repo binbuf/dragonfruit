@@ -22,6 +22,7 @@ Item {
         Component { id: shellComponent; SettingsShell { } }
 
         function init() {
+            Settings.resetWifiFixture();
             Settings.setWifiFixture("live");
             Settings.set("network.wifi.askToJoin", "notify");
             Settings.set("network.wifi.askToJoinHotspots", "ask");
@@ -191,7 +192,7 @@ Item {
             });
         }
 
-        function test_the_absence_state_disables_the_controls() {
+        function test_the_absence_state_keeps_the_sections_and_disables_host_controls() {
             var shell = make();
             var pane = paneOf(shell);
             Settings.setWifiFixture("absent");
@@ -199,8 +200,180 @@ Item {
             compare(pane.available, false);
             compare(pane.powerToggle.enabled, false);
             compare(pane.absenceNote.visible, true);
+            // T271: structure survives the absent daemon.
+            compare(pane.currentGroup.visible, true);
+            compare(pane.knownGroup.visible, true);
+            compare(pane.availableGroup.visible, true);
+            compare(pane.hotspotGroup.visible, true);
+            compare(pane.advancedRow.visible, true);
+            compare(pane.unavailableRow.visible, true);
+            compare(pane.knownEmptyRow.visible, true);
+            // The hidden-network join is a host write; it disables with the
+            // radio and the list controls.
+            compare(findChild(pane, "wifiHiddenRow").enabled, false);
+            // The settingsd prompt rows stay live.
+            verify(pane.askToJoinSelect.enabled);
             Settings.setWifiFixture("live");
             tryVerify(function() { return pane.ready === true; });
+        }
+
+        function test_scanning_state_shows_the_spinner_and_hides_the_list() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWifiFixture("scanning");
+            tryVerify(function() { return pane.scanning === true; });
+            compare(pane.scanningRow.visible, true);
+            verify(pane.spinner !== null);
+            compare(pane.availableRepeater.count, 0);
+            // A read answers the scan.
+            Settings.refreshWifi();
+            tryVerify(function() { return pane.scanning === false; });
+            compare(pane.scanningRow.visible, false);
+        }
+
+        function test_empty_state_is_an_explicit_row() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWifiFixture("empty");
+            tryVerify(function() { return pane.otherNetworks.length === 0; });
+            compare(pane.availableRepeater.count, 0);
+            compare(pane.emptyRow.visible, true);
+            compare(pane.errorRow.visible, false);
+        }
+
+        function test_read_error_keeps_the_structure_and_names_the_error() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWifiFixture("error");
+            tryVerify(function() { return pane.failed === true; });
+            compare(pane.ready, false);
+            compare(pane.errorRow.visible, true);
+            compare(pane.absenceNote.visible, true);
+            verify(pane.errorRow.text.length > 0);
+            compare(pane.powerToggle.enabled, false);
+        }
+
+        function test_join_cancel_and_success_clear_the_password() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var row = rowWithSsid(pane, "neighbor-secure");
+            verify(row !== null);
+            findChild(row, "wifiJoinButton").clicked();
+            tryVerify(function() { return pane.joinDialog.open === true; });
+            var field = findChild(pane, "wifiJoinSecret");
+            field.text = "hunter2";
+            findChild(pane, "wifiJoinCancel").clicked();
+            tryVerify(function() { return pane.joinDialog.open === false; });
+            compare(field.text, "");
+            compare(pane.pendingSsid, "");
+            compare(Settings.wifi.activeSsid, "dragonfruit");
+
+            // A successful join clears the field too.
+            findChild(row, "wifiJoinButton").clicked();
+            tryVerify(function() { return pane.joinDialog.open === true; });
+            field.text = "hunter2";
+            findChild(pane, "wifiJoinConfirm").clicked();
+            tryVerify(function() { return Settings.wifi.activeSsid === "neighbor-secure"; });
+            compare(field.text, "");
+        }
+
+        function test_known_details_offers_forget_and_disconnect() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var row = knownRow(pane, "dragonfruit");
+            verify(row !== null);
+            findChild(row, "wifiKnownDetailsButton").clicked();
+            tryVerify(function() { return pane.detailsDialog.open === true; });
+            compare(pane.detailsTitle.text, "dragonfruit");
+            compare(pane.detailsForgetButton.visible, true);
+            compare(pane.detailsDisconnectButton.visible, true);
+            verify(findChild(pane, "wifiDetailsMetered") !== null);
+            pane.detailsForgetButton.clicked();
+            tryVerify(function() {
+                for (var i = 0; i < Settings.wifi.knownNetworks.length; ++i)
+                    if (Settings.wifi.knownNetworks[i].ssid === "dragonfruit")
+                        return false;
+                return true;
+            });
+        }
+
+        function test_known_network_disconnects() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var row = knownRow(pane, "dragonfruit");
+            verify(row !== null);
+            findChild(row, "wifiKnownDisconnect").clicked();
+            tryVerify(function() { return Settings.wifi.activeSsid === ""; });
+            compare(pane.activeSsid, "");
+        }
+
+        function test_personal_hotspot_starts_and_stops() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.hotspotSupported, true);
+            pane.hotspotRow.trailingButton.clicked();
+            tryVerify(function() { return pane.hotspotDialog.open === true; });
+            findChild(pane, "wifiHotspotSsid").text = "dragonfruit-hotspot";
+            findChild(pane, "wifiHotspotSecret").text = "hunter2hunter2";
+            findChild(pane, "wifiHotspotCreate").clicked();
+            tryVerify(function() { return Settings.wifi.hotspotActive === true; });
+            compare(pane.hotspotActive, true);
+            compare(pane.hotspotRow.label, "dragonfruit-hotspot");
+            pane.hotspotRow.trailingButton.clicked();
+            tryVerify(function() { return Settings.wifi.hotspotActive === false; });
+            compare(pane.hotspotActive, false);
+        }
+
+        function test_advanced_lists_the_linux_rows() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.advancedDialog.show();
+            tryVerify(function() { return pane.advancedDialog.open === true; });
+            compare(pane.advancedMetered.text, "Metered: Yes");
+            compare(pane.advancedIpv6.text, "IPv6: auto");
+            compare(pane.advancedDns.text, "DNS: 192.168.1.1, 1.1.1.1");
+            compare(pane.advancedProxy.text, "Proxy: none");
+            compare(pane.advancedMac.text, "MAC randomization: preserve");
+            compare(pane.advancedAuth.text, "Authentication: WPA-PSK");
+        }
+
+        function test_a_failed_write_reports_and_reverts() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.failNextWifiWrite("power", "NetworkManager refused the change");
+            pane.powerToggle.toggle();
+            tryVerify(function() { return Settings.wifiWriteState === "failed"; });
+            compare(Settings.wifiWriteError, "NetworkManager refused the change");
+            compare(Settings.wifi.radioEnabled, true, "the view is the truth");
+            compare(pane.powerToggle.checked, true, "the toggle reverts");
+            compare(pane.writeErrorItem.visible, true);
+        }
+
+        function test_ask_to_join_popups_converge_after_an_external_change() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.set("network.wifi.askToJoin", "ask");
+            tryCompare(pane.askToJoinSelect, "currentIndex", 2);
+            Settings.set("network.wifi.askToJoin", "new");
+            tryCompare(pane.askToJoinSelect, "currentIndex", 3);
+            Settings.set("network.wifi.askToJoinHotspots", "off");
+            tryCompare(pane.askHotspotsSelect, "currentIndex", 0);
+        }
+
+        function test_the_pane_fits_the_measured_window() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            verify(shell !== null);
+            waitForRendering(stage);
+            shell.selectPane("wifi");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = shell.paneBody.item;
+            verify(pane !== null);
+            verify(pane.width > 0);
+            verify(pane.width <= 508,
+                   "the pane fits the measured 508 pt detail content");
+            verify(shell.detailScroll.maxY >= 0);
         }
     }
 }

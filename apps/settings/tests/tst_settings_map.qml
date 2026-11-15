@@ -116,6 +116,19 @@ Item {
             }
         }
 
+        // T271: a durable preference with no consumer is marked stored-only.
+        function test_stored_only_rows_are_labeled() {
+            var ask = SettingsMap.rowFor("wifi", "ask");
+            verify(ask !== null);
+            compare(ask.storedOnly, true);
+            var hotspots = SettingsMap.rowFor("wifi", "askHotspots");
+            verify(hotspots !== null);
+            compare(hotspots.storedOnly, true);
+            var power = SettingsMap.rowFor("wifi", "power");
+            verify(power !== null);
+            compare(power.storedOnly, false);
+        }
+
         function test_an_unowned_row_fails_validation() {
             var errors = SettingsMap.validateRow({
                 id: "unowned", label: "Unowned", control: "toggle",

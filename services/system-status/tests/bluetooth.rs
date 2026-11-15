@@ -32,6 +32,7 @@ fn data(powered: bool) -> BluetoothData {
             blocked: false,
             rssi: -60,
             icon: "audio-headset".to_owned(),
+            battery: Some(64),
         }],
     }
 }

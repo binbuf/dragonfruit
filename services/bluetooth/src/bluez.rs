@@ -40,6 +40,9 @@ pub const BLUEZ_SERVICE: &str = "org.bluez";
 pub const ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
 /// The device interface.
 pub const DEVICE_INTERFACE: &str = "org.bluez.Device1";
+/// The per-device battery interface (a separate managed interface on the
+/// device's object path).
+pub const BATTERY_INTERFACE: &str = "org.bluez.Battery1";
 /// The standard object-manager interface BlueZ implements at `/`.
 pub const OBJECT_MANAGER_INTERFACE: &str = "org.freedesktop.DBus.ObjectManager";
 /// The standard properties interface.
@@ -134,6 +137,37 @@ impl BluetoothSource for DbusBluez {
         let method = if connected { "Connect" } else { "Disconnect" };
         self.device_action(address, method)
     }
+
+    fn forget(&mut self, address: &str) -> BluetoothOutcome {
+        let connection = match daemon_connection() {
+            Ok(connection) => connection,
+            Err(outcome) => return outcome,
+        };
+        let device = match device_path(&connection, address) {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                return BluetoothOutcome::Failed(AdapterError::new(format!(
+                    "BlueZ: unknown device {address}"
+                )))
+            }
+            Err(error) => return classify(error),
+        };
+        let adapter = match adapter_path(&connection) {
+            Ok(Some(path)) => path,
+            Ok(None) => return BluetoothOutcome::Absent,
+            Err(error) => return classify(error),
+        };
+        match connection.call_method(
+            Some(BLUEZ_SERVICE),
+            adapter.as_str(),
+            Some(ADAPTER_INTERFACE),
+            "RemoveDevice",
+            &(device,),
+        ) {
+            Ok(_) => BluetoothOutcome::Accepted,
+            Err(error) => classify(error),
+        }
+    }
 }
 
 impl DbusBluez {
@@ -166,7 +200,10 @@ impl BluetoothData {
                 adapters.push(adapter_from_props(path.as_str(), props));
             }
             if let Some(props) = interfaces.get(DEVICE_INTERFACE) {
-                devices.push(device_from_props(path.as_str(), props));
+                let battery = interfaces
+                    .get(BATTERY_INTERFACE)
+                    .and_then(|battery| u8_prop(battery, "Percentage"));
+                devices.push(device_from_props(path.as_str(), props, battery));
             }
         }
         // Deterministic order regardless of the hash-map iteration order.
@@ -191,7 +228,11 @@ fn adapter_from_props(path: &str, props: &HashMap<String, OwnedValue>) -> Blueto
 }
 
 /// One `org.bluez.Device1` object from its property map.
-fn device_from_props(path: &str, props: &HashMap<String, OwnedValue>) -> BluetoothDeviceData {
+fn device_from_props(
+    path: &str,
+    props: &HashMap<String, OwnedValue>,
+    battery: Option<u8>,
+) -> BluetoothDeviceData {
     BluetoothDeviceData {
         path: path.to_owned(),
         adapter_path: object_path_prop(props, "Adapter"),
@@ -204,7 +245,13 @@ fn device_from_props(path: &str, props: &HashMap<String, OwnedValue>) -> Bluetoo
         blocked: bool_prop(props, "Blocked"),
         rssi: i16_prop(props, "RSSI").unwrap_or_default(),
         icon: string_prop(props, "Icon"),
+        battery,
     }
+}
+
+/// A `u8` property (BlueZ's `Battery1.Percentage`), `None` when absent.
+fn u8_prop(props: &HashMap<String, OwnedValue>, key: &str) -> Option<u8> {
+    props.get(key).and_then(|value| value.downcast_ref::<u8>().ok())
 }
 
 /// A string property, `""` when BlueZ did not report it.

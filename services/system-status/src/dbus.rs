@@ -245,6 +245,30 @@ impl WifiInterface {
         lock(&self.host).forget_wifi(uuid).to_string()
     }
 
+    /// Ask the Wi-Fi device to scan. Returns the JSON report.
+    fn scan(&self) -> String {
+        lock(&self.host).scan_wifi().to_string()
+    }
+
+    /// Disconnect the active connection made from `uuid`. Returns the JSON
+    /// report.
+    fn disconnect(&self, uuid: &str) -> String {
+        lock(&self.host).disconnect_wifi(uuid).to_string()
+    }
+
+    /// Start a personal hotspot with `ssid` and `secret`. Returns the JSON
+    /// report.
+    fn start_hotspot(&self, ssid: &str, secret: &str) -> String {
+        lock(&self.host)
+            .start_wifi_hotspot(ssid, secret)
+            .to_string()
+    }
+
+    /// Stop the personal hotspot saved as `uuid`. Returns the JSON report.
+    fn stop_hotspot(&self, uuid: &str) -> String {
+        lock(&self.host).stop_wifi_hotspot(uuid).to_string()
+    }
+
     /// Change whether the saved connection comes up automatically. Returns
     /// the JSON report.
     fn set_autoconnect(&self, uuid: &str, enabled: bool) -> String {
@@ -363,6 +387,11 @@ impl BluetoothInterface {
         lock_bluetooth(&self.host)
             .set_connected(address, connected)
             .to_string()
+    }
+
+    /// Forget (remove) the device at `address`. Returns the JSON report.
+    fn forget(&self, address: &str) -> String {
+        lock_bluetooth(&self.host).forget(address).to_string()
     }
 }
 

@@ -238,7 +238,9 @@ FocusScope {
     FocusRing {
         id: scrollFocusRing
         target: root
-        cornerRadius: Theme.controls.scrollView.scrollbarRadius
+        // The focus ring outlines the viewport; the scrollbar's 999 px
+        // pill radius would turn it into a giant circle (T271 capture).
+        cornerRadius: Theme.controls.focusRing.radius
         shown: root.activeFocus
     }
 

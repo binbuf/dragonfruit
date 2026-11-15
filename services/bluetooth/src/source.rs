@@ -99,6 +99,9 @@ pub struct BluetoothDeviceData {
     /// `Icon`: BlueZ's suggested icon name (e.g. `audio-headset`).
     #[serde(default)]
     pub icon: String,
+    /// `org.bluez.Battery1.Percentage`, when the device exposes it.
+    #[serde(default)]
+    pub battery: Option<u8>,
 }
 
 /// What happened to one write (power, discovery, pair, connect).
@@ -164,6 +167,9 @@ pub trait BluetoothSource {
 
     /// Connect to or disconnect from the device at `address`.
     fn set_connected(&mut self, address: &str, connected: bool) -> BluetoothOutcome;
+
+    /// Forget (remove) the device at `address` (`Adapter1.RemoveDevice`).
+    fn forget(&mut self, address: &str) -> BluetoothOutcome;
 }
 
 /// How the simulated daemon answers write requests.
@@ -324,6 +330,24 @@ impl BluetoothSource for MockBluetooth {
     fn set_connected(&mut self, _address: &str, _connected: bool) -> BluetoothOutcome {
         self.write_outcome()
     }
+
+    fn forget(&mut self, address: &str) -> BluetoothOutcome {
+        let outcome = self.write_outcome();
+        if !outcome.is_accepted() {
+            return outcome;
+        }
+        let Some(data) = self.data.as_mut() else {
+            return BluetoothOutcome::Absent;
+        };
+        let before = data.devices.len();
+        data.devices.retain(|device| device.address != address);
+        if data.devices.len() == before {
+            return BluetoothOutcome::Failed(AdapterError::new(format!(
+                "BlueZ: unknown device {address}"
+            )));
+        }
+        BluetoothOutcome::Accepted
+    }
 }
 
 #[cfg(test)]
@@ -379,6 +403,20 @@ mod tests {
         assert!(mock.pair("AA:BB:CC:DD:EE:FF").is_accepted());
         assert!(mock.set_connected("AA:BB:CC:DD:EE:FF", true).is_accepted());
         assert_eq!(mock.writes(), 4);
+    }
+
+    #[test]
+    fn forgetting_a_device_removes_it_from_the_mock() {
+        let mut with_device = data();
+        with_device.devices.push(BluetoothDeviceData {
+            address: "AA:BB:CC:DD:EE:FF".to_owned(),
+            ..BluetoothDeviceData::default()
+        });
+        let mut mock = MockBluetooth::present(with_device);
+        assert!(mock.forget("AA:BB:CC:DD:EE:FF").is_accepted());
+        let read = mock.read().unwrap().unwrap();
+        assert!(read.devices.is_empty());
+        assert_eq!(mock.writes(), 1);
     }
 
     #[test]

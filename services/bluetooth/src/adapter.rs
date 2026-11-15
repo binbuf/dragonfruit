@@ -94,6 +94,12 @@ impl<S: BluetoothSource> BluetoothAdapter<S> {
         self.after_write(outcome)
     }
 
+    /// Forget (remove) the device at `address`. One explicit write.
+    pub fn forget(&mut self, address: &str) -> BluetoothOutcome {
+        let outcome = self.source.forget(address);
+        self.after_write(outcome)
+    }
+
     /// A write against an absent daemon is absence at the state level too: the
     /// item hides and the subscription drops, never an error.
     fn after_write(&mut self, outcome: BluetoothOutcome) -> BluetoothOutcome {
@@ -174,6 +180,7 @@ mod tests {
                 blocked: false,
                 rssi: -55,
                 icon: "audio-headset".to_owned(),
+                battery: Some(82),
             }],
         }
     }

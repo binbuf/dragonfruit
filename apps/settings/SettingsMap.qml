@@ -247,11 +247,15 @@ QtObject {
     ]
 
     // The row constructor keeps the table compact and the field set uniform.
-    function row(id, section, label, control, owner, key, absence, state) {
+    function row(id, section, label, control, owner, key, absence, state,
+                 storedOnly) {
         return {
             id: id, section: section, label: label, control: control,
             owner: owner, key: key, absence: absence,
-            state: state !== undefined ? state : "planned"
+            state: state !== undefined ? state : "planned",
+            // T271: a durable preference with no live consumer is explicitly
+            // marked, never presented as live (ADR 0262).
+            storedOnly: storedOnly === true
         };
     }
 
@@ -264,16 +268,22 @@ QtObject {
                          "NetworkManager", "WirelessEnabled", "disabled-with-reason", "shipped"),
                 root.row("current", qsTr("Wi-Fi"), qsTr("Current network"), "info+details",
                          "NetworkManager", "ActiveConnection", "disabled-with-reason", "shipped"),
-                root.row("saved", qsTr("Wi-Fi"), qsTr("Saved networks"), "list",
+                root.row("hotspot", qsTr("Wi-Fi"), qsTr("Personal Hotspot"), "toggle+sheet",
+                         "NetworkManager", "802-11-wireless.mode=ap", "disabled-with-reason", "shipped"),
+                root.row("saved", qsTr("Wi-Fi"), qsTr("Known networks"), "list",
                          "NetworkManager", "Settings.Connection", "disabled-with-reason", "shipped"),
-                root.row("available", qsTr("Wi-Fi"), qsTr("Available networks"), "list",
+                root.row("available", qsTr("Wi-Fi"), qsTr("Other networks"), "list",
                          "NetworkManager", "AccessPoint", "disabled-with-reason", "shipped"),
+                root.row("scan", qsTr("Wi-Fi"), qsTr("Scan for networks"), "button",
+                         "NetworkManager", "AccessPoint.RequestScan", "disabled-with-reason", "shipped"),
                 root.row("hidden", qsTr("Wi-Fi"), qsTr("Join hidden network..."), "dialog",
                          "NetworkManager", "AddAndActivateConnection", "disabled-with-reason", "shipped"),
+                // T271: the shell has no Wi-Fi prompt consumer yet, so these
+                // durable preferences are stored-only and say so in the pane.
                 root.row("ask", qsTr("Wi-Fi"), qsTr("Ask to join networks"), "popup",
-                         "settingsd", "network.wifi.askToJoin", "live-on-defaults", "shipped"),
+                         "settingsd", "network.wifi.askToJoin", "live-on-defaults", "shipped", true),
                 root.row("askHotspots", qsTr("Wi-Fi"), qsTr("Ask to join hotspots"), "popup",
-                         "settingsd", "network.wifi.askToJoinHotspots", "live-on-defaults", "shipped"),
+                         "settingsd", "network.wifi.askToJoinHotspots", "live-on-defaults", "shipped", true),
                 root.row("advanced", qsTr("Wi-Fi"), qsTr("Advanced..."), "sheet",
                          "NetworkManager + settingsd", "nm.connection", "disabled-with-reason", "shipped"),
                 root.row("quick", qsTr("Wi-Fi"), qsTr("Quick sheet"), "panel",
@@ -284,12 +294,14 @@ QtObject {
                          "BlueZ", "Adapter1.Powered", "disabled-with-reason", "shipped"),
                 root.row("discoverable", qsTr("Bluetooth"), qsTr("Discoverable as..."), "info",
                          "BlueZ", "Adapter1.Discoverable", "disabled-with-reason", "shipped"),
-                root.row("paired", qsTr("Bluetooth"), qsTr("Paired devices"), "list",
+                root.row("paired", qsTr("Bluetooth"), qsTr("My devices"), "list+info",
                          "BlueZ", "Device1", "disabled-with-reason", "shipped"),
                 root.row("nearby", qsTr("Bluetooth"), qsTr("Nearby devices"), "list",
                          "BlueZ", "discovery", "disabled-with-reason", "shipped"),
+                root.row("info", qsTr("Bluetooth"), qsTr("Device info"), "sheet",
+                         "BlueZ", "Device1.Address", "disabled-with-reason", "shipped"),
                 root.row("advanced", qsTr("Bluetooth"), qsTr("Advanced..."), "sheet",
-                         "BlueZ + settingsd", "bluetooth.*", "disabled-with-reason"),
+                         "BlueZ + settingsd", "bluetooth.*", "disabled-with-reason", "shipped"),
                 root.row("quick", qsTr("Bluetooth"), qsTr("Quick sheet"), "panel",
                          "shell", "quickSettings.bluetooth", "live-on-defaults")
             ],

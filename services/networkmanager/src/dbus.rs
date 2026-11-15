@@ -92,6 +92,8 @@ trait Wireless {
     fn access_points(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
     #[zbus(property)]
     fn active_access_point(&self) -> zbus::Result<OwnedObjectPath>;
+    /// `RequestScan` with the empty options map.
+    fn request_scan(&self, options: HashMap<String, OwnedValue>) -> zbus::Result<()>;
 }
 
 #[zbus::proxy(
@@ -292,6 +294,26 @@ impl NetworkManagerSource for DbusNetworkManager {
             ),
         ) {
             Ok(_) => WriteOutcome::Applied,
+            Err(error) => classify_write_error(error),
+        }
+    }
+
+    fn request_scan(&mut self) -> WriteOutcome {
+        let connection = match write_daemon_connection() {
+            Ok(connection) => connection,
+            Err(outcome) => return outcome,
+        };
+        let device = match wifi_device_path(&connection) {
+            Ok(Some(path)) => path,
+            Ok(None) => return WriteOutcome::Absent,
+            Err(error) => return write_failed(error),
+        };
+        let proxy = match WirelessProxyBlocking::new(&connection, device.as_str()) {
+            Ok(proxy) => proxy,
+            Err(error) => return write_failed(error),
+        };
+        match proxy.request_scan(HashMap::new()) {
+            Ok(()) => WriteOutcome::Applied,
             Err(error) => classify_write_error(error),
         }
     }
@@ -522,6 +544,38 @@ pub fn connection_from_settings(
             .and_then(|wireless| wireless.get("ssid"))
             .and_then(value_bytes)
             .map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+        wireless_mode: settings
+            .get("802-11-wireless")
+            .and_then(|wireless| wireless.get("mode"))
+            .and_then(value_string),
+        metered: connection.get("metered").and_then(value_u32),
+        ipv6_method: settings
+            .get("ipv6")
+            .and_then(|ipv6| ipv6.get("method"))
+            .and_then(value_string),
+        ipv4_dns: settings
+            .get("ipv4")
+            .and_then(|ipv4| ipv4.get("dns"))
+            .and_then(value_string_list)
+            .unwrap_or_default(),
+        proxy_method: settings
+            .get("proxy")
+            .and_then(|proxy| proxy.get("method"))
+            .and_then(value_string),
+        cloned_mac: settings
+            .get("802-11-wireless")
+            .and_then(|wireless| wireless.get("cloned-mac-address"))
+            .and_then(value_string)
+            .or_else(|| {
+                settings
+                    .get("802-3-ethernet")
+                    .and_then(|ethernet| ethernet.get("cloned-mac-address"))
+                    .and_then(value_string)
+            }),
+        key_mgmt: settings
+            .get("802-11-wireless-security")
+            .and_then(|security| security.get("key-mgmt"))
+            .and_then(value_string),
     })
 }
 
@@ -531,7 +585,7 @@ fn add_connection_settings(
 ) -> HashMap<String, HashMap<String, Value<'static>>> {
     let kind = match spec.kind {
         AddKind::Ethernet => "802-3-ethernet",
-        AddKind::Wifi => "802-11-wireless",
+        AddKind::Wifi | AddKind::Hotspot => "802-11-wireless",
         AddKind::Vpn => "vpn",
     };
     let mut connection: HashMap<String, Value<'static>> = HashMap::new();
@@ -542,13 +596,18 @@ fn add_connection_settings(
     settings.insert("connection".to_owned(), connection);
 
     match spec.kind {
-        AddKind::Wifi => {
+        AddKind::Wifi | AddKind::Hotspot => {
             let mut wireless: HashMap<String, Value<'static>> = HashMap::new();
             wireless.insert(
                 "ssid".to_owned(),
                 Value::from(spec.name.as_bytes().to_vec()),
             );
-            wireless.insert("mode".to_owned(), Value::from("infrastructure"));
+            let mode = if spec.kind == AddKind::Hotspot {
+                "ap"
+            } else {
+                "infrastructure"
+            };
+            wireless.insert("mode".to_owned(), Value::from(mode));
             settings.insert("802-11-wireless".to_owned(), wireless);
             if let Some(secret) = &spec.secret {
                 let mut security: HashMap<String, Value<'static>> = HashMap::new();
@@ -1136,6 +1195,16 @@ fn value_bool(value: &OwnedValue) -> Option<bool> {
 /// An `i32` out of one settings value.
 fn value_i32(value: &OwnedValue) -> Option<i32> {
     value.downcast_ref::<i32>().ok()
+}
+
+/// A `u32` out of one settings value.
+fn value_u32(value: &OwnedValue) -> Option<u32> {
+    value.downcast_ref::<u32>().ok()
+}
+
+/// A string array (`as`) out of one settings value.
+fn value_string_list(value: &OwnedValue) -> Option<Vec<String>> {
+    Vec::<String>::try_from(value.clone()).ok()
 }
 
 /// A `u64` out of one settings value.

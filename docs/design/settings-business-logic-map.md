@@ -175,33 +175,36 @@ additive-only rule. Existing keys are shown as `existing: …`.
 <a id="pane-wifi"></a>
 ### 5.1 Wi-Fi
 
-Owner: NetworkManager (`org.freedesktop.NetworkManager`). Absence: the pane
-shows a one-line note, the toggle is disabled, no write is attempted.
+Owner: NetworkManager (`org.freedesktop.NetworkManager`). Absence: every
+section stays; the host controls disable with a reason and the settingsd
+prompt rows remain live (T271, ADR 0271).
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Wi-Fi | Wi-Fi | Toggle | NM `WirelessEnabled` | Enables/disables the radio; disabled when NM absent |
-| Current network | Current network | Info + Details… | NM `ActiveConnection` | SSID, signal, security, IP; Details opens connection editor |
-| Known Network | Saved networks | List + ⋯ | NM `Settings.Connection` | Auto-join, forget, priority; empty state |
-| Other Networks | Available networks | List | NM `AccessPoint` | Join, hidden network; scanning state |
+| Current network | Current network | Info + Details… | NM `ActiveConnection` | SSID, signal, security, IP; the sheet adds last-used, auto-join, metered, IPv6, DNS, proxy, MAC randomization, 802.1X, Forget, Disconnect |
+| Personal Hotspot | Personal Hotspot | Toggle + Create… | NM `802-11-wireless.mode=ap` | Adds and activates an AP-mode connection; Turn Off deactivates it; disabled with a reason when no Wi-Fi device exists |
+| Known Network | Known networks | List + ⋯ | NM `Settings.Connection` | Auto-join, details, forget, disconnect; empty state |
+| Other Networks | Other networks | List + Scan | NM `AccessPoint` / `AccessPoint.RequestScan` | Join, hidden network, real scan; scanning/empty/error rows |
 | Other… | Join hidden network… | Dialog | NM | SSID/security |
-| Ask to join networks | Ask to join networks | Popup | `network.wifi.askToJoin` | Shell prompt policy; NM autoconnect remains authoritative |
-| Ask to join hotspots | Ask to join hotspots | Popup | `network.wifi.askToJoinHotspots` | Prompt policy; may be unavailable |
-| Advanced… | Advanced… | Sheet | NM + `settingsd` | TCP/IP, DNS, proxies, MAC randomization, hardware |
+| Ask to join networks | Ask to join networks | Popup | `network.wifi.askToJoin` | **Stored-only**: the shell has no prompt consumer yet; NM autoconnect remains authoritative |
+| Ask to join hotspots | Ask to join hotspots | Popup | `network.wifi.askToJoinHotspots` | **Stored-only**, same reason |
+| Advanced… | Advanced… | Sheet | NM connection settings | Live read of TCP/IP, metered, IPv6, DNS, proxies, MAC randomization, 802.1X, hardware |
 | — | Quick sheet | Panel | Shell | Same state; Settings… deep link |
 
 <a id="pane-bluetooth"></a>
 ### 5.2 Bluetooth
 
-Owner: BlueZ (`org.bluez`). Absence: note, toggle disabled, no write.
+Owner: BlueZ (`org.bluez`). Absence: every section stays; power/discovery
+disable and no write is attempted (T271, ADR 0271).
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Bluetooth | Bluetooth | Toggle | BlueZ `Adapter1.Powered` | Radio on/off |
-| Discoverable as… | Discoverable as… | Info | BlueZ `Adapter1.Discoverable` | Only while the pane is open, matching the reference |
-| My Devices | Paired devices | List + info | BlueZ `Device1` | Connect/disconnect, forget, info |
-| Nearby Devices | Nearby devices | List | BlueZ discovery | Searching/empty/error |
-| — | Advanced… | Sheet | BlueZ + `settingsd` | Adapter name, class, pairing policy |
+| Bluetooth | Bluetooth | Toggle | BlueZ `Adapter1.Powered` | Radio on/off; turning on starts discovery while the pane is open |
+| Discoverable as… | Discoverable As | Info | BlueZ `Adapter1.Discoverable` | The computer name, only while the pane is open |
+| My Devices | My Devices | List + info | BlueZ `Device1` | Connect/disconnect and an info sheet with address/type/battery/forget |
+| Nearby Devices | Nearby Devices | List | BlueZ discovery | Searching/empty/error |
+| — | Advanced… | Sheet | BlueZ + `settingsd` | Adapter name, address, discoverable, pairable |
 | — | Quick sheet | Panel | Shell | Same state; Settings… deep link |
 
 <a id="pane-network"></a>
@@ -223,8 +226,13 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 | — | Add service… | Sheet | NM | Connection editor (limited first pass) |
 
 **T225 status.** The Wi-Fi and Network panes are shipped. Wi-Fi writes the
-radio, joins (visible/hidden), forgets, autoconnect, and the two
-`network.wifi.*` prompt keys; Network writes service order through NM
+radio, joins (visible/hidden), forgets, autoconnects, scans, disconnects, and
+starts/stops the personal hotspot; the two `network.wifi.*` prompt keys are
+stored-only until the shell grows a prompt consumer. **T271 status.** Wi-Fi and
+Bluetooth complete the reference row set: current-network and device sheets,
+scanning/empty/error states, known-network disconnect, the AP-mode hotspot,
+BlueZ device info/battery/forget, power-on discovery, the computer name, and
+structural absence. Network writes service order through NM
 `autoconnect-priority`, activates/deactivates services, adds an
 Ethernet/Wi-Fi/VPN service, and connects/adds VPNs from the discovered plugin
 list. The firewall adapter detects firewalld/ufw/nftables; nftables is

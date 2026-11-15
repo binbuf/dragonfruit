@@ -59,6 +59,26 @@ impl<S> SharedSource<S> {
     }
 }
 
+/// The computer's name for the "Discoverable as …" row.
+///
+/// `HOSTNAME` is the session's copy; `/etc/hostname` is the durable one. A
+/// host that answers neither still gets a stable, non-empty label.
+pub fn computer_name() -> String {
+    if let Ok(name) = std::env::var("HOSTNAME") {
+        let name = name.trim();
+        if !name.is_empty() {
+            return name.to_owned();
+        }
+    }
+    if let Ok(name) = std::fs::read_to_string("/etc/hostname") {
+        let name = name.trim();
+        if !name.is_empty() {
+            return name.to_owned();
+        }
+    }
+    "Computer".to_owned()
+}
+
 impl<S: PrivacySource + Send> PrivacySource for SharedSource<S> {
     fn read(&mut self) -> Result<Option<PrivacyData>, AdapterError> {
         self.lock().read()

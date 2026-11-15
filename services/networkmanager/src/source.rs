@@ -77,6 +77,27 @@ pub struct ConnectionData {
     /// `802-11-wireless.ssid`, decoded to text for Wi-Fi connections.
     #[serde(default)]
     pub ssid: Option<String>,
+    /// `802-11-wireless.mode`; `ap` marks a personal hotspot.
+    #[serde(default)]
+    pub wireless_mode: Option<String>,
+    /// `connection.metered` (`NM_METERED_*`).
+    #[serde(default)]
+    pub metered: Option<u32>,
+    /// `ipv6.method`.
+    #[serde(default)]
+    pub ipv6_method: Option<String>,
+    /// `ipv4.dns`, as configured addresses.
+    #[serde(default)]
+    pub ipv4_dns: Vec<String>,
+    /// `proxy.method`.
+    #[serde(default)]
+    pub proxy_method: Option<String>,
+    /// `802-11-wireless.cloned-mac-address` (or the wired equivalent).
+    #[serde(default)]
+    pub cloned_mac: Option<String>,
+    /// `802-11-wireless-security.key-mgmt`; `wpa-eap` marks 802.1X.
+    #[serde(default)]
+    pub key_mgmt: Option<String>,
 }
 
 /// One live NetworkManager active connection (`Connection.Active`).
@@ -249,6 +270,12 @@ pub trait NetworkManagerSource {
         WriteOutcome::Unsupported
     }
 
+    /// Ask the Wi-Fi device to scan (`Device.Wireless.RequestScan`). One
+    /// explicit write; the host marks the view `scanning` until its next read.
+    fn request_scan(&mut self) -> WriteOutcome {
+        WriteOutcome::Unsupported
+    }
+
     /// Delete a saved connection by UUID. One explicit write.
     fn forget_connection(&mut self, _uuid: &str) -> WriteOutcome {
         WriteOutcome::Unsupported
@@ -312,6 +339,8 @@ pub enum AddKind {
     Wifi,
     /// A `vpn` connection using `plugin`.
     Vpn,
+    /// A personal hotspot: an AP-mode `802-11-wireless` connection.
+    Hotspot,
 }
 
 impl AddKind {
@@ -321,6 +350,7 @@ impl AddKind {
             AddKind::Ethernet => "ethernet",
             AddKind::Wifi => "wifi",
             AddKind::Vpn => "vpn",
+            AddKind::Hotspot => "hotspot",
         }
     }
 
@@ -329,6 +359,7 @@ impl AddKind {
         match id {
             "wifi" => AddKind::Wifi,
             "vpn" => AddKind::Vpn,
+            "hotspot" => AddKind::Hotspot,
             _ => AddKind::Ethernet,
         }
     }
@@ -524,6 +555,13 @@ impl MockNetworkManager {
                 timestamp: 0,
                 interface_name: None,
                 ssid: Some(ssid.to_owned()),
+                wireless_mode: Some("infrastructure".to_owned()),
+                metered: None,
+                ipv6_method: None,
+                ipv4_dns: Vec::new(),
+                proxy_method: None,
+                cloned_mac: None,
+                key_mgmt: None,
             });
         }
         data.active.retain(|a| a.uuid != uuid);
@@ -744,21 +782,53 @@ impl NetworkManagerSource for MockNetworkManager {
         let uuid = format!("mock-added-{}", data.connections.len() + 1);
         let kind = match spec.kind {
             AddKind::Ethernet => "802-3-ethernet",
-            AddKind::Wifi => "802-11-wireless",
+            AddKind::Wifi | AddKind::Hotspot => "802-11-wireless",
             AddKind::Vpn => "vpn",
         };
+        let hotspot = spec.kind == AddKind::Hotspot;
         data.connections.push(ConnectionData {
             path: format!("/mock/connection/{uuid}"),
             id: spec.name.clone(),
-            uuid,
+            uuid: uuid.clone(),
             kind: kind.to_owned(),
             service_type: spec.plugin.clone(),
             autoconnect: true,
             priority: 0,
             timestamp: 0,
             interface_name: None,
-            ssid: (spec.kind == AddKind::Wifi).then(|| spec.name.clone()),
+            ssid: matches!(spec.kind, AddKind::Wifi | AddKind::Hotspot).then(|| spec.name.clone()),
+            wireless_mode: Some((if hotspot { "ap" } else { "infrastructure" }).to_owned()),
+            metered: None,
+            ipv6_method: None,
+            ipv4_dns: Vec::new(),
+            proxy_method: None,
+            cloned_mac: None,
+            key_mgmt: spec.secret.is_some().then(|| "wpa-psk".to_owned()),
         });
+        // A hotspot is added *and activated* in one action, like the live
+        // `AddAndActivateConnection` path.
+        if hotspot {
+            data.active.push(ActiveConnectionData {
+                path: format!("/mock/active/{uuid}"),
+                connection: format!("/mock/connection/{uuid}"),
+                uuid,
+                id: spec.name.clone(),
+                state: 2,
+                vpn: false,
+                connection_type: "802-11-wireless".to_owned(),
+                devices: Vec::new(),
+            });
+        }
+        WriteOutcome::Applied
+    }
+
+    fn request_scan(&mut self) -> WriteOutcome {
+        if let Some(outcome) = self.begin_write() {
+            return outcome;
+        }
+        if self.store().is_none() {
+            return WriteOutcome::Absent;
+        }
         WriteOutcome::Applied
     }
 }

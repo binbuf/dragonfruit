@@ -324,12 +324,54 @@ Item {
             compare(pane.absenceNote.visible, true,
                     "the absence note explains the missing bridge host");
             verify(pane.absenceNote.text.length > 0);
-            compare(pane.myDevicesGroup.visible, false);
-            compare(pane.nearbyGroup.visible, false);
+            // T271: absence keeps the section structure; only the host
+            // controls disable.
+            compare(pane.myDevicesGroup.visible, true,
+                    "My Devices keeps its section when the host is absent");
+            compare(pane.nearbyGroup.visible, true,
+                    "Nearby Devices keeps its section when the host is absent");
+            compare(pane.discoverableRow.visible, true);
+            compare(pane.myDevicesEmpty.visible, true);
+            compare(pane.nearbyEmpty.visible, true);
+            compare(pane.advancedRow.visible, true);
 
             // A write is a safe no-op with no host.
             pane.togglePower();
             compare(Settings.bluetoothAvailable, false);
+        }
+
+        // T271: the Wi-Fi pane keeps every section, the settingsd prompt rows,
+        // and Advanced when NetworkManager is absent; only the radio, join,
+        // forget, and hotspot controls disable with a reason.
+        function test_wifi_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.wifiAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.wifi.state, undefined);
+
+            var pane = showPane(shell, "wifi");
+            compare(pane.ready, false);
+            compare(pane.powerToggle.enabled, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing network service");
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.currentGroup.visible, true);
+            compare(pane.knownGroup.visible, true);
+            compare(pane.availableGroup.visible, true);
+            compare(pane.hotspotGroup.visible, true);
+            compare(pane.knownEmptyRow.visible, true);
+            compare(pane.unavailableRow.visible, true);
+            compare(pane.advancedRow.visible, true);
+
+            // The settingsd-backed prompt policy stays live on the defaults.
+            verify(pane.askToJoinSelect.enabled);
+            pane.askToJoinSelect.activateIndex(0);
+            compare(Settings.values["network.wifi.askToJoin"], "off");
+
+            // A write is a safe no-op with no host.
+            pane.togglePower();
+            pane.scan();
+            compare(Settings.wifiAvailable, false);
         }
 
         // With no bridge host on the private bus, the Storage pane is the

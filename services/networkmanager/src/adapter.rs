@@ -139,6 +139,9 @@ pub struct NetworkManagerAdapter<S> {
     state: AdapterState<WifiSnapshot>,
     subscription: Subscription,
     access: WifiAccess,
+    // A scan was requested and the next read has not answered yet. The pane's
+    // Other Networks section renders this as "Scanning…".
+    scanning: bool,
 }
 
 impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
@@ -150,6 +153,7 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
             state: AdapterState::Unavailable,
             subscription: Subscription::new(),
             access: WifiAccess::ReadWrite,
+            scanning: false,
         }
     }
 
@@ -161,6 +165,8 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
     /// * absent → `Unavailable`, `Disconnected`;
     /// * error → `Error` (visible, inert), `Subscribed`/`Changed`.
     pub fn refresh(&mut self) {
+        // A read answers the scan: the list it carries is the post-scan list.
+        self.scanning = false;
         match self.source.read() {
             Ok(Some(data)) => {
                 self.subscription.subscribed();
@@ -176,6 +182,36 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
                 self.state = AdapterState::Error(error);
                 self.subscription.changed();
             }
+        }
+    }
+
+    /// Whether a scan is in flight (requested, not yet answered by a read).
+    pub const fn is_scanning(&self) -> bool {
+        self.scanning
+    }
+
+    /// Ask the device to scan for access points. One explicit write; the host
+    /// clears `scanning` on the next read.
+    pub fn request_scan(&mut self) -> NetworkResult {
+        if let WifiAccess::ReadOnly { note } = &self.access {
+            return NetworkResult::Denied { note: note.clone() };
+        }
+        match self.source.request_scan() {
+            WriteOutcome::Applied => {
+                self.scanning = true;
+                NetworkResult::Applied
+            }
+            WriteOutcome::Denied(note) => {
+                self.access = WifiAccess::read_only(note.clone());
+                NetworkResult::Denied { note }
+            }
+            WriteOutcome::Absent => {
+                self.state = AdapterState::Unavailable;
+                self.subscription.absent();
+                NetworkResult::Absent
+            }
+            WriteOutcome::Failed(error) => NetworkResult::Failed(error),
+            WriteOutcome::Unsupported => NetworkResult::Unsupported,
         }
     }
 
@@ -318,6 +354,25 @@ impl<S: NetworkManagerSource> NetworkManagerAdapter<S> {
     /// Create a saved service or VPN connection. One explicit write.
     pub fn add_connection(&mut self, spec: &AddConnectionSpec) -> NetworkResult {
         self.write(|source| source.add_connection(spec))
+    }
+
+    /// Start a personal hotspot: one AP-mode Wi-Fi connection, added and
+    /// activated. One explicit write.
+    pub fn start_hotspot(&mut self, ssid: &str, secret: &str) -> NetworkResult {
+        let spec = AddConnectionSpec {
+            name: ssid.to_owned(),
+            kind: crate::source::AddKind::Hotspot,
+            plugin: None,
+            gateway: None,
+            secret: (!secret.is_empty()).then(|| secret.to_owned()),
+        };
+        self.write(|source| source.add_connection(&spec))
+    }
+
+    /// Stop the personal hotspot by deactivating its saved connection. One
+    /// explicit write.
+    pub fn stop_hotspot(&mut self, uuid: &str) -> NetworkResult {
+        self.deactivate_service(uuid)
     }
 
     /// The saved services in service order, when the daemon answered.
@@ -612,6 +667,19 @@ mod tests {
             adapter.snapshot().unwrap().active_ssid.as_deref(),
             Some("lab")
         );
+    }
+
+    #[test]
+    fn a_scan_marks_scanning_until_the_next_read() {
+        use crate::source::MockNetworkManager;
+        let mut adapter =
+            NetworkManagerAdapter::new(MockNetworkManager::present(Default::default()));
+        adapter.refresh();
+        assert!(!adapter.is_scanning());
+        assert_eq!(adapter.request_scan(), NetworkResult::Applied);
+        assert!(adapter.is_scanning());
+        adapter.refresh();
+        assert!(!adapter.is_scanning(), "a read answers the scan");
     }
 
     #[test]

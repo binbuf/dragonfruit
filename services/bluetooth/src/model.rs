@@ -82,6 +82,8 @@ pub struct BluetoothDevice {
     pub rssi: Option<i16>,
     /// BlueZ's suggested icon name.
     pub icon: String,
+    /// `org.bluez.Battery1.Percentage`, when the device exposes it.
+    pub battery: Option<u8>,
 }
 
 impl BluetoothDevice {
@@ -100,6 +102,7 @@ impl BluetoothDevice {
             // rather than a real 0 dBm reading.
             rssi: (data.rssi != 0).then_some(data.rssi),
             icon: data.icon.clone(),
+            battery: data.battery.filter(|level| *level <= 100),
         }
     }
 
@@ -122,6 +125,12 @@ impl BluetoothDevice {
     /// Whether the device is paired.
     pub fn is_paired(&self) -> bool {
         self.paired
+    }
+
+    /// A human type label derived from BlueZ's `Icon`, so the device sheet
+    /// never shows a raw icon identifier.
+    pub fn type_label(&self) -> &'static str {
+        device_type_label(&self.icon)
     }
 
     /// The signal as a 0–100 fill, when BlueZ reports an RSSI.
@@ -276,6 +285,30 @@ impl BluetoothSnapshot {
     }
 }
 
+/// A stable, human device-type label from BlueZ's icon vocabulary.
+fn device_type_label(icon: &str) -> &'static str {
+    if icon.starts_with("audio-") {
+        return "Audio";
+    }
+    match icon {
+        "input-keyboard" => "Keyboard",
+        "input-mouse" => "Mouse",
+        "input-gaming" => "Game controller",
+        "input-tablet" => "Tablet",
+        "phone" => "Phone",
+        "computer" => "Computer",
+        "video-display" => "Display",
+        "printer" => "Printer",
+        "scanner" => "Scanner",
+        "camera-photo" | "camera-video" => "Camera",
+        "modem" => "Modem",
+        "network-wireless" => "Network",
+        "multimedia-player" => "Media player",
+        "" => "Unknown",
+        _ => "Device",
+    }
+}
+
 /// The first non-empty string in `candidates`, or `""`.
 fn first_non_empty<'a>(candidates: &[&'a str]) -> &'a str {
     candidates
@@ -315,6 +348,7 @@ mod tests {
             blocked: false,
             rssi: -55,
             icon: "audio-headset".to_owned(),
+            battery: Some(82),
         }
     }
 
@@ -397,6 +431,28 @@ mod tests {
                 .label(),
             "WH-1000"
         );
+    }
+
+    #[test]
+    fn a_device_carries_its_type_and_battery() {
+        let mut raw = device("AA:BB:CC:DD:EE:FF", true, true, false);
+        raw.icon = "audio-headset".to_owned();
+        raw.battery = Some(82);
+        let snapshot = BluetoothSnapshot::from_data(&BluetoothData {
+            adapters: vec![adapter(true)],
+            devices: vec![raw],
+        });
+        let entry = &snapshot.devices()[0];
+        assert_eq!(entry.type_label(), "Audio");
+        assert_eq!(entry.battery, Some(82));
+
+        let mut invalid = device("BB:BB:BB:BB:BB:BB", true, false, false);
+        invalid.battery = Some(120);
+        let snapshot = BluetoothSnapshot::from_data(&BluetoothData {
+            adapters: vec![adapter(true)],
+            devices: vec![invalid],
+        });
+        assert_eq!(snapshot.devices()[0].battery, None);
     }
 
     #[test]

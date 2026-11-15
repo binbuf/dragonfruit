@@ -521,38 +521,40 @@ it live.
 
 ### 4.1 Wi-Fi — T271
 
-Owner: NetworkManager. Absence: keep the pane, the Wi-Fi section, the
-Ask-to-Join rows, and Advanced; disable the radio/join/list controls with a
-reason.
+Owner: NetworkManager. Absence: keep the pane, every section (Current
+Network, Known Networks, Other Networks, Personal Hotspot), the Ask-to-Join
+rows, and Advanced; disable the radio/join/list/hotspot controls with a
+reason. T271 implements this structurally: no group disappears.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Wi-Fi | Wi-Fi | Toggle | NM `WirelessEnabled` | ship |
-| Current network / Details | Current network | Info + Details… | NM `ActiveConnection` | ship |
-| Personal Hotspot | Personal hotspot | List / Create… | NM AP mode | adapt; disabled with reason when unsupported |
+| Current network / Details | Current network | Info + Details… | NM `ActiveConnection` | ship; the sheet carries security/band/signal/address/last-used/auto-join plus Forget/Disconnect |
+| Personal Hotspot | Personal Hotspot | Toggle + Create… | NM `802-11-wireless.mode=ap` | ship; a real `AddAndActivateConnection`, disabled with a reason when no Wi-Fi device exists |
 | Known Networks | Known networks | List + ⋯ | NM `Settings.Connection` | ship; auto-join, details, forget, disconnect |
-| Other Networks | Other networks | List + scanning state | NM `AccessPoint` | ship |
+| Other Networks | Other networks | List + scanning state | NM `AccessPoint` | ship; Scan requests a real NM scan; scanning/empty/error rows |
 | Other… | Join hidden network… | Dialog | NM `AddAndActivateConnection` | ship |
-| Ask to join networks | Ask to join networks | Popup | `network.wifi.askToJoin` | adapt; shell prompt consumer |
-| Ask to join hotspots | Ask to join hotspots | Popup | `network.wifi.askToJoinHotspots` | adapt |
-| Advanced… | Advanced… | Sheet | NM connection editor / delegate | ship or delegate |
+| Ask to join networks | Ask to join networks | Popup | `network.wifi.askToJoin` | **stored-only**; the shell has no prompt consumer yet, and the pane says so |
+| Ask to join hotspots | Ask to join hotspots | Popup | `network.wifi.askToJoinHotspots` | **stored-only**, same reason |
+| Advanced… | Advanced… | Sheet | NM connection settings | ship; live read of metered, IPv6, DNS, proxy, MAC randomization, 802.1X |
 | — | Quick sheet | Panel | shell | ship |
-| — | MAC randomization, metered, IPv6, DNS, proxy | Sheet | NM | adapt (Linux-only additions) |
+| — | MAC randomization, metered, IPv6, DNS, proxy, 802.1X | Advanced sheet | NM | ship as read-only live rows; the full editor owns writes |
 
 ### 4.2 Bluetooth — T271
 
-Owner: BlueZ. Absence: keep the Bluetooth section, My Devices, and Nearby
-Devices with an empty state; disable power/discovery.
+Owner: BlueZ. Absence: keep the Bluetooth section, Discoverable As, My
+Devices, Nearby Devices, and Advanced with an empty state; disable
+power/discovery only. T271 implements this structurally.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Bluetooth | Bluetooth | Toggle | BlueZ `Adapter1.Powered` | ship |
-| Discoverable as… | Discoverable as… | Info | BlueZ `Adapter1.Discoverable` | ship; computer name, not adapter id |
-| My Devices | My devices | List + info | BlueZ `Device1` | ship; connect, disconnect, info, forget |
-| Nearby Devices | Nearby devices | List | BlueZ discovery | ship; scanning/empty/error |
-| — | Advanced… | Sheet | BlueZ + `bluetooth.*` | ship; adapter name, class, pairing policy |
+| Bluetooth | Bluetooth | Toggle | BlueZ `Adapter1.Powered` | ship; turning on starts discovery while the pane is open |
+| Discoverable as… | Discoverable As | Info | BlueZ `Adapter1.Discoverable` | ship; the computer name, never the adapter id |
+| My Devices | My Devices | List + info | BlueZ `Device1` | ship; the info sheet carries address/type/battery/connect/disconnect/forget |
+| Nearby Devices | Nearby Devices | List | BlueZ discovery | ship; scanning/empty/error |
+| — | Advanced… | Sheet | BlueZ + `bluetooth.*` | ship; adapter name, address, discoverable, pairable |
 | — | Quick sheet | Panel | shell | ship |
-| — | LE Audio / battery level | Info | BlueZ / PipeWire | adapt where exposed |
+| — | LE Audio / battery level | Info | BlueZ `Battery1` / PipeWire | ship the `Battery1.Percentage` row; LE Audio where exposed |
 
 ### 4.3 Network — T272
 

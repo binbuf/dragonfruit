@@ -41,16 +41,34 @@ public:
     virtual void joinHidden(const QString &ssid, const QString &secret) = 0;
     virtual void forget(const QString &uuid) = 0;
     virtual void setAutoconnect(const QString &uuid, bool enabled) = 0;
+    // T271: an explicit scan, a disconnect of the active saved connection,
+    // and the personal-hotspot start/stop pair.
+    virtual void scan() = 0;
+    virtual void disconnect(const QString &uuid) = 0;
+    virtual void startHotspot(const QString &ssid, const QString &secret) = 0;
+    virtual void stopHotspot(const QString &uuid) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
-    // Test/capture seam: `live`, `off`, or `absent`. A no-op on the live
-    // client.
+    // Test/capture seam: `live`, `off`, `scanning`, `empty`, `error`, or
+    // `absent`. A no-op on the live client.
     virtual void setFixture(const QString &mode) { Q_UNUSED(mode); }
+    // T271 test seam: make the next write of `operation` fail. A no-op on the
+    // live client.
+    virtual void failNextWrite(const QString &operation, const QString &message)
+    {
+        Q_UNUSED(operation);
+        Q_UNUSED(message);
+    }
 
 signals:
     void changed(const QVariantMap &view);
     void availableChanged(bool available);
+    // T271: the outcome of one write (`applied`, `absent`, `denied`, or
+    // `failed`) and the operation that produced it (`power`, `join`,
+    // `joinHidden`, `forget`, `autoconnect`, `scan`, `disconnect`, `hotspot`).
+    void writeFinished(const QString &operation, const QString &outcome,
+                       const QString &message);
 };
 
 // The live client over the user session bus.
@@ -70,9 +88,14 @@ public:
     void joinHidden(const QString &ssid, const QString &secret) override;
     void forget(const QString &uuid) override;
     void setAutoconnect(const QString &uuid, bool enabled) override;
+    void scan() override;
+    void disconnect(const QString &uuid) override;
+    void startHotspot(const QString &ssid, const QString &secret) override;
+    void stopHotspot(const QString &uuid) override;
 
 private:
-    void call(const QString &method, const QVariantList &arguments);
+    void call(const QString &method, const QVariantList &arguments,
+              const QString &operation = QString(), bool isRead = false);
     void applyReply(const QByteArray &json);
     QString m_service;
     QString m_path;
@@ -100,11 +123,19 @@ public:
     void joinHidden(const QString &ssid, const QString &secret) override;
     void forget(const QString &uuid) override;
     void setAutoconnect(const QString &uuid, bool enabled) override;
+    void scan() override;
+    void disconnect(const QString &uuid) override;
+    void startHotspot(const QString &ssid, const QString &secret) override;
+    void stopHotspot(const QString &uuid) override;
     void resetForTest() override;
     void setFixture(const QString &mode) override;
+    void failNextWrite(const QString &operation, const QString &message) override;
 
 private:
     void rebuild();
+    bool failWrite(const QString &operation);
+    void finishWrite(const QString &operation, const QString &outcome,
+                     const QString &message = QString());
     struct Network {
         QString ssid;
         int strength = 0;
@@ -126,6 +157,13 @@ private:
     QVector<Known> m_known;
     bool m_available = true;
     bool m_enabled = true;
+    bool m_scanning = false;
+    bool m_error = false;
     QString m_activeSsid;
+    QString m_hotspotSsid;
+    QString m_hotspotUuid;
+    bool m_hotspotActive = false;
+    QString m_failOperation;
+    QString m_failMessage;
     QVariantMap m_view;
 };

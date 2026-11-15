@@ -1720,7 +1720,9 @@ pub const KEYS: &[KeySpec] = &[
         min: None,
         max: None,
         owner: "apps/settings",
-        consumer: "shell/MenuBar Wi-Fi prompt policy",
+        // T271: stored-only until the shell grows a Wi-Fi prompt consumer.
+        // NetworkManager's own autoconnect remains authoritative.
+        consumer: "stored-only: no shell Wi-Fi prompt consumer yet",
         since: 19,
         summary: "When to prompt before joining a nearby Wi-Fi network.",
     },
@@ -1733,7 +1735,7 @@ pub const KEYS: &[KeySpec] = &[
         min: None,
         max: None,
         owner: "apps/settings",
-        consumer: "shell/MenuBar Wi-Fi prompt policy",
+        consumer: "stored-only: no shell Wi-Fi prompt consumer yet",
         since: 19,
         summary: "When to prompt before joining a captive-portal hotspot.",
     },

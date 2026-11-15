@@ -222,6 +222,27 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
         network_report(&self.wifi.forget(uuid))
     }
 
+    /// Ask the Wi-Fi device to scan for access points. One explicit write.
+    pub fn scan_wifi(&mut self) -> Value {
+        network_report(&self.wifi.request_scan())
+    }
+
+    /// Disconnect the active connection made from `uuid`. One explicit write.
+    pub fn disconnect_wifi(&mut self, uuid: &str) -> Value {
+        network_report(&self.wifi.deactivate_service(uuid))
+    }
+
+    /// Start a personal hotspot (an AP-mode Wi-Fi connection). One explicit
+    /// write.
+    pub fn start_wifi_hotspot(&mut self, ssid: &str, secret: &str) -> Value {
+        network_report(&self.wifi.start_hotspot(ssid, secret))
+    }
+
+    /// Stop the personal hotspot by deactivating its saved connection.
+    pub fn stop_wifi_hotspot(&mut self, uuid: &str) -> Value {
+        network_report(&self.wifi.stop_hotspot(uuid))
+    }
+
     /// Change whether the saved connection comes up automatically.
     pub fn set_wifi_autoconnect(&mut self, uuid: &str, enabled: bool) -> Value {
         network_report(&self.wifi.set_autoconnect(uuid, enabled))
@@ -423,9 +444,19 @@ pub fn wifi_view<N: NetworkManagerSource>(adapter: &NetworkManagerAdapter<N>) ->
                 "hardware": service.hardware.clone().unwrap_or_default(),
                 "address": service.address.clone().unwrap_or_default(),
                 "label": service.label(),
+                // T271 Linux-only rows with a real NetworkManager owner.
+                "wirelessMode": service.wireless_mode.clone().unwrap_or_default(),
+                "metered": service.metered,
+                "ipv6": service.ipv6_method.clone().unwrap_or_default(),
+                "dns": service.ipv4_dns.clone(),
+                "proxy": service.proxy_method.clone().unwrap_or_default(),
+                "clonedMac": service.cloned_mac.clone().unwrap_or_default(),
+                "keyMgmt": service.key_mgmt.clone().unwrap_or_default(),
+                "hotspot": service.is_hotspot(),
             })
         })
         .collect();
+    let hotspot = snapshot.hotspot();
     json!({
         "kind": KIND_WIFI,
         "state": "available",
@@ -444,6 +475,13 @@ pub fn wifi_view<N: NetworkManagerSource>(adapter: &NetworkManagerAdapter<N>) ->
         "knownNetworks": known_networks,
         "serviceCount": services.len(),
         "services": services,
+        // T271: a real NM `RequestScan` marks the view scanning until the next
+        // read; the personal hotspot is an AP-mode saved connection.
+        "scanning": adapter.is_scanning(),
+        "hotspotSupported": snapshot.hotspot_supported,
+        "hotspotActive": snapshot.hotspot_active(),
+        "hotspotSsid": hotspot.map(|service| service.id.clone()).unwrap_or_default(),
+        "hotspotUuid": hotspot.map(|service| service.uuid.clone()).unwrap_or_default(),
     })
 }
 
@@ -767,6 +805,11 @@ mod tests {
         assert_eq!(view["networks"][0]["active"], true);
         assert_eq!(view["networks"][0]["band"], "5 GHz");
         assert_eq!(view["readOnly"], false);
+        // T271: a real Wi-Fi device owns the hotspot row; no scan is in
+        // flight until one is requested.
+        assert_eq!(view["scanning"], false);
+        assert_eq!(view["hotspotSupported"], true);
+        assert_eq!(view["hotspotActive"], false);
     }
 
     #[test]

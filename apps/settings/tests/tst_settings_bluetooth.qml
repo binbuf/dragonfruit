@@ -24,6 +24,7 @@ Item {
         // The fixture store is process-global; reset the adapter before every
         // case so the pane always opens on a known state.
         function init() {
+            Settings.resetBluetoothFixture();
             Settings.setBluetoothConnected("AA:BB:CC:DD:EE:FF", false);
             Settings.setBluetoothPowered(true);
             Settings.setBluetoothDiscovering(false);
@@ -55,11 +56,14 @@ Item {
             compare(pane.powerToggle.checked, true);
             compare(pane.powered, true);
             compare(pane.discoverableCaption.indexOf("workstation") >= 0, true,
-                    "the caption names the adapter");
+                    "the caption names the computer");
+            compare(pane.discoverableCaption.indexOf("11:22:33:44:55:66"), -1,
+                    "the caption never shows the adapter id");
             compare(pane.caption.visible, true,
                     "the discoverable caption shows while the pane is open and on");
             verify(pane.myDevicesGroup.visible, "My Devices is shown");
             verify(pane.nearbyGroup.visible, "Nearby Devices is shown");
+            verify(pane.discoverableRow.visible, "Discoverable As is shown");
         }
 
         function test_toggle_applies_live_through_the_adapter() {
@@ -122,6 +126,109 @@ Item {
             compare(pane.powered, false);
             Settings.setBluetoothPowered(true);
             compare(pane.powered, true);
+        }
+
+        function test_info_opens_the_device_sheet_and_connects() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var info = findChild(pane, "bluetoothInfoButton");
+            verify(info !== null);
+            mouseClick(info);
+            tryVerify(function() { return pane.deviceDialog.open === true; });
+            compare(pane.deviceTitle.text, "WF-1000XM6");
+            compare(pane.deviceAddress.text.indexOf("AA:BB:CC:DD:EE:FF") >= 0, true);
+            compare(pane.deviceType.text, "Type: Audio");
+            compare(pane.deviceBattery.text, "Battery: 82%");
+            compare(pane.deviceConnectButton.text, "Connect");
+            pane.deviceConnectButton.clicked();
+            tryVerify(function() { return Settings.bluetooth.knownDevices[0].connected === true; });
+            compare(pane.deviceConnectButton.text, "Disconnect");
+            pane.deviceConnectButton.clicked();
+            tryVerify(function() { return Settings.bluetooth.knownDevices[0].connected === false; });
+        }
+
+        function test_forget_from_the_device_sheet_removes_the_device() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var info = findChild(pane, "bluetoothInfoButton");
+            verify(info !== null);
+            mouseClick(info);
+            tryVerify(function() { return pane.deviceDialog.open === true; });
+            pane.deviceForgetButton.clicked();
+            tryVerify(function() {
+                for (var i = 0; i < Settings.bluetooth.knownDevices.length; ++i)
+                    if (Settings.bluetooth.knownDevices[i].address === "AA:BB:CC:DD:EE:FF")
+                        return false;
+                return true;
+            });
+            compare(pane.deviceDialog.open, false);
+        }
+
+        function test_power_on_starts_discovery() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.powerToggle.toggle(); // off
+            tryVerify(function() { return Settings.bluetooth.powered === false; });
+            compare(pane.discovering, false);
+            pane.powerToggle.toggle(); // on
+            tryVerify(function() { return Settings.bluetooth.powered === true; });
+            tryVerify(function() { return Settings.bluetooth.discovering === true; });
+            compare(pane.searching, true);
+        }
+
+        function test_absent_adapter_keeps_the_sections() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setBluetoothFixture("absent");
+            tryVerify(function() { return pane.ready === false; });
+            compare(pane.powerToggle.enabled, false);
+            compare(pane.caption.visible, false);
+            compare(pane.absenceNote.visible, true);
+            compare(pane.myDevicesGroup.visible, true);
+            compare(pane.nearbyGroup.visible, true);
+            compare(pane.discoverableRow.visible, true);
+            compare(pane.advancedRow.visible, true);
+            compare(pane.myDevicesEmpty.visible, true);
+            compare(pane.nearbyEmpty.visible, true);
+            Settings.setBluetoothFixture("live");
+            tryVerify(function() { return pane.ready === true; });
+        }
+
+        function test_empty_device_list_is_an_explicit_row() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setBluetoothFixture("empty");
+            tryVerify(function() { return pane.knownDevices.length === 0; });
+            compare(pane.myDevicesEmpty.visible, true);
+            compare(pane.knownRepeater.count, 0);
+        }
+
+        function test_a_failed_write_reports_and_reverts() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.failNextBluetoothWrite("power", "BlueZ refused the change");
+            pane.powerToggle.toggle();
+            tryVerify(function() { return Settings.bluetoothWriteState === "failed"; });
+            compare(Settings.bluetoothWriteError, "BlueZ refused the change");
+            compare(Settings.bluetooth.powered, true, "the view is the truth");
+            compare(pane.powerToggle.checked, true, "the toggle reverts");
+            compare(pane.writeErrorItem.visible, true);
+        }
+
+        function test_the_pane_fits_the_measured_window() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            verify(shell !== null);
+            waitForRendering(stage);
+            shell.selectPane("bluetooth");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = shell.paneBody.item;
+            verify(pane !== null);
+            verify(pane.width > 0);
+            verify(pane.width <= 508,
+                   "the pane fits the measured 508 pt detail content");
+            verify(shell.detailScroll.maxY >= 0);
         }
     }
 }

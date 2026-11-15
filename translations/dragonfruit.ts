@@ -4,23 +4,35 @@
 <context>
     <name>AboutPage</name>
     <message>
-        <source>%1 GB</source>
+        <source> · %1 × %2 physical</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Architecture: %1</source>
+        <source>%1 is not reported by this host.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Chip: %1</source>
+        <source>%1 of %2 used · %3 available</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Computer name: %1</source>
+        <source>%1 · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Details…</source>
+        <source>%1 · %2 of %3 used</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 × %2%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Architecture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Computer name</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -28,15 +40,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Display Settings…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Display: Not available</source>
+        <source>Displays</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Displays</source>
+        <source>Done</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -52,15 +68,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Free space: %1</source>
+        <source>Graphics</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>GPU: %1</source>
+        <source>Graphics: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Kernel: %1</source>
+        <source>Kernel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kernel: %1 · Architecture: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -68,7 +88,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Memory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Memory: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Model</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -92,7 +120,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Operating system</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Processor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Processor: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Regulatory information…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial number</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -108,15 +152,27 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>System Report</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>System Report…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Total: %1</source>
+        <source>The compositor does not report an output name.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The host does not report a serial number.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Version and compatibility details depend on the installed distribution.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume: %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -483,7 +539,7 @@ Open source system software</source>
 <context>
     <name>BackupPane</name>
     <message>
-        <source>A path or device the backend can write to.</source>
+        <source>An absolute path or a repository URL.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -511,11 +567,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Backup is unavailable because no backup backend is installed.</source>
+        <source>Backup destination</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Backup schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a destination first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -539,6 +603,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Install a backup backend first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install a backup backend to schedule a backup.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Last backup</source>
         <translation type="unfinished"></translation>
     </message>
@@ -551,7 +623,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No backup backend is installed. Install restic, Pika Backup, or Timeshift to use this pane.</source>
+        <source>No backup backend is installed. Install restic, Pika Backup, or Timeshift to run a backup.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -591,11 +663,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Starting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Status</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The backup backend is unavailable because the system status service is not running. The policy rows still apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use an absolute path or a repository URL.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1202,7 +1286,47 @@ Open source system software</source>
 <context>
     <name>BluetoothPane</name>
     <message>
+        <source>%1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adapter, address, and pairing policy.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adapter: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Battery: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BlueZ could not be read, so Bluetooth settings are temporarily unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bluetooth Advanced</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1210,11 +1334,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Connect</source>
+        <source>Close</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Connect %1</source>
+        <source>Computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1222,15 +1350,47 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device Info</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Devices are unavailable while Bluetooth is off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Disconnect</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Disconnect %1</source>
+        <source>Discoverable As</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discoverable while Bluetooth Settings is open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discoverable: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Discovering…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forget</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Info for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LE Audio and device battery levels appear here when BlueZ and PipeWire expose them.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1242,6 +1402,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Nearby devices are unavailable while Bluetooth is off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No devices yet.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1250,7 +1418,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Not Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not reported</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1262,11 +1438,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairable: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Searching…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This %1 is discoverable as "%2" while Bluetooth Settings is open.</source>
+        <source>Status: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Bluetooth change could not be applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This computer is discoverable as “%1” while Bluetooth Settings is open.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1274,7 +1466,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Type: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Yes</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2157,11 +2357,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Authentication was denied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Clock Format</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Date &amp; Time is unavailable because timedatectl is not running.</source>
+        <source>Clock Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock options…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Date &amp; Time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2169,11 +2385,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter a date and time.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Manual time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Needs a location service, which is not installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No time zone matches.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not reported</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Requires administrator authentication.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search time zones</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2189,6 +2433,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Set time zone automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Setting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show date</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2197,11 +2449,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>That date and time is not valid.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The default follows the system locale.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The menu-bar clock uses these settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system clock could not be set.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system clock is unavailable because timedatectl is not running. The clock format still applies.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Time zone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn off automatic time to set the clock by hand.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use YYYY-MM-DD HH:MM:SS.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3854,15 +4134,11 @@ Open source system software</source>
 <context>
     <name>GeneralPane</name>
     <message>
-        <source>%1 → %2 · %3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>About</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Automatic Updates</source>
+        <source>Autofill &amp; Passwords</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3870,31 +4146,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Check for Updates</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Check for updates automatically</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Date &amp; Time</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Done</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Install</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Install automatically</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Install updates automatically</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3902,35 +4154,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Login Items</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Never enabled unless you turn it on here.</source>
+        <source>Login Items &amp; Extensions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No update provider</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>No update provider is available on this system.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Requires automatic checks.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reset</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reset Dragonfruit settings</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Restart</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3950,15 +4178,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The system information service is not running, so system details and updates are unavailable.</source>
+        <source>Transfer data or reset settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer or Reset</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Unavailable</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Working…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4322,6 +4550,22 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Add language</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add language…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adds the language to the preferred order.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Buddhist</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4378,11 +4622,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Language &amp; Region is unavailable because localectl is not running.</source>
+        <source>Long</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Long</source>
+        <source>Long: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4394,11 +4638,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Medium: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Metric</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Monday</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move %1 down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move %1 up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No language matches.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No region matches.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4410,7 +4674,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Primary</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Region</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4418,11 +4694,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Short</source>
+        <source>Search languages</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Some apps may need to be restarted.</source>
+        <source>Search regions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Short</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4434,7 +4714,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The locale's region and formatting.</source>
+        <source>The locale whose region and formatting the desktop uses.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system locale is unavailable because localectl is not running. The format rows and preview still apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4667,7 +4955,39 @@ Open source system software</source>
 <context>
     <name>LoginItemsPane</name>
     <message>
-        <source>Background Services</source>
+        <source>%1 login item needs attention</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Login Item…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add login item</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow %1 in the background</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow in Background</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Background services are unavailable because the systemd user session is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot start: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose an installed application.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4675,11 +4995,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Enable %1</source>
+        <source>Extensions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Extensions</source>
+        <source>Extensions are enabled and configured by the application that provides them.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4687,11 +5007,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Login Items are unavailable because the session services are not running.</source>
+        <source>Login items are unavailable because the session services are not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Managed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No application matches.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No apps open at login.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No other installed applications were found.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4703,11 +5035,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Start at Login</source>
+        <source>Open at Login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove %1 from login items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search applications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5602,6 +5950,77 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>PasswordsPane</name>
+    <message>
+        <source>Active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Autofill &amp; Passwords is unavailable because the system information service is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Autofill source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic (active provider)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No password provider is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not reported</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Password Manager</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passwords</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Providers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings stores no passwords or keys. Credentials stay in the password manager you choose.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Secret Service is not running, so providers cannot share saved credentials.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The Secret Service is running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The provider Autofill delegates to. No secret is stored here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>PathBar</name>
     <message>
         <source>Go to %1</source>
@@ -6199,6 +6618,10 @@ Open source system software</source>
 <context>
     <name>ResetPane</name>
     <message>
+        <source>Appearance, Dock, menu bar, and other desktop preferences return to their defaults. Personal files, installed apps, and host configuration are not touched.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6207,7 +6630,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Personal files and installed apps are not touched.</source>
+        <source>Erase All Content and Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mount the other computer's drive and copy the files you need into your home folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move your information to another computer, or reset Dragonfruit's own settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No migration assistant is installed. Copy your files from your home folder to move them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not offered on Linux. Erasing every file and account is a reinstall of the operating system, not a settings action, so this page never pretends to do it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6216,10 +6659,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Reset All Settings?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reset Dragonfruit's appearance, Dock, menu bar, and other desktop preferences to their defaults.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6232,6 +6671,26 @@ Open source system software</source>
     </message>
     <message>
         <source>This resets every Dragonfruit setting to its default. Personal files, installed apps, and host configuration are not touched.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer from another computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer to another computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type RESET to confirm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type RESET to confirm.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6543,6 +7002,25 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>SearchablePicker</name>
+    <message>
+        <source>%1 options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current value %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No matches</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SegmentedControl</name>
     <message>
         <source>Segmented control</source>
@@ -6728,6 +7206,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Add login item...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add menu-bar controls...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6828,6 +7310,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Autofill &amp; Passwords</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Autofill source</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6852,10 +7338,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Available networks</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Back up automatically</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6873,6 +7355,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Backup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Backup backend</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7068,6 +7554,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Device info</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Device location</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7089,6 +7579,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Disk encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7141,6 +7635,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Earth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Erase All Content and Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7296,6 +7794,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Keyring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Known networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Language &amp; Region</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7316,6 +7822,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Local hostname</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Location</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7329,10 +7839,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Lock-screen preferences stay live on the schema defaults.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Locked keyring</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7432,6 +7938,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>My devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Name recognition</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7508,6 +8018,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open password manager</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Options &amp; supplies...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7517,6 +8031,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Other modules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other networks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7548,27 +8066,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Paired devices</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Password</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Passwords &amp; Autofill</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Passwords &amp; autofill</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Passwords...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Permissions are unavailable because the permission store is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Personal Hotspot</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7716,6 +8222,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Restart</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Restore...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7724,11 +8234,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Saved networks</source>
+        <source>Scale/resolution</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Scale/resolution</source>
+        <source>Scan for networks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7825,6 +8335,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Set automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set time zone automatically</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8029,6 +8543,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Trackpad preferences stay live; the device inventory shows its own absence note.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer or Reset</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8612,19 +9130,55 @@ Open source system software</source>
 <context>
     <name>SharingPane</name>
     <message>
+        <source>%1 Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changes require administrator authentication.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local hostname</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No sharing services are installed on this system.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Off</source>
+        <source>Options…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>On</source>
+        <source>Other computers use this name to reach this one.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Requires authentication</source>
+        <source>Saving…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Services</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8632,7 +9186,35 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Sharing Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Sharing is unavailable because systemd is not reachable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hostname can only contain letters, digits, and hyphens.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hostname cannot be empty.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hostname cannot be longer than 63 characters.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hostname cannot start or end with a hyphen.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This service reports no additional options.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8807,6 +9389,121 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>SoftwareUpdatePane</name>
+    <message>
+        <source>%1 security update(s) are included in the available updates.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 → %2 · %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All available updates are installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic Updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Available Updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for Updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Included</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install updates automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last checked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never enabled unless you turn it on here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No update provider</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No update provider is available on this system. Install the distribution's update provider to check for updates.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No updates are on offer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None pending</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not checked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires automatic checks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scheduled installs are not offered by this provider.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security updates are included when the provider offers them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software update status: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Software updates are unavailable because the system information service is not running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Up to Date</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Working…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SoundPane</name>
     <message>
         <source>Alert sound</source>
@@ -8966,11 +9663,15 @@ Open source system software</source>
 <context>
     <name>StartupDiskPane</name>
     <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Changing the startup disk is not supported here. Use the firmware boot menu at power-on.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Device</source>
+        <source>Disks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8982,11 +9683,51 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Mounted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No disks were reported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not mounted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart this computer?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restarting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restarts this computer. The startup disk is chosen in the firmware boot menu.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save your work first. The computer restarts immediately.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Secure Boot</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup Disk</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9035,7 +9776,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 is using %2. Open the Files app to review it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 of %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 used of %2 · %3 available</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9043,7 +9792,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Delegated</source>
+        <source>Deleted files stay on the volume until the Trash is emptied.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9055,11 +9804,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Empty the Trash</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Filesystem usage is unavailable because df did not answer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Formatting and partitioning are delegated to the Files app and the disk utility.</source>
+        <source>Free up space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Less than 10% of the volume is free.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9083,7 +9840,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opens the Files app; formatting and partitioning are delegated to the disk utility.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recommendations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Removable Media</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Review %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9096,6 +9869,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Volumes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>free</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9878,6 +10655,14 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>802.1X</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A scan is in progress.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Address: %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9899,6 +10684,18 @@ Provider: %2</source>
     </message>
     <message>
         <source>Ask to join networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication was denied: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9950,15 +10747,31 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Create</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Create…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Current Network</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DNS, proxies, and MAC randomization are edited in the full connection editor; this first pass shows the live TCP/IP and hardware state.</source>
+        <source>DNS: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Details…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter a hotspot name.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9975,6 +10788,10 @@ Provider: %2</source>
     </message>
     <message>
         <source>Hardware address: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IPv6: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10010,6 +10827,26 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Look for nearby networks now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MAC randomization: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Metered: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NetworkManager could not be read, so Wi-Fi settings are temporarily unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NetworkManager could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>NetworkManager is not running, so Wi-Fi settings are unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10038,11 +10875,23 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No IP address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No Wi-Fi device supports access-point mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No networks found.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10082,6 +10931,14 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Personal Hotspot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preserve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Prompt before joining a captive-portal hotspot.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10090,11 +10947,39 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Proxy: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved networks unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scan for networks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scanning…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Security: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Share this computer's connection as a Wi-Fi network. Leave the password empty for an open hotspot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Signal: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stored for the shell's prompt policy; the shell has no Wi-Fi prompt consumer yet, so these rows do not change NetworkManager's auto-join.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10103,6 +10988,30 @@ Provider: %2</source>
     </message>
     <message>
         <source>TCP/IP: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The network change could not be applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The network list could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The password must be at least 8 characters.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>These Linux-only values come from the saved NetworkManager connection. The full editor owns changing DNS, proxies, MAC randomization, and 802.1X.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn on Wi-Fi to see nearby networks.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10119,6 +11028,18 @@ Provider: %2</source>
     </message>
     <message>
         <source>Wi-Fi Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Yes (guessed)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dragonfruit-hotspot</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

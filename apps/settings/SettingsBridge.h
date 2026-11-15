@@ -115,6 +115,14 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Bluetooth
     // surface at all; the pane shows the absence note.
     Q_PROPERTY(bool bluetoothAvailable READ bluetoothAvailable NOTIFY bluetoothChanged)
+    // T271: the last Bluetooth host write's operation (`power`, `discovery`,
+    // `pair`, `connect`, `forget`), state, and message.
+    Q_PROPERTY(QString bluetoothWriteOperation READ bluetoothWriteOperation
+                   NOTIFY bluetoothWriteChanged)
+    Q_PROPERTY(QString bluetoothWriteState READ bluetoothWriteState NOTIFY
+                   bluetoothWriteChanged)
+    Q_PROPERTY(QString bluetoothWriteError READ bluetoothWriteError NOTIFY
+                   bluetoothWriteChanged)
     // The storage view from the bridge host (T-15.2b): `{ state, present,
     // label, mountedCount, volumes, drives }`. Empty when the host (or
     // UDisks2) is absent; the pane renders the absence state and disables its
@@ -270,6 +278,15 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Wi-Fi
     // surface at all; the pane shows the absence note.
     Q_PROPERTY(bool wifiAvailable READ wifiAvailable NOTIFY wifiChanged)
+    // T271: the last Wi-Fi host write's operation (`power`, `join`,
+    // `joinHidden`, `forget`, `autoconnect`, `scan`, `disconnect`, `hotspot`),
+    // state (`idle`, `busy`, `applied`, `absent`, `denied`, `failed`), and
+    // message. A failed write leaves the view untouched, so a bound control
+    // reverts and the pane shows the reason.
+    Q_PROPERTY(QString wifiWriteOperation READ wifiWriteOperation NOTIFY
+                   wifiWriteChanged)
+    Q_PROPERTY(QString wifiWriteState READ wifiWriteState NOTIFY wifiWriteChanged)
+    Q_PROPERTY(QString wifiWriteError READ wifiWriteError NOTIFY wifiWriteChanged)
     // The Network pane's combined view from the bridge host (T225): the Wi-Fi
     // snapshot's services plus the `firewall` sub-view (`{ state, detected,
     // backend, backendLabel, statusKnown, enabled, ports, services, note }`).
@@ -332,6 +349,9 @@ public:
     QVariantList providerItems() const;
     QVariantMap bluetooth() const;
     bool bluetoothAvailable() const;
+    QString bluetoothWriteOperation() const { return m_bluetoothWriteOperation; }
+    QString bluetoothWriteState() const { return m_bluetoothWriteState; }
+    QString bluetoothWriteError() const { return m_bluetoothWriteError; }
     QVariantMap storage() const;
     bool storageAvailable() const;
     QVariantMap sound() const;
@@ -370,6 +390,9 @@ public:
     bool vpnAvailable() const;
     QVariantMap wifi() const;
     bool wifiAvailable() const;
+    QString wifiWriteOperation() const { return m_wifiWriteOperation; }
+    QString wifiWriteState() const { return m_wifiWriteState; }
+    QString wifiWriteError() const { return m_wifiWriteError; }
     QVariantMap network() const;
     bool networkAvailable() const;
     int adapterClientCount() const;
@@ -474,6 +497,11 @@ public:
     Q_INVOKABLE void setBluetoothDiscovering(bool discovering);
     Q_INVOKABLE void pairBluetooth(const QString &address);
     Q_INVOKABLE void setBluetoothConnected(const QString &address, bool connected);
+    Q_INVOKABLE void forgetBluetooth(const QString &address);
+    Q_INVOKABLE void resetBluetoothFixture();
+    Q_INVOKABLE void setBluetoothFixture(const QString &mode);
+    Q_INVOKABLE void failNextBluetoothWrite(const QString &operation,
+                                            const QString &message);
 
     // T-15.2b: the Storage pane's one seam. `refreshStorage` re-reads the
     // bridge host on pane open; the three writes each call the adapter once
@@ -689,8 +717,14 @@ public:
     Q_INVOKABLE void joinHiddenWifi(const QString &ssid, const QString &secret);
     Q_INVOKABLE void forgetWifi(const QString &uuid);
     Q_INVOKABLE void setWifiAutoconnect(const QString &uuid, bool enabled);
+    Q_INVOKABLE void scanWifi();
+    Q_INVOKABLE void disconnectWifi(const QString &uuid);
+    Q_INVOKABLE void startWifiHotspot(const QString &ssid, const QString &secret);
+    Q_INVOKABLE void stopWifiHotspot(const QString &uuid);
     Q_INVOKABLE void resetWifiFixture();
     Q_INVOKABLE void setWifiFixture(const QString &mode);
+    Q_INVOKABLE void failNextWifiWrite(const QString &operation,
+                                       const QString &message);
 
     // T225: the Network pane's seam. Service order is NetworkManager's
     // autoconnect priority; `moveNetworkService` moves one position. Firewall
@@ -787,6 +821,10 @@ signals:
     void vpnChanged();
     // The Wi-Fi view or availability changed (T225).
     void wifiChanged();
+    // T271: the last Wi-Fi host write's operation/state/message changed.
+    void wifiWriteChanged();
+    // T271: the last Bluetooth host write's operation/state/message changed.
+    void bluetoothWriteChanged();
     // The Network/firewall view or availability changed (T225).
     void networkChanged();
     // T268: one more adapter client was created on first use.
@@ -797,6 +835,9 @@ private:
     // not all fifteen in the constructor. Each ensure* wires the client's
     // signals exactly once; absence stays a normal empty view.
     BluetoothClient *ensureBluetooth();
+    // T271: publish the busy state before one Wi-Fi/Bluetooth write.
+    void beginWifiWrite(const QString &operation);
+    void beginBluetoothWrite(const QString &operation);
     StorageClient *ensureStorage();
     SoundClient *ensureSound();
     InputClient *ensureInput();
@@ -867,6 +908,13 @@ private:
     QString m_generalWriteOperation;
     QString m_generalWriteState = QStringLiteral("idle");
     QString m_generalWriteError;
+    // T271: the last Wi-Fi and Bluetooth write state.
+    QString m_wifiWriteOperation;
+    QString m_wifiWriteState = QStringLiteral("idle");
+    QString m_wifiWriteError;
+    QString m_bluetoothWriteOperation;
+    QString m_bluetoothWriteState = QStringLiteral("idle");
+    QString m_bluetoothWriteError;
     // T-18.1b: the provider catalogue and its resolved defaults. `m_providerBuiltin`
     // is the provider's own `BuiltinDefaultSource`; the property falls back to
     // the shared shipped-asset resolver so it is non-empty even when absent.
