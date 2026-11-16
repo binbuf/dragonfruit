@@ -1086,6 +1086,8 @@ Item {
                 settingsId: "mouseGestureFullScreen"
                 owner: "settingsd"
                 settingsKey: "gestures.fullscreen"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 controlData: Select {
                     id: mouseGestureFullScreenSelect
                     accessibleName: qsTr("Swipe between full-screen apps")
@@ -1102,6 +1104,8 @@ Item {
                 settingsId: "mouseGestureNotifications"
                 owner: "settingsd"
                 settingsKey: "gestures.notifications"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 controlData: Toggle {
                     id: mouseGestureNotificationsToggle
                     text: ""
@@ -1116,6 +1120,8 @@ Item {
                 settingsId: "mouseGestureAppWindows"
                 owner: "settingsd"
                 settingsKey: "gestures.appWindows"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 controlData: Toggle {
                     id: mouseGestureAppWindowsToggle
                     text: ""
@@ -1130,6 +1136,8 @@ Item {
                 settingsId: "mouseGestureShowDesktop"
                 owner: "settingsd"
                 settingsKey: "gestures.showDesktop"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 showSeparator: false
                 controlData: Toggle {
                     id: mouseGestureShowDesktopToggle
@@ -1474,6 +1482,8 @@ Item {
                 settingsId: "gestureFullScreen"
                 owner: "settingsd"
                 settingsKey: "gestures.fullscreen"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 controlData: Select {
                     id: gestureFullScreenSelect
                     accessibleName: qsTr("Swipe between full-screen apps")
@@ -1491,6 +1501,8 @@ Item {
                 settingsId: "gestureNotifications"
                 owner: "settingsd"
                 settingsKey: "gestures.notifications"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 controlData: Toggle {
                     id: gestureNotificationsToggle
                     text: ""
@@ -1521,6 +1533,8 @@ Item {
                 settingsId: "gestureAppWindows"
                 owner: "settingsd"
                 settingsKey: "gestures.appWindows"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 controlData: Toggle {
                     id: gestureAppWindowsToggle
                     text: ""
@@ -1536,6 +1550,8 @@ Item {
                 settingsId: "gestureShowDesktop"
                 owner: "settingsd"
                 settingsKey: "gestures.showDesktop"
+                description: qsTr("Stored-only until the compositor gesture "
+                                  + "recognizer reads this family.")
                 controlData: Toggle {
                     id: gestureShowDesktopToggle
                     text: ""
