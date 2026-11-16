@@ -7537,6 +7537,10 @@ void ShellController::onSettingsChanged(const QString &key, const QVariant &)
     // re-lay-out). A daemon-originated `Changed` is applied here.
     if (m_localSettingsWrite || !m_settingsClient)
         return;
+    // T276: a daemon-originated change may be an Overview/hot-corner key even
+    // when the Dock config is unchanged. The policy sender is idempotent, so
+    // run it before the Dock early-return.
+    applyCompositorPolicy();
     const DockConfig updated = dockConfigFromValues(m_settingsClient->values());
     if (updated == m_dockConfig)
         return;
@@ -7579,6 +7583,14 @@ void ShellController::applyCompositorPolicy()
     m_protocol->setAccessibilityPolicy(policy.magnifierEnabled, policy.magnifierZoom,
                                        policy.magnifierMode,
                                        policy.accessibilityShortcut);
+    // T276: the Overview/hot-corner snapshot, including the per-corner
+    // modifier and the normal workspace count.
+    m_protocol->setOverviewPolicy(
+        policy.hotCornerTopLeft, policy.hotCornerTopRight,
+        policy.hotCornerBottomLeft, policy.hotCornerBottomRight,
+        policy.hotCornerTopLeftModifier, policy.hotCornerTopRightModifier,
+        policy.hotCornerBottomLeftModifier, policy.hotCornerBottomRightModifier,
+        policy.workspaceCount, policy.switchToAppSpace);
     // T200: the veil's accessibility variants are decided in the same policy
     // snapshot. Push them to QML so Reduce Transparency draws the opaque
     // scheme plate instead of leaving the compositor's skipped veil bare.

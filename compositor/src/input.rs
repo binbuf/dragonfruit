@@ -351,6 +351,10 @@ where
                 serial,
                 time,
                 |data, mods, keysym| {
+                    // T276: keep the hot-corner detector's held modifiers in
+                    // step so a corner that requires Command/Shift/Option/
+                    // Control only fires while that role is held.
+                    data.hot_corners.set_modifiers(RoleMods::from_state(mods));
                     // Layout-agnostic base symbol so Cmd+Shift+3 matches
                     // the `3` binding, not `#`.
                     let sym = keysym
@@ -472,6 +476,10 @@ where
                     }
                 },
             );
+            // A modifier press/release can arm or clear a corner the pointer
+            // is already resting in, so re-evaluate the dwell here.
+            schedule_hot_corner_timer(state);
+            poll_hot_corner(state);
             state.notify_activity();
         }
         InputEvent::PointerMotion { event } => {

@@ -672,39 +672,62 @@ a dead affordance.
 ### 5.12 Desktop & Dock
 
 Owner: `settingsd` → compositor/shell. Absence: live on defaults; no error.
-The existing top-level Overview pane (`mission-control`) projects the Mission
-Control and Hot Corners rows below; it keeps its id.
+The existing top-level Overview pane (`mission-control`) keeps its id and owns
+the workspace, gesture, and hot-corner rows. T276 completes the macOS page and
+adds the default-browser delegate.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Size | Size | Slider | existing: `dock.size` | Live |
 | Magnification | Magnification | Slider | existing: `dock.magnification` | Live |
-| Position on screen | Position | Popup | existing: `dock.position` | Bottom/left/right |
-| Minimized window animation | Minimize animation | Popup | existing: `dock.minimizedAnimation` | Genie/scale/none |
-| Double-click title bar | Title-bar double-click | Popup | existing: `dock.titlebarDoubleClick` | Zoom/minimize/none |
-| Minimize windows into app icon | Minimize into app icon | Toggle | existing: `dock.minimizeIntoTileIcon` | Live |
-| Automatically hide/show Dock | Auto-hide Dock | Toggle | existing: `dock.autohide` | Live |
-| Animate opening applications | Animate opening apps | Toggle | existing: `dock.animateOpening` | Live |
-| Show indicators for open apps | Show running indicators | Toggle | existing: `dock.showIndicators` | Live |
-| Show suggested and recent apps | Show recent apps | Toggle | existing: `dock.showRecentApps` | Live |
-| — | Open window chooser on hover | Toggle | existing: `dock.chooserOnHover` | Live |
+| Position on screen | Position on screen | Popup | existing: `dock.position` | Bottom/left/right |
+| Minimized window animation | Minimized window animation | Popup | existing: `dock.minimizedAnimation` | Genie/scale/none |
+| Double-click title bar | Window title bar double-click action | Popup | existing: `dock.titlebarDoubleClick` | Zoom/minimize/none |
+| Minimize windows into app icon | Minimize windows into application icon | Toggle | existing: `dock.minimizeIntoTileIcon` | Live |
+| Automatically hide/show Dock | Automatically hide and show the Dock | Toggle | existing: `dock.autohide` | Live |
+| Animate opening applications | Animate opening applications | Toggle | existing: `dock.animateOpening` | Live |
+| Show indicators for open apps | Show indicators for open applications | Toggle | existing: `dock.showIndicators` | Live |
+| Show suggested and recent apps | Show suggested and recent apps in Dock | Toggle | existing: `dock.showRecentApps` | Live |
+| — | Open a window chooser by hovering | Toggle | existing: `dock.chooserOnHover` | Live |
 | — | Bounce app icons when windows minimize | Toggle | existing: `dock.minimizeReaction` | Live |
 | — | Show application menus in menu bar | Toggle | existing: `menu.global` | Live |
-| Show items | Desktop items | Segmented | `desktop.showItems` | On desktop / in Stage Manager |
-| Click wallpaper to show desktop | Click wallpaper to reveal desktop | Popup | `desktop.clickWallpaper` | Always / only in Stage Manager / never |
-| Stage Manager | Stage Manager | Toggle | `stageManager.enabled` | Live |
-| Show recent apps in Stage Manager | Recent apps in Stage Manager | Toggle | `stageManager.showRecentApps` | Live |
-| Widgets | Widgets | Disclosure | `widgets.*` | Add/remove/size |
-| Mission Control | Mission Control | Disclosure | `overview.*` | Shortcut, gestures, hot corners |
-| Hot Corners… | Hot corners… | Sheet | existing: `overview.hotCorner*` | Four corners |
-| Shortcuts… | Shortcuts… | Sheet | `settingsd` | Keyboard shortcuts |
-| Windows | Windows | Disclosure | `tiling.*` | Tiling/split view |
-| Default web browser | Default browser | Popup | `defaults.browser` + portal | Opens default-apps |
+| Show items | Show items | Segmented | `desktop.showItems` | Live: Files desktop consumes it |
+| Click wallpaper to show desktop | Click wallpaper to reveal desktop | Popup | `desktop.clickWallpaper` | Disabled: desktop reveal is T245b |
+| Stage Manager | Stage | Toggle | `stageManager.enabled` | Disabled: Stage is T242 |
+| Show recent apps in Stage Manager | Recent apps in Stage | Toggle | `stageManager.showRecentApps` | Disabled: Stage is T242 |
+| Show windows from an application | Show windows from an application | Popup | `stageManager.windowMode` | Disabled: Stage is T242 |
+| Widgets | Show Widgets | Segmented | `widgets.show` | Disabled: desktop widgets are T245b |
+| Dim widgets | Dim widgets on desktop | Popup | `widgets.dim` | Disabled: desktop widgets are T245b |
+| Prefer tabs | Prefer tabs when opening documents | Popup | `windows.preferTabs` | Disabled: no first-party tabbed documents |
+| Ask to keep changes | Ask to keep changes when closing documents | Toggle | `windows.askToKeepChanges` | Disabled: no first-party document app |
+| Close windows on quit | Close windows when quitting an application | Toggle | `windows.closeOnQuit` | Disabled: app lifecycle is T243 |
+| Drag to tile | Drag windows to screen edges to tile | Toggle | `tiling.dragToTile` | Disabled: tiling is T242 |
+| Drag to fill | Drag windows to the menu bar to fill the screen | Toggle | `tiling.dragToFill` | Disabled: tiling is T242 |
+| Hold modifier to tile | Hold Option while dragging to tile | Toggle | `tiling.modifier` | Disabled: tiling is T242 |
+| Tiled windows have margins | Tiled windows have margins | Toggle | `tiling.margins` | Disabled: tiling is T242 |
+| Mission Control | Overview | Disclosure | `overview.*` | Opens the Overview pane |
+| Hot Corners… | Hot Corners… | Disclosure | `overview.hotCorner*` | Opens the Overview pane |
+| Shortcuts… | Shortcuts… | Sheet | `shortcuts.*` | Disabled: shortcut editor not implemented |
+| Default web browser | Default web browser | Popup | `defaults.browser` + default-apps delegate | Live: app-index `WebBrowser` records, applied by `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full matrix |
 
-**T227 status.** Show items ships (`desktop.showItems`, consumed by the Files
-desktop process). Click wallpaper to reveal desktop, Stage Manager, recent apps
-in Stage, and Widgets are disabled with the task that owns their runtime
-(T245b/T242) or an explicit OPEN reason.
+<a id="pane-overview"></a>
+### 5.12.1 Overview (the `mission-control` pane)
+
+Owner: `settingsd` → compositor. Absence: live on defaults; the absence note
+names the missing daemon. T276 adds the Mission Control and workspace rows.
+
+| Row | Control | Owner / key | Behaviour / absence |
+|---|---|---|---|
+| Automatically rearrange workspaces | Toggle | `overview.autoRearrange` | Disabled: automatic reordering is T240 |
+| Switch to an application's workspace | Toggle | `overview.switchToAppSpace` | Live: the compositor follows the window's Space on activation |
+| Group windows by application | Toggle | `overview.groupByApp` | Disabled: grouping is T240 |
+| Displays have separate workspaces | Info | `overview.perDisplay` | Read-only: the compositor always keeps one Space list per output |
+| Drag windows to the top to open Overview | Toggle | `overview.dragToOpen` | Disabled: drag-to-Overview is T240 |
+| Workspace count | Popup | `workspaces.count` | Live: resizes every output's normal Space list in lockstep |
+| Swipe up to open | Toggle | `gestures.missionControl` | Live |
+| Swipe between Workspaces | Toggle | `gestures.spaceSwitch` | Live |
+| Hot Corners | Action + modifier popups | `overview.hotCorner*` / `*Modifier` | Live: Command/Shift/Option/Control gate the dwell |
+| Shortcuts… | Sheet | `shortcuts.*` | Disabled: shortcut editor not implemented |
 
 <a id="pane-displays"></a>
 ### 5.13 Displays

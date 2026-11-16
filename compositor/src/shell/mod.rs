@@ -66,7 +66,7 @@ const SHELL_INTERFACE_VERSION: u32 = 4;
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 12;
+const MANAGER_INTERFACE_VERSION: u32 = 13;
 
 /// `df_output` is version 4 since the role-keyed `material_role_state` event
 /// was added (T-21.2c); v3 added the global effective `material_state` event
@@ -2583,6 +2583,38 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     zoom,
                     magnifier_mode.as_deref(),
                     shortcut.as_deref(),
+                );
+            }
+            df_toplevel_manager::Request::SetOverviewPolicy {
+                hot_corner_top_left,
+                hot_corner_top_right,
+                hot_corner_bottom_left,
+                hot_corner_bottom_right,
+                hot_corner_top_left_modifier,
+                hot_corner_top_right_modifier,
+                hot_corner_bottom_left_modifier,
+                hot_corner_bottom_right_modifier,
+                workspace_count,
+                switch_to_app_space,
+            } => {
+                // T276: the Overview/hot-corner snapshot. Unknown action or
+                // modifier ids leave that corner untouched, matching the
+                // other policy setters.
+                state.set_overview_policy(
+                    [
+                        hot_corner_top_left.as_deref(),
+                        hot_corner_top_right.as_deref(),
+                        hot_corner_bottom_left.as_deref(),
+                        hot_corner_bottom_right.as_deref(),
+                    ],
+                    [
+                        hot_corner_top_left_modifier.as_deref(),
+                        hot_corner_top_right_modifier.as_deref(),
+                        hot_corner_bottom_left_modifier.as_deref(),
+                        hot_corner_bottom_right_modifier.as_deref(),
+                    ],
+                    workspace_count,
+                    switch_to_app_space != 0,
                 );
             }
             df_toplevel_manager::Request::SetInputPolicy {

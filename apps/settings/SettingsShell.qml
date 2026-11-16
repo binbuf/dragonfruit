@@ -1122,7 +1122,9 @@ Item {
 
     Component {
         id: desktopDockPaneComponent
-        DesktopDockPane { }
+        DesktopDockPane {
+            onNavigateRequested: (paneId) => root.selectPane(paneId)
+        }
     }
 
     Component {

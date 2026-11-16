@@ -80,7 +80,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
 | Appearance | `settingsd` (design-system themes, dark/light, accent, highlight, sidebar icon size, wallpaper tint, scroll bars, attached-menu transparency, motion link) ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
 | Accessibility | live AT-SPI read + `settingsd` + compositor + delegates — five-section pane: read-only screen-reader/bridge status plus `Open Orca`, Display accommodations (`increaseContrast`, `reduceTransparency`, `differentiateWithoutColor`, `textSize`), the compositor magnifier (`magnifier`, `magnifierZoom`, `magnifierMode`), Motion (`reduceMotion`, `dimFlashingLights`), Read & Speak and the hearing/motor/speech delegates, and the recorded `accessibility.shortcut` ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0276](adr/0276-accessibility-pane-accommodations.md)) |
-| Desktop & Dock | `settingsd` → shell + compositor; the Desktop & Stage Manager group writes `desktop.showItems` for the Files desktop, with T242/T245b rows disabled by reason |
+| Desktop & Dock | `settingsd` → shell + compositor; the full Dock group, Desktop & Stage Manager (`desktop.showItems` live), Widgets, Windows, Mission Control links, and the default-browser delegate; T242/T245b/T243 rows are disabled with a reason (T276) |
 | Displays | Compositor output API + the real platform output list — **shipped:** per-output name/preview/selector, scale, rotation, brightness, and the reported refresh; **capability-gated:** Use as, auto-brightness, adaptive color, refresh switching, arrangement, Night Light (toggle/schedule/temperature), color profile, TV mode, HDR, VRR, and overscan are disabled with an OPEN reason until the compositor/colord/sensor half exists. One table (`displaycapabilities`) drives both the pane and the advanced sheet ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0274](adr/0274-data-panes-sampler-and-capability-rows.md)) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures; Screen Saver…/Clock Appearance… deep-link to the Screen Saver pane ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md)) |
 | Menu Bar | `settingsd` → shell |
@@ -242,8 +242,9 @@ is optional and appears only while GOA answers).
   `screenSaver.clock`/`showDate`/`showSeconds` are pushed to `LockScreen` while
   locked. Animated savers are not advertised.
 - **Desktop & Stage Manager** ships `desktop.showItems`, consumed by the Files
-  desktop process. Click-wallpaper, Stage Manager, recent apps, and widgets are
-  disabled with their owning task or an explicit OPEN reason.
+  desktop process. T276 adds the full Desktop & Stage Manager, Widgets, and
+  Windows row inventory; the rows whose runtime is T242/T245b/T243 stay
+  disabled with a user-facing reason and no task id.
 - **Displays advanced** is the shared capability table in
   `libs/settings-client/displaycapabilities.*`. Brightness and rotation are
   live; refresh, arrangement, night light, color profile, HDR, and VRR are
@@ -578,6 +579,43 @@ integration (the Linux-only rows), and Preview.
   disabled with their owners named; the schema keys are reserved for the
   decoration/Glass/wallpaper tasks.
 
+## The T276 Desktop & Dock and Overview panes (ADR 0277)
+
+T276 completes the macOS Desktop & Dock page and the Linux Overview surface.
+Desktop & Dock renders the twelve-row Dock group, the Desktop & Stage Manager
+group, Widgets, Windows, the Mission Control links, the global application-menu
+row, and the default-browser row. Overview keeps its `mission-control` id and
+renders Mission Control, Workspaces, Hot Corners, and Shortcuts.
+
+Every live row has a real consumer:
+
+- The Dock keys are applied by the shell's one `applyDockSettings` path.
+- `overview.switchToAppSpace` makes the compositor follow a window to its Space
+  when the window is activated from another Space.
+- `workspaces.count` resizes every output's normal Space list in lockstep; a
+  window on a removed Space migrates to the nearest remaining normal Space.
+  Fullscreen Spaces are transient and never resized.
+- Hot corners carry a required modifier (`none`/`command`/`shift`/`option`/
+  `control`) and the shell's full action vocabulary: Overview, Notifications,
+  Desktop, Lock Screen, Applications, Quick Settings, Show Dock, Menu Bar, and
+  Focus Dock. The compositor's detector gates its dwell on the held role.
+- The shell forwards the four assignments, their modifiers, the workspace
+  count, and the app-Space switch in one append-only v13
+  `df_toplevel_manager.set_overview_policy` request. Unknown ids leave the
+  corner untouched.
+- The default-browser row lists installed `WebBrowser` records from app-index,
+  stores the choice in `defaults.browser`, and applies it through the
+  freedesktop default-apps delegate (`xdg-settings`). The Settings portal
+  exposes the key read-only as `org.dragonfruit.desktop`; T258 owns the full
+  portal/mimeapps matrix.
+
+Rows whose runtime is a later task are visible but disabled with a plain
+reason: Stage/recent/windows-from-app and tiling (T242), desktop items and
+widgets (T245b), close-on-quit (T243), and the shortcut editor. The owning task
+id lives only in the executable map and this document. The visual check is
+`make t276-desktop-capture`
+(`docs/captures/t276-desktop-dock-{dock,desktop-stage,widgets,windows,default-browser,overview,hot-corners,absence,overview-absence}-{light,dark}.png`).
+
 ## Wallpaper sources (T-18 / ADR 0240)
 
 The Wallpaper pane is a flat gallery, not a card stack: a 160×100 hero with the
@@ -715,7 +753,7 @@ Two absence families appear, and a pane can mix them:
 | Quick Settings | settingsd → shell/ControlCenter | live on defaults; the panel keeps the built-in module order and hides only absent modules | — (none) |
 | Search | settingsd (the T246 service is a separate provider) | live on defaults; categories/locations/shortcut/web stay live, indexing status/rebuild disabled with the T246 reason | — (none) |
 | Screen Saver | settingsd + shell/LockScreen | live on defaults; style/clock options stay live, the lock scene renders the schema defaults | — (none) |
-| Desktop & Dock | settingsd → shell/compositor | live on defaults; no shell applier, but no error | — (none) |
+| Desktop & Dock | settingsd → shell/compositor | live on defaults; the shell forwards the same policy from the schema defaults, so the Dock and Overview follow without a daemon | — (none) |
 | Mission Control | settingsd + compositor | settingsd keys live on defaults; the note says the daemon is gone | **hides** (no compositor bridge) |
 | Displays | compositor output API + settingsd | live on defaults; shell applies the policy when an output appears | — (none) |
 | Wallpaper | settingsd + `wallpaperd` + FileChooser portal | built-in/toggle/fit live; Featured empty (never an error); the "Add Photo…" portal row **disabled** with its explanation | — (none) |

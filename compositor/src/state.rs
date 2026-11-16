@@ -102,7 +102,9 @@ use crate::gpu_timer::{GpuPass, GpuSample, GpuStats};
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::GestureRecognizer;
-use crate::input::hot_corners::HotCornerDetector;
+use crate::input::hot_corners::{
+    parse_hot_corner_modifier, HotCornerAction, HotCornerDetector,
+};
 use crate::input::keymap::parse_binding;
 use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, Shortcut, ShortcutEngine};
@@ -1719,6 +1721,9 @@ pub struct DfState {
     pub grid_drag: Option<GridDrag>,
     /// Hot-corner dwell detection.
     pub hot_corners: HotCornerDetector,
+    /// T276: activating a window on another Space switches to that Space
+    /// (`overview.switchToAppSpace`). On by default, matching macOS.
+    pub switch_to_app_space: bool,
     /// The live input settings model (FR-7).
     pub input_settings: InputSettings,
     /// The outbox/audit log every trigger writes to (shell protocol T-07).
@@ -2025,6 +2030,7 @@ impl DfState {
             app_switcher: AppSwitcher::new(),
             grid_drag: None,
             hot_corners,
+            switch_to_app_space: true,
             input_settings,
             input_dispatch: InputDispatch::new(),
             grab_arbiter: GrabArbiter::new(),
@@ -3433,6 +3439,25 @@ impl DfState {
             let geometry = self.windows.geometry(window).unwrap_or_default();
             self.space.map_element(window.clone(), geometry.loc, true);
             self.mark_scene_dirty();
+        } else if self.switch_to_app_space {
+            // T276: `overview.switchToAppSpace` — activating an app whose
+            // window lives on another Space switches there before focusing.
+            let space = self
+                .windows
+                .id(window)
+                .and_then(|id| self.workspaces.window_space(id));
+            let index = space.and_then(|space| {
+                let output = self.workspaces.space_output(space)?;
+                self.workspaces
+                    .space_ids(output)
+                    .iter()
+                    .position(|candidate| *candidate == space)
+            });
+            if let Some(index) = index {
+                if self.workspaces.activate_all(index) {
+                    self.after_workspace_change();
+                }
+            }
         }
         if self.active_window.as_ref() == Some(window) {
             return;
@@ -5867,6 +5892,36 @@ impl DfState {
         self.input_settings.gestures.space_switch = gesture_space_switch;
         self.input_settings.gestures.mission_control = gesture_mission_control;
         self.apply_input_settings();
+    }
+
+    /// Apply the Overview/hot-corner policy forwarded by the shell over
+    /// `df_toplevel_manager.set_overview_policy` (T276, additive in v13).
+    /// Unknown action/modifier ids leave the current corner untouched; the
+    /// workspace count is clamped to the schema's 1..=16 range.
+    pub fn set_overview_policy(
+        &mut self,
+        assignments: [Option<&str>; 4],
+        modifiers: [Option<&str>; 4],
+        workspace_count: u32,
+        switch_to_app_space: bool,
+    ) {
+        let mut config = self.hot_corners.config();
+        for (index, value) in assignments.iter().enumerate() {
+            if let Some(action) = value.and_then(|value| HotCornerAction::parse(value)) {
+                config.assignments[index] = action;
+            }
+        }
+        for (index, value) in modifiers.iter().enumerate() {
+            if let Some(modifier) = value.and_then(|value| parse_hot_corner_modifier(value)) {
+                config.modifiers[index] = modifier;
+            }
+        }
+        self.hot_corners.set_config(config);
+        self.switch_to_app_space = switch_to_app_space;
+        let count = workspace_count.clamp(1, 16) as usize;
+        if self.workspaces.set_space_count(count) {
+            self.after_workspace_change();
+        }
     }
 
     /// Apply the settingsd pointer/trackpad policy forwarded by the shell over

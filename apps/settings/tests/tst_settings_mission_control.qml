@@ -31,6 +31,12 @@ Item {
             Settings.set("gestures.enabled", true);
             Settings.set("gestures.spaceSwitch", true);
             Settings.set("gestures.missionControl", true);
+            Settings.set("overview.hotCornerTopLeftModifier", "none");
+            Settings.set("overview.hotCornerTopRightModifier", "none");
+            Settings.set("overview.hotCornerBottomLeftModifier", "none");
+            Settings.set("overview.hotCornerBottomRightModifier", "none");
+            Settings.set("overview.switchToAppSpace", true);
+            Settings.set("workspaces.count", 3);
         }
 
         function make() {
@@ -115,6 +121,136 @@ Item {
             var pane = paneOf(shell);
             compare(Settings.available, true);
             compare(pane.absenceNote.visible, false);
+        }
+
+        // -- T276: modifiers, workspace count, and the full action list ------
+
+        function test_every_corner_has_a_modifier_that_round_trips() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.topLeftModifierSelect.currentIndex, 0);
+
+            pane.topLeftModifierSelect.activateIndex(1);   // Command
+            compare(Settings.values["overview.hotCornerTopLeftModifier"], "command");
+            pane.topRightModifierSelect.activateIndex(2);  // Shift
+            compare(Settings.values["overview.hotCornerTopRightModifier"], "shift");
+            pane.bottomLeftModifierSelect.activateIndex(3); // Option
+            compare(Settings.values["overview.hotCornerBottomLeftModifier"], "option");
+            pane.bottomRightModifierSelect.activateIndex(4); // Control
+            compare(Settings.values["overview.hotCornerBottomRightModifier"], "control");
+
+            // External changes converge into the selectors.
+            Settings.set("overview.hotCornerTopLeftModifier", "control");
+            tryVerify(function() {
+                return pane.topLeftModifierSelect.currentIndex === 4;
+            });
+        }
+
+        function test_the_full_hot_corner_action_list_round_trips() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var expected = [
+                "none", "mission-control", "notification-center",
+                "desktop-reveal", "lock-screen", "launchpad",
+                "control-center", "show-dock", "menu-bar", "focus-dock"
+            ];
+            compare(pane.actionOptions.length, expected.length);
+            for (var i = 0; i < expected.length; ++i)
+                compare(pane.actionOptions[i].value, expected[i]);
+
+            // The additions map to the shell's existing input actions.
+            pane.topLeftSelect.activateIndex(5); // Applications
+            compare(Settings.values["overview.hotCornerTopLeft"], "launchpad");
+            pane.topLeftSelect.activateIndex(6); // Quick Settings
+            compare(Settings.values["overview.hotCornerTopLeft"], "control-center");
+        }
+
+        function test_switch_to_app_space_applies_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.switchToAppSpaceToggle.checked, true);
+            pane.switchToAppSpaceToggle.toggle();
+            compare(Settings.values["overview.switchToAppSpace"], false);
+            Settings.set("overview.switchToAppSpace", true);
+            compare(pane.switchToAppSpaceToggle.checked, true);
+        }
+
+        function test_workspace_count_applies_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.workspaceCountSelect.currentIndex, 2); // three spaces
+            pane.workspaceCountSelect.activateIndex(4);         // five spaces
+            compare(Settings.values["workspaces.count"], 5);
+            compare(pane.workspaceCountSelect.currentIndex, 4);
+            Settings.set("workspaces.count", 2);
+            tryVerify(function() {
+                return pane.workspaceCountSelect.currentIndex === 1;
+            });
+        }
+
+        function test_unimplemented_rows_are_disabled_with_honest_reasons() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var rows = [pane.rearrangeRow, pane.groupByAppRow, pane.dragToOpenRow,
+                        pane.shortcutsRow];
+            for (var i = 0; i < rows.length; ++i) {
+                compare(rows[i].enabled, false, "row " + i + " must be disabled");
+                verify(rows[i].description.length > 0);
+                verify(rows[i].description.indexOf("OPEN") < 0);
+                verify(rows[i].description.indexOf("T2") < 0);
+            }
+            // Per-display workspaces are read-only: the compositor always
+            // keeps one list per output.
+            compare(pane.perDisplayRow.enabled, true);
+        }
+
+        function collectRowIds(item, out) {
+            if (item.settingsId !== undefined
+                    && String(item.settingsId).length > 0)
+                out.push(item.settingsId);
+            var kids = item.children || [];
+            for (var i = 0; i < kids.length; ++i)
+                collectRowIds(kids[i], out);
+            return out;
+        }
+
+        function test_rows_match_the_executable_map() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var rendered = collectRowIds(pane, []);
+            var mapRows = SettingsMap.rowsFor("mission-control");
+            verify(mapRows.length > 0);
+            for (var i = 0; i < mapRows.length; ++i) {
+                verify(rendered.indexOf(mapRows[i].id) >= 0,
+                       "map row " + mapRows[i].id + " has no rendered row");
+            }
+        }
+
+        function test_measured_window_740x820_keeps_every_row_reachable() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("mission-control");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = paneOf(shell);
+            var groups = [pane.missionControlGroup, pane.workspacesGroup,
+                          pane.hotCornersGroup];
+            for (var g = 0; g < groups.length; ++g) {
+                var rows = groups[g].rows.children;
+                for (var i = 0; i < rows.length; ++i) {
+                    var row = rows[i];
+                    if (row.control === undefined)
+                        continue; // a group description, not a SettingsRow
+                    verify(row.width > 0, "row " + i + " in group " + g
+                           + " must have width");
+                    if (row.control.width === 0)
+                        continue; // a text-only status row has no control
+                    verify(row.control.x + row.control.width <= row.width + 1,
+                           "row " + i + " in group " + g
+                           + " control must stay inside the row");
+                }
+            }
         }
     }
 }

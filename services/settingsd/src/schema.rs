@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 32;
+pub const SCHEMA_VERSION: u32 = 33;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1195,13 +1195,12 @@ pub const KEYS: &[KeySpec] = &[
     // ── Mission Control / hot corners (T-15.5b) ─────────────────────────
     // Mission Control and hot corners are compositor-native: the compositor
     // owns the one overview machine and the corner detector, and the shell
-    // mirrors both over `df_toplevel_manager`. These four keys are the
-    // durable trigger *configuration* the Mission Control pane writes; the
-    // action ids are the `HotCornerAction::id()` spellings the compositor's
-    // `HotCornerConfig` already uses. The gesture trio that also reaches
-    // Mission Control is the revision-1 `gestures.*` keys above. The pane
-    // reports the adapter/projection directly; applying an assignment needs
-    // the append-only compositor policy request ADR 0126 names, deferred.
+    // mirrors both over `df_toplevel_manager`. These keys are the durable
+    // trigger *configuration* the Mission Control pane writes; the action ids
+    // are the `HotCornerAction::id()` spellings the compositor's
+    // `HotCornerConfig` uses. T276 adds the per-corner modifier and
+    // `overview.switchToAppSpace`; the shell forwards the whole snapshot in
+    // the append-only v13 `set_overview_policy` request (ADR 0126/0277).
     KeySpec {
         key: "overview.hotCornerTopLeft",
         group: KeyGroup::Overview,
@@ -1213,11 +1212,16 @@ pub const KEYS: &[KeySpec] = &[
             "notification-center",
             "desktop-reveal",
             "lock-screen",
+            "launchpad",
+            "control-center",
+            "show-dock",
+            "menu-bar",
+            "focus-dock",
         ],
         min: None,
         max: None,
         owner: "apps/settings",
-        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        consumer: "compositor/input hot corners",
         since: 13,
         summary: "Action assigned to the top-left hot corner; `none` disables it.",
     },
@@ -1232,11 +1236,16 @@ pub const KEYS: &[KeySpec] = &[
             "notification-center",
             "desktop-reveal",
             "lock-screen",
+            "launchpad",
+            "control-center",
+            "show-dock",
+            "menu-bar",
+            "focus-dock",
         ],
         min: None,
         max: None,
         owner: "apps/settings",
-        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        consumer: "compositor/input hot corners",
         since: 13,
         summary: "Action assigned to the top-right hot corner; `none` disables it.",
     },
@@ -1251,11 +1260,16 @@ pub const KEYS: &[KeySpec] = &[
             "notification-center",
             "desktop-reveal",
             "lock-screen",
+            "launchpad",
+            "control-center",
+            "show-dock",
+            "menu-bar",
+            "focus-dock",
         ],
         min: None,
         max: None,
         owner: "apps/settings",
-        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        consumer: "compositor/input hot corners",
         since: 13,
         summary: "Action assigned to the bottom-left hot corner; `none` disables it.",
     },
@@ -1270,13 +1284,83 @@ pub const KEYS: &[KeySpec] = &[
             "notification-center",
             "desktop-reveal",
             "lock-screen",
+            "launchpad",
+            "control-center",
+            "show-dock",
+            "menu-bar",
+            "focus-dock",
         ],
         min: None,
         max: None,
         owner: "apps/settings",
-        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        consumer: "compositor/input hot corners",
         since: 13,
         summary: "Action assigned to the bottom-right hot corner; `none` disables it.",
+    },
+    KeySpec {
+        key: "overview.hotCornerTopLeftModifier",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("none"),
+        allowed: &["none", "command", "shift", "option", "control"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners",
+        since: 33,
+        summary: "Modifier held while the pointer enters the top-left corner; `none` needs no modifier.",
+    },
+    KeySpec {
+        key: "overview.hotCornerTopRightModifier",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("none"),
+        allowed: &["none", "command", "shift", "option", "control"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners",
+        since: 33,
+        summary: "Modifier held while the pointer enters the top-right corner; `none` needs no modifier.",
+    },
+    KeySpec {
+        key: "overview.hotCornerBottomLeftModifier",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("none"),
+        allowed: &["none", "command", "shift", "option", "control"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners",
+        since: 33,
+        summary: "Modifier held while the pointer enters the bottom-left corner; `none` needs no modifier.",
+    },
+    KeySpec {
+        key: "overview.hotCornerBottomRightModifier",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("none"),
+        allowed: &["none", "command", "shift", "option", "control"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners",
+        since: 33,
+        summary: "Modifier held while the pointer enters the bottom-right corner; `none` needs no modifier.",
+    },
+    KeySpec {
+        key: "overview.switchToAppSpace",
+        group: KeyGroup::Overview,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/workspace activation",
+        since: 33,
+        summary: "Activating an app window on another Space switches to that Space.",
     },
     // ── Notifications presentation (T-15.7b) ────────────────────────────
     // The four global "Notification Center" preferences the Notifications
@@ -1826,6 +1910,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "apps/settings Autofill & Passwords provider selection",
         since: 28,
         summary: "The installed password manager Autofill delegates to; empty follows the active provider. No credential or secret is stored.",
+    },
+    KeySpec {
+        key: "defaults.browser",
+        group: KeyGroup::General,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings default-apps delegate (xdg-settings; settings portal T258)",
+        since: 33,
+        summary: "Desktop id of the default web browser; empty follows the host default. The delegate writes the freedesktop default-apps entry.",
     },
     KeySpec {
         key: "locale.calendar",

@@ -3190,6 +3190,44 @@ void ShellProtocol::setAccessibilityPolicy(bool magnifierEnabled, double magnifi
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setOverviewPolicy(const QString &hotCornerTopLeft,
+                                      const QString &hotCornerTopRight,
+                                      const QString &hotCornerBottomLeft,
+                                      const QString &hotCornerBottomRight,
+                                      const QString &hotCornerTopLeftModifier,
+                                      const QString &hotCornerTopRightModifier,
+                                      const QString &hotCornerBottomLeftModifier,
+                                      const QString &hotCornerBottomRightModifier,
+                                      int workspaceCount, bool switchToAppSpace)
+{
+    // T276: the Overview/hot-corner snapshot. Additive in v13; older
+    // compositors ignore the request and keep their built-in corners.
+    if (m_manager && m_managerVersion >= 13) {
+        const QByteArray tl = hotCornerTopLeft.toUtf8();
+        const QByteArray tr = hotCornerTopRight.toUtf8();
+        const QByteArray bl = hotCornerBottomLeft.toUtf8();
+        const QByteArray br = hotCornerBottomRight.toUtf8();
+        const QByteArray tlm = hotCornerTopLeftModifier.toUtf8();
+        const QByteArray trm = hotCornerTopRightModifier.toUtf8();
+        const QByteArray blm = hotCornerBottomLeftModifier.toUtf8();
+        const QByteArray brm = hotCornerBottomRightModifier.toUtf8();
+        df_toplevel_manager_set_overview_policy(
+            m_manager,
+            hotCornerTopLeft.isEmpty() ? nullptr : tl.constData(),
+            hotCornerTopRight.isEmpty() ? nullptr : tr.constData(),
+            hotCornerBottomLeft.isEmpty() ? nullptr : bl.constData(),
+            hotCornerBottomRight.isEmpty() ? nullptr : br.constData(),
+            hotCornerTopLeftModifier.isEmpty() ? nullptr : tlm.constData(),
+            hotCornerTopRightModifier.isEmpty() ? nullptr : trm.constData(),
+            hotCornerBottomLeftModifier.isEmpty() ? nullptr : blm.constData(),
+            hotCornerBottomRightModifier.isEmpty() ? nullptr : brm.constData(),
+            static_cast<uint32_t>(qBound(1, workspaceCount, 16)),
+            switchToAppSpace ? 1u : 0u);
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
                                    bool gestureSpaceSwitch, bool gestureMissionControl)
 {

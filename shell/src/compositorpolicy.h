@@ -47,6 +47,19 @@ struct CompositorPolicy {
     double magnifierZoom = 2.0;
     QString magnifierMode = QStringLiteral("follow-focus");
     QString accessibilityShortcut;
+    // T276: the Overview/hot-corner snapshot. Action ids are the schema's
+    // stable spellings; modifiers gate the corner dwell; the workspace count
+    // resizes the compositor's normal Space list.
+    QString hotCornerTopLeft = QStringLiteral("mission-control");
+    QString hotCornerTopRight = QStringLiteral("notification-center");
+    QString hotCornerBottomLeft = QStringLiteral("desktop-reveal");
+    QString hotCornerBottomRight = QStringLiteral("lock-screen");
+    QString hotCornerTopLeftModifier = QStringLiteral("none");
+    QString hotCornerTopRightModifier = QStringLiteral("none");
+    QString hotCornerBottomLeftModifier = QStringLiteral("none");
+    QString hotCornerBottomRightModifier = QStringLiteral("none");
+    int workspaceCount = 3;
+    bool switchToAppSpace = true;
 
     bool operator==(const CompositorPolicy &) const = default;
 };

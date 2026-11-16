@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 32). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 33). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -232,6 +232,13 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("overview.hotCornerTopRight"), QStringLiteral("notification-center"));
     values.insert(QStringLiteral("overview.hotCornerBottomLeft"), QStringLiteral("desktop-reveal"));
     values.insert(QStringLiteral("overview.hotCornerBottomRight"), QStringLiteral("lock-screen"));
+    // Revision 33 (T276): hot-corner modifiers and the app-Space switch.
+    values.insert(QStringLiteral("overview.hotCornerTopLeftModifier"), QStringLiteral("none"));
+    values.insert(QStringLiteral("overview.hotCornerTopRightModifier"), QStringLiteral("none"));
+    values.insert(QStringLiteral("overview.hotCornerBottomLeftModifier"), QStringLiteral("none"));
+    values.insert(QStringLiteral("overview.hotCornerBottomRightModifier"), QStringLiteral("none"));
+    values.insert(QStringLiteral("overview.switchToAppSpace"), true);
+    values.insert(QStringLiteral("defaults.browser"), QString());
     values.insert(QStringLiteral("notifications.showPreviews"),
                   QStringLiteral("when-unlocked"));
     values.insert(QStringLiteral("notifications.showWhenSleeping"), false);
@@ -378,7 +385,11 @@ const char *const kEmojiAction[] = { "emoji", "none" };
 const char *const kSecondaryClick[] = { "right", "left" };
 const char *const kLookUp[] = { "force-click", "three-finger", "off" };
 const char *const kHotCorner[] = { "none", "mission-control", "notification-center",
-                                   "desktop-reveal", "lock-screen" };
+                                   "desktop-reveal", "lock-screen", "launchpad",
+                                   "control-center", "show-dock", "menu-bar",
+                                   "focus-dock" };
+const char *const kHotCornerModifier[] = { "none", "command", "shift", "option",
+                                           "control" };
 const char *const kPreviews[] = { "always", "when-unlocked", "never" };
 const char *const kLoginWindowStyle[] = { "list", "name-and-password" };
 const char *const kMenuAutoHide[] = { "never", "always", "full-screen" };
@@ -441,10 +452,14 @@ const Constraint kConstraints[] = {
     { "sound.playEffectsThrough", kEffectsThrough, 2, false, 0, false, 0 },
     { "sound.alertVolume", nullptr, 0, true, 0.0, true, 1.0 },
     { "sound.balance", nullptr, 0, true, 0.0, true, 1.0 },
-    { "overview.hotCornerTopLeft", kHotCorner, 5, false, 0, false, 0 },
-    { "overview.hotCornerTopRight", kHotCorner, 5, false, 0, false, 0 },
-    { "overview.hotCornerBottomLeft", kHotCorner, 5, false, 0, false, 0 },
-    { "overview.hotCornerBottomRight", kHotCorner, 5, false, 0, false, 0 },
+    { "overview.hotCornerTopLeft", kHotCorner, 10, false, 0, false, 0 },
+    { "overview.hotCornerTopRight", kHotCorner, 10, false, 0, false, 0 },
+    { "overview.hotCornerBottomLeft", kHotCorner, 10, false, 0, false, 0 },
+    { "overview.hotCornerBottomRight", kHotCorner, 10, false, 0, false, 0 },
+    { "overview.hotCornerTopLeftModifier", kHotCornerModifier, 5, false, 0, false, 0 },
+    { "overview.hotCornerTopRightModifier", kHotCornerModifier, 5, false, 0, false, 0 },
+    { "overview.hotCornerBottomLeftModifier", kHotCornerModifier, 5, false, 0, false, 0 },
+    { "overview.hotCornerBottomRightModifier", kHotCornerModifier, 5, false, 0, false, 0 },
     { "notifications.showPreviews", kPreviews, 3, false, 0, false, 0 },
     { "login.windowStyle", kLoginWindowStyle, 2, false, 0, false, 0 },
     { "menu.autoHide", kMenuAutoHide, 3, false, 0, false, 0 },

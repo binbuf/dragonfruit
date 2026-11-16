@@ -521,6 +521,84 @@ impl WorkspaceModel {
         created
     }
 
+    /// Resize every output's **normal** Space list to `count` (T276,
+    /// `workspaces.count`). Fullscreen Spaces are transient and are never
+    /// added or removed here. Removing a Space migrates the windows assigned
+    /// to it to the active Space first, so a window can never point at a
+    /// deleted Space. Returns true when the count changed.
+    pub fn set_space_count(&mut self, count: usize) -> bool {
+        if self.outputs.is_empty() {
+            return false;
+        }
+        let target = count.clamp(1, 16);
+        let current = self
+            .outputs
+            .first()
+            .map(|output| {
+                output
+                    .spaces
+                    .iter()
+                    .filter(|space| !space.is_fullscreen())
+                    .count()
+            })
+            .unwrap_or(0);
+        if target == current {
+            return false;
+        }
+        if target > current {
+            for _ in current..target {
+                if self.create_space().is_none() {
+                    break;
+                }
+            }
+            return true;
+        }
+
+        // Shrink from the end. `remove_space` refuses fullscreen entries, so
+        // locate the last normal Space explicitly and skip past any
+        // fullscreen Spaces that follow it.
+        let mut changed = false;
+        for _ in target..current {
+            let Some(index) = self.outputs.first().and_then(|output| {
+                output
+                    .spaces
+                    .iter()
+                    .rposition(|space| !space.is_fullscreen())
+            }) else {
+                break;
+            };
+            let removed = self
+                .outputs
+                .first()
+                .and_then(|output| output.spaces.get(index))
+                .map(|space| space.id);
+            let target_space = self
+                .outputs
+                .first()
+                .and_then(|output| {
+                    output.spaces[..index]
+                        .iter()
+                        .rfind(|space| !space.is_fullscreen())
+                })
+                .or_else(|| self.outputs.first().and_then(OutputSpaces::active_space))
+                .map(|space| space.id);
+            if !self.remove_space(index) {
+                break;
+            }
+            changed = true;
+            if let (Some(removed), Some(target_space)) = (removed, target_space) {
+                for (window, space) in self.assignments.iter_mut() {
+                    if *space == removed {
+                        *space = target_space;
+                        self.dispatch
+                            .push(WorkspaceEvent::window_assigned(*window, target_space));
+                    }
+                }
+            }
+        }
+        changed
+    }
+
     /// Remove the Space at `index` from every output (FR-1). Refuses to
     /// remove the last Space or a fullscreen Space. Returns true if removed.
     pub fn remove_space(&mut self, index: usize) -> bool {
@@ -987,6 +1065,33 @@ mod tests {
         assert_eq!(model.space_count("DP-1"), INITIAL_SPACES);
         assert_eq!(model.space_count("HDMI-A-1"), INITIAL_SPACES);
         assert_eq!(model.space_names("DP-1"), model.space_names("HDMI-A-1"));
+    }
+
+    #[test]
+    fn set_space_count_grows_and_shrinks_every_output_in_lockstep() {
+        let mut model = model_with_two_outputs();
+        assert!(model.set_space_count(5));
+        assert_eq!(model.space_count("DP-1"), 5);
+        assert_eq!(model.space_count("HDMI-A-1"), 5);
+        assert!(!model.set_space_count(5), "an unchanged count is a no-op");
+
+        // A window on a removed Space migrates to the remaining Space.
+        let window = WindowId(7);
+        let removed = model.space_at("DP-1", 4).unwrap();
+        model.assign_window(window, removed);
+        model.dispatch().drain();
+        assert!(model.set_space_count(2));
+        assert_eq!(model.space_count("DP-1"), 2);
+        assert_eq!(model.space_count("HDMI-A-1"), 2);
+        let migrated = model.window_space(window).expect("window keeps a Space");
+        assert!(model.space_ids("DP-1").contains(&migrated));
+        assert!(model
+            .dispatch()
+            .drain()
+            .iter()
+            .any(|event| matches!(event.kind, WorkspaceEventKind::WindowAssigned { .. })));
+        assert_eq!(model.set_space_count(1), true);
+        assert!(!model.set_space_count(0), "the schema clamps to one");
     }
 
     #[test]

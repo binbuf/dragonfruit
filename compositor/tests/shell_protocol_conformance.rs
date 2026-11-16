@@ -4716,8 +4716,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 12,
-        "the manager must advertise the additive requests through v12"
+        manager_version, 13,
+        "the manager must advertise the additive requests through v13"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -4798,8 +4798,8 @@ fn motion_and_input_policy_requests_apply_live() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 12,
-        "the manager must advertise the additive requests through v12"
+        manager_version, 13,
+        "the manager must advertise the additive requests through v13"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -4918,6 +4918,85 @@ fn motion_and_input_policy_requests_apply_live() {
     proc.shutdown();
 }
 
+/// T276: the shell forwards the four hot-corner assignments, their modifiers,
+/// the normal workspace count, and the app-Space switch in one v13
+/// `set_overview_policy` request. The compositor applies the count live and
+/// announces the new Spaces to the shell; unknown action/modifier ids leave
+/// the corner untouched.
+#[test]
+fn overview_policy_resizes_the_workspace_list() {
+    let token = "d8".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-overview-policy", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    assert_eq!(manager_version, 13);
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    manager.set_overview_policy(
+        Some("launchpad".to_string()),
+        Some("notification-center".to_string()),
+        Some("desktop-reveal".to_string()),
+        Some("lock-screen".to_string()),
+        Some("command".to_string()),
+        Some("none".to_string()),
+        Some("none".to_string()),
+        Some("control".to_string()),
+        5,
+        0,
+    );
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspaces.len() >= 5,
+    );
+
+    manager.set_overview_policy(
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        2,
+        1,
+    );
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_removed >= 3,
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
 /// T196: the shell forwards the effective scheme plus the glass slider and the
 /// two accessibility overrides in one v9 `set_appearance_policy` snapshot. The
 /// compositor applies it atomically, resolves the same preset vocabulary, and
@@ -4952,8 +5031,8 @@ fn appearance_policy_round_trips_and_invalidates_only_on_change() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 12,
-        "the manager must advertise the additive requests through v12"
+        manager_version, 13,
+        "the manager must advertise the additive requests through v13"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(

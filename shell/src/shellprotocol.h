@@ -625,6 +625,20 @@ public:
                                 const QString &magnifierMode,
                                 const QString &shortcut);
 
+    // Mirror the Overview/hot-corner policy into the compositor (T276,
+    // `df_toplevel_manager.set_overview_policy`, additive in v13): the four
+    // corner action ids, their required modifier ids, the normal workspace
+    // count, and the app-Space switch. Unknown ids leave the corner untouched.
+    void setOverviewPolicy(const QString &hotCornerTopLeft,
+                           const QString &hotCornerTopRight,
+                           const QString &hotCornerBottomLeft,
+                           const QString &hotCornerBottomRight,
+                           const QString &hotCornerTopLeftModifier,
+                           const QString &hotCornerTopRightModifier,
+                           const QString &hotCornerBottomLeftModifier,
+                           const QString &hotCornerBottomRightModifier,
+                           int workspaceCount, bool switchToAppSpace);
+
     // Mirror the active keyboard layout into the compositor (T229,
     // `df_toplevel_manager.set_keyboard_layout`, additive in v10). An empty
     // layout keeps the host `XKB_DEFAULT_*` configuration.

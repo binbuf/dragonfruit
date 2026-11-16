@@ -52,6 +52,16 @@ void TestCompositorPolicy::defaultsMatchTheSchema()
     QCOMPARE(policy.magnifierZoom, 2.0);
     QCOMPARE(policy.magnifierMode, QStringLiteral("follow-focus"));
     QVERIFY(policy.accessibilityShortcut.isEmpty());
+    QCOMPARE(policy.hotCornerTopLeft, QStringLiteral("mission-control"));
+    QCOMPARE(policy.hotCornerTopRight, QStringLiteral("notification-center"));
+    QCOMPARE(policy.hotCornerBottomLeft, QStringLiteral("desktop-reveal"));
+    QCOMPARE(policy.hotCornerBottomRight, QStringLiteral("lock-screen"));
+    QCOMPARE(policy.hotCornerTopLeftModifier, QStringLiteral("none"));
+    QCOMPARE(policy.hotCornerTopRightModifier, QStringLiteral("none"));
+    QCOMPARE(policy.hotCornerBottomLeftModifier, QStringLiteral("none"));
+    QCOMPARE(policy.hotCornerBottomRightModifier, QStringLiteral("none"));
+    QCOMPARE(policy.workspaceCount, 3);
+    QCOMPARE(policy.switchToAppSpace, true);
 }
 
 void TestCompositorPolicy::everyKeyMapsThrough()
@@ -86,6 +96,24 @@ void TestCompositorPolicy::everyKeyMapsThrough()
                   QStringLiteral("follow-caret"));
     values.insert(QStringLiteral("accessibility.shortcut"),
                   QStringLiteral("Ctrl+Shift+A"));
+    values.insert(QStringLiteral("overview.hotCornerTopLeft"),
+                  QStringLiteral("launchpad"));
+    values.insert(QStringLiteral("overview.hotCornerTopRight"),
+                  QStringLiteral("control-center"));
+    values.insert(QStringLiteral("overview.hotCornerBottomLeft"),
+                  QStringLiteral("show-dock"));
+    values.insert(QStringLiteral("overview.hotCornerBottomRight"),
+                  QStringLiteral("menu-bar"));
+    values.insert(QStringLiteral("overview.hotCornerTopLeftModifier"),
+                  QStringLiteral("command"));
+    values.insert(QStringLiteral("overview.hotCornerTopRightModifier"),
+                  QStringLiteral("shift"));
+    values.insert(QStringLiteral("overview.hotCornerBottomLeftModifier"),
+                  QStringLiteral("option"));
+    values.insert(QStringLiteral("overview.hotCornerBottomRightModifier"),
+                  QStringLiteral("control"));
+    values.insert(QStringLiteral("workspaces.count"), 5);
+    values.insert(QStringLiteral("overview.switchToAppSpace"), false);
 
     const CompositorPolicy policy = compositorPolicyFromValues(values, /*hostDark=*/false);
     QCOMPARE(policy.reducedMotion, true);
@@ -115,6 +143,16 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     QCOMPARE(policy.magnifierZoom, 3.5);
     QCOMPARE(policy.magnifierMode, QStringLiteral("follow-caret"));
     QCOMPARE(policy.accessibilityShortcut, QStringLiteral("Ctrl+Shift+A"));
+    QCOMPARE(policy.hotCornerTopLeft, QStringLiteral("launchpad"));
+    QCOMPARE(policy.hotCornerTopRight, QStringLiteral("control-center"));
+    QCOMPARE(policy.hotCornerBottomLeft, QStringLiteral("show-dock"));
+    QCOMPARE(policy.hotCornerBottomRight, QStringLiteral("menu-bar"));
+    QCOMPARE(policy.hotCornerTopLeftModifier, QStringLiteral("command"));
+    QCOMPARE(policy.hotCornerTopRightModifier, QStringLiteral("shift"));
+    QCOMPARE(policy.hotCornerBottomLeftModifier, QStringLiteral("option"));
+    QCOMPARE(policy.hotCornerBottomRightModifier, QStringLiteral("control"));
+    QCOMPARE(policy.workspaceCount, 5);
+    QCOMPARE(policy.switchToAppSpace, false);
 }
 
 void TestCompositorPolicy::autoFollowsTheHost()

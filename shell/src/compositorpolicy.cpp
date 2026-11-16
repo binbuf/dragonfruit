@@ -114,6 +114,48 @@ CompositorPolicy compositorPolicyFromValues(const QVariantMap &values, bool host
         readValue(values, QStringLiteral("accessibility.shortcut"),
                   policy.accessibilityShortcut)
             .toString();
+    // T276: the Overview/hot-corner snapshot. A malformed action/modifier id
+    // is forwarded as-is; the compositor ignores unknown spellings and keeps
+    // the current corner, matching the other policy setters.
+    policy.hotCornerTopLeft =
+        readValue(values, QStringLiteral("overview.hotCornerTopLeft"),
+                  policy.hotCornerTopLeft)
+            .toString();
+    policy.hotCornerTopRight =
+        readValue(values, QStringLiteral("overview.hotCornerTopRight"),
+                  policy.hotCornerTopRight)
+            .toString();
+    policy.hotCornerBottomLeft =
+        readValue(values, QStringLiteral("overview.hotCornerBottomLeft"),
+                  policy.hotCornerBottomLeft)
+            .toString();
+    policy.hotCornerBottomRight =
+        readValue(values, QStringLiteral("overview.hotCornerBottomRight"),
+                  policy.hotCornerBottomRight)
+            .toString();
+    policy.hotCornerTopLeftModifier =
+        readValue(values, QStringLiteral("overview.hotCornerTopLeftModifier"),
+                  policy.hotCornerTopLeftModifier)
+            .toString();
+    policy.hotCornerTopRightModifier =
+        readValue(values, QStringLiteral("overview.hotCornerTopRightModifier"),
+                  policy.hotCornerTopRightModifier)
+            .toString();
+    policy.hotCornerBottomLeftModifier =
+        readValue(values, QStringLiteral("overview.hotCornerBottomLeftModifier"),
+                  policy.hotCornerBottomLeftModifier)
+            .toString();
+    policy.hotCornerBottomRightModifier =
+        readValue(values, QStringLiteral("overview.hotCornerBottomRightModifier"),
+                  policy.hotCornerBottomRightModifier)
+            .toString();
+    policy.workspaceCount =
+        readValue(values, QStringLiteral("workspaces.count"), policy.workspaceCount)
+            .toInt();
+    policy.switchToAppSpace =
+        readValue(values, QStringLiteral("overview.switchToAppSpace"),
+                  policy.switchToAppSpace)
+            .toBool();
     // The first input source is the active layout; a `layout:variant` spelling
     // carries the variant. Empty keeps the host XKB_DEFAULT_* configuration.
     const QStringList sources =

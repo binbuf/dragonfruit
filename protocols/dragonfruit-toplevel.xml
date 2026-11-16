@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="12">
+  <interface name="df_toplevel_manager" version="13">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -421,6 +421,33 @@
       <arg name="magnifier_zoom_millionths" type="uint"/>
       <arg name="magnifier_mode" type="string" allow-null="true"/>
       <arg name="shortcut" type="string" allow-null="true"/>
+    </request>
+
+    <!-- T276: the Overview and hot-corner policy the shell mirrors from
+         settingsd. Appended after the v12 messages so every pre-existing
+         opcode stays put (append-only). Additive in v13.
+
+         Action ids are the schema's stable `HotCornerAction::id()` spellings;
+         an unknown id leaves that corner untouched. Modifier ids are
+         `none`/`command`/`shift`/`option`/`control` and gate the dwell. The
+         workspace count resizes each output's normal Space list (fullscreen
+         Spaces are transient and never resized); `switch_to_app_space`
+         selects whether activating a window on another Space follows it. -->
+    <request name="set_overview_policy" since="13">
+      <description summary="set the Overview and hot-corner policy">
+        One coherent snapshot of the four corner assignments, their required
+        modifiers, the normal workspace count, and the app-Space switch.
+      </description>
+      <arg name="hot_corner_top_left" type="string" allow-null="true"/>
+      <arg name="hot_corner_top_right" type="string" allow-null="true"/>
+      <arg name="hot_corner_bottom_left" type="string" allow-null="true"/>
+      <arg name="hot_corner_bottom_right" type="string" allow-null="true"/>
+      <arg name="hot_corner_top_left_modifier" type="string" allow-null="true"/>
+      <arg name="hot_corner_top_right_modifier" type="string" allow-null="true"/>
+      <arg name="hot_corner_bottom_left_modifier" type="string" allow-null="true"/>
+      <arg name="hot_corner_bottom_right_modifier" type="string" allow-null="true"/>
+      <arg name="workspace_count" type="uint"/>
+      <arg name="switch_to_app_space" type="uint"/>
     </request>
 
     <enum name="hot_corner">

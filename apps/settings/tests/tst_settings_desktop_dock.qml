@@ -38,6 +38,12 @@ Item {
             Settings.set("dock.chooserOnHover", false);
             Settings.set("dock.minimizeReaction", false);
             Settings.set("menu.global", true);
+            Settings.set("defaults.browser", "");
+            Settings.set("overview.hotCornerTopLeftModifier", "none");
+            Settings.set("overview.hotCornerTopRightModifier", "none");
+            Settings.set("overview.hotCornerBottomLeftModifier", "none");
+            Settings.set("overview.hotCornerBottomRightModifier", "none");
+            Settings.set("overview.switchToAppSpace", true);
         }
 
         function make() {
@@ -249,16 +255,137 @@ Item {
             });
         }
 
-        function test_stage_rows_are_disabled_with_reasons() {
+        function collectRowIds(item, out) {
+            if (item.settingsId !== undefined
+                    && String(item.settingsId).length > 0)
+                out.push(item.settingsId);
+            var kids = item.children || [];
+            for (var i = 0; i < kids.length; ++i)
+                collectRowIds(kids[i], out);
+            return out;
+        }
+
+        // T276: the rendered rows are the executable map's Desktop & Dock
+        // inventory, not a second list.
+        function test_rows_match_the_executable_map() {
             var shell = make();
             var pane = paneOf(shell);
-            compare(pane.clickWallpaperRow.enabled, false);
-            verify(pane.clickWallpaperRow.description.indexOf("T245b") >= 0);
-            compare(pane.stageToggle.enabled, false);
-            verify(pane.stageRow.description.indexOf("T242") >= 0);
-            compare(pane.stageRecentToggle.enabled, false);
-            compare(pane.widgetsRow.enabled, false);
-            verify(pane.widgetsRow.description.indexOf("OPEN") >= 0);
+            var rendered = collectRowIds(pane, []);
+            var mapRows = SettingsMap.rowsFor("desktop-dock");
+            verify(mapRows.length > 0);
+            for (var i = 0; i < mapRows.length; ++i) {
+                verify(rendered.indexOf(mapRows[i].id) >= 0,
+                       "map row " + mapRows[i].id + " has no rendered row");
+            }
+        }
+
+        // T276: every row either applies live or is disabled with an honest
+        // reason. Task ids and "OPEN" never appear in user-facing strings.
+        function verifyDisabledReason(row, name) {
+            compare(row.enabled, false, name + " must be disabled");
+            verify(row.description.length > 0, name + " must explain why");
+            verify(row.description.indexOf("OPEN") < 0,
+                   name + " must not say OPEN");
+            verify(row.description.indexOf("T2") < 0,
+                   name + " must not leak a task id");
+        }
+
+        function test_desktop_stage_rows_are_disabled_with_reasons() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.desktopGroup.title, "Desktop & Stage");
+            compare(pane.desktopItemsControl.currentIndex, 0);
+            verifyDisabledReason(pane.clickWallpaperRow, "Click wallpaper");
+            verifyDisabledReason(pane.stageRow, "Stage");
+            verifyDisabledReason(pane.stageRecentRow, "Recent apps in Stage");
+            verifyDisabledReason(pane.windowsFromAppRow, "Windows from an app");
+        }
+
+        function test_widgets_group_is_disabled_with_reasons() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.widgetsGroup.title, "Widgets");
+            verifyDisabledReason(pane.showWidgetsRow, "Show Widgets");
+            verifyDisabledReason(pane.dimWidgetsRow, "Dim widgets");
+        }
+
+        function test_windows_group_matches_the_tiling_inventory() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.windowsGroup.title, "Windows");
+            verifyDisabledReason(pane.preferTabsRow, "Prefer tabs");
+            verifyDisabledReason(pane.askToKeepChangesRow, "Ask to keep changes");
+            verifyDisabledReason(pane.closeOnQuitRow, "Close windows on quit");
+            verifyDisabledReason(pane.dragToTileRow, "Drag to tile");
+            verifyDisabledReason(pane.dragToFillRow, "Drag to fill");
+            verifyDisabledReason(pane.holdModifierRow, "Hold modifier to tile");
+            verifyDisabledReason(pane.tiledMarginsRow, "Tiled margins");
+        }
+
+        function test_mission_control_links_to_the_overview_pane() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.missionControlGroup.title, "Window Overview");
+            compare(pane.overviewRow.settingsId, "overview");
+            compare(pane.hotCornersRow.settingsId, "hotCorners");
+            verify(pane.overviewRow.disclosure);
+            verifyDisabledReason(pane.shortcutsRow, "Shortcuts");
+            pane.overviewRow.disclosureClicked();
+            tryVerify(function() { return shell.currentPaneId === "mission-control"; });
+            compare(shell.currentPaneId, "mission-control");
+        }
+
+        function test_default_browser_choices_apply_and_persist() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.browserChoices.length >= 2,
+                   "the fixture exposes installed browsers");
+            compare(pane.defaultBrowserRow.enabled, true);
+            compare(pane.defaultBrowserSelect.currentIndex, 0);
+
+            pane.defaultBrowserSelect.activateIndex(1);
+            compare(Settings.values["defaults.browser"],
+                    "org.chromium.Chromium.desktop");
+            compare(Settings.defaultBrowser, "org.chromium.Chromium.desktop");
+            compare(pane.defaultBrowserSelect.currentIndex, 1);
+
+            // An external change converges into the row.
+            Settings.set("defaults.browser", "org.mozilla.firefox.desktop");
+            tryVerify(function() {
+                return pane.defaultBrowserSelect.currentIndex === 0;
+            });
+        }
+
+        // T276: the measured 740×820 window must not clip or overflow the new
+        // groups. Every row's control keeps its right-aligned slot.
+        function test_measured_window_740x820_keeps_every_row_reachable() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("desktop-dock");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = paneOf(shell);
+
+            var groups = [pane.dockGroup, pane.desktopGroup, pane.widgetsGroup,
+                          pane.windowsGroup, pane.missionControlGroup,
+                          pane.menuGroup];
+            for (var g = 0; g < groups.length; ++g) {
+                verify(groups[g].width > 0, "group " + g + " must have width");
+                var rows = groups[g].rows.children;
+                for (var i = 0; i < rows.length; ++i) {
+                    var row = rows[i];
+                    if (row.control === undefined)
+                        continue; // a group description, not a SettingsRow
+                    verify(row.width > 0, "row " + i + " in group " + g
+                           + " must have width");
+                    if (row.control.width === 0)
+                        continue; // a disclosure-only row has no control
+                    verify(row.control.x + row.control.width <= row.width + 1,
+                           "row " + i + " in group " + g
+                           + " control must stay inside the row");
+                }
+            }
         }
     }
 }

@@ -1231,76 +1231,89 @@ no-trackpad state explains the kept preference.
 
 Owner: settingsd → compositor/shell. Absence: live on defaults.
 
+T276 completes the page. Every live row has a real owner and consumer; a row
+whose runtime is a later task is visible and disabled with a user-facing
+reason, never an `OPEN` marker or a task id. The owning task id lives in the
+executable map and this document.
+
 #### Dock
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Size | Size | Slider | `dock.size` | ship |
-| Magnification | Magnification | Slider | `dock.magnification` | ship |
-| Position on screen | Position | Popup | `dock.position` | ship |
-| Minimized window animation | Minimize animation | Popup | `dock.minimizedAnimation` | ship |
-| Window title bar double-click action | Title-bar double-click | Popup | `dock.titlebarDoubleClick` | ship |
-| Minimize windows into application icon | Minimize into app icon | Toggle | `dock.minimizeIntoTileIcon` | ship |
-| Automatically hide and show the Dock | Auto-hide Dock | Toggle | `dock.autohide` | ship |
-| Animate opening applications | Animate opening apps | Toggle | `dock.animateOpening` | ship |
-| Show indicators for open applications | Show running indicators | Toggle | `dock.showIndicators` | ship |
-| Show suggested and recent apps | Show recent apps | Toggle | `dock.showRecentApps` | ship |
-| — | Open window chooser on hover | Toggle | `dock.chooserOnHover` | ship |
-| — | Bounce app icons when windows minimize | Toggle | `dock.minimizeReaction` | ship |
-| — | Show application menus in menu bar | Toggle | `menu.global` | ship (Linux-only) |
+| Size | Size | Slider | `dock.size` | live |
+| Magnification | Magnification | Slider | `dock.magnification` | live |
+| Position on screen | Position on screen | Popup | `dock.position` | live |
+| Minimized window animation | Minimized window animation | Popup | `dock.minimizedAnimation` | live |
+| Window title bar double-click action | Window title bar double-click action | Popup | `dock.titlebarDoubleClick` | live |
+| Minimize windows into application icon | Minimize windows into application icon | Toggle | `dock.minimizeIntoTileIcon` | live |
+| Automatically hide and show the Dock | Automatically hide and show the Dock | Toggle | `dock.autohide` | live |
+| Animate opening applications | Animate opening applications | Toggle | `dock.animateOpening` | live |
+| Show indicators for open applications | Show indicators for open applications | Toggle | `dock.showIndicators` | live |
+| Show suggested and recent apps | Show suggested and recent apps in Dock | Toggle | `dock.showRecentApps` | live |
+| — | Open a window chooser by hovering | Toggle | `dock.chooserOnHover` | live (Linux extra) |
+| — | Bounce app icons when windows minimize | Toggle | `dock.minimizeReaction` | live (Linux extra) |
+| — | Show application menus in the menu bar | Toggle | `menu.global` | live (Linux extra) |
 
 #### Desktop & Stage Manager
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Show Items | Show items | Segmented | `desktop.showItems` | ship |
-| Click Wallpaper to reveal desktop | Click wallpaper | Popup | `desktop.clickWallpaper` | ship |
-| Stage Manager | Stage | Toggle | `stageManager.enabled` | adapt; T242 owner |
-| Show recent apps in Stage Manager | Recent apps in Stage | Toggle | `stageManager.showRecentApps` | adapt; T242 owner |
-| Show windows from an application | Windows from an app | Popup | `stageManager.windowMode` | adapt; T242 owner |
+| Show Items | Show items | Segmented | `desktop.showItems` | live (Files desktop) |
+| Click Wallpaper to reveal desktop | Click wallpaper to reveal desktop | Popup | `desktop.clickWallpaper` | disabled: desktop reveal is T245b |
+| Stage Manager | Stage | Toggle | `stageManager.enabled` | disabled: Stage is T242 |
+| Show recent apps in Stage Manager | Recent apps in Stage | Toggle | `stageManager.showRecentApps` | disabled: Stage is T242 |
+| Show windows from an application | Show windows from an application | Popup | `stageManager.windowMode` | disabled: Stage is T242 |
 
-#### Widgets and Windows
+#### Widgets
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Show Widgets | Show widgets | Segmented | `widgets.show` | adapt; T245b owner |
-| Dim widgets on desktop | Dim widgets | Popup | `widgets.dim` | adapt; T245b owner |
+| Show Widgets | Show Widgets | Segmented | `widgets.show` | disabled: desktop widgets are T245b |
+| Dim widgets on desktop | Dim widgets on desktop | Popup | `widgets.dim` | disabled: desktop widgets are T245b |
 | Use iPhone widgets | — | Omit | — | omit |
-| Prefer tabs when opening documents | Prefer tabs | Popup | `windows.preferTabs` | ship |
-| Ask to keep changes when closing documents | Ask to keep changes | Toggle | `windows.askToKeepChanges` | ship |
-| Close windows when quitting an application | Close windows on quit | Toggle | `windows.closeOnQuit` | ship |
-| Drag windows to screen edges to tile | Drag to tile | Toggle | `tiling.dragToTile` | adapt; T242 owner |
-| Drag windows to menu bar to fill screen | Drag to fill | Toggle | `tiling.dragToFill` | adapt; T242 owner |
-| Hold Option while dragging to tile | Hold Super to tile | Toggle | `tiling.modifier` | adapt; T242 owner |
-| Tiled windows have margins | Tiled window margins | Toggle | `tiling.margins` | adapt; T242 owner |
 
-#### Mission Control / Overview
+#### Windows
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Automatically rearrange Spaces | Rearrange workspaces | Toggle | `overview.autoRearrange` | ship |
-| Switch to a Space with open windows | Switch to app workspace | Toggle | `overview.switchToAppSpace` | ship |
-| Group windows by application | Group windows by app | Toggle | `overview.groupByApp` | ship |
-| Displays have separate Spaces | Separate workspaces per display | Toggle | `overview.perDisplay` | ship |
-| Drag windows to top to enter Mission Control | Drag to Overview | Toggle | `overview.dragToOpen` | ship |
-| Hot Corners… | Hot corners… | Sheet | `overview.hotCorner*` | ship; modifier support |
-| Shortcuts… | Shortcuts… | Sheet | shortcut engine | ship |
-| — | Default web browser | Popup | `defaults.browser` + portal | ship |
+| Prefer tabs when opening documents | Prefer tabs when opening documents | Popup | `windows.preferTabs` | disabled: no first-party tabbed documents |
+| Ask to keep changes when closing documents | Ask to keep changes when closing documents | Toggle | `windows.askToKeepChanges` | disabled: no first-party document app |
+| Close windows when quitting an application | Close windows when quitting an application | Toggle | `windows.closeOnQuit` | disabled: app lifecycle is T243 |
+| Drag windows to screen edges to tile | Drag windows to screen edges to tile | Toggle | `tiling.dragToTile` | disabled: tiling is T242 |
+| Drag windows to menu bar to fill screen | Drag windows to the menu bar to fill the screen | Toggle | `tiling.dragToFill` | disabled: tiling is T242 |
+| Hold Option while dragging to tile | Hold Option while dragging to tile | Toggle | `tiling.modifier` | disabled: tiling is T242 |
+| Tiled windows have margins | Tiled windows have margins | Toggle | `tiling.margins` | disabled: tiling is T242 |
+
+#### Mission Control / Default browser
+
+| macOS row | Dragonfruit row | Control | Owner / key | Disposition |
+|---|---|---|---|---|
+| Mission Control | Overview | Disclosure | `overview.*` | opens the Overview pane |
+| Hot Corners… | Hot Corners… | Disclosure | `overview.hotCorner*` | opens the Overview pane |
+| Shortcuts… | Shortcuts… | Sheet | `shortcuts.*` | disabled: the shortcut editor is not implemented |
+| — | Default web browser | Popup | `defaults.browser` + default-apps delegate | live: installed `WebBrowser` records, applied through `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full portal/mimeapps matrix |
 
 ### 4.21 Overview — T276
 
-Linux-specific workspace surface. Keep the top-level id and group it next to
-Desktop & Dock.
+Linux-specific workspace surface. The top-level `mission-control` id and the
+sidebar title **Overview** stay. Every live row is settingsd-backed and applied
+by the compositor; the shell forwards one v13
+`df_toplevel_manager.set_overview_policy` snapshot (assignments, modifiers,
+workspace count, app-Space switch).
 
 | Row | Control | Owner / key | Disposition |
 |---|---|---|---|
-| Swipe up to open | Toggle | `overview.swipeUp` | ship |
-| Swipe between workspaces | Toggle | `overview.swipeBetween` | ship |
-| Workspace count | Stepper | `workspaces.count` | ship |
-| Per-display workspaces | Toggle | `overview.perDisplay` | ship |
-| Hot corners | Four corner popups + modifiers | `overview.hotCorner*` | ship |
-| Shortcuts | Sheet | shortcut engine | ship |
-| Animation budget / reduced motion | Info | compositor | adapt |
+| Automatically rearrange workspaces | Toggle | `overview.autoRearrange` | disabled: automatic reordering is T240 |
+| Switch to an application's workspace | Toggle | `overview.switchToAppSpace` | live: the compositor follows the window's Space on activation |
+| Group windows by application | Toggle | `overview.groupByApp` | disabled: grouping is T240 |
+| Displays have separate workspaces | Info | `overview.perDisplay` | read-only: the compositor always keeps one Space list per output |
+| Drag windows to the top to open Overview | Toggle | `overview.dragToOpen` | disabled: drag-to-Overview is T240 |
+| Workspace count | Popup | `workspaces.count` | live: resizes every output's normal Space list in lockstep |
+| Swipe up to open | Toggle | `gestures.missionControl` | live |
+| Swipe between Workspaces | Toggle | `gestures.spaceSwitch` | live |
+| Hot corners | Four action + modifier popups | `overview.hotCorner*` / `*Modifier` | live; Command/Shift/Option/Control gate the dwell |
+| Shortcuts | Sheet | `shortcuts.*` | disabled: the shortcut editor is not implemented |
+| Animation budget / reduced motion | — | `accessibility.reduceMotion` | adapt: the existing Accessibility row is the one owner |
 
 ### 4.22 Displays — T273
 

@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 use smithay::utils::{Logical, Point, Rectangle};
 
 use super::action::{HotCorner, InputAction};
+use super::keymap::RoleMods;
 
 /// The action assigned to a corner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -28,9 +29,52 @@ pub enum HotCornerAction {
     NotificationCenter,
     DesktopReveal,
     LockScreen,
+    /// Open the Applications drawer (the macOS Launchpad slot).
+    Launchpad,
+    /// Toggle the Control Center panel.
+    ControlCenter,
+    /// Toggle the Dock's auto-hide, like the Super+Option+D chord.
+    ShowDock,
+    /// Reveal and focus the menu bar.
+    MenuBar,
+    /// Move keyboard focus into the Dock.
+    FocusDock,
 }
 
 impl HotCornerAction {
+    /// The stable id the settings schema and the shell wire share.
+    pub const fn id(self) -> &'static str {
+        match self {
+            HotCornerAction::None => "none",
+            HotCornerAction::MissionControl => "mission-control",
+            HotCornerAction::NotificationCenter => "notification-center",
+            HotCornerAction::DesktopReveal => "desktop-reveal",
+            HotCornerAction::LockScreen => "lock-screen",
+            HotCornerAction::Launchpad => "launchpad",
+            HotCornerAction::ControlCenter => "control-center",
+            HotCornerAction::ShowDock => "show-dock",
+            HotCornerAction::MenuBar => "menu-bar",
+            HotCornerAction::FocusDock => "focus-dock",
+        }
+    }
+
+    /// Parse a schema id; an unknown spelling leaves the corner unchanged.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "none" => Some(HotCornerAction::None),
+            "mission-control" => Some(HotCornerAction::MissionControl),
+            "notification-center" => Some(HotCornerAction::NotificationCenter),
+            "desktop-reveal" => Some(HotCornerAction::DesktopReveal),
+            "lock-screen" => Some(HotCornerAction::LockScreen),
+            "launchpad" => Some(HotCornerAction::Launchpad),
+            "control-center" => Some(HotCornerAction::ControlCenter),
+            "show-dock" => Some(HotCornerAction::ShowDock),
+            "menu-bar" => Some(HotCornerAction::MenuBar),
+            "focus-dock" => Some(HotCornerAction::FocusDock),
+            _ => None,
+        }
+    }
+
     /// Map to the compositor-level action, if any. Unassigned corners do
     /// nothing (T-14 FR-2: no accidental triggers).
     pub const fn to_input_action(self) -> Option<InputAction> {
@@ -40,7 +84,25 @@ impl HotCornerAction {
             HotCornerAction::NotificationCenter => Some(InputAction::NotificationCenter),
             HotCornerAction::DesktopReveal => Some(InputAction::DesktopReveal),
             HotCornerAction::LockScreen => Some(InputAction::LockScreen),
+            HotCornerAction::Launchpad => Some(InputAction::ShowApps),
+            HotCornerAction::ControlCenter => Some(InputAction::ControlCenter),
+            HotCornerAction::ShowDock => Some(InputAction::ToggleDock),
+            HotCornerAction::MenuBar => Some(InputAction::FocusMenuBar),
+            HotCornerAction::FocusDock => Some(InputAction::FocusDock),
         }
+    }
+}
+
+/// The modifier a corner requires before it fires. `None` keeps the historical
+/// no-modifier behavior.
+pub fn parse_hot_corner_modifier(value: &str) -> Option<RoleMods> {
+    match value {
+        "none" | "" => Some(RoleMods::EMPTY),
+        "command" => Some(RoleMods::COMMAND),
+        "shift" => Some(RoleMods::SHIFT),
+        "option" => Some(RoleMods::OPTION),
+        "control" => Some(RoleMods::CONTROL),
+        _ => None,
     }
 }
 
@@ -49,6 +111,8 @@ impl HotCornerAction {
 pub struct HotCornerConfig {
     /// Assignment per corner, indexed by [`HotCorner::index`].
     pub assignments: [HotCornerAction; 4],
+    /// Required modifier per corner, indexed by [`HotCorner::index`].
+    pub modifiers: [RoleMods; 4],
     /// Distance from the corner (logical px) that counts as "in" it.
     pub inset: f64,
     /// How long the pointer must rest in the corner before it fires.
@@ -67,6 +131,7 @@ impl Default for HotCornerConfig {
                 HotCornerAction::DesktopReveal,
                 HotCornerAction::LockScreen,
             ],
+            modifiers: [RoleMods::EMPTY; 4],
             inset: 4.0,
             dwell: Duration::from_millis(150),
         }
@@ -86,6 +151,8 @@ pub struct HotCornerDetector {
     config: HotCornerConfig,
     active: Option<(HotCorner, Instant)>,
     fired: bool,
+    /// The significant modifier roles currently held.
+    modifiers: RoleMods,
 }
 
 impl Default for HotCornerDetector {
@@ -100,6 +167,7 @@ impl HotCornerDetector {
             config,
             active: None,
             fired: false,
+            modifiers: RoleMods::EMPTY,
         }
     }
 
@@ -116,13 +184,37 @@ impl HotCornerDetector {
         self.config.dwell
     }
 
+    /// Update the held modifier roles (keyboard events) and clear a corner
+    /// whose required modifier is no longer held, so a stale dwell cannot
+    /// fire after the user releases it.
+    pub fn set_modifiers(&mut self, modifiers: RoleMods) {
+        if self.modifiers == modifiers {
+            return;
+        }
+        self.modifiers = modifiers;
+        if let Some((corner, _)) = self.active {
+            if !self.modifier_held(corner) {
+                self.active = None;
+                self.fired = false;
+            }
+        }
+    }
+
+    /// Whether the corner's required modifier is currently held.
+    fn modifier_held(&self, corner: HotCorner) -> bool {
+        self.modifiers.contains(self.config.modifiers[corner.index()])
+    }
+
     /// True while a corner is occupied, assigned, and waiting out its
     /// dwell — the condition for scheduling a dwell timer.
     pub fn is_armed(&self) -> bool {
         match self.active {
-            Some((corner, _)) if !self.fired => self.config.assignments[corner.index()]
-                .to_input_action()
-                .is_some(),
+            Some((corner, _)) if !self.fired => {
+                self.config.assignments[corner.index()]
+                    .to_input_action()
+                    .is_some()
+                    && self.modifier_held(corner)
+            }
             _ => false,
         }
     }
@@ -184,6 +276,9 @@ impl HotCornerDetector {
             return None;
         }
         if now.saturating_duration_since(entered) < self.config.dwell {
+            return None;
+        }
+        if !self.modifier_held(corner) {
             return None;
         }
         let action = self.config.assignments[corner.index()].to_input_action()?;
@@ -248,6 +343,59 @@ mod tests {
         assert_eq!(fired.action, InputAction::MissionControl);
         // Does not fire again until the pointer leaves and returns.
         assert!(detector.poll(now + Duration::from_millis(500)).is_none());
+    }
+
+    #[test]
+    fn every_action_round_trips_through_its_stable_id() {
+        for action in [
+            HotCornerAction::None,
+            HotCornerAction::MissionControl,
+            HotCornerAction::NotificationCenter,
+            HotCornerAction::DesktopReveal,
+            HotCornerAction::LockScreen,
+            HotCornerAction::Launchpad,
+            HotCornerAction::ControlCenter,
+            HotCornerAction::ShowDock,
+            HotCornerAction::MenuBar,
+            HotCornerAction::FocusDock,
+        ] {
+            assert_eq!(HotCornerAction::parse(action.id()), Some(action));
+        }
+        assert_eq!(HotCornerAction::parse("open-sesame"), None);
+    }
+
+    #[test]
+    fn a_corner_modifier_gates_the_trigger() {
+        let mut config = HotCornerConfig::default();
+        config.modifiers[HotCorner::TopLeft.index()] = RoleMods::COMMAND;
+        let mut detector = HotCornerDetector::new(config);
+        let now = Instant::now();
+        let loc = (1.0, 1.0).into();
+
+        // Without Command the corner is not armed and cannot fire.
+        assert!(detector.pointer_moved(loc, bounds(), now).is_none());
+        assert!(!detector.is_armed());
+        assert!(detector.poll(now + Duration::from_millis(300)).is_none());
+
+        // Holding Command while the pointer is already in the corner arms it.
+        detector.set_modifiers(RoleMods::COMMAND);
+        assert!(detector.is_armed());
+        let fired = detector
+            .poll(now + Duration::from_millis(300))
+            .expect("fires once the required modifier is held");
+        assert_eq!(fired.action, InputAction::MissionControl);
+
+        // Releasing the modifier clears the occupied corner.
+        detector.set_modifiers(RoleMods::EMPTY);
+        assert!(!detector.is_armed());
+    }
+
+    #[test]
+    fn a_modifier_parse_rejects_unknown_roles() {
+        assert_eq!(parse_hot_corner_modifier("none"), Some(RoleMods::EMPTY));
+        assert_eq!(parse_hot_corner_modifier("command"), Some(RoleMods::COMMAND));
+        assert_eq!(parse_hot_corner_modifier("option"), Some(RoleMods::OPTION));
+        assert_eq!(parse_hot_corner_modifier("hyper"), None);
     }
 
     #[test]

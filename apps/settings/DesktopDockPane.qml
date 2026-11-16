@@ -3,23 +3,24 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Desktop & Dock pane (T-09.4). Every control is a stock design-system
-// component bound to the `Settings` singleton (never D-Bus directly) with the
-// T-09.1b write-on-interaction / bind-to-`Settings.values` pattern, so a user
-// edit and an external settingsd change converge without a restart.
+// The Desktop & Dock pane (T-09.4; T276 completion).
 //
-// This slice ships the `Dock` group — every `dock.*` key from T-08 (size,
-// magnification, position, minimized-window animation, titlebar double-click
-// action, minimize-into-icon, auto-hide, animate opening, indicators, suggested
-// and recent apps). The shell's `ShellController::applyDockSettings` is the one
-// applier: a settingsd `Changed` re-lays-out the Dock live. `dock.pinned` has
-// no reference row (the Dock reorders by drag) and stays absent here.
+// Every live control is a stock design-system component bound to the `Settings`
+// singleton (never D-Bus directly) with the T-09.1b write-on-interaction /
+// bind-to-`Settings.values` pattern, so a user edit and an external settingsd
+// change converge without a restart.
 //
-// The reference pane's "Desktop & Stage Manager" group is omitted: it maps to
-// Desktop Reveal / hot corners, which have no settings schema key yet
-// (the no-half-panes rule; the provider is T-15.5).
+// The Dock group ships every `dock.*` key the shell applies live plus the
+// existing Linux extras (window chooser, minimize reaction, global app menu).
+// The Desktop & Stage, Widgets, and Windows groups follow the macOS row
+// inventory; a row whose runtime is not implemented yet is disabled with an
+// honest reason (the owning task lives in the map and docs, never in the UI).
+// The Mission Control group links to the Overview pane rather than duplicating
+// its corner controls.
 Item {
     id: root
+
+    signal navigateRequested(string paneId)
 
     readonly property real sizeValue: {
         var v = Settings.values["dock.size"];
@@ -45,15 +46,24 @@ Item {
         { value: "minimize", label: qsTr("Minimize") },
         { value: "none", label: qsTr("None") }
     ]
-    // T227: Desktop & Stage Manager. `desktop.showItems` is consumed by the
-    // Files desktop process; Stage Manager itself is T242, so its rows are
-    // disabled with a reason rather than advertised as live toggles.
+    // T227/T276: Desktop & Stage Manager. `desktop.showItems` is consumed by
+    // the Files desktop process; the remaining rows name their missing runtime
+    // in the description and stay disabled (T242/T245b).
     readonly property var desktopItemsOptions: [
         { value: "on-desktop", label: qsTr("On Desktop") },
         { value: "in-stage", label: qsTr("In Stage") }
     ]
     readonly property string desktopItemsValue:
         Settings.values["desktop.showItems"] || "on-desktop"
+    readonly property var windowsFromAppOptions: [
+        { value: "all", label: qsTr("All") },
+        { value: "one", label: qsTr("One") }
+    ]
+
+    // T276: the default-browser row's installed choices come from app-index
+    // through the Settings bridge. Empty is the honest no-browser state.
+    readonly property var browserChoices: Settings.defaultBrowserChoices
+    readonly property bool browserAvailable: browserChoices.length > 0
 
     // Test surface (used by tst_settings_desktop_dock.qml).
     property alias sizeSlider: sizeSlider
@@ -78,13 +88,32 @@ Item {
     property alias stageToggle: stageToggle
     property alias stageRecentRow: stageRecentRow
     property alias stageRecentToggle: stageRecentToggle
-    property alias widgetsRow: widgetsRow
+    property alias windowsFromAppRow: windowsFromAppRow
+    property alias widgetsGroup: widgetsGroup
+    property alias showWidgetsRow: showWidgetsRow
+    property alias dimWidgetsRow: dimWidgetsRow
+    property alias windowsGroup: windowsGroup
+    property alias preferTabsRow: preferTabsRow
+    property alias askToKeepChangesRow: askToKeepChangesRow
+    property alias closeOnQuitRow: closeOnQuitRow
+    property alias dragToTileRow: dragToTileRow
+    property alias dragToFillRow: dragToFillRow
+    property alias holdModifierRow: holdModifierRow
+    property alias tiledMarginsRow: tiledMarginsRow
+    property alias missionControlGroup: missionControlGroup
+    property alias overviewRow: overviewRow
+    property alias hotCornersRow: hotCornersRow
+    property alias shortcutsRow: shortcutsRow
+    property alias defaultBrowserRow: defaultBrowserRow
+    property alias defaultBrowserSelect: defaultBrowserSelect
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
 
     // Fill the detail pane slot (see AppearancePane).
     width: parent ? parent.width : implicitWidth
+
+    Component.onCompleted: Settings.refreshDefaultBrowsers()
 
     // Index of `value` in an option list; unknown values fall to `fallback`.
     function optionIndex(options, value, fallback) {
@@ -106,6 +135,10 @@ Item {
     function titlebarDoubleClickIndex() {
         return root.optionIndex(root.titlebarDoubleClickOptions,
                                 Settings.values["dock.titlebarDoubleClick"], 0);
+    }
+    function browserIndex() {
+        return root.optionIndex(root.browserChoices,
+                                Settings.defaultBrowser, 0);
     }
 
     Column {
@@ -158,13 +191,13 @@ Item {
 
             SettingsKeyRow {
                 width: parent.width
-                label: qsTr("Dock position on screen")
+                label: qsTr("Position on screen")
                 settingsId: "position"
                 owner: "settingsd"
                 settingsKey: "dock.position"
                 controlData: Select {
                     id: positionSelect
-                    accessibleName: qsTr("Dock position on screen")
+                    accessibleName: qsTr("Position on screen")
                     model: root.positionOptions
                     onActivated: (index) => Settings.set("dock.position",
                                                          root.positionOptions[index].value)
@@ -174,7 +207,7 @@ Item {
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Minimized window animation")
-                settingsId: "minimizedAnimation"
+                settingsId: "minimizeAnimation"
                 owner: "settingsd"
                 settingsKey: "dock.minimizedAnimation"
                 controlData: Select {
@@ -296,9 +329,7 @@ Item {
             }
         }
 
-        // T227: Desktop & Stage Manager. Only "Show items" is live today; the
-        // Files desktop process consumes `desktop.showItems`. The remaining
-        // rows name the task that owns their runtime (T242/T245b).
+        // ── Desktop & Stage ───────────────────────────────────────────────
         SettingsGroup {
             id: desktopGroup
             width: parent.width
@@ -311,7 +342,7 @@ Item {
                 owner: "settingsd -> apps/files desktop"
                 settingsKey: "desktop.showItems"
                 description: qsTr("On Desktop shows the Files desktop icons; In Stage "
-                                  + "leaves them to Stage (T242).")
+                                  + "leaves them to Stage.")
                 controlData: SegmentedControl {
                     id: desktopItemsControl
                     model: root.desktopItemsOptions.map(function(option) {
@@ -327,8 +358,8 @@ Item {
                 id: clickWallpaperRow
                 width: parent.width
                 label: qsTr("Click wallpaper to reveal desktop")
-                description: qsTr("Background clicks belong to the desktop layer; "
-                                  + "reveal-on-click lands with T245b.")
+                description: qsTr("Reveal-on-click is not available yet; the desktop "
+                                  + "layer owns background clicks.")
                 settingsId: "clickWallpaper"
                 owner: "compositor"
                 settingsKey: "desktop.clickWallpaper"
@@ -344,7 +375,8 @@ Item {
                 id: stageRow
                 width: parent.width
                 label: qsTr("Stage")
-                description: qsTr("Stage lands with T242.")
+                description: qsTr("Stage is not available yet; window staging is not "
+                                  + "implemented.")
                 settingsId: "stage"
                 owner: "compositor"
                 settingsKey: "stageManager.enabled"
@@ -361,7 +393,7 @@ Item {
                 id: stageRecentRow
                 width: parent.width
                 label: qsTr("Recent apps in Stage")
-                description: qsTr("Lands with Stage (T242).")
+                description: qsTr("Available with Stage.")
                 settingsId: "stageRecent"
                 owner: "compositor"
                 settingsKey: "stageManager.showRecentApps"
@@ -375,21 +407,259 @@ Item {
             }
 
             SettingsRow {
-                id: widgetsRow
+                id: windowsFromAppRow
                 width: parent.width
-                label: qsTr("Widgets")
-                description: qsTr("No widget host is implemented; widgets remain "
-                                  + "an explicit OPEN row.")
-                settingsId: "widgets"
-                owner: "shell"
-                settingsKey: "widgets.*"
+                label: qsTr("Show windows from an application")
+                description: qsTr("Available with Stage.")
+                settingsId: "stageWindowMode"
+                owner: "compositor"
+                settingsKey: "stageManager.windowMode"
                 enabled: false
                 showSeparator: false
 
-                controlData: Text {
-                    text: qsTr("Unavailable")
-                    color: Theme.color.textTertiary
-                    font.pixelSize: Theme.primitive.font.sizeSm
+                controlData: Select {
+                    model: root.windowsFromAppOptions
+                    enabled: false
+                }
+            }
+        }
+
+        // ── Widgets ───────────────────────────────────────────────────────
+        SettingsGroup {
+            id: widgetsGroup
+            width: parent.width
+            title: qsTr("Widgets")
+
+            SettingsRow {
+                id: showWidgetsRow
+                width: parent.width
+                label: qsTr("Show Widgets")
+                description: qsTr("Desktop widgets are not available yet.")
+                settingsId: "showWidgets"
+                owner: "shell + files desktop"
+                settingsKey: "widgets.show"
+                enabled: false
+
+                controlData: SegmentedControl {
+                    model: [qsTr("Off"), qsTr("On Desktop")]
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: dimWidgetsRow
+                width: parent.width
+                label: qsTr("Dim widgets on desktop")
+                description: qsTr("Available with desktop widgets.")
+                settingsId: "dimWidgets"
+                owner: "shell + files desktop"
+                settingsKey: "widgets.dim"
+                enabled: false
+                showSeparator: false
+
+                controlData: Select {
+                    model: [qsTr("Always"), qsTr("When windows are open"), qsTr("Never")]
+                    enabled: false
+                }
+            }
+        }
+
+        // ── Windows ───────────────────────────────────────────────────────
+        SettingsGroup {
+            id: windowsGroup
+            width: parent.width
+            title: qsTr("Windows")
+
+            SettingsRow {
+                id: preferTabsRow
+                width: parent.width
+                label: qsTr("Prefer tabs when opening documents")
+                description: qsTr("No first-party app opens tabbed documents yet.")
+                settingsId: "preferTabs"
+                owner: "apps/files + first-party apps"
+                settingsKey: "windows.preferTabs"
+                enabled: false
+
+                controlData: Select {
+                    model: [qsTr("Always"), qsTr("In Full Screen"), qsTr("Never")]
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: askToKeepChangesRow
+                width: parent.width
+                label: qsTr("Ask to keep changes when closing documents")
+                description: qsTr("No first-party document app asks yet.")
+                settingsId: "askToKeepChanges"
+                owner: "first-party document apps"
+                settingsKey: "windows.askToKeepChanges"
+                enabled: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: closeOnQuitRow
+                width: parent.width
+                label: qsTr("Close windows when quitting an application")
+                description: qsTr("No first-party app lifecycle consumer yet.")
+                settingsId: "closeOnQuit"
+                owner: "first-party app lifecycle"
+                settingsKey: "windows.closeOnQuit"
+                enabled: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: dragToTileRow
+                width: parent.width
+                label: qsTr("Drag windows to screen edges to tile")
+                description: qsTr("Window tiling is not available yet.")
+                settingsId: "dragToTile"
+                owner: "compositor"
+                settingsKey: "tiling.dragToTile"
+                enabled: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: dragToFillRow
+                width: parent.width
+                label: qsTr("Drag windows to the menu bar to fill the screen")
+                description: qsTr("Window tiling is not available yet.")
+                settingsId: "dragToFill"
+                owner: "compositor"
+                settingsKey: "tiling.dragToFill"
+                enabled: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: holdModifierRow
+                width: parent.width
+                label: qsTr("Hold Option while dragging to tile")
+                description: qsTr("Window tiling is not available yet.")
+                settingsId: "tileModifier"
+                owner: "compositor"
+                settingsKey: "tiling.modifier"
+                enabled: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: tiledMarginsRow
+                width: parent.width
+                label: qsTr("Tiled windows have margins")
+                description: qsTr("Window tiling is not available yet.")
+                settingsId: "tileMargins"
+                owner: "compositor"
+                settingsKey: "tiling.margins"
+                enabled: false
+                showSeparator: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+        }
+
+        // ── Mission Control / Overview ────────────────────────────────────
+        SettingsGroup {
+            id: missionControlGroup
+            width: parent.width
+            title: qsTr("Window Overview")
+
+            SettingsRow {
+                id: overviewRow
+                width: parent.width
+                label: qsTr("Overview")
+                description: qsTr("Workspaces, gestures, and window arrangement.")
+                settingsId: "overview"
+                owner: "settingsd + compositor"
+                settingsKey: ""
+                disclosure: true
+                onDisclosureClicked: root.navigateRequested("mission-control")
+            }
+
+            SettingsRow {
+                id: hotCornersRow
+                width: parent.width
+                label: qsTr("Hot Corners…")
+                description: qsTr("Choose an action and optional modifier for each "
+                                  + "screen corner.")
+                settingsId: "hotCorners"
+                owner: "settingsd + compositor"
+                settingsKey: ""
+                disclosure: true
+                onDisclosureClicked: root.navigateRequested("mission-control")
+            }
+
+            SettingsRow {
+                id: shortcutsRow
+                width: parent.width
+                label: qsTr("Shortcuts…")
+                description: qsTr("The shortcut editor is not available yet; system "
+                                  + "shortcuts are fixed.")
+                settingsId: "shortcuts"
+                owner: "compositor"
+                settingsKey: "shortcuts.*"
+                enabled: false
+                showSeparator: false
+            }
+        }
+
+        // ── Default browser ───────────────────────────────────────────────
+        SettingsGroup {
+            id: defaultAppsGroup
+            width: parent.width
+            title: qsTr("Default web browser")
+
+            SettingsRow {
+                id: defaultBrowserRow
+                width: parent.width
+                label: qsTr("Default web browser")
+                description: root.browserAvailable
+                    ? (Settings.defaultBrowserError.length > 0
+                       ? Settings.defaultBrowserError
+                       : qsTr("Used for web links and web-search results."))
+                    : qsTr("No installed web browser was found.")
+                settingsId: "defaultBrowser"
+                owner: "settingsd + default-apps delegate"
+                settingsKey: "defaults.browser"
+                enabled: root.browserAvailable
+                showSeparator: false
+
+                controlData: Select {
+                    id: defaultBrowserSelect
+                    accessibleName: qsTr("Default web browser")
+                    model: root.browserChoices
+                    enabled: root.browserAvailable
+                    onActivated: (index) => {
+                        if (index >= 0 && index < root.browserChoices.length)
+                            Settings.setDefaultBrowser(
+                                root.browserChoices[index].value);
+                    }
                 }
             }
         }
@@ -405,7 +675,7 @@ Item {
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Show application menus in the menu bar")
-                settingsId: "globalMenu"
+                settingsId: "menuBarToggle"
                 owner: "settingsd"
                 settingsKey: "menu.global"
                 showSeparator: false
@@ -491,5 +761,10 @@ Item {
         property: "currentIndex"
         value: root.optionIndex(root.desktopItemsOptions,
                                 root.desktopItemsValue, 0)
+    }
+    Binding {
+        target: defaultBrowserSelect
+        property: "currentIndex"
+        value: root.browserIndex()
     }
 }

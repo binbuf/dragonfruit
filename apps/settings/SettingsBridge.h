@@ -108,6 +108,16 @@ class SettingsBridge : public QObject
     // this counter advanced. With `DF_WALLPAPER_FIXTURE` the request is served
     // in-process, so the count is observable without a bus.
     Q_PROPERTY(int providerPreloadCount READ providerPreloadCount NOTIFY providerChanged)
+    // T276: the Desktop & Dock pane's default-browser row. The choices come
+    // from app-index's installed `WebBrowser` records; the current value is
+    // `defaults.browser` (empty follows the host default). The write path is
+    // the freedesktop default-apps delegate (`xdg-settings`), which the
+    // Settings portal exposes read-only through `org.dragonfruit.desktop`.
+    Q_PROPERTY(QVariantList defaultBrowserChoices READ defaultBrowserChoices NOTIFY
+                   defaultBrowserChanged)
+    Q_PROPERTY(QString defaultBrowser READ defaultBrowser NOTIFY defaultBrowserChanged)
+    Q_PROPERTY(QString defaultBrowserError READ defaultBrowserError NOTIFY
+                   defaultBrowserChanged)
     // The Bluetooth view from the bridge host (T-15.1b): `{ state, present,
     // powered, discovering, label, adapterName, knownDevices, nearbyDevices }`.
     // Empty when the host (or BlueZ) is absent; the pane renders the absence
@@ -376,6 +386,9 @@ public:
     QString accountsError() const { return m_accountsError; }
     QVariantList wallpaperPresets() const;
     QVariantList providerItems() const;
+    QVariantList defaultBrowserChoices() const;
+    QString defaultBrowser() const;
+    QString defaultBrowserError() const;
     QVariantMap bluetooth() const;
     bool bluetoothAvailable() const;
     QString bluetoothWriteOperation() const { return m_bluetoothWriteOperation; }
@@ -553,6 +566,14 @@ public:
     // ADR 0240: force a catalogue retry (the pane's "Try Again"). The provider
     // refreshes even when its cache is fresh; a no-op when it is absent.
     Q_INVOKABLE void refreshWallpapers();
+
+    // T276: re-read the installed browser choices and the host default. The
+    // Desktop & Dock pane calls this on open; a fixture makes it deterministic.
+    Q_INVOKABLE void refreshDefaultBrowsers();
+    // T276: choose a default browser. Persists `defaults.browser` and asks the
+    // freedesktop default-apps delegate to apply it; a missing delegate keeps
+    // the persisted choice and reports the error on the row.
+    Q_INVOKABLE void setDefaultBrowser(const QString &desktopId);
 
     // ADR 0240: download one deferred item's full-resolution image. The reply
     // is announced through `wallpaperFetchFinished`; a successful fetch also
@@ -874,6 +895,8 @@ signals:
     // changes; listen to this only when a key's identity matters.
     void changed(const QString &key, const QVariant &value);
     void wallpaperChooserAvailableChanged();
+    // T276: the default-browser choices/value/error changed.
+    void defaultBrowserChanged();
     // T270: the chosen backup destination's local path.
     void backupDestinationChosen(const QString &path);
     // T270: the last General host write's operation/state/message changed.
@@ -1039,6 +1062,11 @@ private:
     // T-18.1b: the provider catalogue and its resolved defaults. `m_providerBuiltin`
     // is the provider's own `BuiltinDefaultSource`; the property falls back to
     // the shared shipped-asset resolver so it is non-empty even when absent.
+    // T276: the default-browser choices/value/error.
+    QVariantList m_defaultBrowserChoices;
+    QString m_defaultBrowser;
+    QString m_defaultBrowserError;
+    bool m_defaultBrowserLoaded = false;
     QVariantList m_providerItems;
     QString m_providerStatus;
     QString m_providerDefault;

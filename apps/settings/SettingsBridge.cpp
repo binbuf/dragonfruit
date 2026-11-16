@@ -25,7 +25,9 @@
 #include <QDateTime>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusReply>
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
@@ -44,6 +46,7 @@
 #include <QJsonValue>
 #include <QLinearGradient>
 #include <QPainter>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
@@ -160,6 +163,12 @@ SettingsBridge::SettingsBridge(QObject *parent)
                 if (key == QLatin1String("appearance.iconStyle")
                         || key == QLatin1String("appearance.iconTheme"))
                     applyIconTheme();
+                // T276: the default-browser row mirrors the key, including a
+                // daemon-originated change.
+                if (key == QLatin1String("defaults.browser")) {
+                    m_defaultBrowser = value.toString();
+                    emit defaultBrowserChanged();
+                }
                 emit valuesChanged();
                 emit changed(key, value);
             });
@@ -645,6 +654,21 @@ QVariantList SettingsBridge::wallpaperPresets() const
 QVariantList SettingsBridge::providerItems() const
 {
     return m_providerItems;
+}
+
+QVariantList SettingsBridge::defaultBrowserChoices() const
+{
+    return m_defaultBrowserChoices;
+}
+
+QString SettingsBridge::defaultBrowser() const
+{
+    return m_defaultBrowser;
+}
+
+QString SettingsBridge::defaultBrowserError() const
+{
+    return m_defaultBrowserError;
 }
 
 QVariantMap SettingsBridge::bluetooth() const
@@ -2931,6 +2955,103 @@ void SettingsBridge::refreshWallpapers()
                 watcher->deleteLater();
                 refreshWallpaperProvider();
             });
+}
+
+void SettingsBridge::refreshDefaultBrowsers()
+{
+    // T276: the choices are the installed `WebBrowser` records from app-index;
+    // the Settings app never scans `.desktop` files itself. The fixture makes
+    // the row deterministic without a bus. A missing app-index is a normal
+    // absence: no choices and the row says so.
+    const bool fixture = qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE");
+    QVariantList choices;
+    if (fixture) {
+        choices = {
+            QVariantMap{ { QStringLiteral("value"),
+                           QStringLiteral("org.mozilla.firefox.desktop") },
+                         { QStringLiteral("label"), QStringLiteral("Firefox") } },
+            QVariantMap{ { QStringLiteral("value"),
+                           QStringLiteral("org.chromium.Chromium.desktop") },
+                         { QStringLiteral("label"), QStringLiteral("Chromium") } }
+        };
+    } else if (QDBusConnection::sessionBus().isConnected()) {
+        QDBusInterface index(QStringLiteral("org.dragonfruit.AppIndex1"),
+                             QStringLiteral("/org/dragonfruit/AppIndex1"),
+                             QStringLiteral("org.dragonfruit.AppIndex1"),
+                             QDBusConnection::sessionBus(), this);
+        if (index.isValid()) {
+            const QDBusReply<QString> reply = index.call(QStringLiteral("Enumerate"));
+            if (reply.isValid()) {
+                const QJsonArray records =
+                    QJsonDocument::fromJson(reply.value().toUtf8()).array();
+                for (const QJsonValue &value : records) {
+                    const QJsonObject record = value.toObject();
+                    const QJsonArray categories =
+                        record.value(QStringLiteral("categories")).toArray();
+                    bool browser = false;
+                    for (const QJsonValue &category : categories) {
+                        if (category.toString().compare(QStringLiteral("WebBrowser"),
+                                                        Qt::CaseInsensitive) == 0)
+                            browser = true;
+                    }
+                    if (!browser || record.value(QStringLiteral("noDisplay")).toBool())
+                        continue;
+                    choices.append(QVariantMap{
+                        { QStringLiteral("value"),
+                          record.value(QStringLiteral("desktopId")).toString() },
+                        { QStringLiteral("label"),
+                          record.value(QStringLiteral("name")).toString() }
+                    });
+                }
+            }
+        }
+    }
+    m_defaultBrowserChoices = choices;
+    const QString stored = value(QStringLiteral("defaults.browser")).toString();
+    if (!stored.isEmpty()) {
+        m_defaultBrowser = stored;
+    } else if (!choices.isEmpty()) {
+        m_defaultBrowser = choices.first().toMap().value(QStringLiteral("value")).toString();
+    } else {
+        m_defaultBrowser.clear();
+    }
+    if (!fixture) {
+        QProcess process;
+        process.start(QStringLiteral("xdg-settings"),
+                      { QStringLiteral("get"), QStringLiteral("default-web-browser") });
+        if (process.waitForFinished(1500)) {
+            const QString host =
+                QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+            if (!host.isEmpty() && process.exitCode() == 0)
+                m_defaultBrowser = host;
+        }
+    }
+    m_defaultBrowserLoaded = true;
+    m_defaultBrowserError.clear();
+    emit defaultBrowserChanged();
+}
+
+void SettingsBridge::setDefaultBrowser(const QString &desktopId)
+{
+    if (desktopId.isEmpty())
+        return;
+    m_defaultBrowser = desktopId;
+    m_defaultBrowserError.clear();
+    // The durable preference travels through the common apply path. The
+    // freedesktop default-apps delegate applies it for other toolkits; the
+    // Settings portal exposes the key read-only as `org.dragonfruit.desktop`.
+    set(QStringLiteral("defaults.browser"), desktopId);
+    if (!qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE")) {
+        QProcess process;
+        process.start(QStringLiteral("xdg-settings"),
+                      { QStringLiteral("set"), QStringLiteral("default-web-browser"),
+                        desktopId });
+        if (!process.waitForFinished(2000) || process.exitCode() != 0) {
+            m_defaultBrowserError =
+                tr("The host default-apps delegate did not accept the change.");
+        }
+    }
+    emit defaultBrowserChanged();
 }
 
 void SettingsBridge::fetchWallpaperItem(int pageid)
