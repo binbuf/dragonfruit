@@ -16,6 +16,20 @@
 > consumer-less is not done; the owning task is in the
 > [system-settings roadmap](../tasks/system-settings/plan/ROADMAP.md)
 > T263–T284.
+>
+> **2026-11-16 backend contract (T282).** The schema now carries an explicit
+> `stored_only` flag and a semantic rule per key. A row whose key is stored-only
+> must say so (the `SettingsMap.row()` `storedOnly` argument); a row whose key
+> has a shipped consumer must name one of the process/module roots
+> `shell/`, `apps/settings`, `apps/files`, `compositor/`, `session/`,
+> `services/wallpaperd`, `dragonfruit-system-status`, or `settingsd`.
+> `cargo test -p dragonfruit-settingsd` enforces that split, and
+> `tst_settings_schema_mirror` compares the client default/constraint tables
+> with `dragonfruit-settingsd --print-schema-json`. Adapter rows use the
+> `writeFinished` outcome (`applied`/`accepted`/`denied`/`failed`/`absent`);
+> a denial is a row state, never an implicit success. See
+> [24-system-settings.md](24-system-settings.md) §3.7 and ADR
+> [0283](adr/0283-stored-only-settings-keys.md).
 
 ## 1. Purpose
 

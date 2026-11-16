@@ -484,6 +484,15 @@ impl HostGeneral {
             Ok(output) => {
                 let text = output.error_text();
                 if is_denied(&text) {
+                    // T282: a normal user's direct write is refused with
+                    // "Interactive authentication required". When pkexec is
+                    // installed it is the documented polkit delegate; the
+                    // shell's agent answers the prompt. Without it (or when
+                    // the second attempt is refused too) the denial stays
+                    // visible as a `Denied` outcome.
+                    if let Some(privileged) = self.write_via_pkexec(program, args) {
+                        return privileged;
+                    }
                     GeneralOutcome::Denied(text)
                 } else {
                     GeneralOutcome::Failed(AdapterError::new(text))
@@ -491,6 +500,26 @@ impl HostGeneral {
             }
             Err(error) => GeneralOutcome::Failed(AdapterError::new(error)),
         }
+    }
+
+    /// Retry one refused system write through `pkexec`. `None` when pkexec is
+    /// not installed, so the caller keeps the original denial message.
+    fn write_via_pkexec(&self, program: &str, args: &[&str]) -> Option<GeneralOutcome> {
+        program_path("pkexec")?;
+        let mut command = vec![program];
+        command.extend_from_slice(args);
+        Some(match run("pkexec", &command) {
+            Ok(output) if output.success() => GeneralOutcome::Applied,
+            Ok(output) => {
+                let text = output.error_text();
+                if is_denied(&text) {
+                    GeneralOutcome::Denied(text)
+                } else {
+                    GeneralOutcome::Failed(AdapterError::new(text))
+                }
+            }
+            Err(error) => GeneralOutcome::Failed(AdapterError::new(error)),
+        })
     }
 }
 

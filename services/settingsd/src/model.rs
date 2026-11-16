@@ -148,6 +148,49 @@ mod tests {
         assert_eq!(settings, before);
     }
 
+    /// T282: a non-finite number is rejected at the one write path, so it can
+    /// never reach the store (and never reach the JSON writer).
+    #[test]
+    fn non_finite_numbers_are_rejected_and_do_not_mutate_the_store() {
+        let mut settings = Settings::new();
+        let before = settings.clone();
+        for number in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(matches!(
+                settings.set("dock.size", Value::Number(number)),
+                Err(SettingsError::NonFinite { .. })
+            ));
+        }
+        assert_eq!(settings, before);
+        assert_eq!(
+            settings.get("dock.size").unwrap(),
+            &Value::Number(0.5)
+        );
+    }
+
+    /// T282: a value that matches its type but not its semantic (a colour
+    /// without a leading `#`, a weekday spelled out) is rejected too.
+    #[test]
+    fn semantic_values_are_rejected_at_the_store() {
+        let mut settings = Settings::new();
+        let before = settings.clone();
+        assert!(settings
+            .set("appearance.accent", Value::Text("blue".into()))
+            .is_err());
+        assert!(settings
+            .set("focus.schedule.start", Value::Text("7am".into()))
+            .is_err());
+        assert!(settings
+            .set(
+                "focus.schedule.days",
+                Value::TextList(vec!["monday".into()])
+            )
+            .is_err());
+        assert!(settings
+            .set("wallpaper.source", Value::Text("relative.jpg".into()))
+            .is_err());
+        assert_eq!(settings, before);
+    }
+
     #[test]
     fn the_snapshot_has_one_entry_per_key_and_reset_restores_defaults() {
         let mut settings = Settings::new();

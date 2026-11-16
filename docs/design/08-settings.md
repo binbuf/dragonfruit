@@ -735,6 +735,23 @@ observe changes over `org.dragonfruit.Settings1` signals rather than polling,
 so the compositor, shell, and apps react to a single source of truth. Schema
 changes are additive within a release; migrations run at `settingsd` startup.
 
+T282 hardened that contract. Writes are validated for type, range, enum, and
+semantics (times, colours, absolute paths, module/weekday/layout lists,
+bounded messages); NaN/Infinity is rejected before a range comparison. Saves
+are serialized across concurrent `Set`/`Reset`, so a snapshot can never land
+out of order. A refused disk write keeps the live value but reports
+`PersistenceState=memory-only` with `PersistenceError` and a
+`PersistenceFailed` signal; the client marks that write `memory` ("saved for
+this session"), not durable success. `keys` must be a JSON object; a malformed
+file is copied to `settings.json.malformed.N.bak` before defaults are used,
+and a newer-schema file is copied to `settings.json.schema-N.bak` and reported
+through `LoadedSchema`. A `GetAll` resync never overwrites a key a newer
+`Changed` touched while the snapshot was in flight, and it clears
+deferred/error state only for keys it actually carried. `refreshFinished` and
+`resetFinished` make an absent daemon a visible deferred state. See
+[24-system-settings.md](24-system-settings.md) §3.7 and ADR
+[0283](adr/0283-stored-only-settings-keys.md).
+
 ## Menu model
 
 The app publishes its native menu model for the global menu (T-09.6a,

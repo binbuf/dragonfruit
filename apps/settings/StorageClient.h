@@ -39,6 +39,10 @@ public:
 signals:
     void changed(const QVariantMap &view);
     void availableChanged(bool available);
+    // T282: the outcome of one write (`applied`, `accepted`, `absent`,
+    // `denied`, or `failed`) and the host's message.
+    void writeFinished(const QString &operation, const QString &outcome,
+                       const QString &message);
 };
 
 // The live client over the user session bus.

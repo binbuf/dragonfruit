@@ -113,6 +113,17 @@ pub enum SettingsError {
         value: String,
         allowed: &'static [&'static str],
     },
+    /// A double is NaN or infinite (T282). Every range comparison is false for
+    /// NaN, so this is checked before the bounds and never reaches persistence.
+    NonFinite {
+        key: String,
+    },
+    /// A value matched its type but failed a semantic rule: a malformed time,
+    /// colour, path, list element, or an over-long message (T282).
+    Invalid {
+        key: String,
+        message: String,
+    },
 }
 
 impl fmt::Display for SettingsError {
@@ -133,6 +144,10 @@ impl fmt::Display for SettingsError {
                 value,
                 allowed,
             } => write!(f, "{key}: {value:?} is not one of {allowed:?}"),
+            SettingsError::NonFinite { key } => {
+                write!(f, "{key}: the number must be finite")
+            }
+            SettingsError::Invalid { key, message } => write!(f, "{key}: {message}"),
         }
     }
 }

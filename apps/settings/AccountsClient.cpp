@@ -118,7 +118,7 @@ bool DbusAccountsClient::onlineAccountsAvailable() const
 
 void DbusAccountsClient::refresh()
 {
-    call(QStringLiteral("State"), {});
+    call(QStringLiteral("Refresh"), {});
 }
 
 void DbusAccountsClient::refreshBiometrics()
@@ -230,7 +230,8 @@ void DbusAccountsClient::call(const QString &method, const QVariantList &argumen
         }
         return;
     }
-    const bool isState = method == QStringLiteral("State");
+    const bool isState = method == QStringLiteral("State")
+        || method == QStringLiteral("Refresh");
     const bool isBiometricsState = method == QStringLiteral("BiometricsState")
         || method == QStringLiteral("RefreshBiometrics");
     const bool isOnlineState = method == QStringLiteral("OnlineAccountsState")
@@ -245,7 +246,14 @@ void DbusAccountsClient::call(const QString &method, const QVariantList &argumen
         || method == QStringLiteral("EnsureOnlineAccountCredentials");
     const bool isWrite = isBiometricsWrite || isOnlineWrite
         || method == QStringLiteral("CreateUser")
-        || method == QStringLiteral("SetAccountPassword");
+        || method == QStringLiteral("SetAccountPassword")
+        || method == QStringLiteral("DeleteUser")
+        || method == QStringLiteral("SetAccountType")
+        || method == QStringLiteral("SetLocked")
+        || method == QStringLiteral("SetAutomaticLogin")
+        || method == QStringLiteral("CreateGroup")
+        || method == QStringLiteral("DeleteGroup")
+        || method == QStringLiteral("SetGroupMembers");
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,

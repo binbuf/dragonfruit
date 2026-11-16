@@ -177,7 +177,7 @@ void DbusAccessibilityClient::refresh()
         return;
     }
     auto *watcher = new QDBusPendingCallWatcher(
-        iface->asyncCallWithArgumentList(QStringLiteral("State"), {}), this);
+        iface->asyncCallWithArgumentList(QStringLiteral("Refresh"), {}), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;

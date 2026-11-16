@@ -25,6 +25,7 @@
 #include <QDBusVariant>
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVariant>
@@ -54,7 +55,6 @@ public:
     // `org.dragonfruit.Settings1.Reset`; the mock applies the defaults in
     // process. Consumers converge through the usual `changed` signals.
     virtual void reset() = 0;
-
     QVariant value(const QString &key, const QVariant &fallback = {}) const;
     bool boolean(const QString &key, bool fallback) const;
     double real(const QString &key, double fallback) const;
@@ -70,10 +70,18 @@ public:
     QString validate(const QString &key, const QVariant &value) const;
     // The last write error per key (`error` state only).
     QVariantMap writeErrors() const;
-    // `idle`, `pending`, `deferred` (no daemon; kept in memory), or `error`.
+    // `idle`, `pending`, `deferred` (no daemon; kept in memory), `memory`
+    // (`Set` applied but the daemon could not write the file), or `error`.
     QVariantMap writeStates() const;
     QString writeError(const QString &key) const;
     QString writeState(const QString &key) const;
+    // T282: the last `reset()` outcome: `idle`, `pending`, `deferred` (no
+    // daemon; nothing durable happened), or `error`.
+    QString resetState() const { return m_resetState; }
+    QString resetError() const { return m_resetError; }
+    // T282: the last `refresh()` outcome; a failed resync leaves the previous
+    // snapshot in place instead of silently looking authoritative.
+    QString refreshError() const { return m_refreshError; }
 
 signals:
     void availableChanged(bool available);
@@ -83,6 +91,12 @@ signals:
     // A `refresh()` finished applying the daemon's snapshot (or, for a mock,
     // immediately).
     void refreshed();
+    // T282: the same resync, with its outcome. `ok` false carries the bus or
+    // daemon error; `refreshed` still fires for compatibility.
+    void refreshFinished(bool ok, const QString &message);
+    // T282: one `reset()` resolved. `deferred` means no daemon was present, so
+    // nothing durable changed.
+    void resetFinished(bool ok, bool deferred, const QString &message);
     // T224: one write is in flight (the local value is already optimistic).
     void writeStarted(const QString &key, const QVariant &value);
     // T224: one write resolved. `ok` false means the value was rejected or the
@@ -105,20 +119,33 @@ protected:
     // older write is ignored so a fast slider cannot clobber a newer value.
     bool beginWrite(const QString &key, const QVariant &value, quint64 *generation);
     void completeWrite(const QString &key, quint64 generation, bool ok,
-                       const QString &message, bool deferred = false);
+                       const QString &message,
+                       const QString &state = QString());
     // The daemon reported a value (an echo or an external change); clear any
     // pending error so the control stops claiming a failure the owner fixed.
     void noteOwnerValue(const QString &key, const QVariant &value);
     // A `GetAll` snapshot is authoritative (ADR 0032): drop deferred/error
-    // states for keys that have no write in flight. A write made while the
-    // daemon was away is in-memory for the session only, so the restart
-    // resync reconciles it away instead of keeping an unpersisted change.
-    void clearOwnerWriteStates();
+    // states for keys that are in the snapshot and have no write in flight. A
+    // write made while the daemon was away is in-memory for the session only,
+    // so the restart resync reconciles it away instead of keeping it.
+    void clearOwnerWriteStates(const QStringList &keys);
     void clearWriteError(const QString &key);
     void setWriteState(const QString &key, const QString &state);
+    // T282: a `GetAll` request begins; marks the guard epoch and clears the
+    // per-request dirty set. `snapshotApplies()` is false for a key changed by
+    // a newer `Changed` (or owned by an in-flight write) while the snapshot
+    // was in flight, so a stale snapshot never overwrites a newer value.
+    void beginRefresh();
+    bool snapshotApplies(const QString &key) const;
+    void finishRefresh(bool ok, const QString &message);
 
     QVariantMap m_values;
     bool m_available = false;
+    QString m_resetState = QStringLiteral("idle");
+    QString m_resetError;
+    // T282: keys a newer owner change (or in-flight write) touched after the
+    // current `GetAll` went out.
+    QSet<QString> m_dirtySinceRefresh;
 
 private:
     struct PendingWrite {
@@ -130,6 +157,9 @@ private:
     QHash<QString, quint64> m_generations;
     QHash<QString, QString> m_writeErrors;
     QHash<QString, QString> m_writeStates;
+    // T282: keys an owner `Changed`/in-flight write touched after the current
+    // `GetAll` request went out. A snapshot never overwrites one of these.
+    QString m_refreshError;
 };
 
 // The `org.dragonfruit.Settings1` schema defaults, mirrored from

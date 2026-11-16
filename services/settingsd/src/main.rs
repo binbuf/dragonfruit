@@ -23,11 +23,13 @@ use dragonfruit_settingsd::Settings;
 
 fn main() -> ExitCode {
     let mut print_keys = false;
+    let mut print_schema_json_flag = false;
     let mut print_schema = false;
     let mut print_config_path = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-keys" => print_keys = true,
+            "--print-schema-json" => print_schema_json_flag = true,
             "--print-schema" => print_schema = true,
             "--config-path" => print_config_path = true,
             "-h" | "--help" => {
@@ -46,6 +48,10 @@ fn main() -> ExitCode {
         println!("{SCHEMA_VERSION}");
         return ExitCode::SUCCESS;
     }
+    if print_schema_json_flag {
+        print_schema_json();
+        return ExitCode::SUCCESS;
+    }
     if print_keys {
         print_keys_table();
         return ExitCode::SUCCESS;
@@ -58,8 +64,8 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let (settings, persistence) = load_settings();
-    match dbus::run(settings, persistence) {
+    let (settings, persistence, loaded_schema) = load_settings();
+    match dbus::run(settings, persistence, loaded_schema) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!(
@@ -72,14 +78,24 @@ fn main() -> ExitCode {
 
 /// Load the persisted settings, migrating an older file in place. A session
 /// with no config home runs from schema defaults; an unreadable or malformed
-/// file is reported and never blocks the daemon.
-fn load_settings() -> (Settings, Option<Persistence>) {
+/// file is preserved and never blocks the daemon (T282).
+fn load_settings() -> (Settings, Option<Persistence>, u32) {
     let Some(path) = persist::default_path() else {
         eprintln!("dragonfruit-settingsd: no $XDG_CONFIG_HOME or $HOME; using schema defaults");
-        return (Settings::new(), None);
+        return (Settings::new(), None, SCHEMA_VERSION);
     };
     match persist::load(&path) {
         Ok(loaded) => {
+            if let Some(backup) = &loaded.backup {
+                eprintln!(
+                    "dragonfruit-settingsd: {} was written by schema {} (this build reads {}); \
+                     preserved at {} before any rewrite",
+                    path.display(),
+                    loaded.schema,
+                    SCHEMA_VERSION,
+                    backup.display()
+                );
+            }
             if loaded.migrated {
                 match loaded.persistence.save(&loaded.settings) {
                     Ok(()) => eprintln!(
@@ -92,14 +108,25 @@ fn load_settings() -> (Settings, Option<Persistence>) {
                     ),
                 }
             }
-            (loaded.settings, Some(loaded.persistence))
+            let loaded_schema = loaded.schema;
+            (loaded.settings, Some(loaded.persistence), loaded_schema)
         }
         Err(error) => {
+            // The settings file is user data: never overwrite a malformed file
+            // without keeping a copy first.
+            let backup = persist::backup(&path, "malformed")
+                .map(|backup| backup.display().to_string())
+                .unwrap_or_else(|backup_error| format!("(backup failed: {backup_error})"));
             eprintln!(
-                "dragonfruit-settingsd: cannot read {}: {error}; using schema defaults",
+                "dragonfruit-settingsd: cannot read {}: {error}; preserved at {backup}; \
+                 using schema defaults",
                 path.display()
             );
-            (Settings::new(), Some(Persistence::new(path)))
+            (
+                Settings::new(),
+                Some(Persistence::new(path)),
+                persist::UNVERSIONED,
+            )
         }
     }
 }
@@ -119,6 +146,42 @@ fn print_keys_table() {
     }
 }
 
+/// Print the machine-readable schema the cross-language mirror test compares
+/// against the client's `settingsSchemaDefaults()` / `settingsSchemaInfo()`
+/// tables (T282). Every declared type, default, constraint, and the
+/// stored-only flag is included, so drift fails a test instead of production.
+fn print_schema_json() {
+    use dragonfruit_settingsd::schema::KeyDefault;
+    use serde_json::json;
+
+    let keys: Vec<_> = KEYS
+        .iter()
+        .map(|spec| {
+            let default = match spec.default {
+                KeyDefault::Bool(value) => json!(value),
+                KeyDefault::Number(value) => json!(value),
+                KeyDefault::Integer(value) => json!(value),
+                KeyDefault::Text(value) => json!(value),
+                KeyDefault::List(items) => json!(items),
+            };
+            json!({
+                "key": spec.key,
+                "type": spec.kind.signature(),
+                "default": default,
+                "allowed": spec.allowed,
+                "min": spec.min,
+                "max": spec.max,
+                "storedOnly": spec.stored_only,
+                "since": spec.since,
+                "owner": spec.owner,
+                "consumer": spec.consumer,
+            })
+        })
+        .collect();
+    let document = json!({ "schema": SCHEMA_VERSION, "keys": keys });
+    println!("{document}");
+}
+
 fn print_help() {
     println!(
         "dragonfruit-settingsd — T-08.1a desktop-settings daemon\n\
@@ -126,6 +189,7 @@ fn print_help() {
          Serves org.dragonfruit.Settings1 on the user session bus.\n\
          Options:\n\
            --print-keys     print the key schema (key, type, owner, consumer, summary)\n\
+           --print-schema-json  print the machine-readable schema (JSON)\n\
            --print-schema   print the current schema revision\n\
            --config-path    print the resolved settings file path\n\
            -h, --help       show this help"

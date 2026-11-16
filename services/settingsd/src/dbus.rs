@@ -46,6 +46,9 @@ pub enum Settings1Error {
     OutOfRange(String),
     /// A text value is not one of the key's declared alternatives.
     NotAllowed(String),
+    /// A value matched its type but failed a semantic rule, or was a
+    /// non-finite number (T282).
+    Invalid(String),
     #[zbus(error)]
     ZBus(zbus::Error),
 }
@@ -57,6 +60,8 @@ impl From<SettingsError> for Settings1Error {
             SettingsError::TypeMismatch { .. } => Settings1Error::TypeMismatch(error.to_string()),
             SettingsError::OutOfRange { .. } => Settings1Error::OutOfRange(error.to_string()),
             SettingsError::NotAllowed { .. } => Settings1Error::NotAllowed(error.to_string()),
+            SettingsError::NonFinite { .. } => Settings1Error::Invalid(error.to_string()),
+            SettingsError::Invalid { .. } => Settings1Error::Invalid(error.to_string()),
         }
     }
 }
@@ -68,6 +73,16 @@ pub struct Settings1 {
     /// The on-disk writer. `None` for an in-memory object (tests, a session
     /// with no config directory); `Some` when `Set` must persist.
     persistence: Option<Arc<Persistence>>,
+    /// T282: serializes snapshot + save so two concurrent `Set`/`Reset`
+    /// calls cannot write an older snapshot after a newer one.
+    save_lock: Arc<Mutex<()>>,
+    /// The schema revision the current file was written with (not the
+    /// compile-time revision), exposed for clients and diagnostics.
+    loaded_schema: u32,
+    /// `saved`, `memory-only`, or `unavailable` (no config path).
+    persistence_state: Arc<Mutex<String>>,
+    /// The last write failure, empty when the file is current.
+    persistence_error: Arc<Mutex<String>>,
 }
 
 impl Settings1 {
@@ -76,6 +91,10 @@ impl Settings1 {
         Settings1 {
             settings: Arc::new(Mutex::new(settings)),
             persistence: None,
+            save_lock: Arc::new(Mutex::new(())),
+            loaded_schema: SCHEMA_VERSION,
+            persistence_state: Arc::new(Mutex::new("unavailable".to_owned())),
+            persistence_error: Arc::new(Mutex::new(String::new())),
         }
     }
 
@@ -85,14 +104,32 @@ impl Settings1 {
         Settings1 {
             settings,
             persistence: None,
+            save_lock: Arc::new(Mutex::new(())),
+            loaded_schema: SCHEMA_VERSION,
+            persistence_state: Arc::new(Mutex::new("unavailable".to_owned())),
+            persistence_error: Arc::new(Mutex::new(String::new())),
         }
     }
 
     /// A new object that persists every real change through `persistence`.
     pub fn with_persistence(settings: Settings, persistence: Persistence) -> Self {
+        Self::with_persistence_at(settings, persistence, SCHEMA_VERSION)
+    }
+
+    /// A new object that persists every real change and reports the revision
+    /// the loaded file actually carried (T282).
+    pub fn with_persistence_at(
+        settings: Settings,
+        persistence: Persistence,
+        loaded_schema: u32,
+    ) -> Self {
         Settings1 {
             settings: Arc::new(Mutex::new(settings)),
             persistence: Some(Arc::new(persistence)),
+            save_lock: Arc::new(Mutex::new(())),
+            loaded_schema,
+            persistence_state: Arc::new(Mutex::new("saved".to_owned())),
+            persistence_error: Arc::new(Mutex::new(String::new())),
         }
     }
 
@@ -104,6 +141,39 @@ impl Settings1 {
     /// The on-disk writer, when this object was created with one.
     pub fn persistence(&self) -> Option<&Arc<Persistence>> {
         self.persistence.as_ref()
+    }
+
+    fn set_storage_state(&self, state: &str, error: &str) {
+        if let Ok(mut current) = self.persistence_state.lock() {
+            *current = state.to_owned();
+        }
+        if let Ok(mut current) = self.persistence_error.lock() {
+            *current = error.to_owned();
+        }
+    }
+
+    /// Take the save lock, snapshot the newest store, and write it. Returns
+    /// the save error (and records the `memory-only` state) or `None`.
+    fn persist_latest(&self) -> Option<String> {
+        let Some(persistence) = &self.persistence else {
+            return None;
+        };
+        let _save = self
+            .save_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let snapshot = lock(&self.settings).clone();
+        match persistence.save(&snapshot) {
+            Ok(()) => {
+                self.set_storage_state("saved", "");
+                None
+            }
+            Err(error) => {
+                let message = error.to_string();
+                self.set_storage_state("memory-only", &message);
+                Some(message)
+            }
+        }
     }
 }
 
@@ -139,15 +209,17 @@ impl Settings1 {
             // Persist before signalling: a consumer that reacts to `Changed`
             // can rely on the durable file already holding the new value. A
             // disk failure must not take the live daemon down, so it is
-            // reported and the in-memory value stays authoritative.
-            if let Some(persistence) = &self.persistence {
-                let snapshot = lock(&self.settings).clone();
-                if let Err(error) = persistence.save(&snapshot) {
-                    eprintln!(
-                        "dragonfruit-settingsd: cannot persist settings to {}: {error}",
-                        persistence.path().display()
-                    );
-                }
+            // reported to clients as `memory-only` and the in-memory value
+            // stays authoritative.
+            if let Some(message) = self.persist_latest() {
+                eprintln!(
+                    "dragonfruit-settingsd: cannot persist settings to {}: {message}",
+                    self.persistence
+                        .as_ref()
+                        .map(|persistence| persistence.path().display().to_string())
+                        .unwrap_or_default()
+                );
+                Settings1::persistence_failed(&emitter, key, &message).await?;
             }
             Settings1::changed(&emitter, key, new_value.to_owned_value()).await?;
         }
@@ -173,14 +245,15 @@ impl Settings1 {
             let mut settings = lock(&self.settings);
             settings.reset()
         };
-        if let Some(persistence) = &self.persistence {
-            let snapshot = lock(&self.settings).clone();
-            if let Err(error) = persistence.save(&snapshot) {
-                eprintln!(
-                    "dragonfruit-settingsd: cannot persist settings to {}: {error}",
-                    persistence.path().display()
-                );
-            }
+        if let Some(message) = self.persist_latest() {
+            eprintln!(
+                "dragonfruit-settingsd: cannot persist settings to {}: {message}",
+                self.persistence
+                    .as_ref()
+                    .map(|persistence| persistence.path().display().to_string())
+                    .unwrap_or_default()
+            );
+            Settings1::persistence_failed(&emitter, "*", &message).await?;
         }
         for (key, value) in changed {
             Settings1::changed(&emitter, key, value.to_owned_value()).await?;
@@ -202,6 +275,43 @@ impl Settings1 {
         SCHEMA_VERSION
     }
 
+    /// The revision the loaded file actually carried (T282): 0 for a
+    /// pre-versioning or missing file, a newer number when settingsd loaded a
+    /// future file alongside its preserved backup.
+    #[zbus(property(emits_changed_signal = "const"))]
+    fn loaded_schema(&self) -> u32 {
+        self.loaded_schema
+    }
+
+    /// `saved`, `memory-only` (the last write is in memory but not on disk),
+    /// or `unavailable` (no config path, so nothing is durable).
+    #[zbus(property)]
+    fn persistence_state(&self) -> String {
+        self.persistence_state
+            .lock()
+            .map(|state| state.clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+    }
+
+    /// The last persistence failure, empty when the file is current.
+    #[zbus(property)]
+    fn persistence_error(&self) -> String {
+        self.persistence_error
+            .lock()
+            .map(|error| error.clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+    }
+
+    /// A write was applied in memory but could not be saved (T282). `key` is
+    /// the setting, or `*` for a reset. Clients read `PersistenceState` for
+    /// the durable state and show a row-level "saved for this session" note.
+    #[zbus(signal)]
+    async fn persistence_failed(
+        emitter: &SignalEmitter<'_>,
+        key: &str,
+        message: &str,
+    ) -> zbus::Result<()>;
+
     /// A key changed to a new value. This is the only notification mechanism;
     /// clients never poll.
     #[zbus(signal)]
@@ -222,9 +332,15 @@ fn lock(settings: &Arc<Mutex<Settings>>) -> std::sync::MutexGuard<'_, Settings> 
 /// is then written to disk before its signal. Returns an error only when the
 /// bus or the name cannot be taken; a session without a bus is not this
 /// daemon's problem to block on.
-pub fn run(settings: Settings, persistence: Option<Persistence>) -> zbus::Result<()> {
+pub fn run(
+    settings: Settings,
+    persistence: Option<Persistence>,
+    loaded_schema: u32,
+) -> zbus::Result<()> {
     let object = match persistence {
-        Some(persistence) => Settings1::with_persistence(settings, persistence),
+        Some(persistence) => {
+            Settings1::with_persistence_at(settings, persistence, loaded_schema)
+        }
         None => Settings1::new(settings),
     };
     let connection = connection::Builder::session()?

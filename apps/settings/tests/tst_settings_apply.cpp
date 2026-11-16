@@ -11,9 +11,11 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusContext>
+#include <QDBusMessage>
 #include <QDBusVariant>
 #include <QSignalSpy>
 #include <QTest>
+#include <QVariantList>
 #include <QVariantMap>
 
 namespace {
@@ -26,6 +28,7 @@ class FakeSettingsService : public QObject, protected QDBusContext
 {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.dragonfruit.Settings1")
+    Q_PROPERTY(QString PersistenceState READ persistenceState CONSTANT)
 
 public:
     explicit FakeSettingsService(QObject *parent = nullptr)
@@ -46,6 +49,17 @@ public:
         m_failMessage = message;
     }
     int setCount() const { return m_setCount; }
+    QString persistenceState() const { return m_persistenceState; }
+    void setPersistenceState(const QString &state) { m_persistenceState = state; }
+
+    // T282: make the next `GetAll` return a snapshot captured before a newer
+    // `Changed`, modelling the race a restart resync can lose.
+    void setStaleNextGetAll(int workspacesCount)
+    {
+        m_staleGetAll = m_values;
+        m_staleGetAll.insert(QStringLiteral("workspaces.count"), workspacesCount);
+        m_hasStaleGetAll = true;
+    }
 
 public slots:
     QDBusVariant Get(const QString &key) const { return QDBusVariant(m_values.value(key)); }
@@ -62,7 +76,22 @@ public slots:
         setValue(key, value.variant());
     }
 
-    QVariantMap GetAll() const { return m_values; }
+    QVariantMap GetAll()
+    {
+        if (m_hasStaleGetAll) {
+            m_hasStaleGetAll = false;
+            return m_staleGetAll;
+        }
+        return m_values;
+    }
+    void Reset()
+    {
+        const QVariantMap defaults = settingsSchemaDefaults();
+        for (auto it = defaults.constBegin(); it != defaults.constEnd(); ++it) {
+            if (m_values.value(it.key()) != it.value())
+                setValue(it.key(), it.value());
+        }
+    }
     QStringList ListKeys() const { return m_values.keys(); }
 
 signals:
@@ -73,6 +102,9 @@ private:
     bool m_failNext = false;
     QString m_failMessage;
     int m_setCount = 0;
+    QString m_persistenceState = QStringLiteral("saved");
+    bool m_hasStaleGetAll = false;
+    QVariantMap m_staleGetAll;
 };
 
 bool registerService(QDBusConnection &bus, FakeSettingsService &service)
@@ -81,7 +113,8 @@ bool registerService(QDBusConnection &bus, FakeSettingsService &service)
         return false;
     return bus.registerObject(kPath, &service,
                               QDBusConnection::ExportAllSlots
-                                  | QDBusConnection::ExportAllSignals);
+                                  | QDBusConnection::ExportAllSignals
+                                  | QDBusConnection::ExportAllProperties);
 }
 
 void unregisterService(QDBusConnection &bus)
@@ -227,6 +260,100 @@ private slots:
         QVERIFY(registerService(bus, service));
         QTRY_VERIFY_WITH_TIMEOUT(client.isAvailable(), 5000);
         QTRY_COMPARE_WITH_TIMEOUT(client.value("workspaces.count").toLongLong(), 9, 5000);
+
+        unregisterService(bus);
+    }
+
+    // T282: a `GetAll` reply that arrives after a newer `Changed` must not
+    // overwrite it. The snapshot only clears state for keys it actually
+    // carried and that were not superseded.
+    void aStaleSnapshotCannotOverwriteANewerChange()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        FakeSettingsService service;
+        QVERIFY(registerService(bus, service));
+
+        DbusSettingsClient client;
+        QTRY_VERIFY_WITH_TIMEOUT(client.isAvailable(), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(client.value("workspaces.count").toLongLong(), 3, 5000);
+
+        // The newer Changed goes out first; the resync then returns the old
+        // snapshot. The guard must ignore the superseded key.
+        service.setValue("workspaces.count", 7);
+        service.setStaleNextGetAll(3);
+        client.refresh();
+        QTRY_COMPARE_WITH_TIMEOUT(client.value("workspaces.count").toLongLong(), 7, 5000);
+        QTest::qWait(150);
+        QCOMPARE(client.value("workspaces.count").toLongLong(), 7);
+
+        // A newer key that is not in the delayed snapshot keeps its state;
+        // the snapshot only reconciles keys it carried.
+        service.setValue("dock.autohide", true);
+        QTRY_COMPARE_WITH_TIMEOUT(client.value("dock.autohide").toBool(), true, 5000);
+
+        unregisterService(bus);
+    }
+
+    // T282: refresh reports success/failure, and reset says "deferred" when no
+    // daemon is present instead of silently doing nothing.
+    void refreshAndResetReportTheirOutcome()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        FakeSettingsService service;
+        QVERIFY(registerService(bus, service));
+
+        DbusSettingsClient client;
+        QTRY_VERIFY_WITH_TIMEOUT(client.isAvailable(), 5000);
+        QTest::qWait(100); // the constructor's initial resync settles
+        QSignalSpy refreshed(&client, &SettingsClient::refreshFinished);
+        client.refresh();
+        QTRY_COMPARE_WITH_TIMEOUT(refreshed.count(), 1, 5000);
+        QCOMPARE(refreshed.at(0).at(0).toBool(), true);
+        QCOMPARE(client.refreshError(), QString());
+
+        QSignalSpy resets(&client, &SettingsClient::resetFinished);
+        client.reset();
+        QTRY_COMPARE_WITH_TIMEOUT(resets.count(), 1, 5000);
+        QCOMPARE(resets.at(0).at(0).toBool(), true);
+        QCOMPARE(resets.at(0).at(1).toBool(), false);
+        QCOMPARE(client.resetState(), QStringLiteral("idle"));
+
+        unregisterService(bus);
+        QTRY_VERIFY_WITH_TIMEOUT(!client.isAvailable(), 5000);
+
+        refreshed.clear();
+        client.refresh();
+        QCOMPARE(refreshed.count(), 1);
+        QCOMPARE(refreshed.at(0).at(0).toBool(), false);
+        QVERIFY(!client.refreshError().isEmpty());
+
+        resets.clear();
+        client.reset();
+        QCOMPARE(resets.count(), 1);
+        QCOMPARE(resets.at(0).at(0).toBool(), false);
+        QCOMPARE(resets.at(0).at(1).toBool(), true);
+        QCOMPARE(client.resetState(), QStringLiteral("deferred"));
+    }
+
+    // T282: a daemon that saved the value in memory but not on disk is a
+    // distinct `memory` write state, not a durable `idle` success.
+    void aMemoryOnlyPersistIsReportedAsMemory()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        FakeSettingsService service;
+        QVERIFY(registerService(bus, service));
+
+        DbusSettingsClient client;
+        QTRY_VERIFY_WITH_TIMEOUT(client.isAvailable(), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(client.value("dock.autohide").toBool(), false, 5000);
+
+        service.setPersistenceState(QStringLiteral("memory-only"));
+        QSignalSpy finished(&client, &SettingsClient::writeFinished);
+        QVERIFY(client.set("dock.autohide", true));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        QCOMPARE(finished.at(0).at(2).toBool(), true);
+        QCOMPARE(client.writeState("dock.autohide"), QStringLiteral("memory"));
+        QVERIFY(finished.at(0).at(3).toString().contains("could not be written"));
 
         unregisterService(bus);
     }

@@ -416,7 +416,38 @@ fn run_write(bin: &str, args: &[&str]) -> PrintOutcome {
     match run(bin, args) {
         None => PrintOutcome::Absent,
         Some(output) if output.status.success() => PrintOutcome::Applied,
-        Some(output) => classify(&combined(&output)),
+        Some(output) => {
+            let outcome = classify(&combined(&output));
+            // T282: CUPS admin tools often require the `lp` group. A normal
+            // user's refusal is retried through the documented polkit
+            // delegate (`pkexec`) when it is installed; a second refusal stays
+            // a visible `Denied`, never a silent success.
+            if matches!(outcome, PrintOutcome::Denied(_)) {
+                if let Some(privileged) = run_via_pkexec(bin, args) {
+                    return privileged;
+                }
+            }
+            outcome
+        }
+    }
+}
+
+/// Retry one refused CUPS write through `pkexec`. `None` when pkexec is not
+/// installed, so the original denial message survives.
+fn run_via_pkexec(bin: &str, args: &[&str]) -> Option<PrintOutcome> {
+    let path = std::env::var_os("PATH")?;
+    let available = std::env::split_paths(&path)
+        .map(|dir| dir.join("pkexec"))
+        .any(|candidate| candidate.is_file());
+    if !available {
+        return None;
+    }
+    let mut command = vec![bin];
+    command.extend_from_slice(args);
+    match run("pkexec", &command) {
+        None => None,
+        Some(output) if output.status.success() => Some(PrintOutcome::Applied),
+        Some(output) => Some(classify(&combined(&output))),
     }
 }
 

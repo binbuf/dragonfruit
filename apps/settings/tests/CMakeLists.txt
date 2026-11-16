@@ -764,6 +764,7 @@ add_test(
     COMMAND tst_settings_performance
 )
 set_tests_properties(tst_settings_performance PROPERTIES
+    RUN_SERIAL TRUE
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     TIMEOUT 300
@@ -788,6 +789,48 @@ else()
     add_test(NAME tst_settings_apply COMMAND tst_settings_apply)
 endif()
 set_tests_properties(tst_settings_apply PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# T282: every adapter client against one fake system-status host. The fake
+# distinguishes State from Refresh, returns denied/failed write reports, and
+# proves an opened pane re-reads and a denied write is never a silent success.
+qt_add_executable(tst_settings_adapters
+    tst_settings_adapters.cpp
+)
+target_include_directories(tst_settings_adapters PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(tst_settings_adapters PRIVATE
+    Qt6::QuickTest Qt6::DBus
+    dragonfruit-settings-ui
+)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_settings_adapters
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_settings_adapters>
+    )
+else()
+    add_test(NAME tst_settings_adapters COMMAND tst_settings_adapters)
+endif()
+set_tests_properties(tst_settings_adapters PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# T282: the client schema mirror against the real daemon dump. CMake finds the
+# built binary; a standalone Qt tree skips with a message.
+qt_add_executable(tst_settings_schema_mirror
+    tst_settings_schema_mirror.cpp
+)
+target_link_libraries(tst_settings_schema_mirror PRIVATE
+    Qt6::QuickTest Qt6::DBus
+    dragonfruit-settings-client
+)
+add_test(NAME tst_settings_schema_mirror COMMAND tst_settings_schema_mirror)
+set(_settings_schema_mirror_env "")
+if(DF_SETTINGSD_BIN)
+    list(APPEND _settings_schema_mirror_env "DF_SETTINGSD_BIN=${DF_SETTINGSD_BIN}")
+endif()
+set_tests_properties(tst_settings_schema_mirror PROPERTIES
+    ENVIRONMENT "${_settings_schema_mirror_env}"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use dragonfruit_settingsd::dbus::{Settings1, DBUS_NAME, DBUS_PATH};
 use dragonfruit_settingsd::persist;
-use dragonfruit_settingsd::schema::{KeySpec, KeyType, KEYS, SCHEMA_VERSION};
+use dragonfruit_settingsd::schema::{KeySemantic, KeySpec, KeyType, KEYS, SCHEMA_VERSION};
 use dragonfruit_settingsd::value::Value;
 use dragonfruit_settingsd::Settings;
 use zbus::blocking::{Connection, MessageIterator};
@@ -191,8 +191,25 @@ fn alternative_for(spec: &KeySpec) -> Value {
                     .to_string(),
             )
         }
-        KeyType::Text => Value::Text(format!("#{:06x}", 0x00_ff_88)),
-        KeyType::TextList => Value::TextList(vec!["a.desktop".to_owned(), "b.desktop".to_owned()]),
+        KeyType::Text => match spec.semantic {
+            KeySemantic::TimeOfDay => Value::Text("12:34".to_owned()),
+            KeySemantic::Color => Value::Text("#00ff88".to_owned()),
+            KeySemantic::AbsolutePath => Value::Text("/tmp/dragonfruit-test".to_owned()),
+            KeySemantic::Shortcut(_) => Value::Text("Ctrl+Alt+T".to_owned()),
+            KeySemantic::BoundedText(_) => Value::Text("Test message".to_owned()),
+            _ => Value::Text(format!("#{:06x}", 0x00_ff_88)),
+        },
+        KeyType::TextList => match spec.semantic {
+            KeySemantic::ModuleList => {
+                Value::TextList(vec!["wifi".to_owned(), "volume".to_owned()])
+            }
+            KeySemantic::DayList => Value::TextList(vec!["mon".to_owned(), "fri".to_owned()]),
+            KeySemantic::LayoutList => Value::TextList(vec!["us".to_owned(), "de".to_owned()]),
+            KeySemantic::ReplacementList => {
+                Value::TextList(vec!["teh\tthe".to_owned()])
+            }
+            _ => Value::TextList(vec!["a.desktop".to_owned(), "b.desktop".to_owned()]),
+        },
     }
 }
 
@@ -460,4 +477,201 @@ fn a_set_over_the_bus_is_persisted_and_reloaded_by_a_restart() {
         Value::TextList(vec!["a.desktop".into()])
     );
     assert!(!restarted.migrated, "a written file is already current");
+}
+
+/// Read one interface property through the standard Properties interface.
+fn property_variant(client: &Connection, name: &str) -> OwnedValue {
+    let reply = client
+        .call_method(
+            Some(DBUS_NAME),
+            DBUS_PATH,
+            Some("org.freedesktop.DBus.Properties"),
+            "Get",
+            &(DBUS_NAME, name),
+        )
+        .expect("property Get succeeds");
+    reply.body().deserialize().expect("a variant")
+}
+
+fn property_u32(client: &Connection, name: &str) -> u32 {
+    u32::try_from(property_variant(client, name)).expect("a u32 property")
+}
+
+fn property_string(client: &Connection, name: &str) -> String {
+    String::try_from(property_variant(client, name)).expect("a string property")
+}
+
+/// T282: NaN/Infinity never reaches the store and is a typed D-Bus error.
+#[test]
+fn non_finite_and_semantic_values_are_rejected_over_the_bus() {
+    let bus = PrivateBus::start();
+    let service = serve(&bus);
+    let client = bus.connect();
+
+    for number in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let error = set(&client, "dock.size", &Value::Number(number)).unwrap_err();
+        assert_eq!(
+            error_name(&error).as_deref(),
+            Some("org.dragonfruit.Settings1.Error.Invalid"),
+            "{number} was not rejected"
+        );
+    }
+    assert_eq!(get(&client, "dock.size").unwrap(), Value::Number(0.5));
+
+    for (key, value) in [
+        ("focus.schedule.start", Value::Text("7am".into())),
+        ("appearance.accent", Value::Text("blue".into())),
+        ("wallpaper.source", Value::Text("relative.jpg".into())),
+        (
+            "focus.schedule.days",
+            Value::TextList(vec!["monday".into()]),
+        ),
+        (
+            "quickSettings.modules",
+            Value::TextList(vec!["not-a-module".into()]),
+        ),
+        (
+            "input.replacements",
+            Value::TextList(vec!["teh the".into()]),
+        ),
+    ] {
+        let error = set(&client, key, &value).unwrap_err();
+        assert_eq!(
+            error_name(&error).as_deref(),
+            Some("org.dragonfruit.Settings1.Error.Invalid"),
+            "{key} accepted {value:?}"
+        );
+    }
+    drop(service);
+}
+
+/// T282: the loaded revision and the durable state are visible to clients,
+/// not just stderr.
+#[test]
+fn the_loaded_schema_and_persistence_state_are_properties() {
+    let scratch = Scratch::new();
+    let path = scratch.file();
+    let loaded = persist::load(&path).expect("a missing file loads defaults");
+    let bus = PrivateBus::start();
+    let service = serve_object(
+        &bus,
+        Settings1::with_persistence_at(loaded.settings, loaded.persistence, loaded.schema),
+    );
+    let client = bus.connect();
+    assert_eq!(property_u32(&client, "LoadedSchema"), persist::UNVERSIONED);
+    assert_eq!(
+        property_string(&client, "PersistenceState"),
+        "saved".to_owned()
+    );
+    set(&client, "dock.autohide", &Value::Bool(true)).unwrap();
+    assert_eq!(
+        property_string(&client, "PersistenceState"),
+        "saved".to_owned()
+    );
+    drop(service);
+}
+
+/// T282: a disk failure is a visible `memory-only` state plus a signal, and
+/// the live value still applies. It never takes the daemon down.
+#[test]
+fn a_failed_persist_surfaces_memory_only_and_keeps_the_value() {
+    let scratch = Scratch::new();
+    let blocker = scratch.0.join("blocked");
+    std::fs::write(&blocker, b"not a directory").unwrap();
+    let path = blocker.join("settings.json");
+    let bus = PrivateBus::start();
+    let service = serve_object(
+        &bus,
+        Settings1::with_persistence(Settings::new(), persist::Persistence::new(path)),
+    );
+    let client = bus.connect();
+
+    let rule = MatchRule::builder()
+        .msg_type(MessageType::Signal)
+        .sender(DBUS_NAME)
+        .expect("valid sender")
+        .interface(DBUS_NAME)
+        .expect("valid interface")
+        .member("PersistenceFailed")
+        .expect("valid member")
+        .build();
+    let mut signals =
+        MessageIterator::for_match_rule(rule, &client, Some(4)).expect("subscribe");
+
+    set(&client, "dock.autohide", &Value::Bool(true)).expect("the in-memory write applies");
+    assert_eq!(
+        get(&client, "dock.autohide").unwrap(),
+        Value::Bool(true),
+        "the live value is authoritative even when the file is not writable"
+    );
+    assert_eq!(
+        property_string(&client, "PersistenceState"),
+        "memory-only".to_owned()
+    );
+    assert!(
+        !property_string(&client, "PersistenceError").is_empty(),
+        "the failure message is visible"
+    );
+
+    let signal = signals
+        .next()
+        .expect("a PersistenceFailed signal")
+        .expect("a valid signal");
+    let (key, message): (String, String) = signal.body().deserialize().unwrap();
+    assert_eq!(key, "dock.autohide");
+    assert!(!message.is_empty());
+    drop(service);
+}
+
+/// T282: two writers cannot leave an older snapshot on disk. Each thread
+/// writes a different key; the final file must contain both, whichever
+/// snapshot lands last.
+#[test]
+fn concurrent_writers_do_not_lose_an_update() {
+    let scratch = Scratch::new();
+    let path = scratch.file();
+    let loaded = persist::load(&path).expect("a missing file loads defaults");
+    let bus = PrivateBus::start();
+    let service = serve_object(
+        &bus,
+        Settings1::with_persistence(loaded.settings, loaded.persistence),
+    );
+    // Warm the file so both writers race a real save.
+    let warm = bus.connect();
+    set(&warm, "dock.size", &Value::Number(0.6)).unwrap();
+
+    let mut handles = Vec::new();
+    for (key, value) in [
+        ("dock.autohide", Value::Bool(true)),
+        ("appearance.colorScheme", Value::Text("dark".into())),
+        ("workspaces.count", Value::Integer(5)),
+        ("dock.magnification", Value::Number(0.8)),
+    ] {
+        let client = bus.connect();
+        handles.push(std::thread::spawn(move || {
+            set(&client, key, &value).expect("concurrent Set succeeds");
+        }));
+    }
+    for handle in handles {
+        handle.join().expect("writer thread");
+    }
+
+    let reloaded = persist::load(&path).expect("the file reloads");
+    assert_eq!(
+        *reloaded.settings.get("dock.autohide").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        *reloaded.settings.get("appearance.colorScheme").unwrap(),
+        Value::Text("dark".into())
+    );
+    assert_eq!(
+        *reloaded.settings.get("workspaces.count").unwrap(),
+        Value::Integer(5)
+    );
+    assert_eq!(
+        *reloaded.settings.get("dock.magnification").unwrap(),
+        Value::Number(0.8)
+    );
+    drop(service);
 }

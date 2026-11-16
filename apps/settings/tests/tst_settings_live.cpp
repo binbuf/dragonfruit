@@ -141,6 +141,8 @@ public slots:
             "\"securityCount\":1,\"lastCheckedMs\":1,\"label\":\"1 Update Available\","
             "\"updates\":[]}");
     }
+    // T282: the pane's open path is a real re-read, not the cached State.
+    QString Refresh() const { return State(); }
     void SetAutomaticPolicy(bool autoCheck, bool autoInstall)
     {
         ++m_policyWrites;

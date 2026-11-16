@@ -145,6 +145,123 @@ impl KeyGroup {
     }
 }
 
+/// Extra meaning layered on a key's declared D-Bus type (T282).
+///
+/// The D-Bus type says how a value travels; the semantic says what the value
+/// must mean. A time is a string on the wire but `HH:MM` in the store; a colour
+/// is a string but `#rrggbb`; a path is a string but absolute. Validating these
+/// at the one write path keeps a malformed preference from reaching a consumer
+/// that would only discover it much later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeySemantic {
+    /// No extra rule beyond type/range/allowed.
+    None,
+    /// A 24-hour `HH:MM` wall-clock time.
+    TimeOfDay,
+    /// An empty string (the token default) or `#rrggbb`.
+    Color,
+    /// An empty string or an absolute path with no control characters.
+    AbsolutePath,
+    /// Control Center module ids from the one shell registry.
+    ModuleList,
+    /// Weekday ids (`mon`…`sun`).
+    DayList,
+    /// Keyboard layout ids: short, opaque, no whitespace or path separators.
+    LayoutList,
+    /// `from\tto` text-replacement entries.
+    ReplacementList,
+    /// Free text with a hard character bound (a lock message).
+    BoundedText(usize),
+    /// A shortcut chord with a hard character bound; empty disables it.
+    Shortcut(usize),
+}
+
+impl KeySemantic {
+    /// The Control Center inventory. Kept here as the daemon-side mirror of
+    /// `shell/control-center/ControlCenterRegistry.qml` so a persisted page
+    /// list cannot name a module the shell does not have.
+    pub const MODULES: &'static [&'static str] = &[
+        "wifi",
+        "bluetooth",
+        "airdrop",
+        "vpn",
+        "now-playing",
+        "stage-manager",
+        "edit-controls",
+        "brightness",
+        "dark",
+        "keyboard-brightness",
+        "focus",
+        "volume",
+        "airplay-audio",
+        "battery",
+        "clock",
+        "lock-screen",
+        "screen-mirroring",
+        "capture-screen",
+        "workspaces",
+        "menu-bar",
+        "accessibility",
+        "home",
+        "mission-control",
+        "printers",
+        "privacy",
+        "keyboard",
+        "storage",
+        "users",
+        "software-update",
+        "screenshot",
+        "shortcuts",
+    ];
+
+    /// The weekday ids the Focus schedule accepts.
+    pub const DAYS: &'static [&'static str] =
+        &["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+}
+
+/// A 24-hour wall-clock time, `HH:MM` (00:00 through 23:59).
+fn is_hh_mm(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    if bytes.len() != 5 || bytes[2] != b':' {
+        return false;
+    }
+    let digits = |slice: &[u8]| slice.iter().all(u8::is_ascii_digit);
+    if !digits(&bytes[0..2]) || !digits(&bytes[3..5]) {
+        return false;
+    }
+    let hour = (bytes[0] - b'0') * 10 + (bytes[1] - b'0');
+    let minute = (bytes[3] - b'0') * 10 + (bytes[4] - b'0');
+    hour <= 23 && minute <= 59
+}
+
+/// `#rrggbb`, lower or upper case.
+fn is_rrggbb(text: &str) -> bool {
+    text.len() == 7
+        && text.starts_with('#')
+        && text[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// Bound a free-text value and reject NUL or a line break. Tabs are left alone
+/// for a replacement, but a message/hint is one line.
+fn check_clean_text(text: &str, max: usize, key: &str) -> Result<(), SettingsError> {
+    if text.chars().count() > max {
+        return Err(SettingsError::Invalid {
+            key: key.to_owned(),
+            message: format!("is longer than {max} characters"),
+        });
+    }
+    if text
+        .chars()
+        .any(|c| c == '\0' || c == '\n' || c == '\r')
+    {
+        return Err(SettingsError::Invalid {
+            key: key.to_owned(),
+            message: "contains a control character".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 /// A key's declared default, in a form a `const` table can hold.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum KeyDefault {
@@ -192,12 +309,21 @@ pub struct KeySpec {
     pub consumer: &'static str,
     /// The schema revision that introduced the key.
     pub since: u32,
+    /// Extra meaning layered on the declared type (T282).
+    pub semantic: KeySemantic,
+    /// True when no shipped consumer reads this key yet; the Settings app
+    /// stores it honestly and the pane says so. A flagged key is not a
+    /// pretend-live control.
+    pub stored_only: bool,
     /// One-line description for the docs and the Settings app.
     pub summary: &'static str,
 }
 
 impl KeySpec {
-    /// Check a value against the declared type, range, and alternatives.
+    /// Check a value against the declared type, range, alternatives, and
+    /// semantic (T282). A non-finite number is rejected before any range
+    /// check, because every comparison with NaN is false and would otherwise
+    /// pass.
     pub fn validate(&self, value: &Value) -> Result<(), SettingsError> {
         if value.kind() != self.kind {
             return Err(SettingsError::TypeMismatch {
@@ -207,19 +333,137 @@ impl KeySpec {
             });
         }
         match value {
-            Value::Number(n) => self.check_range(*n),
-            Value::Integer(i) => self.check_range(*i as f64),
-            Value::Text(text) if !self.allowed.is_empty() => {
-                if !self.allowed.contains(&text.as_str()) {
+            Value::Number(n) => {
+                if !n.is_finite() {
+                    return Err(SettingsError::NonFinite {
+                        key: self.key.to_owned(),
+                    });
+                }
+                self.check_range(*n)?;
+            }
+            Value::Integer(i) => self.check_range(*i as f64)?,
+            Value::Text(text) => {
+                if !self.allowed.is_empty() && !self.allowed.contains(&text.as_str()) {
                     return Err(SettingsError::NotAllowed {
                         key: self.key.to_owned(),
                         value: text.clone(),
                         allowed: self.allowed,
                     });
                 }
+                self.check_text_semantic(text)?;
+            }
+            Value::TextList(items) => self.check_list_semantic(items)?,
+            Value::Bool(_) => {}
+        }
+        Ok(())
+    }
+
+    fn invalid(&self, message: impl Into<String>) -> SettingsError {
+        SettingsError::Invalid {
+            key: self.key.to_owned(),
+            message: message.into(),
+        }
+    }
+
+    fn check_text_semantic(&self, text: &str) -> Result<(), SettingsError> {
+        match self.semantic {
+            KeySemantic::None => Ok(()),
+            KeySemantic::TimeOfDay => {
+                if is_hh_mm(text) {
+                    Ok(())
+                } else {
+                    Err(self.invalid(format!("{text:?} is not a 24-hour HH:MM time")))
+                }
+            }
+            KeySemantic::Color => {
+                if text.is_empty() || is_rrggbb(text) {
+                    Ok(())
+                } else {
+                    Err(self.invalid(format!("{text:?} is not a #rrggbb colour")))
+                }
+            }
+            KeySemantic::AbsolutePath => {
+                if text.is_empty() {
+                    return Ok(());
+                }
+                if !text.starts_with('/') {
+                    return Err(self.invalid(format!("{text:?} is not an absolute path")));
+                }
+                check_clean_text(text, 4096, self.key)
+            }
+            KeySemantic::BoundedText(max) => check_clean_text(text, max, self.key),
+            KeySemantic::Shortcut(max) => check_clean_text(text, max, self.key),
+            KeySemantic::ModuleList
+            | KeySemantic::DayList
+            | KeySemantic::LayoutList
+            | KeySemantic::ReplacementList => Ok(()),
+        }
+    }
+
+    fn check_list_semantic(&self, items: &[String]) -> Result<(), SettingsError> {
+        match self.semantic {
+            KeySemantic::None
+            | KeySemantic::TimeOfDay
+            | KeySemantic::Color
+            | KeySemantic::AbsolutePath
+            | KeySemantic::BoundedText(_)
+            | KeySemantic::Shortcut(_) => Ok(()),
+            KeySemantic::ModuleList => {
+                if items.len() > 64 {
+                    return Err(self.invalid("more than 64 modules"));
+                }
+                for item in items {
+                    if !KeySemantic::MODULES.contains(&item.as_str()) {
+                        return Err(self.invalid(format!("unknown Control Center module {item:?}")));
+                    }
+                }
                 Ok(())
             }
-            _ => Ok(()),
+            KeySemantic::DayList => {
+                for item in items {
+                    if !KeySemantic::DAYS.contains(&item.as_str()) {
+                        return Err(self.invalid(format!("unknown weekday {item:?}")));
+                    }
+                }
+                Ok(())
+            }
+            KeySemantic::LayoutList => {
+                if items.len() > 16 {
+                    return Err(self.invalid("more than 16 keyboard layouts"));
+                }
+                for item in items {
+                    let valid = !item.is_empty()
+                        && item.len() <= 32
+                        && item
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-' | '(' | ')'));
+                    if !valid {
+                        return Err(self.invalid(format!("invalid keyboard layout {item:?}")));
+                    }
+                }
+                Ok(())
+            }
+            KeySemantic::ReplacementList => {
+                if items.len() > 500 {
+                    return Err(self.invalid("more than 500 text replacements"));
+                }
+                for item in items {
+                    let Some((from, to)) = item.split_once('\t') else {
+                        return Err(self.invalid(format!(
+                            "replacement {item:?} is not a `from<TAB>to` entry"
+                        )));
+                    };
+                    if from.is_empty() || to.is_empty() || from.len() > 128 || to.len() > 128 {
+                        return Err(self.invalid(format!(
+                            "replacement {item:?} must have a 1-128 character source and target"
+                        )));
+                    }
+                    if item.chars().any(|c| c == '\0' || c == '\n' || c == '\r') {
+                        return Err(self.invalid("replacement contains a control character"));
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -252,6 +496,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Dock icon scale, 0 (small) to 1 (large).",
     },
@@ -265,6 +511,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Magnification strength under the pointer; 0 disables it.",
     },
@@ -278,6 +526,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Screen edge the Dock sits on.",
     },
@@ -291,6 +541,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Hide the Dock off-edge until the pointer reaches it.",
     },
@@ -304,6 +556,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Bounce a Dock tile when it launches an app.",
     },
@@ -317,6 +571,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Show the running-application dot under a tile.",
     },
@@ -330,6 +586,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock, compositor/window motion",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Minimize into the app's tile instead of a separate entry.",
     },
@@ -343,6 +601,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "compositor/window motion",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Minimize/restore animation style.",
     },
@@ -356,6 +616,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "settingsd",
         consumer: "compositor/window decoration (SSD)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Action on a titlebar double-click.",
     },
@@ -369,6 +631,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Show recent/suggested apps in the Dock.",
     },
@@ -382,6 +646,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Ordered desktop ids pinned to the Dock; empty seeds defaults.",
     },
@@ -395,6 +661,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 7,
         summary: "Ordered absolute folder paths pinned to the Dock as stacks; empty seeds the Downloads default.",
     },
@@ -408,6 +676,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 8,
         summary: "Open a grouped app's window chooser on hover dwell, and retarget it along the Dock.",
     },
@@ -421,6 +691,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "shell/Dock",
         consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 9,
         summary: "Bounce an app's Dock tile once when one of its windows minimizes; off by default.",
     },
@@ -435,6 +707,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(16.0),
         owner: "settingsd",
         consumer: "compositor/workspace model, shell",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Number of Spaces every output starts with.",
     },
@@ -449,6 +723,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "settingsd",
         consumer: "compositor/input",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Master switch for trackpad gesture recognition.",
     },
@@ -462,6 +738,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "settingsd",
         consumer: "compositor/input",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Horizontal swipe switches Spaces.",
     },
@@ -475,6 +753,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "settingsd",
         consumer: "compositor/input",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Vertical swipe opens Mission Control.",
     },
@@ -492,6 +772,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input gesture recognizer does not read this family yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Finger count for the page-swipe gesture; off disables it.",
     },
@@ -505,6 +787,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input gesture recognizer does not read this family yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Finger count for the full-screen-app swipe; off disables it.",
     },
@@ -518,6 +802,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input gesture recognizer does not read this family yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Two-finger swipe from the right edge opens Notification Center.",
     },
@@ -531,6 +817,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input gesture recognizer does not read this family yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Spread the thumb and three fingers to reveal the desktop.",
     },
@@ -544,6 +832,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input gesture recognizer does not read this family yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Swipe down with three fingers to show the app's windows.",
     },
@@ -558,6 +848,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "settingsd",
         consumer: "compositor/window decoration, shell/design-system Theme",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Light/dark scheme; auto follows the host style hint.",
     },
@@ -571,6 +863,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "settingsd",
         consumer: "shell/design-system Theme",
+        semantic: KeySemantic::Color,
+        stored_only: false,
         since: 1,
         summary: "Accent color override ('#rrggbb'); empty uses the token default.",
     },
@@ -584,6 +878,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "shell/design-system Glass, compositor/material",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 18,
         summary: "Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255.",
     },
@@ -598,6 +894,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/wallpaper forwarder, compositor/workspace model",
+        semantic: KeySemantic::AbsolutePath,
+        stored_only: false,
         since: 2,
         summary: "Image path for the selected wallpaper; empty keeps the solid color.",
     },
@@ -611,6 +909,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/wallpaper forwarder, compositor/workspace model",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 2,
         summary: "How the wallpaper image maps onto the output.",
     },
@@ -624,6 +924,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/wallpaper forwarder, compositor/workspace model",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 2,
         summary: "Apply the selection to every Space, or only the active one.",
     },
@@ -637,6 +939,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1440.0),
         owner: "apps/settings",
         consumer: "stored-only: the shell has no wallpaper-rotation timer yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 38,
         summary: "Minutes between automatic wallpaper changes; 0 keeps the selection fixed.",
     },
@@ -650,6 +954,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "wallpaperd",
         consumer: "services/wallpaperd",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 10,
         summary: "Active online wallpaper content provider; `wikimedia` today.",
     },
@@ -663,6 +969,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "wallpaperd",
         consumer: "services/wallpaperd",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 10,
         summary: "Let the provider refresh its Featured catalogue in the background.",
     },
@@ -676,6 +984,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "wallpaperd",
         consumer: "services/wallpaperd",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 10,
         summary: "Unix seconds of the provider's last successful catalogue fetch; 0 = never.",
     },
@@ -689,6 +999,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "wallpaperd",
         consumer: "shell/wallpaper forwarder",
+        semantic: KeySemantic::AbsolutePath,
+        stored_only: false,
         since: 10,
         summary: "Fetched Featured default/fallback image path; empty until a catalogue exists.",
     },
@@ -702,6 +1014,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "wallpaperd",
         consumer: "shell/wallpaper forwarder, apps/settings",
+        semantic: KeySemantic::AbsolutePath,
+        stored_only: false,
         since: 10,
         summary: "Resolved path of the shipped original Default.jpg; the out-of-box background.",
     },
@@ -716,6 +1030,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(2.0),
         owner: "apps/settings",
         consumer: "shell/display forwarder, compositor/output",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 3,
         summary: "Output scale / scaled-resolution factor; 1.0 is the native mode.",
     },
@@ -729,6 +1045,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/display forwarder, compositor/output",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 3,
         summary: "Output rotation as clock-wise degrees.",
     },
@@ -742,6 +1060,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "shell/control-center",
         consumer: "shell/display forwarder, compositor/output",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 4,
         summary: "Output brightness level; 1.0 is full brightness.",
     },
@@ -756,6 +1076,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "settingsd",
         consumer: "shell/design-system Theme, compositor/window motion",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Global animation policy: collapse motion to instant transitions.",
     },
@@ -769,6 +1091,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Glass, compositor/material",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 18,
         summary: "Replace sampled glass with a scheme-appropriate opaque plate; wins over the transparency slider.",
     },
@@ -782,6 +1106,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Glass, compositor/material",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 18,
         summary: "Strengthen glass edges and foreground contrast, including when Reduce Transparency is active.",
     },
@@ -796,6 +1122,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(5000.0),
         owner: "settingsd",
         consumer: "compositor/input keyboard repeat",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Milliseconds before a held key begins repeating.",
     },
@@ -809,6 +1137,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(200.0),
         owner: "settingsd",
         consumer: "compositor/input keyboard repeat",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 1,
         summary: "Key repeat rate in keys per second; 0 disables repeat.",
     },
@@ -830,6 +1160,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "compositor/input pointer acceleration",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Pointer tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral.",
     },
@@ -843,6 +1175,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input pointer scrolling",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Natural (content follows finger) scrolling for pointers.",
     },
@@ -856,6 +1190,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input pointer tapping",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Tap the trackpad to click.",
     },
@@ -869,6 +1205,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input pointer handedness",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Swap the primary and secondary pointer buttons.",
     },
@@ -882,6 +1220,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input pointer scrolling",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "How a trackpad scrolls: two-finger, edge, or button.",
     },
@@ -895,6 +1235,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "compositor/keyboard backlight (hardware bridge deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Keyboard backlight level, 0.0 (off) to 1.0 (bright).",
     },
@@ -908,6 +1250,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/keyboard backlight (hardware bridge deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Adjust the keyboard backlight automatically in low light.",
     },
@@ -921,6 +1265,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(3600.0),
         owner: "apps/settings",
         consumer: "compositor/keyboard backlight (hardware bridge deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Seconds of inactivity before the keyboard backlight turns off; 0 keeps it on.",
     },
@@ -934,6 +1280,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input keyboard navigation",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Move focus between controls with Tab and Shift+Tab.",
     },
@@ -947,6 +1295,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input (emoji panel bridge deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 12,
         summary: "Action when the Compose/Super key is pressed: show the emoji panel or nothing.",
     },
@@ -966,6 +1316,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input pointer buttons",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 22,
         summary: "Which button a secondary click uses: right (default) or left.",
     },
@@ -979,6 +1331,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "compositor/input pointer scrolling",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 22,
         summary: "Pointer scroll speed, -1.0 (slow) to 1.0 (fast); 0 is neutral.",
     },
@@ -992,6 +1346,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(900.0),
         owner: "apps/settings",
         consumer: "compositor/input pointer double-click interval",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 22,
         summary: "Maximum milliseconds between two clicks for a double-click.",
     },
@@ -1005,6 +1361,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input trackpad haptics (hardware bridge deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 22,
         summary: "Haptic feedback for a trackpad that supports it.",
     },
@@ -1018,6 +1376,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input gesture mapping",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 22,
         summary: "How a trackpad look-up gesture is triggered; off disables it.",
     },
@@ -1031,6 +1391,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/compositor keymap",
+        semantic: KeySemantic::LayoutList,
+        stored_only: false,
         since: 22,
         summary: "Ordered keyboard layout ids; the first is the active source. Empty follows the host keymap.",
     },
@@ -1044,6 +1406,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "input method (T253)",
+        semantic: KeySemantic::ReplacementList,
+        stored_only: true,
         since: 22,
         summary: "Text replacements as `from\\tto` entries for the session input method.",
     },
@@ -1057,6 +1421,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "speech-to-text delegate (when installed)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 22,
         summary: "Enable dictation when a speech-to-text service is installed.",
     },
@@ -1073,6 +1439,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "speech-to-text delegate (T253)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "BCP-47 language id for dictation; empty follows the session locale.",
     },
@@ -1086,6 +1454,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "speech-to-text delegate (T253)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Input device name for dictation; empty uses the default source.",
     },
@@ -1099,6 +1469,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shortcut engine (T245a)",
+        semantic: KeySemantic::Shortcut(64),
+        stored_only: true,
         since: 37,
         summary: "Keyboard shortcut that starts dictation; empty uses the delegate default.",
     },
@@ -1112,6 +1484,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "speech-to-text delegate (T253)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Let the dictation delegate insert punctuation automatically.",
     },
@@ -1128,6 +1502,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse pointer acceleration bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Mouse tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral.",
     },
@@ -1141,6 +1517,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse scrolling bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Natural scrolling for the mouse wheel.",
     },
@@ -1154,6 +1532,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse buttons bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Which mouse button a secondary click uses.",
     },
@@ -1167,6 +1547,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse gestures bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Double-tap with one finger to smart-zoom the content under the pointer.",
     },
@@ -1180,6 +1562,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse acceleration bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Apply pointer acceleration to mouse motion; off uses a flat curve.",
     },
@@ -1193,6 +1577,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse buttons bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Swap the mouse's primary and secondary buttons.",
     },
@@ -1206,6 +1592,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse scrolling bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Mouse wheel scroll speed, -1.0 (slow) to 1.0 (fast).",
     },
@@ -1219,6 +1607,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse scrolling bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "How the mouse scrolls; a wheel reports button scrolling.",
     },
@@ -1232,6 +1622,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(900.0),
         owner: "apps/settings",
         consumer: "stored-only: compositor/input mouse double-click interval bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Maximum milliseconds between two mouse clicks for a double-click.",
     },
@@ -1246,6 +1638,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "stored-only: compositor/input trackpad pointer acceleration bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Trackpad tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral.",
     },
@@ -1259,6 +1653,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input trackpad scrolling bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Natural scrolling for the trackpad.",
     },
@@ -1272,6 +1668,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input trackpad buttons bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Which button a trackpad secondary click uses.",
     },
@@ -1285,6 +1683,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "stored-only: compositor/input trackpad pressure bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Trackpad click pressure, 0.0 (light) to 1.0 (firm).",
     },
@@ -1298,6 +1698,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input trackpad gestures bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Double-tap with two fingers to smart-zoom the content under the pointer.",
     },
@@ -1311,6 +1713,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input trackpad gestures bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Pinch with two fingers to zoom.",
     },
@@ -1324,6 +1728,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: compositor/input trackpad gestures bridge pending",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 37,
         summary: "Rotate with two fingers to rotate the content.",
     },
@@ -1338,6 +1744,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar battery item",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 22,
         summary: "Show the battery percentage beside the menu-bar glyph.",
     },
@@ -1351,6 +1759,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "apps/settings Battery pane",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 22,
         summary: "Battery usage range: 0 = last 24 hours, 1 = last 10 days.",
     },
@@ -1364,6 +1774,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/display forwarder",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 30,
         summary: "Reduce the display brightness while the machine runs on battery.",
     },
@@ -1377,6 +1789,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "session/idle engine",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 30,
         summary: "Keep the session awake by disabling the automatic suspend stage.",
     },
@@ -1391,6 +1805,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(86_400.0),
         owner: "apps/settings",
         consumer: "session/idle engine",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 5,
         summary: "Seconds of inactivity before the screen dims; 0 disables the stage.",
     },
@@ -1404,6 +1820,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(86_400.0),
         owner: "apps/settings",
         consumer: "session/idle engine",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 5,
         summary: "Seconds of inactivity before the screen blanks; 0 disables the stage.",
     },
@@ -1417,6 +1835,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(86_400.0),
         owner: "apps/settings",
         consumer: "session/idle engine",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 5,
         summary: "Seconds of inactivity before the session locks; 0 disables the stage.",
     },
@@ -1430,6 +1850,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(86_400.0),
         owner: "apps/settings",
         consumer: "session/idle engine, session/suspend",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 5,
         summary: "Seconds of inactivity before the session suspends; 0 disables the stage.",
     },
@@ -1444,6 +1866,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar, services/menu-broker",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 6,
         summary:
             "Show the focused app's menus in the global menu bar; off restores local app menus.",
@@ -1463,6 +1887,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (alert playback engine deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 11,
         summary: "Alert sound name selected in the Sound pane.",
     },
@@ -1476,6 +1902,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (alert playback engine deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 11,
         summary: "Which device sound effects play through: the selected output or the alerts device.",
     },
@@ -1489,6 +1917,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "apps/settings (alert playback engine deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 11,
         summary: "Alert sound volume, 0.0 to 1.0, set by the Sound pane's Alert volume slider.",
     },
@@ -1502,6 +1932,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (startup chime engine deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 11,
         summary: "Play the startup sound when the session begins.",
     },
@@ -1515,6 +1947,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (UI sound engine deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 11,
         summary: "Play user-interface sound effects.",
     },
@@ -1528,6 +1962,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/control-center, apps/settings (UI sound engine deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 11,
         summary: "Play feedback when the output volume is changed.",
     },
@@ -1541,6 +1977,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(1.0),
         owner: "apps/settings",
         consumer: "apps/settings (balance write deferred)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 11,
         summary: "Output balance from Left (0.0) to Right (1.0); 0.5 is centered.",
     },
@@ -1574,6 +2012,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 13,
         summary: "Action assigned to the top-left hot corner; `none` disables it.",
     },
@@ -1598,6 +2038,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 13,
         summary: "Action assigned to the top-right hot corner; `none` disables it.",
     },
@@ -1622,6 +2064,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 13,
         summary: "Action assigned to the bottom-left hot corner; `none` disables it.",
     },
@@ -1646,6 +2090,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 13,
         summary: "Action assigned to the bottom-right hot corner; `none` disables it.",
     },
@@ -1659,6 +2105,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 33,
         summary: "Modifier held while the pointer enters the top-left corner; `none` needs no modifier.",
     },
@@ -1672,6 +2120,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 33,
         summary: "Modifier held while the pointer enters the top-right corner; `none` needs no modifier.",
     },
@@ -1685,6 +2135,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 33,
         summary: "Modifier held while the pointer enters the bottom-left corner; `none` needs no modifier.",
     },
@@ -1698,6 +2150,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/input hot corners",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 33,
         summary: "Modifier held while the pointer enters the bottom-right corner; `none` needs no modifier.",
     },
@@ -1711,6 +2165,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/workspace activation",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 33,
         summary: "Activating an app window on another Space switches to that Space.",
     },
@@ -1731,6 +2187,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 14,
         summary: "When notification previews show: always, when unlocked, or never.",
     },
@@ -1744,6 +2202,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 14,
         summary: "Show notification banners while the display is sleeping.",
     },
@@ -1757,6 +2217,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 14,
         summary: "Show notification banners while the screen is locked.",
     },
@@ -1770,6 +2232,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 14,
         summary: "Show notification banners while mirroring or sharing the display.",
     },
@@ -1783,6 +2247,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 35,
         summary: "Per-app notification options the service does not own yet (JSON, keyed by app).",
     },
@@ -1801,6 +2267,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/FocusSchedule",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 23,
         summary: "Enable the daily Focus schedule.",
     },
@@ -1814,6 +2282,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/FocusSchedule",
+        semantic: KeySemantic::TimeOfDay,
+        stored_only: false,
         since: 23,
         summary: "Focus schedule start time (24-hour HH:MM).",
     },
@@ -1827,6 +2297,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/FocusSchedule",
+        semantic: KeySemantic::TimeOfDay,
+        stored_only: false,
         since: 23,
         summary: "Focus schedule end time (24-hour HH:MM); an earlier end crosses midnight.",
     },
@@ -1842,6 +2314,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/FocusSchedule",
+        semantic: KeySemantic::DayList,
+        stored_only: false,
         since: 23,
         summary: "Weekdays the Focus schedule runs (mon…sun); empty means every day.",
     },
@@ -1855,6 +2329,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell shortcuts (registration deferred)",
+        semantic: KeySemantic::Shortcut(64),
+        stored_only: true,
         since: 23,
         summary: "Global shortcut that toggles Focus; empty disables it.",
     },
@@ -1868,6 +2344,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Focus pane",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 35,
         summary: "User-added Focus names layered over the service's custom profile.",
     },
@@ -1881,6 +2359,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Focus pane",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 35,
         summary: "The active user-added Focus name; empty means the built-in Custom profile.",
     },
@@ -1901,6 +2381,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 15,
         summary: "Show the user name and photo on the lock screen.",
     },
@@ -1914,6 +2396,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 15,
         summary: "Show the password hint on the lock screen.",
     },
@@ -1927,6 +2411,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 15,
         summary: "Show a custom message on the lock screen.",
     },
@@ -1940,6 +2426,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen (stored policy)",
+        semantic: KeySemantic::BoundedText(120),
+        stored_only: false,
         since: 15,
         summary: "The custom lock-screen message set by the Set... editor.",
     },
@@ -1953,6 +2441,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen (stored policy)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 15,
         summary: "Show the Sleep, Restart, and Shut Down buttons on the lock screen.",
     },
@@ -1966,6 +2456,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen",
+        semantic: KeySemantic::BoundedText(120),
+        stored_only: false,
         since: 23,
         summary: "The hint shown under the password field when password hints are on.",
     },
@@ -1979,6 +2471,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "display manager adapter (not exposed; row disabled)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 23,
         summary: "Login-window style: a user list or name-and-password fields.",
     },
@@ -1992,6 +2486,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(86400.0),
         owner: "apps/settings",
         consumer: "apps/settings Lock Screen pane (derives idle.lock)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 35,
         summary: "Seconds after display-off before the password is required; -1 never, 0 immediately.",
     },
@@ -2014,6 +2510,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar, compositor/menu-bar visibility",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "When the menu bar auto-hides: never, always, or only in full screen.",
     },
@@ -2027,6 +2525,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar, compositor/menu-bar veil",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Draw the menu bar's background material behind its items.",
     },
@@ -2040,6 +2540,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(50.0),
         owner: "apps/settings",
         consumer: "apps/settings, shell/MenuBar system menu",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "How many recent documents, applications, and servers to remember.",
     },
@@ -2053,6 +2555,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar system menu",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 26,
         summary: "The OS menu glyph at the far left of the menu bar: the Dragonfruit mark or the Tux mark.",
     },
@@ -2066,6 +2570,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar clock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Show the date beside the time in the menu-bar clock.",
     },
@@ -2079,6 +2585,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar clock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Display the menu-bar clock with seconds.",
     },
@@ -2092,6 +2600,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Show the Wi-Fi control in the menu bar when its adapter is present.",
     },
@@ -2105,6 +2615,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Show the Bluetooth control in the menu bar when its adapter is present.",
     },
@@ -2118,6 +2630,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Show the Battery control in the menu bar when its adapter is present.",
     },
@@ -2131,6 +2645,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Show the Sound control in the menu bar when its adapter is present.",
     },
@@ -2144,6 +2660,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Show the Focus control in the menu bar when its service is present.",
     },
@@ -2157,6 +2675,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 16,
         summary: "Show the Accessibility control in the menu bar when it is available.",
     },
@@ -2175,6 +2695,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 24,
         summary: "Show the Date & Time (clock) item in the menu bar.",
     },
@@ -2188,6 +2710,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 24,
         summary: "Show the Notifications item in the menu bar when the service is present.",
     },
@@ -2201,6 +2725,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 24,
         summary: "Show the Quick Settings item in the menu bar.",
     },
@@ -2218,6 +2744,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 34,
         summary: "Show the Focus mark even when no Focus mode is active.",
     },
@@ -2231,6 +2759,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 34,
         summary: "Hide the Sound mark while the default output is muted.",
     },
@@ -2244,6 +2774,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 34,
         summary: "Show the active workspace indicator in the menu bar.",
     },
@@ -2257,6 +2789,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 34,
         summary: "When the status row overflows: only when the measured bar is full, or always.",
     },
@@ -2270,6 +2804,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 34,
         summary: "Third-party StatusNotifier item names the user has removed from the menu bar.",
     },
@@ -2289,6 +2825,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (stored preference)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 17,
         summary: "The default paper size new print jobs assume.",
     },
@@ -2309,6 +2847,8 @@ pub const KEYS: &[KeySpec] = &[
         // T271: stored-only until the shell grows a Wi-Fi prompt consumer.
         // NetworkManager's own autoconnect remains authoritative.
         consumer: "stored-only: no shell Wi-Fi prompt consumer yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 19,
         summary: "When to prompt before joining a nearby Wi-Fi network.",
     },
@@ -2322,6 +2862,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: no shell Wi-Fi prompt consumer yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 19,
         summary: "When to prompt before joining a captive-portal hotspot.",
     },
@@ -2342,6 +2884,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar clock",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "Force the menu-bar clock to 24-hour time instead of the locale format.",
     },
@@ -2355,6 +2899,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "dragonfruit-system-status update provider",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "Check for software updates automatically; never enabled by default.",
     },
@@ -2368,6 +2914,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "dragonfruit-system-status update provider",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "Install the updates a check finds automatically; never enabled by default.",
     },
@@ -2381,6 +2929,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Autofill & Passwords provider selection",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 28,
         summary: "The installed password manager Autofill delegates to; empty follows the active provider. No credential or secret is stored.",
     },
@@ -2394,6 +2944,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings default-apps delegate (xdg-settings; settings portal T258)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 33,
         summary: "Desktop id of the default web browser; empty follows the host default. The delegate writes the freedesktop default-apps entry.",
     },
@@ -2407,6 +2959,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (date preview)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "The calendar system the Date & Time and Language previews use.",
     },
@@ -2420,6 +2974,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (weather and date previews)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "The temperature unit the desktop shows.",
     },
@@ -2433,6 +2989,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (measurement previews)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "The measurement system the desktop shows.",
     },
@@ -2446,6 +3004,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (date preview)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "The date-format length the Language & Region preview uses.",
     },
@@ -2459,6 +3019,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (number preview)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "How numbers group and separate their decimals.",
     },
@@ -2472,6 +3034,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (calendar preview)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 20,
         summary: "The first day of the week the desktop calendar uses.",
     },
@@ -2485,6 +3049,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings (preferred-language order and preview)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 29,
         summary: "The ordered preferred languages the Language & Region pane keeps; the first entry is the system locale the host is asked to apply.",
     },
@@ -2498,6 +3064,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Backup pane / backup backend",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 20,
         summary: "Run the selected backup backend on its schedule; off by default.",
     },
@@ -2511,6 +3079,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Backup pane",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 20,
         summary: "The backup backend to prefer; auto detects restic, Pika, or Timeshift.",
     },
@@ -2524,6 +3094,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Backup pane / backup backend",
+        semantic: KeySemantic::AbsolutePath,
+        stored_only: true,
         since: 20,
         summary: "The destination the selected backup backend writes to.",
     },
@@ -2537,6 +3109,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Backup pane / backup backend",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 20,
         summary: "How often the selected backup backend runs.",
     },
@@ -2556,6 +3130,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings shell (last pane)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 27,
         summary: "The last visited System Settings pane id; empty opens General.",
     },
@@ -2569,6 +3145,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(10000.0),
         owner: "apps/settings",
         consumer: "apps/settings window",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 27,
         summary: "Remembered System Settings window width in points.",
     },
@@ -2582,6 +3160,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(10000.0),
         owner: "apps/settings",
         consumer: "apps/settings window",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 27,
         summary: "Remembered System Settings window height in points.",
     },
@@ -2595,6 +3175,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings window",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 27,
         summary: "Remembered System Settings window x position; used only when positioned is true.",
     },
@@ -2608,6 +3190,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings window",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 27,
         summary: "Remembered System Settings window y position; used only when positioned is true.",
     },
@@ -2621,6 +3205,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings window",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 27,
         summary: "Whether the remembered x/y position has been set by the user.",
     },
@@ -2639,6 +3225,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Theme, apps/settings Theme",
+        semantic: KeySemantic::Color,
+        stored_only: false,
         since: 21,
         summary: "Selection/highlight colour override ('#rrggbb'); empty uses the token selection.",
     },
@@ -2652,6 +3240,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Sidebar",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Sidebar icon size: small, medium, or large.",
     },
@@ -2665,6 +3255,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Glass, apps/settings Glass",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Let glass surfaces take their tint from the wallpaper; off uses the neutral plate.",
     },
@@ -2678,6 +3270,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system ScrollView, apps/settings ScrollView",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "When scroll bars show: automatically, only while scrolling, or always.",
     },
@@ -2696,6 +3290,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system ScrollView, apps/settings ScrollView",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Scroll-bar track click: jump to the clicked spot or the next page.",
     },
@@ -2709,6 +3305,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Theme, apps/files Theme",
+        semantic: KeySemantic::Color,
+        stored_only: false,
         since: 31,
         summary: "Folder glyph colour override ('#rrggbb'); empty keeps the shipped artwork.",
     },
@@ -2722,6 +3320,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings icon-theme provider",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Icon and widget style, mapped to an installed icon theme.",
     },
@@ -2735,6 +3335,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings icon-theme provider, shell/app-index icon lookup",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Explicit installed icon theme; empty follows the icon style mapping.",
     },
@@ -2748,6 +3350,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/cursor theme (next session)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Cursor theme name; the compositor reads it at the next session start.",
     },
@@ -2761,6 +3365,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(64.0),
         owner: "apps/settings",
         consumer: "compositor/cursor theme (next session)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Cursor size in logical pixels, 16 to 64; applied at the next session start.",
     },
@@ -2774,6 +3380,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/window decoration, session GTK button-layout",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Window control side; the compositor keeps traffic lights on the left today.",
     },
@@ -2787,6 +3395,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Glass (degrade budget owns the effective tier)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Material effects preference; auto follows the GPU budget and rollout policy.",
     },
@@ -2800,6 +3410,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Theme (wallpaper color sampler)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 31,
         summary: "Derive the accent from the wallpaper when no explicit accent is set.",
     },
@@ -2821,6 +3433,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/control-center",
+        semantic: KeySemantic::ModuleList,
+        stored_only: false,
         since: 21,
         summary: "Ordered Control Center module ids; empty means the built-in order.",
     },
@@ -2834,6 +3448,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/control-center, shell/MenuBar",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Module ids that stay in the menu bar and are hidden from the Control Center panel.",
     },
@@ -2848,6 +3464,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/control-center",
+        semantic: KeySemantic::ModuleList,
+        stored_only: false,
         since: 25,
         summary: "Ordered module ids on the second Control Center page.",
     },
@@ -2861,6 +3479,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/control-center",
+        semantic: KeySemantic::ModuleList,
+        stored_only: false,
         since: 25,
         summary: "Ordered module ids on the third Control Center page.",
     },
@@ -2874,6 +3494,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(3.0),
         owner: "apps/settings",
         consumer: "shell/control-center",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 25,
         summary: "How many Control Center pages exist (1-3).",
     },
@@ -2887,6 +3509,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(2.0),
         owner: "apps/settings",
         consumer: "shell/control-center",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 25,
         summary: "The Control Center page shown when the panel opens.",
     },
@@ -2900,6 +3524,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/control-center",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 25,
         summary: "Show Control Center on every display instead of the active display only.",
     },
@@ -2913,6 +3539,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/control-center",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 25,
         summary: "Per-module measured span overrides, encoded as id=1x1|2x1|2x2|4x1.",
     },
@@ -2926,6 +3554,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Quick Settings pane",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 34,
         summary: "User-facing names for the Control Center pages; empty entries fall back to Page N.",
     },
@@ -2945,6 +3575,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "search service (T246)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 21,
         summary: "Result categories the desktop search includes.",
     },
@@ -2958,6 +3590,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "search service (T246)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 21,
         summary: "Folders the file index includes; `home` is the user's home directory.",
     },
@@ -2971,6 +3605,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "search service (T246), shell shortcuts",
+        semantic: KeySemantic::Shortcut(64),
+        stored_only: true,
         since: 21,
         summary: "Global keyboard shortcut that opens Search.",
     },
@@ -2984,6 +3620,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "search service (T246)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 21,
         summary: "Offer a web-search result for the query using the default browser.",
     },
@@ -2997,6 +3635,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "stored-only: shell clipboard history always observes; no preference consumer yet",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 38,
         summary: "Keep the desktop clipboard history available in Quick Settings.",
     },
@@ -3010,6 +3650,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/MenuBar status row",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Show the Search control in the menu bar when the search service is present.",
     },
@@ -3026,6 +3668,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Screen-saver style: the lock-screen clock, or no screen saver.",
     },
@@ -3039,6 +3683,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Show the clock on the screen-saver/lock surface.",
     },
@@ -3052,6 +3698,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Show the date under the screen-saver clock.",
     },
@@ -3065,6 +3713,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/LockScreen",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Show seconds in the screen-saver clock.",
     },
@@ -3079,6 +3729,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/files desktop process",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 21,
         summary: "Show desktop items on the desktop or leave them to Stage Manager.",
     },
@@ -3097,6 +3749,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Theme",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 32,
         summary: "Interface text size: one design-system type scale (small, default, large, extra-large).",
     },
@@ -3110,6 +3764,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/design-system Theme/Toggle",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 32,
         summary: "Add a non-colour state cue to controls (the checked toggle carries a check glyph).",
     },
@@ -3123,6 +3779,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/Dock attention bounce",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 32,
         summary: "Reduce the amplitude of attention-seeking flashes and bounces.",
     },
@@ -3136,6 +3794,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/compositor policy, compositor/magnifier",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 32,
         summary: "Enable the compositor's whole-output screen magnifier.",
     },
@@ -3149,6 +3809,8 @@ pub const KEYS: &[KeySpec] = &[
         max: Some(8.0),
         owner: "apps/settings",
         consumer: "compositor/magnifier",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 32,
         summary: "Magnifier zoom factor, 1.0 (off) to 8.0.",
     },
@@ -3162,6 +3824,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "compositor/magnifier",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 32,
         summary: "What the magnifier keeps in view: the focused window or its caret.",
     },
@@ -3175,6 +3839,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "shell/compositor shortcut engine",
+        semantic: KeySemantic::Shortcut(64),
+        stored_only: false,
         since: 32,
         summary: "Recorded chord that opens the Accessibility pane; empty disables it.",
     },
@@ -3193,6 +3859,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Privacy pane (gates per-app location writes)",
+        semantic: KeySemantic::None,
+        stored_only: false,
         since: 36,
         summary: "Desktop-level Location Services master; off disables every per-app location write.",
     },
@@ -3206,6 +3874,8 @@ pub const KEYS: &[KeySpec] = &[
         max: None,
         owner: "apps/settings",
         consumer: "apps/settings Privacy pane (stored-only; no collector in this build)",
+        semantic: KeySemantic::None,
+        stored_only: true,
         since: 36,
         summary: "Opt-in analytics preference; off by default and stored only.",
     },
@@ -4634,5 +5304,192 @@ mod tests {
             KEYS.len() >= V1.len(),
             "the v1 keys must remain a subset of the schema"
         );
+    }
+
+    /// T282: a NaN or infinity must be rejected before a range check. Every
+    /// comparison with NaN is false, so the old code let it through and
+    /// `serde_json::Number::from_f64(...).expect` later panicked in the daemon.
+    #[test]
+    fn non_finite_numbers_are_rejected_at_the_key() {
+        let size = spec("dock.size").unwrap();
+        for number in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                matches!(
+                    size.validate(&Value::Number(number)),
+                    Err(SettingsError::NonFinite { .. })
+                ),
+                "dock.size accepted {number}"
+            );
+        }
+        // Finite values still follow the declared range.
+        assert!(size.validate(&Value::Number(0.5)).is_ok());
+        assert!(matches!(
+            size.validate(&Value::Number(2.0)),
+            Err(SettingsError::OutOfRange { .. })
+        ));
+    }
+
+    /// T282: semantic rules reject a value the D-Bus type alone accepts.
+    #[test]
+    fn times_colours_paths_lists_and_bounds_are_validated() {
+        for key in ["focus.schedule.start", "focus.schedule.end"] {
+            let spec = spec(key).unwrap();
+            assert!(spec.validate(&Value::Text("00:00".into())).is_ok(), "{key}");
+            assert!(spec.validate(&Value::Text("23:59".into())).is_ok(), "{key}");
+            for bad in ["24:00", "12:60", "7:00", "0700", "noon", " 07:00"] {
+                assert!(
+                    matches!(
+                        spec.validate(&Value::Text(bad.into())),
+                        Err(SettingsError::Invalid { .. })
+                    ),
+                    "{key} accepted {bad:?}"
+                );
+            }
+        }
+
+        for key in ["appearance.accent", "appearance.highlight", "appearance.folderColor"] {
+            let spec = spec(key).unwrap();
+            assert!(spec.validate(&Value::Text(String::new())).is_ok(), "{key}");
+            assert!(spec.validate(&Value::Text("#4A7DFF".into())).is_ok(), "{key}");
+            for bad in ["4a7dff", "#4a7df", "#4a7dfff", "#gggggg", "red"] {
+                assert!(
+                    matches!(
+                        spec.validate(&Value::Text(bad.into())),
+                        Err(SettingsError::Invalid { .. })
+                    ),
+                    "{key} accepted {bad:?}"
+                );
+            }
+        }
+
+        for key in [
+            "wallpaper.source",
+            "wallpaper.providerSource",
+            "wallpaper.builtinDefault",
+            "backup.destination",
+        ] {
+            let spec = spec(key).unwrap();
+            assert!(spec.validate(&Value::Text(String::new())).is_ok(), "{key}");
+            assert!(spec.validate(&Value::Text("/home/a/b.png".into())).is_ok(), "{key}");
+            for bad in ["relative/path.png", "./x", "~/x"] {
+                assert!(
+                    matches!(
+                        spec.validate(&Value::Text(bad.into())),
+                        Err(SettingsError::Invalid { .. })
+                    ),
+                    "{key} accepted {bad:?}"
+                );
+            }
+        }
+
+        let days = spec("focus.schedule.days").unwrap();
+        assert!(days
+            .validate(&Value::TextList(vec!["mon".into(), "sun".into()]))
+            .is_ok());
+        assert!(matches!(
+            days.validate(&Value::TextList(vec!["monday".into()])),
+            Err(SettingsError::Invalid { .. })
+        ));
+
+        let modules = spec("quickSettings.modules").unwrap();
+        assert!(modules
+            .validate(&Value::TextList(vec!["wifi".into(), "volume".into()]))
+            .is_ok());
+        assert!(matches!(
+            modules.validate(&Value::TextList(vec!["made-up".into()])),
+            Err(SettingsError::Invalid { .. })
+        ));
+
+        let layouts = spec("input.sources").unwrap();
+        assert!(layouts
+            .validate(&Value::TextList(vec!["us".into(), "de(nodeadkeys)".into()]))
+            .is_ok());
+        for bad in ["", "us intl", "a/b"] {
+            assert!(
+                matches!(
+                    layouts.validate(&Value::TextList(vec![bad.into()])),
+                    Err(SettingsError::Invalid { .. })
+                ),
+                "input.sources accepted {bad:?}"
+            );
+        }
+
+        let replacements = spec("input.replacements").unwrap();
+        assert!(replacements
+            .validate(&Value::TextList(vec!["teh\tthe".into()]))
+            .is_ok());
+        for bad in ["teh the", "\tvalue", "from\t"] {
+            assert!(
+                matches!(
+                    replacements.validate(&Value::TextList(vec![bad.into()])),
+                    Err(SettingsError::Invalid { .. })
+                ),
+                "input.replacements accepted {bad:?}"
+            );
+        }
+
+        let message = spec("lock.message").unwrap();
+        assert!(message.validate(&Value::Text("Back at 5".into())).is_ok());
+        assert!(matches!(
+            message.validate(&Value::Text("x".repeat(121))),
+            Err(SettingsError::Invalid { .. })
+        ));
+        assert!(matches!(
+            message.validate(&Value::Text("two\nlines".into())),
+            Err(SettingsError::Invalid { .. })
+        ));
+
+        let shortcut = spec("accessibility.shortcut").unwrap();
+        assert!(shortcut.validate(&Value::Text(String::new())).is_ok());
+        assert!(shortcut
+            .validate(&Value::Text("Ctrl+Shift+A".into()))
+            .is_ok());
+        assert!(matches!(
+            shortcut.validate(&Value::Text("x".repeat(65))),
+            Err(SettingsError::Invalid { .. })
+        ));
+    }
+
+    /// T282: the stored-only mark is the honest half of every key. A key with
+    /// a shipped consumer names one of the process/module roots the tree
+    /// actually builds; everything else says `stored_only` and its consumer
+    /// text starts with `stored-only:` unless the row is a Settings-owned
+    /// preference with no runtime reader.
+    #[test]
+    fn every_non_stored_only_key_names_a_shipped_consumer_module() {
+        const ROOTS: &[&str] = &[
+            "shell/",
+            "apps/settings",
+            "apps/files",
+            "compositor/",
+            "session/",
+            "services/wallpaperd",
+            "dragonfruit-system-status",
+            "settingsd",
+        ];
+        let mut stored = 0;
+        for spec in KEYS {
+            if spec.stored_only {
+                stored += 1;
+                assert!(!spec.consumer.is_empty(), "{} has no consumer", spec.key);
+                continue;
+            }
+            assert!(
+                ROOTS.iter().any(|root| spec.consumer.starts_with(root)),
+                "{} is not stored-only but its consumer {:?} is not a shipped module",
+                spec.key,
+                spec.consumer
+            );
+        }
+        assert!(stored > 0, "the schema must label at least one stored-only key");
+        // The two T281 Linux additions and the analytics preference stay
+        // explicitly stored-only until their consumers land.
+        for key in [
+            "wallpaper.slideshow",
+            "search.clipboardHistory",
+            "privacy.analytics",
+        ] {
+            assert!(spec(key).unwrap().stored_only, "{key} must be stored-only");
+        }
     }
 }

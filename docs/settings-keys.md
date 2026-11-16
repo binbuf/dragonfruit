@@ -19,6 +19,16 @@ The schema is **additive-only** within the `1` series: a key may be added
 (bump `SCHEMA_VERSION`, set its `since`), never renamed or removed. A test
 freezes the v1 key set.
 
+Every key also carries two T282 facts used by the client mirror and the
+Settings map: a **semantic** rule beyond the D-Bus type (24-hour `HH:MM`,
+`#rrggbb`, absolute path, module/weekday/layout list, `from<TAB>to`
+replacement, bounded message/hint) and a **stored-only** flag. A stored-only
+key is an honest preference with no shipped reader yet; a schema test requires
+every non-flagged consumer to name a module the tree actually builds.
+`dragonfruit-settingsd --print-schema-json` renders the machine-readable
+key/type/default/constraint/stored-only table that `tst_settings_schema_mirror`
+compares against `libs/settings-client`, so the client cache cannot drift.
+
 | Key | Type | Default | Constraints | Owner | Consumer | Summary |
 |---|---|---|---|---|---|---|
 | `dock.size` | d | 0.5 | 0.0–1.0 | shell/Dock | shell/Dock | Dock icon scale, 0 (small) to 1 (large). |

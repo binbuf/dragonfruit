@@ -76,7 +76,7 @@ void DbusInputClient::refresh()
         return;
     }
     auto *watcher = new QDBusPendingCallWatcher(
-        iface->asyncCall(QStringLiteral("State")), this);
+        iface->asyncCall(QStringLiteral("Refresh")), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;

@@ -71,7 +71,7 @@ bool DbusGeneralClient::available() const
 
 void DbusGeneralClient::refresh()
 {
-    call(QStringLiteral("State"), {}, QString(), true);
+    call(QStringLiteral("Refresh"), {}, QString(), true);
 }
 
 void DbusGeneralClient::setNtp(bool enabled)

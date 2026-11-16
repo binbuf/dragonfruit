@@ -113,6 +113,12 @@ pub struct Loaded {
     pub migrated: bool,
     /// True when a file existed and parsed.
     pub found: bool,
+    /// True when the file was written by a newer schema than this build
+    /// (T282). The original is preserved before settingsd may rewrite it.
+    pub future: bool,
+    /// The preserved copy made while loading, when the file was malformed or
+    /// future-schema.
+    pub backup: Option<PathBuf>,
 }
 
 /// The unknown JSON preserved across a settingsd save.
@@ -145,9 +151,10 @@ impl Persistence {
     }
 
     /// Serialize `settings` in the documented shape and replace the file
-    /// atomically. Creates the parent directory when needed.
+    /// atomically. Creates the parent directory when needed. A non-finite
+    /// number is a typed error, never a panic (T282).
     pub fn save(&self, settings: &Settings) -> io::Result<()> {
-        let document = self.document(settings);
+        let document = self.document(settings)?;
         let mut bytes = serde_json::to_vec_pretty(&document).map_err(io::Error::other)?;
         bytes.push(b'\n');
         atomic_write(&self.path, &bytes)
@@ -156,7 +163,7 @@ impl Persistence {
     /// Build the full JSON document for `settings`: preserved unknown root
     /// fields, the current revision, and every schema key plus preserved
     /// unknown key entries.
-    fn document(&self, settings: &Settings) -> Map<String, Json> {
+    fn document(&self, settings: &Settings) -> io::Result<Map<String, Json>> {
         let mut root = self.extras.root.clone();
         root.insert(SCHEMA_FIELD.to_owned(), Json::from(SCHEMA_VERSION));
         let mut keys = self.extras.keys.clone();
@@ -164,10 +171,16 @@ impl Persistence {
             let value = settings
                 .get(spec.key)
                 .expect("the store holds every schema key");
-            keys.insert(spec.key.to_owned(), value_to_json(value));
+            let json = value_to_json(value).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{} holds a non-finite number", spec.key),
+                )
+            })?;
+            keys.insert(spec.key.to_owned(), json);
         }
         root.insert(KEYS_FIELD.to_owned(), Json::Object(keys));
-        root
+        Ok(root)
     }
 }
 
@@ -183,6 +196,8 @@ pub fn load(path: &Path) -> Result<Loaded, LoadError> {
                 schema: UNVERSIONED,
                 migrated: false,
                 found: false,
+                future: false,
+                backup: None,
             });
         }
         Err(error) => return Err(LoadError::Io(error)),
@@ -192,22 +207,36 @@ pub fn load(path: &Path) -> Result<Loaded, LoadError> {
     let Json::Object(root) = document else {
         return Err(LoadError::Malformed("the root is not a JSON object".into()));
     };
-    Ok(from_document(path, root))
+    from_document(path, root)
 }
 
 /// Apply a parsed root object to the schema, migrating it to the current
 /// revision.
-fn from_document(path: &Path, mut root: Map<String, Json>) -> Loaded {
+fn from_document(path: &Path, mut root: Map<String, Json>) -> Result<Loaded, LoadError> {
     let schema = root
         .get(SCHEMA_FIELD)
         .and_then(Json::as_u64)
         .map(|version| version as u32)
         .unwrap_or(UNVERSIONED);
+    let future = schema > SCHEMA_VERSION;
     let migrated = schema < SCHEMA_VERSION;
+    // A newer file may carry keys or shapes this build does not understand.
+    // Preserve it before any rewrite so a downgrade can never be silent.
+    let backup = if future {
+        Some(backup(path, &format!("schema-{schema}")).map_err(LoadError::Io)?)
+    } else {
+        None
+    };
 
     let mut raw_keys = match root.remove(KEYS_FIELD) {
         Some(Json::Object(keys)) => keys,
-        _ => Map::new(),
+        Some(other) => {
+            return Err(LoadError::Malformed(format!(
+                "the `{KEYS_FIELD}` field is {}, not a JSON object",
+                json_kind(&other)
+            )));
+        }
+        None => Map::new(),
     };
 
     // A migration fills keys the older revision predates with their default.
@@ -215,7 +244,7 @@ fn from_document(path: &Path, mut root: Map<String, Json>) -> Loaded {
         for spec in KEYS {
             raw_keys
                 .entry(spec.key.to_owned())
-                .or_insert_with(|| value_to_json(&spec.default.to_value()));
+                .or_insert_with(|| value_to_json(&spec.default.to_value()).unwrap_or(Json::Null));
         }
     }
 
@@ -241,12 +270,52 @@ fn from_document(path: &Path, mut root: Map<String, Json>) -> Loaded {
         keys: unknown,
     };
 
-    Loaded {
+    Ok(Loaded {
         settings,
         persistence,
         schema,
         migrated,
         found: true,
+        future,
+        backup,
+    })
+}
+
+/// Copy `path` to a sibling `<name>.<suffix>.bak`, numbering repeated backups
+/// so a second malformed start never overwrites the first preserved copy.
+pub fn backup(path: &Path, suffix: &str) -> io::Result<PathBuf> {
+    let name = path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or(FILE_NAME);
+    let directory = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    for attempt in 0u32..1000 {
+        let candidate = if attempt == 0 {
+            directory.join(format!("{name}.{suffix}.bak"))
+        } else {
+            directory.join(format!("{name}.{suffix}.{attempt}.bak"))
+        };
+        if candidate.exists() {
+            continue;
+        }
+        fs::copy(path, &candidate)?;
+        return Ok(candidate);
+    }
+    Err(io::Error::other("cannot find a free backup name"))
+}
+
+/// A short JSON kind name for a load error.
+fn json_kind(value: &Json) -> &'static str {
+    match value {
+        Json::Null => "null",
+        Json::Bool(_) => "a boolean",
+        Json::Number(_) => "a number",
+        Json::String(_) => "a string",
+        Json::Array(_) => "an array",
+        Json::Object(_) => "an object",
     }
 }
 
@@ -255,14 +324,17 @@ fn from_document(path: &Path, mut root: Map<String, Json>) -> Loaded {
 fn json_to_value(kind: KeyType, json: &Json) -> Option<Value> {
     match kind {
         KeyType::Bool => json.as_bool().map(Value::Bool),
-        KeyType::Number => json.as_f64().map(Value::Number),
+        KeyType::Number => json
+            .as_f64()
+            .filter(|value| value.is_finite())
+            .map(Value::Number),
         KeyType::Integer => {
             if let Some(value) = json.as_i64() {
                 Some(Value::Integer(value))
             } else {
                 // Tolerate a whole number written as a JSON float.
                 json.as_f64()
-                    .filter(|value| value.fract() == 0.0)
+                    .filter(|value| value.is_finite() && value.fract() == 0.0)
                     .map(|value| Value::Integer(value as i64))
             }
         }
@@ -279,14 +351,13 @@ fn json_to_value(kind: KeyType, json: &Json) -> Option<Value> {
     }
 }
 
-/// Encode a settings value as JSON in the documented shape.
-fn value_to_json(value: &Value) -> Json {
-    match value {
+/// Encode a settings value as JSON in the documented shape. `None` for a
+/// non-finite number: JSON has no NaN/Infinity, and the save path turns that
+/// into a typed `InvalidData` error instead of a panic (T282).
+fn value_to_json(value: &Value) -> Option<Json> {
+    Some(match value {
         Value::Bool(flag) => Json::Bool(*flag),
-        Value::Number(number) => {
-            let number = Number::from_f64(*number).expect("settings numbers are finite");
-            Json::Number(number)
-        }
+        Value::Number(number) => Json::Number(Number::from_f64(*number)?),
         Value::Integer(integer) => Json::Number(Number::from(*integer)),
         Value::Text(text) => Json::String(text.clone()),
         Value::TextList(items) => Json::Array(
@@ -295,7 +366,7 @@ fn value_to_json(value: &Value) -> Json {
                 .map(|item| Json::String(item.clone()))
                 .collect(),
         ),
-    }
+    })
 }
 
 /// Write `bytes` to `path` atomically (staging, flush, rename).
@@ -472,8 +543,10 @@ mod tests {
 
         let mut settings = Settings::new();
         settings.set("dock.size", Value::Number(0.9)).unwrap();
-        let mut bytes =
-            serde_json::to_vec_pretty(&Persistence::new(path.clone()).document(&settings)).unwrap();
+        let mut bytes = serde_json::to_vec_pretty(
+            &Persistence::new(path.clone()).document(&settings).unwrap(),
+        )
+        .unwrap();
 
         // Model the process dying after the temporary file is staged and
         // flushed but before the rename commits.
@@ -685,6 +758,64 @@ mod tests {
 
         write_raw(&path, "[]");
         assert!(matches!(load(&path).unwrap_err(), LoadError::Malformed(_)));
+    }
+
+    /// T282: `keys` is the documented object. A string/list is a malformed
+    /// file, not an empty store that silently becomes defaults.
+    #[test]
+    fn a_non_object_keys_field_is_a_typed_load_error() {
+        let scratch = Scratch::new("keys-shape");
+        let path = scratch.file();
+        for value in ["[]", "\"nope\"", "7", "null"] {
+            write_raw(&path, &format!("{{ \"schema\": 1, \"keys\": {value} }}"));
+            assert!(
+                matches!(load(&path).unwrap_err(), LoadError::Malformed(_)),
+                "keys: {value} was accepted"
+            );
+        }
+    }
+
+    /// T282: a file from a newer build is preserved before this build may
+    /// rewrite it at the older revision. The known keys still load, so a
+    /// downgrade is visibly warned about instead of silently discarding state.
+    #[test]
+    fn a_future_schema_file_is_preserved_and_flagged() {
+        let scratch = Scratch::new("future");
+        let path = scratch.file();
+        let original = format!(
+            "{{\n  \"schema\": {},\n  \"keys\": {{ \"dock.size\": 0.7, \"future.key\": true }}\n}}\n",
+            SCHEMA_VERSION + 5
+        );
+        write_raw(&path, &original);
+
+        let loaded = load(&path).unwrap();
+        assert!(loaded.found);
+        assert!(loaded.future, "a newer revision is flagged");
+        assert!(!loaded.migrated, "a newer revision is not downgraded in place");
+        assert_eq!(loaded.schema, SCHEMA_VERSION + 5);
+        assert_eq!(
+            loaded.settings.get("dock.size").unwrap(),
+            &Value::Number(0.7)
+        );
+        let backup = loaded.backup.expect("the original is preserved");
+        assert!(backup.exists());
+        assert_eq!(fs::read_to_string(&backup).unwrap(), original);
+
+        // A second start does not overwrite the first preserved copy.
+        let again = load(&path).unwrap();
+        assert_ne!(again.backup.unwrap(), backup);
+    }
+
+    #[test]
+    fn a_malformed_file_can_be_preserved_before_defaults_are_used() {
+        let scratch = Scratch::new("preserve");
+        let path = scratch.file();
+        write_raw(&path, "{ not json");
+        let first = backup(&path, "malformed").unwrap();
+        let second = backup(&path, "malformed").unwrap();
+        assert_ne!(first, second);
+        assert_eq!(fs::read_to_string(&first).unwrap(), "{ not json");
+        assert_eq!(fs::read_to_string(&second).unwrap(), "{ not json");
     }
 
     #[test]

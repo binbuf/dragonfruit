@@ -1102,12 +1102,17 @@ dock-icon-mask-capture: build
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null
-	$(CTEST) --test-dir $(BUILD_DIR) -j$(CTEST_JOBS) --output-on-failure
+	# T282: the cold-open budget is a measurement of a quiescent host. Run the
+	# performance suite in its own ctest invocation (still part of the gate)
+	# before the parallel QML suites, then run everything else.
+	$(CTEST) --test-dir $(BUILD_DIR) -R '^tst_settings_performance$$' --output-on-failure
+	$(CTEST) --test-dir $(BUILD_DIR) -j$(CTEST_JOBS) -E '^tst_settings_performance$$' --output-on-failure
 
 qml-test-serial:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null
-	$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure
+	$(CTEST) --test-dir $(BUILD_DIR) -R '^tst_settings_performance$$' --output-on-failure
+	$(CTEST) --test-dir $(BUILD_DIR) -E '^tst_settings_performance$$' --output-on-failure
 
 # T-08 FR-6: headless gallery visual regression. Deterministic token/pixel
 # invariants; `make gallery-snapshot` regenerates the art-direction goldens.

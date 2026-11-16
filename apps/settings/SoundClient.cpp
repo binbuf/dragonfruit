@@ -65,7 +65,7 @@ bool DbusSoundClient::available() const
 
 void DbusSoundClient::refresh()
 {
-    call(QStringLiteral("State"), {});
+    call(QStringLiteral("Refresh"), {});
 }
 
 void DbusSoundClient::setVolume(double volume)
@@ -120,22 +120,41 @@ void DbusSoundClient::call(const QString &method, const QVariantList &arguments)
         }
         return;
     }
-    const bool isState = method == QStringLiteral("State");
+    const bool isState = method == QStringLiteral("State")
+        || method == QStringLiteral("Refresh");
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isState, iface, watcher]() {
+            [this, method, isState, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
-                if (!reply.isValid())
+                if (!reply.isValid()) {
+                    if (!isState)
+                        emit writeFinished(method, QStringLiteral("failed"),
+                                           reply.error().message());
                     return;
-                if (isState)
+                }
+                if (isState) {
                     applyReply(reply.value().toUtf8());
-                else
-                    // The write reply is the outcome report; the new state is
-                    // the host's re-read, never invented here.
-                    refresh();
+                    return;
+                }
+                // T282: the write reply is the outcome report; the new state
+                // is the host's re-read, never invented here.
+                QString outcome = QStringLiteral("applied");
+                QString message;
+                const QJsonDocument document =
+                    QJsonDocument::fromJson(reply.value().toUtf8());
+                if (document.isObject()) {
+                    const QJsonObject object = document.object();
+                    outcome = object.value(QStringLiteral("outcome"))
+                                  .toString(outcome);
+                    message = object.value(QStringLiteral("error")).toString();
+                    if (message.isEmpty())
+                        message = object.value(QStringLiteral("note")).toString();
+                }
+                emit writeFinished(method, outcome, message);
+                refresh();
             });
 }
 

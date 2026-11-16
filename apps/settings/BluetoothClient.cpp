@@ -64,7 +64,7 @@ bool DbusBluetoothClient::available() const
 
 void DbusBluetoothClient::refresh()
 {
-    call(QStringLiteral("State"), {}, QString(), true);
+    call(QStringLiteral("Refresh"), {}, QString(), true);
 }
 
 void DbusBluetoothClient::setPowered(bool powered)

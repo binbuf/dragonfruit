@@ -11,6 +11,8 @@
 #include <QMetaType>
 #include <QTimer>
 
+#include <cmath>
+
 namespace {
 
 const QString kService = QStringLiteral("org.dragonfruit.Settings1");
@@ -85,8 +87,16 @@ QVariant coerceToSchema(const QString &key, const QVariant &value)
         return value;
     const QVariant &declared = it.value();
     if (declared.typeId() == QMetaType::LongLong
-            && value.typeId() == QMetaType::Double)
-        return QVariant::fromValue<qlonglong>(qRound64(value.toDouble()));
+            && value.typeId() == QMetaType::Double) {
+        // T282: QML has one number type, so a control bound to an int64 key
+        // writes a double. Coerce a finite value to the nearest integer (the
+        // long-standing QML contract); pass a non-finite value through so
+        // `validate()` reports it instead of `qRound64` being undefined.
+        const double number = value.toDouble();
+        if (std::isfinite(number))
+            return QVariant::fromValue<qlonglong>(qRound64(number));
+        return value;
+    }
     if (declared.typeId() == QMetaType::Double
             && value.typeId() == QMetaType::LongLong)
         return value.toDouble();
@@ -214,7 +224,7 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("input.mouse.leftHanded"), false);
     values.insert(QStringLiteral("input.mouse.scrollSpeed"), 0.0);
     values.insert(QStringLiteral("input.mouse.scrollMethod"), QStringLiteral("button"));
-    values.insert(QStringLiteral("input.mouse.doubleClickSpeed"), qlonglong(400));
+    values.insert(QStringLiteral("input.mouse.doubleClickSpeed"), 400.0);
     values.insert(QStringLiteral("input.trackpad.pointerSpeed"), 0.0);
     values.insert(QStringLiteral("input.trackpad.naturalScroll"), true);
     values.insert(QStringLiteral("input.trackpad.secondaryClick"), QStringLiteral("right"));
@@ -435,6 +445,7 @@ const char *const kHotCornerModifier[] = { "none", "command", "shift", "option",
 const char *const kPreviews[] = { "always", "when-unlocked", "never" };
 const char *const kLoginWindowStyle[] = { "list", "name-and-password" };
 const char *const kMenuAutoHide[] = { "never", "always", "full-screen" };
+const char *const kMenuOverflow[] = { "automatic", "always" };
 const char *const kMenuOsGlyph[] = { "dragonfruit", "tux" };
 const char *const kAlertSound[] = { "Chime", "Marimba", "Pulse", "Woodblock", "Breeze" };
 const char *const kEffectsThrough[] = { "output", "alerts" };
@@ -519,6 +530,7 @@ const Constraint kConstraints[] = {
     { "lock.requirePasswordAfter", nullptr, 0, true, -1.0, true, 86400.0 },
     { "login.windowStyle", kLoginWindowStyle, 2, false, 0, false, 0 },
     { "menu.autoHide", kMenuAutoHide, 3, false, 0, false, 0 },
+    { "menu.overflow", kMenuOverflow, 2, false, 0, false, 0 },
     { "menu.osGlyph", kMenuOsGlyph, 2, false, 0, false, 0 },
     { "menu.recentItems", nullptr, 0, true, 0.0, true, 50.0 },
     { "printers.defaultPaperSize", kPaperSize, 5, false, 0, false, 0 },
@@ -545,6 +557,8 @@ const Constraint kConstraints[] = {
     { "appearance.material", kMaterial, 4, false, 0, false, 0 },
     { "screenSaver.style", kScreenSaverStyle, 2, false, 0, false, 0 },
     { "desktop.showItems", kDesktopItems, 2, false, 0, false, 0 },
+    { "quickSettings.pageCount", nullptr, 0, true, 1.0, true, 3.0 },
+    { "quickSettings.activePage", nullptr, 0, true, 0.0, true, 2.0 },
     { "accessibility.textSize", kTextSize, 4, false, 0, false, 0 },
     { "accessibility.magnifierZoom", nullptr, 0, true, 1.0, true, 8.0 },
     { "accessibility.magnifierMode", kMagnifierMode, 2, false, 0, false, 0 },
@@ -707,10 +721,7 @@ QString SettingsClient::validate(const QString &key, const QVariant &value) cons
     }
 
     const Constraint *constraint = constraintFor(key);
-    if (!constraint)
-        return QString();
-
-    if (constraint->allowedCount > 0) {
+    if (constraint && constraint->allowedCount > 0) {
         const QString text = coerced.toString();
         for (int i = 0; i < constraint->allowedCount; ++i) {
             if (text == QLatin1String(constraint->allowed[i]))
@@ -725,22 +736,29 @@ QString SettingsClient::validate(const QString &key, const QVariant &value) cons
 
     if (isNumeric(coerced)) {
         const double number = coerced.toDouble();
-        const bool below = constraint->hasMin && number < constraint->min;
-        const bool above = constraint->hasMax && number > constraint->max;
-        if (below || above) {
-            if (constraint->hasMin && constraint->hasMax) {
-                return QStringLiteral("%1: %2 is outside %3..=%4")
-                    .arg(key, numberText(number), numberText(constraint->min),
-                         numberText(constraint->max));
+        // T282: NaN/Infinity is not a preference. Every range comparison is
+        // false for NaN, so reject it before the bounds.
+        if (!std::isfinite(number))
+            return QStringLiteral("%1: the number must be finite").arg(key);
+        if (constraint) {
+            const bool below = constraint->hasMin && number < constraint->min;
+            const bool above = constraint->hasMax && number > constraint->max;
+            if (below || above) {
+                if (constraint->hasMin && constraint->hasMax) {
+                    return QStringLiteral("%1: %2 is outside %3..=%4")
+                        .arg(key, numberText(number), numberText(constraint->min),
+                             numberText(constraint->max));
+                }
+                if (below) {
+                    return QStringLiteral("%1: %2 is below %3")
+                        .arg(key, numberText(number), numberText(constraint->min));
+                }
+                return QStringLiteral("%1: %2 is above %3")
+                    .arg(key, numberText(number), numberText(constraint->max));
             }
-            if (below) {
-                return QStringLiteral("%1: %2 is below %3")
-                    .arg(key, numberText(number), numberText(constraint->min));
-            }
-            return QStringLiteral("%1: %2 is above %3")
-                .arg(key, numberText(number), numberText(constraint->max));
         }
     }
+
     return QString();
 }
 
@@ -807,6 +825,7 @@ bool SettingsClient::beginWrite(const QString &key, const QVariant &value,
     pending.value = coerced;
     pending.generation = ++m_generations[key];
     m_writes.insert(key, pending);
+    m_dirtySinceRefresh.insert(key);
     if (generation)
         *generation = pending.generation;
     m_writeErrors.remove(key);
@@ -817,7 +836,7 @@ bool SettingsClient::beginWrite(const QString &key, const QVariant &value,
 }
 
 void SettingsClient::completeWrite(const QString &key, quint64 generation, bool ok,
-                                   const QString &message, bool deferred)
+                                   const QString &message, const QString &state)
 {
     auto it = m_writes.find(key);
     if (it == m_writes.end() || it->generation != generation)
@@ -829,9 +848,13 @@ void SettingsClient::completeWrite(const QString &key, quint64 generation, bool 
 
     if (ok) {
         m_writeErrors.remove(key);
-        setWriteState(key, deferred ? QStringLiteral("deferred")
-                                    : QStringLiteral("idle"));
-        emit writeFinished(key, attempted, true, QString());
+        const QString resolved = state.isEmpty() ? QStringLiteral("idle") : state;
+        setWriteState(key, resolved);
+        emit writeFinished(key, attempted, true,
+                           resolved == QLatin1String("memory")
+                               ? QStringLiteral("Saved for this session, but the "
+                                                "settings file could not be written.")
+                               : QString());
         return;
     }
 
@@ -853,16 +876,36 @@ void SettingsClient::noteOwnerValue(const QString &key, const QVariant &value)
     clearWriteError(key);
 }
 
-void SettingsClient::clearOwnerWriteStates()
+void SettingsClient::clearOwnerWriteStates(const QStringList &keys)
 {
-    const QStringList keys = m_writeStates.keys();
     for (const QString &key : keys) {
         if (m_writes.contains(key))
             continue; // an in-flight write owns this key until it resolves
+        if (!m_writeStates.contains(key) && !m_writeErrors.contains(key))
+            continue;
         m_writeStates.remove(key);
         m_writeErrors.remove(key);
         emit writeStateChanged(key);
     }
+}
+
+void SettingsClient::beginRefresh()
+{
+    m_dirtySinceRefresh.clear();
+    for (auto it = m_writes.constBegin(); it != m_writes.constEnd(); ++it)
+        m_dirtySinceRefresh.insert(it.key());
+}
+
+bool SettingsClient::snapshotApplies(const QString &key) const
+{
+    return !m_dirtySinceRefresh.contains(key) && !m_writes.contains(key);
+}
+
+void SettingsClient::finishRefresh(bool ok, const QString &message)
+{
+    m_refreshError = ok ? QString() : message;
+    emit refreshed();
+    emit refreshFinished(ok, message);
 }
 
 QString shippedDefaultWallpaperPath()
@@ -937,6 +980,8 @@ void DbusSettingsClient::subscribeToChanges()
 void DbusSettingsClient::onRemoteChanged(const QString &key, const QDBusVariant &value)
 {
     const QVariant unwrapped = unwrapVariant(QVariant::fromValue(value));
+    // A newer owner value arrived while a `GetAll` may still be in flight.
+    m_dirtySinceRefresh.insert(key);
     noteOwnerValue(key, unwrapped);
     applyValue(key, unwrapped);
 }
@@ -962,9 +1007,10 @@ void DbusSettingsClient::onServiceUnregistered(const QString &name)
 void DbusSettingsClient::refresh()
 {
     if (!isAvailable()) {
-        emit refreshed();
+        finishRefresh(false, QStringLiteral("the settings daemon is not running"));
         return;
     }
+    beginRefresh();
     auto *call = new QDBusInterface(m_service, m_path, m_interface,
                                     QDBusConnection::sessionBus(), this);
     auto *watcher = new QDBusPendingCallWatcher(call->asyncCall(QStringLiteral("GetAll")), this);
@@ -976,17 +1022,30 @@ void DbusSettingsClient::refresh()
                     const QVariantMap raw = reply.value();
                     for (auto it = raw.constBegin(); it != raw.constEnd(); ++it)
                         values.insert(it.key(), unwrapVariant(it.value()));
-                    applyValues(values);
-                    // The owner's snapshot is authoritative (ADR 0032). A
-                    // write made while the daemon was away survives in memory
-                    // for the session only, so its `deferred` state is
-                    // reconciled away here rather than claiming persistence.
-                    clearOwnerWriteStates();
+                    // T282: a `Changed` (or a local write) that landed while
+                    // this snapshot was in flight is newer than the snapshot.
+                    // Apply the rest and never clear a state the newer value
+                    // owns.
+                    QStringList applied;
+                    for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+                        if (!snapshotApplies(it.key()))
+                            continue;
+                        applyValue(it.key(), it.value());
+                        applied.append(it.key());
+                    }
+                    // The owner's snapshot is authoritative (ADR 0032) only
+                    // for the keys it actually carried and that were not
+                    // superseded. A write made while the daemon was away is
+                    // in memory for the session only, so its `deferred` state
+                    // is reconciled away here rather than claiming
+                    // persistence.
+                    clearOwnerWriteStates(applied);
+                    finishRefresh(true, QString());
                 } else {
-                    qWarning() << "dragonfruit-shell: settings GetAll failed:"
-                               << watcher->reply().errorMessage();
+                    const QString message = watcher->reply().errorMessage();
+                    qWarning() << "dragonfruit-shell: settings GetAll failed:" << message;
+                    finishRefresh(false, message);
                 }
-                emit refreshed();
                 call->deleteLater();
                 watcher->deleteLater();
             });
@@ -1006,7 +1065,7 @@ bool DbusSettingsClient::set(const QString &key, const QVariant &value)
         // `GetAll` (daemon restart resync) makes the owner's persisted value
         // authoritative again, so this is reported as `deferred`, never as a
         // durable success.
-        completeWrite(key, generation, true, QString(), true);
+        completeWrite(key, generation, true, QString(), QStringLiteral("deferred"));
         return true;
     }
 
@@ -1020,15 +1079,39 @@ bool DbusSettingsClient::set(const QString &key, const QVariant &value)
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this, watcher, call, key, generation]() {
                 const QDBusMessage reply = watcher->reply();
+                call->deleteLater();
+                watcher->deleteLater();
                 if (reply.type() == QDBusMessage::ErrorMessage) {
                     qWarning() << "dragonfruit-shell: settings Set failed:"
                                << reply.errorMessage();
                     completeWrite(key, generation, false, reply.errorMessage());
-                } else {
-                    completeWrite(key, generation, true, QString());
+                    return;
                 }
-                call->deleteLater();
-                watcher->deleteLater();
+                // T282: the daemon keeps a write in memory when the settings
+                // file cannot be written. Read the state property so the row
+                // says "saved for this session" instead of pretending the
+                // write is durable. A daemon that predates the property (or a
+                // fixture) leaves this `idle`.
+                auto *properties = new QDBusInterface(
+                    m_service, m_path, QStringLiteral("org.freedesktop.DBus.Properties"),
+                    QDBusConnection::sessionBus(), this);
+                auto *stateWatcher = new QDBusPendingCallWatcher(
+                    properties->asyncCall(QStringLiteral("Get"), m_interface,
+                                          QStringLiteral("PersistenceState")),
+                    this);
+                connect(stateWatcher, &QDBusPendingCallWatcher::finished, this,
+                        [this, stateWatcher, properties, key, generation]() {
+                            const QDBusPendingReply<QDBusVariant> stateReply = *stateWatcher;
+                            stateWatcher->deleteLater();
+                            properties->deleteLater();
+                            QString state;
+                            if (stateReply.isValid()
+                                    && stateReply.value().variant().toString()
+                                        == QLatin1String("memory-only")) {
+                                state = QStringLiteral("memory");
+                            }
+                            completeWrite(key, generation, true, QString(), state);
+                        });
             });
     return true;
 }
@@ -1043,8 +1126,14 @@ MockSettingsClient::MockSettingsClient(QObject *parent)
 
 void DbusSettingsClient::reset()
 {
-    if (!isAvailable())
+    if (!isAvailable()) {
+        m_resetState = QStringLiteral("deferred");
+        m_resetError = QStringLiteral("the settings daemon is not running");
+        emit resetFinished(false, true, m_resetError);
         return;
+    }
+    m_resetState = QStringLiteral("pending");
+    m_resetError.clear();
     auto *call = new QDBusInterface(m_service, m_path, m_interface,
                                     QDBusConnection::sessionBus(), this);
     auto *watcher = new QDBusPendingCallWatcher(
@@ -1052,13 +1141,20 @@ void DbusSettingsClient::reset()
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this, watcher, call]() {
                 const QDBusPendingReply<> reply = *watcher;
+                const QString message = reply.isValid() ? QString()
+                                                        : watcher->reply().errorMessage();
                 call->deleteLater();
                 watcher->deleteLater();
                 if (!reply.isValid()) {
-                    qWarning() << "dragonfruit-shell: settings Reset failed:"
-                               << watcher->reply().errorMessage();
+                    qWarning() << "dragonfruit-shell: settings Reset failed:" << message;
+                    m_resetState = QStringLiteral("error");
+                    m_resetError = message;
+                    emit resetFinished(false, false, message);
                     return;
                 }
+                m_resetState = QStringLiteral("idle");
+                m_resetError.clear();
+                emit resetFinished(true, false, QString());
                 // The daemon emits Changed per key; the explicit resync also
                 // covers a key that already held its default.
                 refresh();
@@ -1068,8 +1164,8 @@ void DbusSettingsClient::reset()
 void MockSettingsClient::refresh()
 {
     // A mock resync is authoritative, like the daemon's `GetAll`.
-    clearOwnerWriteStates();
-    emit refreshed();
+    clearOwnerWriteStates(m_values.keys());
+    finishRefresh(true, QString());
 }
 
 bool MockSettingsClient::set(const QString &key, const QVariant &value)
@@ -1079,7 +1175,7 @@ bool MockSettingsClient::set(const QString &key, const QVariant &value)
         return false;
 
     if (!m_available) {
-        completeWrite(key, generation, true, QString(), true);
+        completeWrite(key, generation, true, QString(), QStringLiteral("deferred"));
         return true;
     }
 
@@ -1099,8 +1195,11 @@ bool MockSettingsClient::set(const QString &key, const QVariant &value)
 void MockSettingsClient::reset()
 {
     applyValues(settingsSchemaDefaults());
-    clearOwnerWriteStates();
-    emit refreshed();
+    clearOwnerWriteStates(m_values.keys());
+    m_resetState = QStringLiteral("idle");
+    m_resetError.clear();
+    emit resetFinished(true, false, QString());
+    finishRefresh(true, QString());
 }
 
 void MockSettingsClient::failNextWrite(const QString &key, const QString &message)
