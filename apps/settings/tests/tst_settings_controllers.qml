@@ -82,6 +82,19 @@ Item {
             tryVerify(function() { return !pane.mappingDialog.open; });
         }
 
+        function test_the_pane_fits_the_measured_740x820_window() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("game-controllers");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = paneOf(shell);
+            verify(pane.width > 0 && pane.width <= 740);
+            verify(pane.implicitWidth <= 740);
+            verify(pane.controllerRepeater.count === 1);
+        }
+
         function test_mapping_sheet_is_read_only_and_explains_absence() {
             var shell = make();
             var pane = paneOf(shell);

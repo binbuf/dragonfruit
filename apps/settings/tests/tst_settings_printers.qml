@@ -218,6 +218,20 @@ Item {
             });
         }
 
+        function test_the_pane_fits_the_measured_740x820_window() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("printers");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = paneOf(shell);
+            verify(pane.width > 0 && pane.width <= 740);
+            verify(pane.implicitWidth <= 740);
+            verify(pane.printersGroup.width <= 740);
+            verify(pane.scannersGroup.width <= 740);
+        }
+
         function test_absence_note_hidden_with_a_ready_view() {
             var shell = make();
             var pane = paneOf(shell);

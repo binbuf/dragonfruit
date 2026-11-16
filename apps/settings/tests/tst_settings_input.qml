@@ -345,6 +345,22 @@ Item {
             compare(Settings.values["gestures.showDesktop"], false);
         }
 
+        function test_all_three_panes_fit_the_measured_740x820_window() {
+            var ids = ["keyboard", "mouse", "trackpad"];
+            for (var i = 0; i < ids.length; ++i) {
+                var shell = createTemporaryObject(shellComponent, stage,
+                                                  { width: 740, height: 820 });
+                waitForRendering(stage);
+                shell.selectPane(ids[i]);
+                tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+                waitForRendering(stage);
+                var pane = paneOf(shell);
+                verify(pane.width > 0 && pane.width <= 740, ids[i] + " width");
+                verify(pane.implicitWidth <= 740, ids[i] + " implicit width");
+                shell.destroy();
+            }
+        }
+
         function test_external_change_converges_into_the_pane() {
             var shell = make("mouse");
             var pane = paneOf(shell);
