@@ -469,41 +469,75 @@ Accessibility toggle, not a second key.
 ### 5.7 Accessibility
 
 Owner: `settingsd` + compositor + host accessibility services. Delegated
-functions name the external component. Absence: the row shows a note and
-disables only the delegated control.
+functions name the external component. Absence: the five-section structure
+stays; only the live status rows and the delegates that need a program
+disable with a reason.
+
+T275 status: the pane renders every reference row as a settingsd control, a
+read-only status, a delegate action, a stored preference, or an explicit
+omission. The screen reader is a status plus `Open Orca`, never a toggle
+(`org.a11y.Status` is read-only, ADR 0144). The compositor magnifier and the
+recorded shortcut are live over the v12 `set_accessibility_policy` request.
 
 #### 5.7.1 Vision
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| VoiceOver | Screen reader | Toggle + Open | Orca (AT-SPI) | Starts/stops Orca; absent → note |
-| Zoom | Magnifier | Toggle + options | compositor `magnifier` | Live zoom, follow focus/pointer; existing |
-| Hover Text | Hover text | Toggle + options | shell overlay + `settingsd` | Large text under pointer |
-| Display | Display | Disclosure | `settingsd` | Reduce motion, transparency, contrast, differentiate without color, invert, grayscale, cursor size |
-| Motion | Motion | Toggle | existing: `accessibility.reduceMotion` | Live |
-| Read & Speak | Read & speak | Disclosure | speech-dispatcher/espeak-ng/Piper | Selection/announcements; delegated |
-| Audio Descriptions | — | Omit | — | Content-level, not shell |
+| VoiceOver | Screen reader | Status + Open | Orca (AT-SPI) `org.a11y.Status.ScreenReaderEnabled` | Read-only live status; `Open Orca` launches the external reader or disables with a reason |
+| — | Accessibility bridge | Status | AT-SPI `org.a11y.Status.IsEnabled` | Read-only live status |
+| Hover Text | Hover text | — | shell overlay | Disabled: no hover-text overlay |
+| — Invert colors | Invert colors | — | compositor | Disabled: no whole-scene inversion |
+| — Increase contrast | Increase contrast | Toggle | `accessibility.increaseContrast` | Live `Glass` |
+| — Reduce transparency | Reduce transparency | Toggle | `accessibility.reduceTransparency` | Live `Glass` |
+| — Differentiate without color | Differentiate without color | Toggle | `accessibility.differentiateWithoutColor` | Live `Theme` check glyph |
+| — Show window title icons | Show window title icons | — | compositor decoration | Disabled: no title-icon slot |
+| — Show toolbar button shapes | Show toolbar button shapes | — | design system | Disabled: no shape pass |
+| — Display contrast | Display contrast | — | compositor | Disabled: no contrast pass |
+| — Text size | Text size | Popup | `accessibility.textSize` | Live `Theme.textScale` |
+| — Menu bar size | Menu bar size | — | shell | Disabled: fixed menu-bar height |
+| — Pointer size | Pointer size | Slider | `appearance.cursorSize` | Stored-only; applied at the next session start |
+| — Pointer colors | Pointer colors | — | compositor cursor | Disabled: no per-colour cursor override |
+| — Color filters | Color filters | — | compositor | Disabled: no filter pass |
+| Zoom | Use keyboard shortcuts to zoom | Toggle | `accessibility.magnifier` | Live compositor magnifier |
+| — | Zoom level | Slider | `accessibility.magnifierZoom` | Live (1.0–8.0) |
+| — | Follow | Popup | `accessibility.magnifierMode` | Live (`follow-focus`/`follow-caret`) |
+| Motion | Reduce motion | Toggle | `accessibility.reduceMotion` | Live Theme + compositor |
+| — Dim flashing lights | Dim flashing lights | Toggle | `accessibility.dimFlashingLights` | Live Dock attention amplitude |
+| — Auto-play animated images | Auto-play animated images | — | shell | Disabled: no animated-image surface |
+| — Prefer non-blinking cursor | Prefer non-blinking cursor | — | design system | Disabled: toolkit-owned cursor blink |
+| Read & Speak | Read & speak | Action | speech-dispatcher/espeak-ng | Delegated; `Speak Sample` disabled when absent |
+| Audio Descriptions | Audio descriptions | — | — | Omitted: content-level |
 
 #### 5.7.2 Hearing
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Hearing Devices | Hearing devices | Disclosure | BlueZ LE Audio/PipeWire | Device list; absent → note |
-| Audio | Audio | Disclosure | PipeWire + `settingsd` | Mono audio, balance, flash screen |
-| Captions | Captions | Disclosure | live-caption delegate | Optional; absent → note |
-| Live Captions | Live captions | Toggle | speech-to-text delegate | Optional |
-| Name Recognition | — | Omit | — | Apple-specific |
+| — Flash the screen | Flash the screen on alert | — | shell | Disabled: no full-output flash surface |
+| — Play stereo as mono | Mono audio | — | PipeWire | Disabled: no per-session downmix |
+| — Balance | Balance | Slider | `sound.balance` | Stored-only; audio consumer deferred |
+| — Background sounds | Background sounds | — | audio delegate | Disabled: no background-sound player |
+| Captions | Captions | — | live-caption delegate | Delegated; disabled when no delegate |
+| RTT | RTT | — | — | Omitted: no real-time text service |
+| Name Recognition | Name recognition | — | — | Omitted: no on-device name model |
 
-#### 5.7.3 Motor and General
+#### 5.7.3 Motor and Speech
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Voice Control | Voice control | Toggle | speech-to-text delegate | Optional; absent → note |
-| Keyboard | Keyboard | Disclosure | `settingsd` + compositor | Sticky/slow keys, repeat |
-| Pointer Control | Pointer control | Disclosure | compositor input | Speed, acceleration, buttons |
-| Switch Control | Switch control | Disclosure | delegate | Optional; absent → note |
-| Siri | — | Omit | — | Apple service |
-| Shortcuts | Accessibility shortcuts | Sheet | `settingsd` | Keyboard shortcuts |
+| Voice Control | Voice control | — | speech-to-text delegate | Delegated; disabled when absent |
+| — Full keyboard access | Full keyboard access | — | compositor/input | Disabled: no global mode |
+| — Sticky Keys | Sticky keys | — | compositor/input | Disabled: no sticky-key machine |
+| — Slow Keys | Slow keys | — | compositor/input | Disabled: no slow-key delay |
+| — Accessibility Keyboard | On-screen keyboard | Action | onboard/wvkbd | Delegated; `Open` disabled when absent |
+| — Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | Live compositor pointer |
+| — Mouse Keys | Mouse keys | — | compositor/input | Disabled: no keyboard pointer mode |
+| — Ignore built-in trackpad | Ignore built-in trackpad | — | compositor/input | Disabled: no per-device ignore |
+| Switch Control | Switch control | — | switch-control delegate | Delegated; disabled when absent |
+| Live Speech | Live speech | Action | speech-dispatcher/espeak-ng | Delegated; `Speak Sample` disabled when absent |
+| Personal Voice | Personal voice | — | — | Omitted: no equivalent |
+| Vocal Shortcuts | Vocal shortcuts | — | — | Omitted: no equivalent |
+| Siri | — | — | — | Omitted |
+| Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | Live compositor shortcut engine; opens this pane |
 
 <a id="pane-control-center"></a>
 ### 5.8 Control Center
@@ -1070,7 +1104,7 @@ Proposed new groups:
 | `keyboard.*` | Input sources, text replacements, dictation |
 | `mouse.*` / `trackpad.*` | Pointer/gesture preferences |
 | `controllers.*` | Game controller mappings |
-| `a11y.*` | Delegated accessibility service enablement and options |
+| `accessibility.*` | Live accommodations and the recorded shortcut (delegated services keep their own surface) |
 | `ime.*` | Input-method framework selection and options |
 
 The rule remains: **one key, one owner, one consumer set**, declared in the

@@ -772,9 +772,9 @@ Item {
         }
 
         // The Accessibility view is a host-stack adapter read, so with no
-        // bridge host it is the absence state: the live status rows are
-        // replaced by a one-line note, while the one durable preference (a
-        // settingsd key) still applies (T-15.14b).
+        // bridge host it is the absence state: the live status rows keep their
+        // structure but say Unavailable, while every durable preference (a
+        // settingsd key) still applies (T275).
         function test_accessibility_pane_degrades_cleanly_without_the_bridge_host() {
             var shell = make();
             compare(Settings.accessibilityAvailable, false,
@@ -786,7 +786,15 @@ Item {
             compare(pane.absenceNote.visible, true,
                     "the absence note explains the missing accessibility service");
             verify(pane.absenceNote.text.length > 0);
-            compare(pane.statusGroup.visible, false);
+            // T275: the pane stays structured; only the live status/delegate
+            // rows change state.
+            compare(pane.visionGroup.visible, true);
+            compare(pane.hearingGroup.visible, true);
+            compare(pane.motorGroup.visible, true);
+            compare(pane.speechGroup.visible, true);
+            compare(pane.shortcutGroup.visible, true);
+            compare(pane.screenReaderLabel, "Unavailable");
+            compare(pane.bridgeLabel, "Unavailable");
             // The durable preferences are settingsd keys: they stay live.
             compare(pane.motionGroup.visible, true);
             compare(pane.contrastGroup.visible, true);

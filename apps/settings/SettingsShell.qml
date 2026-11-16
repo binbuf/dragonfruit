@@ -147,6 +147,12 @@ Item {
         Settings.values["accessibility.reduceTransparency"] === true
     readonly property bool increaseContrast:
         Settings.values["accessibility.increaseContrast"] === true
+    readonly property string textSize:
+        Settings.values["accessibility.textSize"] || "default"
+    readonly property bool differentiateWithoutColor:
+        Settings.values["accessibility.differentiateWithoutColor"] === true
+    readonly property bool dimFlashingLights:
+        Settings.values["accessibility.dimFlashingLights"] === true
     // T227: the Appearance completion keys. Highlight is the selection wash,
     // sidebar size is mapped onto the design-system Sidebar slots, scroll bars
     // onto the ScrollView policy, and wallpaper tint onto the Glass resolver.
@@ -1040,6 +1046,21 @@ Item {
         target: Theme
         property: "reducedMotion"
         value: Settings.values["accessibility.reduceMotion"] === true
+    }
+    Binding {
+        target: Theme
+        property: "textSize"
+        value: root.textSize
+    }
+    Binding {
+        target: Theme
+        property: "differentiateWithoutColor"
+        value: root.differentiateWithoutColor
+    }
+    Binding {
+        target: Theme
+        property: "dimFlashingLights"
+        value: root.dimFlashingLights
     }
     Binding {
         target: Glass

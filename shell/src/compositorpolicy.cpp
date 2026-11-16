@@ -97,6 +97,23 @@ CompositorPolicy compositorPolicyFromValues(const QVariantMap &values, bool host
         readValue(values, QStringLiteral("input.doubleClickSpeed"), policy.doubleClickMs).toInt();
     policy.haptics =
         readValue(values, QStringLiteral("input.haptics"), policy.haptics).toBool();
+    // T275: the accessibility accommodations.
+    policy.magnifierEnabled =
+        readValue(values, QStringLiteral("accessibility.magnifier"),
+                  policy.magnifierEnabled)
+            .toBool();
+    policy.magnifierZoom =
+        readValue(values, QStringLiteral("accessibility.magnifierZoom"),
+                  policy.magnifierZoom)
+            .toDouble();
+    policy.magnifierMode =
+        readValue(values, QStringLiteral("accessibility.magnifierMode"),
+                  policy.magnifierMode)
+            .toString();
+    policy.accessibilityShortcut =
+        readValue(values, QStringLiteral("accessibility.shortcut"),
+                  policy.accessibilityShortcut)
+            .toString();
     // The first input source is the active layout; a `layout:variant` spelling
     // carries the variant. Empty keeps the host XKB_DEFAULT_* configuration.
     const QStringList sources =

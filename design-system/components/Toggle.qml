@@ -72,6 +72,21 @@ Item {
                 }
             }
         }
+
+        // T275: `accessibility.differentiateWithoutColor` adds a non-colour
+        // cue to the checked state. The knob position already carries the
+        // state; this check glyph makes it legible without relying on the
+        // accent fill.
+        Icon {
+            objectName: "toggleCheckGlyph"
+            visible: root.checked && Theme.differentiateWithoutColor
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.controls.toggle.inset + 2
+            anchors.verticalCenter: parent.verticalCenter
+            name: "check"
+            size: Math.round(track.height * 0.5)
+            color: Theme.color.controlKnob
+        }
     }
 
     Column {

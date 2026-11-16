@@ -62,7 +62,10 @@ void ThemeBinding::onSettingsChanged(const QString &key, const QVariant &)
         || key == QLatin1String("appearance.transparency")
         || key == QLatin1String("accessibility.reduceMotion")
         || key == QLatin1String("accessibility.reduceTransparency")
-        || key == QLatin1String("accessibility.increaseContrast")) {
+        || key == QLatin1String("accessibility.increaseContrast")
+        || key == QLatin1String("accessibility.textSize")
+        || key == QLatin1String("accessibility.differentiateWithoutColor")
+        || key == QLatin1String("accessibility.dimFlashingLights")) {
         apply();
     }
 }
@@ -93,6 +96,13 @@ void ThemeBinding::apply()
         m_settings->string(QStringLiteral("appearance.folderColor"), QString());
     const bool wallpaperTint =
         m_settings->boolean(QStringLiteral("appearance.wallpaperTint"), true);
+    const QString textSize =
+        m_settings->string(QStringLiteral("accessibility.textSize"),
+                           QStringLiteral("default"));
+    const bool differentiateWithoutColor =
+        m_settings->boolean(QStringLiteral("accessibility.differentiateWithoutColor"), false);
+    const bool dimFlashingLights =
+        m_settings->boolean(QStringLiteral("accessibility.dimFlashingLights"), false);
 
     if (m_theme->property("dark").toBool() != dark)
         m_theme->setProperty("dark", dark);
@@ -108,6 +118,13 @@ void ThemeBinding::apply()
         m_theme->setProperty("scrollBarClick", scrollBarClick);
     if (m_theme->property("folderColor").toString() != folderColor)
         m_theme->setProperty("folderColor", folderColor);
+    if (m_theme->property("textSize").toString() != textSize)
+        m_theme->setProperty("textSize", textSize);
+    if (m_theme->property("differentiateWithoutColor").toBool()
+        != differentiateWithoutColor)
+        m_theme->setProperty("differentiateWithoutColor", differentiateWithoutColor);
+    if (m_theme->property("dimFlashingLights").toBool() != dimFlashingLights)
+        m_theme->setProperty("dimFlashingLights", dimFlashingLights);
 
     // T196: the optical preferences are one resolver input, not a second
     // slider curve. The Glass singleton is optional in a QML-less test engine.

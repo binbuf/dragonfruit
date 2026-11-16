@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 31;
+pub const SCHEMA_VERSION: u32 = 32;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,11 +81,12 @@ pub enum KeyGroup {
     Search,
     ScreenSaver,
     Desktop,
+    Accessibility,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 22] = [
+    pub const ALL: [KeyGroup; 23] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -108,6 +109,7 @@ impl KeyGroup {
         KeyGroup::Search,
         KeyGroup::ScreenSaver,
         KeyGroup::Desktop,
+        KeyGroup::Accessibility,
     ];
 
     /// The group name used in docs and tests.
@@ -135,6 +137,7 @@ impl KeyGroup {
             KeyGroup::Search => "search",
             KeyGroup::ScreenSaver => "screen-saver",
             KeyGroup::Desktop => "desktop",
+            KeyGroup::Accessibility => "accessibility",
         }
     }
 }
@@ -2483,6 +2486,102 @@ pub const KEYS: &[KeySpec] = &[
         since: 21,
         summary: "Show desktop items on the desktop or leave them to Stage Manager.",
     },
+    // ── Accessibility (T275) ─────────────────────────────────────────────
+    // The pane's live accommodation preferences. The delegated rows (screen
+    // reader, captions, switch control, live speech) have no settingsd key:
+    // their owner is an external service and the pane names it. Rows with no
+    // live consumer are disabled with a reason instead of storing a key.
+    KeySpec {
+        key: "accessibility.textSize",
+        group: KeyGroup::Accessibility,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("default"),
+        allowed: &["small", "default", "large", "extra-large"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Theme",
+        since: 32,
+        summary: "Interface text size: one design-system type scale (small, default, large, extra-large).",
+    },
+    KeySpec {
+        key: "accessibility.differentiateWithoutColor",
+        group: KeyGroup::Accessibility,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Theme/Toggle",
+        since: 32,
+        summary: "Add a non-colour state cue to controls (the checked toggle carries a check glyph).",
+    },
+    KeySpec {
+        key: "accessibility.dimFlashingLights",
+        group: KeyGroup::Accessibility,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/Dock attention bounce",
+        since: 32,
+        summary: "Reduce the amplitude of attention-seeking flashes and bounces.",
+    },
+    KeySpec {
+        key: "accessibility.magnifier",
+        group: KeyGroup::Accessibility,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/compositor policy, compositor/magnifier",
+        since: 32,
+        summary: "Enable the compositor's whole-output screen magnifier.",
+    },
+    KeySpec {
+        key: "accessibility.magnifierZoom",
+        group: KeyGroup::Accessibility,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(2.0),
+        allowed: &[],
+        min: Some(1.0),
+        max: Some(8.0),
+        owner: "apps/settings",
+        consumer: "compositor/magnifier",
+        since: 32,
+        summary: "Magnifier zoom factor, 1.0 (off) to 8.0.",
+    },
+    KeySpec {
+        key: "accessibility.magnifierMode",
+        group: KeyGroup::Accessibility,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("follow-focus"),
+        allowed: &["follow-focus", "follow-caret"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/magnifier",
+        since: 32,
+        summary: "What the magnifier keeps in view: the focused window or its caret.",
+    },
+    KeySpec {
+        key: "accessibility.shortcut",
+        group: KeyGroup::Accessibility,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/compositor shortcut engine",
+        since: 32,
+        summary: "Recorded chord that opens the Accessibility pane; empty disables it.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -3613,7 +3712,34 @@ mod tests {
             .is_ok());
     }
 
+    /// The T275 accessibility accommodation keys are additive in revision 32.
+    /// The three live booleans feed the design-system Theme, the magnifier
+    /// pair/zoom/mode feed the compositor, and the recorded chord feeds the
+    /// shortcut engine. Delegated rows (screen reader, captions, switch
+    /// control, live speech) have no settingsd key on purpose: their owner is
+    /// an external service.
+    #[test]
+    fn the_accessibility_keys_are_declared_in_revision_thirty_two() {
+        for (key, kind, default) in [
+            ("accessibility.textSize", KeyType::Text, KeyDefault::Text("default")),
+            ("accessibility.differentiateWithoutColor", KeyType::Bool, KeyDefault::Bool(false)),
+            ("accessibility.dimFlashingLights", KeyType::Bool, KeyDefault::Bool(false)),
+            ("accessibility.magnifier", KeyType::Bool, KeyDefault::Bool(false)),
+            ("accessibility.magnifierZoom", KeyType::Number, KeyDefault::Number(2.0)),
+            ("accessibility.magnifierMode", KeyType::Text, KeyDefault::Text("follow-focus")),
+            ("accessibility.shortcut", KeyType::Text, KeyDefault::Text("")),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is not declared"));
+            assert_eq!(spec.group, KeyGroup::Accessibility);
+            assert_eq!(spec.kind, kind);
+            assert_eq!(spec.default, default);
+            assert_eq!(spec.since, 32);
+            assert!(spec.validate(&default.to_value()).is_ok(), "{key} default fails");
+        }
+    }
+
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend
+
     /// this list); renaming or removing one fails here, which is the
     /// additive-only guardrail the design calls for.
     #[test]

@@ -43,6 +43,10 @@ Item {
     // button such as `Details...`) share the same trailing cell.
     property bool disclosure: false
     property string trailingAction: ""
+    // T275: a delegate action may be present but unavailable (the external
+    // program is not installed). The row keeps its anatomy and disables only
+    // the action, with the reason in the description.
+    property bool trailingActionEnabled: true
     signal disclosureClicked()
     signal trailingActionClicked()
     signal helpRequested(string topic)
@@ -121,6 +125,7 @@ Item {
         Button {
             id: trailingButton
             visible: root.trailingAction.length > 0
+            enabled: root.trailingActionEnabled
             text: root.trailingAction
             variant: "ghost"
             accessibleName: root.trailingAction

@@ -79,7 +79,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Battery | UPower + power-profiles-daemon where present |
 | General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
 | Appearance | `settingsd` (design-system themes, dark/light, accent, highlight, sidebar icon size, wallpaper tint, scroll bars, attached-menu transparency, motion link) ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
-| Accessibility | live AT-SPI read + `settingsd` (`accessibility.reduceMotion`, `reduceTransparency`, `increaseContrast`) ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0215](adr/0215-glass-live-settings-and-appearance-policy.md)) |
+| Accessibility | live AT-SPI read + `settingsd` + compositor + delegates — five-section pane: read-only screen-reader/bridge status plus `Open Orca`, Display accommodations (`increaseContrast`, `reduceTransparency`, `differentiateWithoutColor`, `textSize`), the compositor magnifier (`magnifier`, `magnifierZoom`, `magnifierMode`), Motion (`reduceMotion`, `dimFlashingLights`), Read & Speak and the hearing/motor/speech delegates, and the recorded `accessibility.shortcut` ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0276](adr/0276-accessibility-pane-accommodations.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor; the Desktop & Stage Manager group writes `desktop.showItems` for the Files desktop, with T242/T245b rows disabled by reason |
 | Displays | Compositor output API + the real platform output list — **shipped:** per-output name/preview/selector, scale, rotation, brightness, and the reported refresh; **capability-gated:** Use as, auto-brightness, adaptive color, refresh switching, arrangement, Night Light (toggle/schedule/temperature), color profile, TV mode, HDR, VRR, and overscan are disabled with an OPEN reason until the compositor/colord/sensor half exists. One table (`displaycapabilities`) drives both the pane and the advanced sheet ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0274](adr/0274-data-panes-sampler-and-capability-rows.md)) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures; Screen Saver…/Clock Appearance… deep-link to the Screen Saver pane ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md)) |
@@ -528,10 +528,12 @@ appearance without changing the opaque content sheet:
   not change.
 - `SettingsShell` mirrors `appearance.colorScheme`,
   `appearance.accent`, `accessibility.reduceMotion`,
-  `accessibility.reduceTransparency` and `accessibility.increaseContrast` onto
-  its own `Theme`/`Glass` singletons, the same app-local pattern ADR 0037
-  established. `Settings.appChromeSupported` is the client-alpha capability
-  seam (`DF_APP_CHROME_SOLID=1` forces the opaque capture path).
+  `accessibility.reduceTransparency`, `accessibility.increaseContrast`,
+  `accessibility.textSize`, `accessibility.differentiateWithoutColor`, and
+  `accessibility.dimFlashingLights` onto its own `Theme`/`Glass` singletons,
+  the same app-local pattern ADR 0037 established.
+  `Settings.appChromeSupported` is the client-alpha capability seam
+  (`DF_APP_CHROME_SOLID=1` forces the opaque capture path).
 
 The preset stores scalar alpha/tint only, so the reference's small sidebar
 chroma pickup is not reproduced; T206 captures record the rendered channel
@@ -736,7 +738,7 @@ Two absence families appear, and a pane can mix them:
 | Users & Groups | accountsservice/distro (bridge host) | note; read-only tile; Directory account is a read-only projection | **hides** |
 | Printers & Scanners | CUPS/SANE (bridge host) | note; Add/Options/queue writes disabled | **hides** |
 | Privacy & Security | portal `PermissionStore` (bridge host) | note; no permission write | **hides** |
-| Accessibility | AT-SPI (bridge host) + settingsd | status note; `accessibility.reduceMotion`/`reduceTransparency`/`increaseContrast` stay live | **hides** |
+| Accessibility | AT-SPI (bridge host) + settingsd | five-section structure stays; status rows say Unavailable; live preferences and delegates stay in place | **hides** |
 
 The headless half is the CI gate:
 

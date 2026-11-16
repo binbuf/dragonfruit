@@ -209,6 +209,19 @@ def gen_qml(data: dict) -> str:
             "    // Reduced motion is a first-class token (FR-5): every animation has",
             "    // a variant that removes translation/scale but keeps state legible.",
             "    property bool reducedMotion: false",
+            "    // Text size (T275, `accessibility.textSize`): one type-scale input.",
+            "    // The primitive and control font sizes below multiply by it, so every",
+            "    // design-system consumer follows without a per-component override.",
+            "    property string textSize: \"default\"",
+            "    readonly property real textScale: tokens.textSize === \"small\" ? 0.9",
+            "        : tokens.textSize === \"large\" ? 1.1",
+            "        : tokens.textSize === \"extra-large\" ? 1.2 : 1.0",
+            "    // Differentiate without color (T275, `accessibility.differentiateWithoutColor`):",
+            "    // a non-colour cue on state-bearing controls (the Toggle check glyph).",
+            "    property bool differentiateWithoutColor: false",
+            "    // Dim flashing lights (T275, `accessibility.dimFlashingLights`):",
+            "    // attention-seeking bounces and flashes play at reduced amplitude.",
+            "    property bool dimFlashingLights: false",
             "    // Accent override (T-09.2, `appearance.accent`): empty means the",
             "    // active scheme's token accent. The shell's ThemeBinding and the",
             "    // Settings app's local Theme bindings write it; the accent-family",
@@ -264,6 +277,17 @@ def gen_qml(data: dict) -> str:
     lines.append("    }")
     lines.append("}")
     lines.append("")
+    # T275: one text scale for every design-system font size. The primitive
+    # type scale and the component `fontSize` slots are the only font sizes in
+    # the generated token file, so scaling them here is the one place the
+    # `accessibility.textSize` preference reaches every consumer.
+    for index, line in enumerate(lines):
+        match = re.match(
+            r"(\s*readonly property int (?:size(?:Xs|Sm|Md|Lg|Xl|Xxl|Display)|fontSize)): (\d+)$",
+            line,
+        )
+        if match:
+            lines[index] = f"{match.group(1)}: Math.round({match.group(2)} * tokens.textScale)"
     return "\n".join(lines)
 
 

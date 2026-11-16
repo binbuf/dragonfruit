@@ -617,6 +617,14 @@ public:
                           const QString &secondaryClick, double scrollSpeed,
                           int doubleClickMs, bool haptics);
 
+    // Mirror the accessibility accommodations into the compositor (T275,
+    // `df_toplevel_manager.set_accessibility_policy`, additive in v12): the
+    // whole-output magnifier (enabled/zoom/mode) and the recorded shortcut
+    // chord. An empty chord removes the binding; an unknown mode is ignored.
+    void setAccessibilityPolicy(bool magnifierEnabled, double magnifierZoom,
+                                const QString &magnifierMode,
+                                const QString &shortcut);
+
     // Mirror the active keyboard layout into the compositor (T229,
     // `df_toplevel_manager.set_keyboard_layout`, additive in v10). An empty
     // layout keeps the host `XKB_DEFAULT_*` configuration.

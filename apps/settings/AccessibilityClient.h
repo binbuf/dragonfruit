@@ -16,6 +16,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 
 class QDBusServiceWatcher;
@@ -40,9 +41,31 @@ public:
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
 
+    // T275 delegates. The screen reader, speech engine, and on-screen
+    // keyboard are external programs, never reimplemented here: the pane
+    // offers a real launch action and disables it when the program is absent.
+    // `DF_ACCESSIBILITY_DELEGATE_FIXTURE=present|absent` makes the headless
+    // tests and captures deterministic without spawning a process.
+    bool screenReaderAvailable() const;
+    bool speechAvailable() const;
+    bool onScreenKeyboardAvailable() const;
+    QString lastDelegate() const { return m_lastDelegate; }
+    bool openScreenReader();
+    bool speak(const QString &text);
+    bool openOnScreenKeyboard();
+
 signals:
     void changed(const QVariantMap &view);
     void availableChanged(bool available);
+    void delegateLaunched(const QString &id, bool ok);
+
+private:
+    enum class DelegateFixture { Auto, Present, Absent };
+    DelegateFixture delegateFixture() const;
+    bool delegateAvailable(const QStringList &programs) const;
+    bool launchDelegate(const QString &id, const QString &program,
+                        const QStringList &arguments);
+    QString m_lastDelegate;
 };
 
 // The live client over the user session bus.
@@ -78,13 +101,14 @@ class MockAccessibilityClient : public AccessibilityClient
 public:
     explicit MockAccessibilityClient(QObject *parent = nullptr);
 
-    bool available() const override { return true; }
+    bool available() const override;
     QVariantMap view() const override { return m_view; }
     void refresh() override;
     void resetForTest() override;
 
 private:
     void rebuild();
+    bool fixtureAbsent() const;
     bool m_enabled = true;
     bool m_screenReader = true;
     QVariantMap m_view;

@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 31). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 32). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -168,6 +168,14 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("accessibility.reduceMotion"), false);
     values.insert(QStringLiteral("accessibility.reduceTransparency"), false);
     values.insert(QStringLiteral("accessibility.increaseContrast"), false);
+    values.insert(QStringLiteral("accessibility.textSize"), QStringLiteral("default"));
+    values.insert(QStringLiteral("accessibility.differentiateWithoutColor"), false);
+    values.insert(QStringLiteral("accessibility.dimFlashingLights"), false);
+    values.insert(QStringLiteral("accessibility.magnifier"), false);
+    values.insert(QStringLiteral("accessibility.magnifierZoom"), 2.0);
+    values.insert(QStringLiteral("accessibility.magnifierMode"),
+                  QStringLiteral("follow-focus"));
+    values.insert(QStringLiteral("accessibility.shortcut"), QString());
     values.insert(QStringLiteral("input.repeatDelay"), qlonglong(200));
     values.insert(QStringLiteral("input.repeatRate"), qlonglong(25));
     values.insert(QStringLiteral("input.pointerSpeed"), 0.0);
@@ -396,6 +404,8 @@ const char *const kWindowControls[] = { "left", "right" };
 const char *const kMaterial[] = { "auto", "full", "reduced", "minimal" };
 const char *const kScreenSaverStyle[] = { "clock", "none" };
 const char *const kDesktopItems[] = { "on-desktop", "in-stage" };
+const char *const kTextSize[] = { "small", "default", "large", "extra-large" };
+const char *const kMagnifierMode[] = { "follow-focus", "follow-caret" };
 
 const Constraint kConstraints[] = {
     { "dock.size", nullptr, 0, true, 0.0, true, 1.0 },
@@ -464,6 +474,9 @@ const Constraint kConstraints[] = {
     { "appearance.material", kMaterial, 4, false, 0, false, 0 },
     { "screenSaver.style", kScreenSaverStyle, 2, false, 0, false, 0 },
     { "desktop.showItems", kDesktopItems, 2, false, 0, false, 0 },
+    { "accessibility.textSize", kTextSize, 4, false, 0, false, 0 },
+    { "accessibility.magnifierZoom", nullptr, 0, true, 1.0, true, 8.0 },
+    { "accessibility.magnifierMode", kMagnifierMode, 2, false, 0, false, 0 },
 };
 
 // T268: one keyed constraint table built once. The previous linear scan ran

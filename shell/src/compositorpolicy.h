@@ -41,6 +41,12 @@ struct CompositorPolicy {
     bool haptics = true;
     QString keyboardLayout;
     QString keyboardVariant;
+    // T275: the compositor-owned accessibility accommodations. The shell
+    // forwards the whole snapshot over v12 `set_accessibility_policy`.
+    bool magnifierEnabled = false;
+    double magnifierZoom = 2.0;
+    QString magnifierMode = QStringLiteral("follow-focus");
+    QString accessibilityShortcut;
 
     bool operator==(const CompositorPolicy &) const = default;
 };

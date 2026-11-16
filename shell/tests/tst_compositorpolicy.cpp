@@ -48,6 +48,10 @@ void TestCompositorPolicy::defaultsMatchTheSchema()
     QCOMPARE(policy.haptics, true);
     QVERIFY(policy.keyboardLayout.isEmpty());
     QVERIFY(policy.keyboardVariant.isEmpty());
+    QCOMPARE(policy.magnifierEnabled, false);
+    QCOMPARE(policy.magnifierZoom, 2.0);
+    QCOMPARE(policy.magnifierMode, QStringLiteral("follow-focus"));
+    QVERIFY(policy.accessibilityShortcut.isEmpty());
 }
 
 void TestCompositorPolicy::everyKeyMapsThrough()
@@ -76,6 +80,12 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     values.insert(QStringLiteral("input.haptics"), false);
     values.insert(QStringLiteral("input.sources"),
                   QStringList{QStringLiteral("de:nodeadkeys")});
+    values.insert(QStringLiteral("accessibility.magnifier"), true);
+    values.insert(QStringLiteral("accessibility.magnifierZoom"), 3.5);
+    values.insert(QStringLiteral("accessibility.magnifierMode"),
+                  QStringLiteral("follow-caret"));
+    values.insert(QStringLiteral("accessibility.shortcut"),
+                  QStringLiteral("Ctrl+Shift+A"));
 
     const CompositorPolicy policy = compositorPolicyFromValues(values, /*hostDark=*/false);
     QCOMPARE(policy.reducedMotion, true);
@@ -101,6 +111,10 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     QCOMPARE(policy.haptics, false);
     QCOMPARE(policy.keyboardLayout, QStringLiteral("de"));
     QCOMPARE(policy.keyboardVariant, QStringLiteral("nodeadkeys"));
+    QCOMPARE(policy.magnifierEnabled, true);
+    QCOMPARE(policy.magnifierZoom, 3.5);
+    QCOMPARE(policy.magnifierMode, QStringLiteral("follow-caret"));
+    QCOMPARE(policy.accessibilityShortcut, QStringLiteral("Ctrl+Shift+A"));
 }
 
 void TestCompositorPolicy::autoFollowsTheHost()

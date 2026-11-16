@@ -57,6 +57,10 @@ pub enum InputAction {
     /// Toggle the Applications drawer (T-19.2). The shell owns the launcher;
     /// the compositor only routes the action.
     ShowApps,
+    /// T275: the user-recorded accessibility shortcut. The shell forwards the
+    /// chord from `accessibility.shortcut`; the compositor binds it to this
+    /// action and the shell opens the Accessibility pane.
+    AccessibilityShortcut,
 }
 
 impl InputAction {
@@ -91,6 +95,7 @@ impl InputAction {
             InputAction::ToggleDock => "toggle-dock",
             InputAction::ControlCenter => "control-center",
             InputAction::ShowApps => "show-apps",
+            InputAction::AccessibilityShortcut => "accessibility-shortcut",
         }
     }
 }

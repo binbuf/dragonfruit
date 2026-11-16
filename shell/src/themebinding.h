@@ -18,6 +18,9 @@
 //   accessibility.reduceMotion boolean                    -> Theme.reducedMotion
 //   accessibility.reduceTransparency boolean              -> Glass.reduceTransparency
 //   accessibility.increaseContrast   boolean              -> Glass.increaseContrast
+//   accessibility.textSize           small/default/large/extra-large -> Theme.textSize
+//   accessibility.differentiateWithoutColor boolean       -> Theme.differentiateWithoutColor
+//   accessibility.dimFlashingLights  boolean              -> Theme.dimFlashingLights
 //
 // It reacts to `SettingsClient::changed` and `refreshed` only (no timer, no
 // second bus connection). "auto" follows the host's `QStyleHints` color scheme

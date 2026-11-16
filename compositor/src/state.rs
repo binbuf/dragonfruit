@@ -103,8 +103,9 @@ use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::GestureRecognizer;
 use crate::input::hot_corners::HotCornerDetector;
+use crate::input::keymap::parse_binding;
 use crate::input::settings::InputSettings;
-use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
+use crate::input::shortcuts::{GrabArbiter, GrabKind, Shortcut, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::{GestureBudgetTrace, LatencyInstrument};
 use crate::lock::LockModel;
@@ -5656,6 +5657,44 @@ impl DfState {
         if let Some(geometry) = self.magnifier_output_geometry() {
             self.magnifier.set_center((x, y).into(), geometry);
             self.needs_redraw = true;
+        }
+    }
+
+    /// T275: apply the accessibility snapshot in one place. The magnifier is
+    /// the compositor-owned half; the recorded shortcut is installed into the
+    /// one system binding table (never a client grab) so the shell can open
+    /// the Accessibility pane from any focused app.
+    pub fn set_accessibility_policy(
+        &mut self,
+        magnifier_enabled: bool,
+        magnifier_zoom: f64,
+        magnifier_mode: Option<&str>,
+        shortcut: Option<&str>,
+    ) {
+        if let Some(mode) = magnifier_mode.and_then(MagnifierMode::parse) {
+            self.set_magnifier_mode(mode);
+        }
+        if magnifier_zoom.is_finite()
+            && (self.magnifier.zoom() - magnifier_zoom).abs() > f64::EPSILON
+        {
+            self.set_magnifier_zoom(magnifier_zoom);
+        }
+        self.set_magnifier_enabled(magnifier_enabled);
+
+        let mut bindings = self.input_settings.system_bindings.clone();
+        bindings.retain(|binding| binding.action != InputAction::AccessibilityShortcut);
+        if let Some(chord) = shortcut {
+            let chord = chord.trim();
+            if !chord.is_empty() {
+                if let Some((mods, key)) = parse_binding(chord) {
+                    bindings.push(Shortcut::new(mods, key, InputAction::AccessibilityShortcut));
+                }
+            }
+        }
+        if bindings != self.input_settings.system_bindings {
+            self.input_settings.system_bindings = bindings;
+            self.shortcuts
+                .set_system_bindings(self.input_settings.system_bindings.clone());
         }
     }
 

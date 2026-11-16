@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="11">
+  <interface name="df_toplevel_manager" version="12">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -401,6 +401,26 @@
       <arg name="y" type="int"/>
       <arg name="width" type="int"/>
       <arg name="height" type="int"/>
+    </request>
+
+    <!-- T275: the accessibility accommodations the compositor owns. Appended
+         after the v11 messages so the scanner's `since` stays non-decreasing
+         and every pre-existing message keeps its opcode (append-only).
+         Additive in v12. -->
+    <request name="set_accessibility_policy" since="12">
+      <description summary="set the compositor accessibility accommodations">
+        The shell mirrors `accessibility.magnifier`, `magnifierZoom`,
+        `magnifierMode`, and the recorded `accessibility.shortcut` here. The
+        magnifier is a whole-output compositor transform; the shortcut is
+        installed into the one system binding table and routes the
+        `accessibility-shortcut` action back to the shell. An empty shortcut
+        removes the binding. Unknown modes leave the current mode untouched
+        and an out-of-range zoom is clamped by the magnifier model.
+      </description>
+      <arg name="magnifier_enabled" type="uint"/>
+      <arg name="magnifier_zoom_millionths" type="uint"/>
+      <arg name="magnifier_mode" type="string" allow-null="true"/>
+      <arg name="shortcut" type="string" allow-null="true"/>
     </request>
 
     <enum name="hot_corner">

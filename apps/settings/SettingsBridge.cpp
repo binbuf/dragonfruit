@@ -538,6 +538,8 @@ AccessibilityClient *SettingsBridge::ensureAccessibility()
             [this](const QVariantMap &) { emit accessibilityChanged(); });
     connect(m_accessibility, &AccessibilityClient::availableChanged, this,
             [this](bool) { emit accessibilityChanged(); });
+    connect(m_accessibility, &AccessibilityClient::delegateLaunched, this,
+            [this](const QString &, bool) { emit accessibilityDelegateChanged(); });
     if (qobject_cast<MockAccessibilityClient *>(m_accessibility))
         m_accessibility->refresh();
     noteAdapterCreated();
@@ -814,6 +816,44 @@ QVariantMap SettingsBridge::accessibility() const
 bool SettingsBridge::accessibilityAvailable() const
 {
     return m_accessibility && m_accessibility->available();
+}
+
+bool SettingsBridge::accessibilityScreenReaderAvailable() const
+{
+    return m_accessibility && m_accessibility->screenReaderAvailable();
+}
+
+bool SettingsBridge::accessibilitySpeechAvailable() const
+{
+    return m_accessibility && m_accessibility->speechAvailable();
+}
+
+bool SettingsBridge::accessibilityOnScreenKeyboardAvailable() const
+{
+    return m_accessibility && m_accessibility->onScreenKeyboardAvailable();
+}
+
+QString SettingsBridge::accessibilityLastDelegate() const
+{
+    return m_accessibility ? m_accessibility->lastDelegate() : QString();
+}
+
+bool SettingsBridge::openAccessibilityScreenReader()
+{
+    AccessibilityClient *client = ensureAccessibility();
+    return client && client->openScreenReader();
+}
+
+bool SettingsBridge::speakAccessibilityText(const QString &text)
+{
+    AccessibilityClient *client = ensureAccessibility();
+    return client && client->speak(text);
+}
+
+bool SettingsBridge::openAccessibilityKeyboard()
+{
+    AccessibilityClient *client = ensureAccessibility();
+    return client && client->openOnScreenKeyboard();
 }
 
 QVariantMap SettingsBridge::vpn() const

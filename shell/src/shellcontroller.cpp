@@ -7237,6 +7237,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
     } else if (action == QLatin1String("screenshot-region")) {
         // T-13.3a: Cmd+Shift+4 opens the region selection.
         startScreenshot(QStringLiteral("region"));
+    } else if (action == QLatin1String("accessibility-shortcut")) {
+        // T275: the recorded accessibility shortcut opens the pane where the
+        // accommodations live. The compositor owns the binding; the shell owns
+        // the surface.
+        openSettingsDeepLink(QStringLiteral("settings://pane/accessibility"));
     }
 }
 
@@ -7570,6 +7575,10 @@ void ShellController::applyCompositorPolicy()
                                  policy.scrollMethod, policy.secondaryClick,
                                  policy.scrollSpeed, policy.doubleClickMs, policy.haptics);
     m_protocol->setKeyboardLayout(policy.keyboardLayout, policy.keyboardVariant);
+    // T275: the magnifier and the recorded accessibility shortcut.
+    m_protocol->setAccessibilityPolicy(policy.magnifierEnabled, policy.magnifierZoom,
+                                       policy.magnifierMode,
+                                       policy.accessibilityShortcut);
     // T200: the veil's accessibility variants are decided in the same policy
     // snapshot. Push them to QML so Reduce Transparency draws the opaque
     // scheme plate instead of leaving the compositor's skipped veil bare.

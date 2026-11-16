@@ -55,6 +55,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         SettingsAbsence.qml
         SettingsAbsenceNotice.qml
         SettingsKeyRow.qml
+        ShortcutRecorder.qml
         SettingsMenu.qml
         PaneHeader.qml
         PaneLoader.qml
@@ -152,6 +153,7 @@ df_qml_lint(app-settings
     SettingsAbsence.qml
     SettingsAbsenceNotice.qml
     SettingsKeyRow.qml
+    ShortcutRecorder.qml
     SettingsMenu.qml
     PaneHeader.qml
     PaneLoader.qml

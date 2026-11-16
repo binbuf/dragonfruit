@@ -56,6 +56,13 @@ freezes the v1 key set.
 | `accessibility.reduceMotion` | b | false | | settingsd | shell/design-system Theme, compositor/window motion | Global animation policy: collapse motion to instant transitions. |
 | `accessibility.reduceTransparency` | b | false | | apps/settings | shell/design-system Glass, compositor/material | Replace sampled glass with a scheme-appropriate opaque plate; wins over the transparency slider. |
 | `accessibility.increaseContrast` | b | false | | apps/settings | shell/design-system Glass, compositor/material | Strengthen glass edges and foreground contrast, including when Reduce Transparency is active. |
+| `accessibility.textSize` | s | `default` | `small`/`default`/`large`/`extra-large` | apps/settings | shell/design-system Theme | Interface text size: one design-system type scale (small, default, large, extra-large). |
+| `accessibility.differentiateWithoutColor` | b | false | | apps/settings | shell/design-system Theme/Toggle | Add a non-colour state cue to controls (the checked toggle carries a check glyph). |
+| `accessibility.dimFlashingLights` | b | false | | apps/settings | shell/Dock attention bounce | Reduce the amplitude of attention-seeking flashes and bounces. |
+| `accessibility.magnifier` | b | false | | apps/settings | shell/compositor policy, compositor/magnifier | Enable the compositor's whole-output screen magnifier. |
+| `accessibility.magnifierZoom` | d | 2.0 | 1.0–8.0 | apps/settings | compositor/magnifier | Magnifier zoom factor, 1.0 (off) to 8.0. |
+| `accessibility.magnifierMode` | s | `follow-focus` | `follow-focus`/`follow-caret` | apps/settings | compositor/magnifier | What the magnifier keeps in view: the focused window or its caret. |
+| `accessibility.shortcut` | s | `` (empty) | | apps/settings | shell/compositor shortcut engine | Recorded chord that opens the Accessibility pane; empty disables it. |
 | `input.repeatDelay` | x | 200 | 0–5000 ms | settingsd | compositor/input keyboard repeat | Milliseconds before a held key begins repeating. |
 | `input.repeatRate` | x | 25 | 0–200 Hz | settingsd | compositor/input keyboard repeat | Key repeat rate in keys per second; 0 disables repeat. |
 | `input.pointerSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | compositor/input pointer acceleration | Pointer tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral. |

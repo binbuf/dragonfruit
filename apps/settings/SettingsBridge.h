@@ -259,6 +259,17 @@ class SettingsBridge : public QObject
     // Accessibility surface at all; the pane shows the absence note.
     Q_PROPERTY(bool accessibilityAvailable READ accessibilityAvailable NOTIFY
                    accessibilityChanged)
+    // T275: the three external delegate programs. A false value disables the
+    // matching action with a reason; the pane never fakes a launch.
+    Q_PROPERTY(bool accessibilityScreenReaderAvailable READ accessibilityScreenReaderAvailable
+                   NOTIFY accessibilityChanged)
+    Q_PROPERTY(bool accessibilitySpeechAvailable READ accessibilitySpeechAvailable NOTIFY
+                   accessibilityChanged)
+    Q_PROPERTY(bool accessibilityOnScreenKeyboardAvailable READ
+                   accessibilityOnScreenKeyboardAvailable NOTIFY accessibilityChanged)
+    // T275: the last delegate the pane launched, for tests and diagnostics.
+    Q_PROPERTY(QString accessibilityLastDelegate READ accessibilityLastDelegate NOTIFY
+                   accessibilityDelegateChanged)
     // The Network advanced (VPN) view from the bridge host (T-15.15b):
     // `{ state, glyph, label, present, connectionCount, connectedCount,
     // activeUuid, activeName, readOnly, note, connections }`. Empty when the
@@ -404,6 +415,10 @@ public:
     bool onlineAccountsAvailable() const;
     QVariantMap accessibility() const;
     bool accessibilityAvailable() const;
+    bool accessibilityScreenReaderAvailable() const;
+    bool accessibilitySpeechAvailable() const;
+    bool accessibilityOnScreenKeyboardAvailable() const;
+    QString accessibilityLastDelegate() const;
     QVariantMap vpn() const;
     bool vpnAvailable() const;
     QVariantMap wifi() const;
@@ -755,6 +770,13 @@ public:
     // Test seam (`DF_ACCESSIBILITY_FIXTURE` only): restore the in-process
     // fixture. A no-op on the live client.
     Q_INVOKABLE void resetAccessibilityFixture();
+    // T275: the three external delegates. Each returns false when the program
+    // is absent, so the pane can show a disabled action and a reason instead
+    // of a fake toggle. `DF_ACCESSIBILITY_DELEGATE_FIXTURE=present|absent`
+    // makes headless tests deterministic without spawning a process.
+    Q_INVOKABLE bool openAccessibilityScreenReader();
+    Q_INVOKABLE bool speakAccessibilityText(const QString &text);
+    Q_INVOKABLE bool openAccessibilityKeyboard();
 
     // T-15.15b: the Network advanced (VPN) pane's one seam. `refreshVpn`
     // re-reads the bridge host on pane open; `connectVpn`/`disconnectVpn` each
@@ -898,6 +920,9 @@ signals:
     void onlineAccountsChanged();
     // The Accessibility view or availability changed (T-15.14b).
     void accessibilityChanged();
+    // T275: a delegate launch attempt completed (`ok` false when the program
+    // is absent or the launch failed).
+    void accessibilityDelegateChanged();
     // The Network advanced (VPN) view or availability changed (T-15.15b).
     void vpnChanged();
     // The Wi-Fi view or availability changed (T225).

@@ -56,9 +56,9 @@ const INTERFACE_VERSION: u32 = 1;
 /// bumps in tandem with its child interface.
 const SHELL_INTERFACE_VERSION: u32 = 4;
 
-/// `df_toplevel_manager` is version 10 since the T229 pointer/layout policy
-/// requests were added; `set_minimize_target` is the v11 addition (T237);
-/// `set_appearance_policy` was the v9 addition (T196);
+/// `df_toplevel_manager` is version 12 since the T275 accessibility
+/// accommodations request was added; version 11 added `set_minimize_target`
+/// (T237); `set_appearance_policy` was the v9 addition (T196);
 /// `activation_result` was the v8 addition (T-14.7g),
 /// `set_app_accelerators` v7 (T-14.2b), `capture_screenshot` and the
 /// `screenshot_saved`/`screenshot_failed` events were the v6 additions
@@ -66,7 +66,7 @@ const SHELL_INTERFACE_VERSION: u32 = 4;
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 11;
+const MANAGER_INTERFACE_VERSION: u32 = 12;
 
 /// `df_output` is version 4 since the role-keyed `material_role_state` event
 /// was added (T-21.2c); v3 added the global effective `material_state` event
@@ -2566,6 +2566,23 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     transparency,
                     reduce_transparency != 0,
                     increase_contrast != 0,
+                );
+            }
+            df_toplevel_manager::Request::SetAccessibilityPolicy {
+                magnifier_enabled,
+                magnifier_zoom_millionths,
+                magnifier_mode,
+                shortcut,
+            } => {
+                // T275: the compositor-owned accessibility accommodations. The
+                // magnifier is a whole-output transform and the recorded chord
+                // joins the one system binding table.
+                let zoom = (magnifier_zoom_millionths.min(8_000_000) as f64) / 1_000_000.0;
+                state.set_accessibility_policy(
+                    magnifier_enabled != 0,
+                    zoom,
+                    magnifier_mode.as_deref(),
+                    shortcut.as_deref(),
                 );
             }
             df_toplevel_manager::Request::SetInputPolicy {

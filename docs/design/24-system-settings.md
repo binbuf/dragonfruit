@@ -929,66 +929,74 @@ is disabled with the reason rather than presented as a working toggle.
 ### 4.8 Accessibility — T275
 
 Owner: settingsd + compositor + AT-SPI + delegates. Absence: keep the
-section structure; disable the delegated rows with a reason.
+five-section structure; only the live status rows and the delegates that
+need an external program disable with a reason.
+
+The pane is one scroll of grouped cards in the reference order: **Vision**
+(status, Display, Zoom, Motion, Read & Speak), **Hearing**, **Motor**,
+**Speech**, and **Accessibility Shortcut**. A row is a settingsd control, a
+read-only status, a delegate action, a stored preference (marked), or an
+explicit omission. It is never a fake toggle.
 
 #### Vision
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| VoiceOver | Screen reader | Toggle + Open | Orca/AT-SPI | delegate; status + open |
-| Hover Text | Hover text | Toggle + options | shell overlay | adapt |
-| Display | Display | Disclosure | settingsd/compositor | ship |
-| — Invert colors | Invert colors | Toggle | `accessibility.invertColors` | ship |
-| — Increase contrast | Increase contrast | Toggle | `accessibility.increaseContrast` | ship |
-| — Reduce transparency | Reduce transparency | Toggle | `accessibility.reduceTransparency` | ship |
-| — Differentiate without color | Differentiate without color | Toggle | `accessibility.differentiateWithoutColor` | ship |
-| — Show window title icons | Show title icons | Toggle | compositor | adapt |
-| — Show toolbar button shapes | Toolbar button shapes | Toggle | design system | adapt |
-| — Display contrast | Display contrast | Slider | compositor | adapt |
-| — Text size | Text size | Popup | design system | ship |
-| — Menu bar size | Menu bar size | Popup | shell | ship |
-| — Pointer size / colors | Pointer size / colors | Slider/swatches | compositor | ship |
-| — Color filters | Color filters | Popup/slider | compositor | adapt |
-| Zoom | Magnifier | Toggle + options | compositor | ship |
-| Motion | Motion | Toggle | `accessibility.reduceMotion` | ship |
-| — Dim flashing lights | Dim flashing lights | Toggle | compositor | adapt |
-| — Auto-play animated images | Auto-play images | Toggle | shell | adapt |
-| — Prefer non-blinking cursor | Non-blinking cursor | Toggle | design system | ship |
-| Read & Speak | Read & speak | Disclosure | speech-dispatcher/espeak-ng | delegate |
-| Audio Descriptions | — | Omit | — | omit: content-level |
+| VoiceOver | Screen reader | Status + Open Orca | Orca/AT-SPI `org.a11y.Status.ScreenReaderEnabled` | delegated; read-only status + real launch |
+| — | Accessibility bridge | Status | AT-SPI `org.a11y.Status.IsEnabled` | read-only |
+| Hover Text | Hover text | — | shell overlay | disabled-with-reason: no hover-text overlay |
+| — Invert colors | Invert colors | — | compositor | disabled-with-reason: no whole-scene inversion |
+| — Increase contrast | Increase contrast | Toggle | `accessibility.increaseContrast` | ship; live `Glass` |
+| — Reduce transparency | Reduce transparency | Toggle | `accessibility.reduceTransparency` | ship; live `Glass` |
+| — Differentiate without color | Differentiate without color | Toggle | `accessibility.differentiateWithoutColor` | ship; live `Theme` check glyph |
+| — Show window title icons | Show window title icons | — | compositor decoration | disabled-with-reason: no title-icon slot |
+| — Show toolbar button shapes | Show toolbar button shapes | — | design system | disabled-with-reason: no shape pass |
+| — Display contrast | Display contrast | — | compositor | disabled-with-reason: no contrast pass |
+| — Text size | Text size | Popup | `accessibility.textSize` | ship; live `Theme.textScale` |
+| — Menu bar size | Menu bar size | — | shell | disabled-with-reason: fixed menu-bar height |
+| — Pointer size | Pointer size | Slider | `appearance.cursorSize` | stored-only; compositor applies at next session start |
+| — Pointer colors | Pointer colors | — | compositor cursor | disabled-with-reason: no per-colour cursor override |
+| — Color filters | Color filters | — | compositor | disabled-with-reason: no filter pass |
+| Zoom | Use keyboard shortcuts to zoom | Toggle | `accessibility.magnifier` | ship; live compositor magnifier (v12) |
+| — | Zoom level | Slider | `accessibility.magnifierZoom` | ship; live (1.0–8.0) |
+| — | Follow | Popup | `accessibility.magnifierMode` | ship; live (`follow-focus`/`follow-caret`) |
+| Motion | Reduce motion | Toggle | `accessibility.reduceMotion` | ship; live Theme + compositor |
+| — Dim flashing lights | Dim flashing lights | Toggle | `accessibility.dimFlashingLights` | ship; live Dock attention amplitude |
+| — Auto-play animated images | Auto-play animated images | — | shell | disabled-with-reason: no animated-image surface |
+| — Prefer non-blinking cursor | Prefer non-blinking cursor | — | design system | disabled-with-reason: toolkit-owned cursor blink |
+| Read & Speak | Read & speak | Action | speech-dispatcher/espeak-ng | delegated; `Speak Sample` disabled when absent |
+| Audio Descriptions | Audio descriptions | — | — | omit: content-level |
 
 #### Hearing
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Audio | Audio | Disclosure | PipeWire/settingsd | ship |
-| — Flash the screen | Flash screen on alert | Toggle | `accessibility.flashScreen` | ship |
-| — Play stereo as mono | Mono audio | Toggle | `accessibility.monoAudio` | ship |
-| — Background sounds | Background sounds | Toggle + picker | audio delegate | adapt |
-| RTT | — | Omit | — | omit: no RTT service |
-| Captions | Captions | Disclosure | live-caption delegate | delegate |
-| Name Recognition | — | Omit | — | omit: no on-device name model |
+| — Flash the screen | Flash the screen on alert | — | shell | disabled-with-reason: no full-output flash surface |
+| — Play stereo as mono | Mono audio | — | PipeWire | disabled-with-reason: no per-session downmix |
+| — Balance | Balance | Slider | `sound.balance` | stored-only; the audio engine consumer is deferred |
+| — Background sounds | Background sounds | — | audio delegate | disabled-with-reason: no background-sound player |
+| Captions | Captions | — | live-caption delegate | delegated; disabled when no delegate |
+| RTT | RTT | — | — | omit: no real-time text service |
+| Name Recognition | Name recognition | — | — | omit: no on-device name model |
 
 #### Motor and Speech
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Voice Control | Voice control | Toggle | speech-to-text delegate | delegate |
-| Keyboard | Keyboard | Disclosure | settingsd/compositor | ship |
-| — Full keyboard access | Full keyboard access | Toggle | `accessibility.fullKeyboardAccess` | ship |
-| — Sticky Keys | Sticky keys | Toggle + options | compositor | ship |
-| — Slow Keys | Slow keys | Toggle + delay | compositor | ship |
-| — Accessibility Keyboard | On-screen keyboard | Toggle | shell | delegate/adapt |
-| Pointer Control | Pointer control | Disclosure | compositor | ship |
-| — Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | ship |
-| — Mouse Keys | Mouse keys | Toggle | compositor | ship |
-| — Ignore built-in trackpad | Ignore built-in trackpad | Toggle | compositor | adapt |
-| Switch Control | Switch control | Disclosure | delegate | delegate |
-| Live Speech | Live speech | Toggle | speech delegate | delegate |
-| Personal Voice | — | Omit | — | omit: no equivalent |
-| Vocal Shortcuts | — | Omit | — | omit: no equivalent |
-| Siri | — | Omit | — | omit |
-| Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | ship |
+| Voice Control | Voice control | — | speech-to-text delegate | delegated; disabled when absent |
+| — Full keyboard access | Full keyboard access | — | compositor/input | disabled-with-reason: no global mode |
+| — Sticky Keys | Sticky keys | — | compositor/input | disabled-with-reason: no sticky-key machine |
+| — Slow Keys | Slow keys | — | compositor/input | disabled-with-reason: no slow-key delay |
+| — Accessibility Keyboard | On-screen keyboard | Action | onboard/wvkbd | delegated; `Open` disabled when absent |
+| — Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | ship; live compositor pointer |
+| — Mouse Keys | Mouse keys | — | compositor/input | disabled-with-reason: no keyboard pointer mode |
+| — Ignore built-in trackpad | Ignore built-in trackpad | — | compositor/input | disabled-with-reason: no per-device ignore |
+| Switch Control | Switch control | — | switch-control delegate | delegated; disabled when absent |
+| Live Speech | Live speech | Action | speech-dispatcher/espeak-ng | delegated; `Speak Sample` disabled when absent |
+| Personal Voice | Personal voice | — | — | omit: no equivalent |
+| Vocal Shortcuts | Vocal shortcuts | — | — | omit: no equivalent |
+| Siri | — | — | — | omit |
+| Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | ship; live compositor shortcut engine (v12) |
 
 ### 4.9 Quick Settings — T277
 
@@ -1523,7 +1531,7 @@ from the first live T263 run; they are part of the same release bar.
 | P0-2 | Many shipped controls write keys with no consumer (sound, notifications, search, backup, locale, `power.showPercentage`, `input.*`, `idle.*`) | `services/settingsd/src/schema.rs`, pane QML | T282, pane tasks |
 | P0-3 | Adapter writes are fire-and-forget; failures invisible; dialogs close before the result | `*Client.cpp`, `WifiPane.qml`, `UsersGroupsPane.qml`, `BiometricsPane.qml`, `PrintersScannersPane.qml` | T282, T271, T279, T280 |
 | P0-4 | General hides About, Software Update, Storage, and Reset when one unrelated adapter is absent | `GeneralPane.qml` | T269 (landed) |
-| P0-5 | Accessibility is three settingsd rows against a five-section macOS IA; map claims rows that do not exist | `AccessibilityPane.qml`, `SettingsMap.qml` | T275 |
+| P0-5 | Accessibility is three settingsd rows against a five-section macOS IA; map claims rows that do not exist | `AccessibilityPane.qml`, `SettingsMap.qml` | T275 (landed: five sections, status + delegate, live magnifier/shortcut) |
 | P0-6 | Focus mode rows are inert but styled/announced as radio controls; three duplicate state surfaces | `FocusPane.qml` | T278 |
 | P0-7 | Search is a no-op surface; shortcut is free text; indexing rows name nonexistent keys | `SearchPane.qml`, `schema.rs` | T265, T282 |
 | P0-8 | Notification global preferences are no-ops; per-app sheet is missing half the macOS options | `NotificationsPane.qml`, `schema.rs` | T278 |

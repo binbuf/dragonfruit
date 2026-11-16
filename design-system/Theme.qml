@@ -78,13 +78,13 @@ QtObject {
         }
         readonly property var font: QtObject {
             readonly property string family: "Inter"
-            readonly property int sizeXs: 10
-            readonly property int sizeSm: 12
-            readonly property int sizeMd: 13
-            readonly property int sizeLg: 15
-            readonly property int sizeXl: 18
-            readonly property int sizeXxl: 22
-            readonly property int sizeDisplay: 28
+            readonly property int sizeXs: Math.round(10 * tokens.textScale)
+            readonly property int sizeSm: Math.round(12 * tokens.textScale)
+            readonly property int sizeMd: Math.round(13 * tokens.textScale)
+            readonly property int sizeLg: Math.round(15 * tokens.textScale)
+            readonly property int sizeXl: Math.round(18 * tokens.textScale)
+            readonly property int sizeXxl: Math.round(22 * tokens.textScale)
+            readonly property int sizeDisplay: Math.round(28 * tokens.textScale)
             readonly property int weightRegular: 400
             readonly property int weightMedium: 500
             readonly property int weightSemibold: 600
@@ -1120,6 +1120,19 @@ QtObject {
     // Reduced motion is a first-class token (FR-5): every animation has
     // a variant that removes translation/scale but keeps state legible.
     property bool reducedMotion: false
+    // Text size (T275, `accessibility.textSize`): one type-scale input.
+    // The primitive and control font sizes below multiply by it, so every
+    // design-system consumer follows without a per-component override.
+    property string textSize: "default"
+    readonly property real textScale: tokens.textSize === "small" ? 0.9
+        : tokens.textSize === "large" ? 1.1
+        : tokens.textSize === "extra-large" ? 1.2 : 1.0
+    // Differentiate without color (T275, `accessibility.differentiateWithoutColor`):
+    // a non-colour cue on state-bearing controls (the Toggle check glyph).
+    property bool differentiateWithoutColor: false
+    // Dim flashing lights (T275, `accessibility.dimFlashingLights`):
+    // attention-seeking bounces and flashes play at reduced amplitude.
+    property bool dimFlashingLights: false
     // Accent override (T-09.2, `appearance.accent`): empty means the
     // active scheme's token accent. The shell's ThemeBinding and the
     // Settings app's local Theme bindings write it; the accent-family
@@ -1201,7 +1214,7 @@ QtObject {
             readonly property int paddingH: 8
             readonly property int paddingV: 4
             readonly property int spacing: 8
-            readonly property int fontSize: 13
+            readonly property int fontSize: Math.round(13 * tokens.textScale)
             readonly property int fontWeight: 600
             readonly property int cornerRadius: 14
         }
@@ -1223,7 +1236,7 @@ QtObject {
             readonly property int height: 28
             readonly property int paddingH: 12
             readonly property int radius: 10
-            readonly property int fontSize: 13
+            readonly property int fontSize: Math.round(13 * tokens.textScale)
             readonly property int fontWeight: 500
             readonly property int iconSize: 16
         }
@@ -1251,7 +1264,7 @@ QtObject {
             readonly property int statusItemPaddingH: 6
             readonly property int statusItemGap: 2
             readonly property int iconSize: 15
-            readonly property int fontSize: 13
+            readonly property int fontSize: Math.round(13 * tokens.textScale)
             readonly property int labelGap: 5
             readonly property int clockGap: 8
             readonly property int revealDelay: 0
@@ -1395,7 +1408,7 @@ QtObject {
         }
         readonly property var shortcutHint: QtObject {
             readonly property int gap: 2
-            readonly property int fontSize: 12
+            readonly property int fontSize: Math.round(12 * tokens.textScale)
             readonly property int modifierWeight: 400
             readonly property int keyWeight: 500
         }
@@ -1474,7 +1487,7 @@ QtObject {
             readonly property int radius: 10
             readonly property int padding: 2
             readonly property int segmentMinWidth: 64
-            readonly property int fontSize: 13
+            readonly property int fontSize: Math.round(13 * tokens.textScale)
         }
         readonly property var slider: QtObject {
             readonly property int height: 24
@@ -1528,7 +1541,7 @@ QtObject {
             readonly property int paddingH: 12
             readonly property int paddingV: 8
             readonly property int maxWidth: 260
-            readonly property int fontSize: 13
+            readonly property int fontSize: Math.round(13 * tokens.textScale)
             readonly property int tailWidth: 16
             readonly property int tailHeight: 6
             readonly property color rimColor: "#ffffff"
@@ -1577,7 +1590,7 @@ QtObject {
             readonly property int chipRadius: 10
             readonly property int chipGap: 8
             readonly property int chipPadding: 10
-            readonly property int fontSize: 13
+            readonly property int fontSize: Math.round(13 * tokens.textScale)
             readonly property int titleSize: 12
             readonly property real scrimOpacity: 0.18
         }
@@ -1590,7 +1603,7 @@ QtObject {
             readonly property int gap: 8
             readonly property int trackHeight: 6
             readonly property int trackRadius: 999
-            readonly property int fontSize: 13
+            readonly property int fontSize: Math.round(13 * tokens.textScale)
         }
         readonly property var skeleton: QtObject {
             readonly property int radius: 10

@@ -3168,6 +3168,28 @@ void ShellProtocol::setAppearancePolicy(const QString &colorScheme, double trans
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setAccessibilityPolicy(bool magnifierEnabled, double magnifierZoom,
+                                           const QString &magnifierMode,
+                                           const QString &shortcut)
+{
+    // T275: the compositor-owned accessibility accommodations. Additive in
+    // v12; older compositors ignore the request and keep the settingsd-only
+    // state. The zoom travels as millionths so the magnifier model's exact
+    // 1.0..8.0 range survives the integer wire.
+    if (m_manager && m_managerVersion >= 12) {
+        const double bounded = qBound(1.0, magnifierZoom, 8.0);
+        const auto millionths = static_cast<uint32_t>(qRound(bounded * 1000000.0));
+        const QByteArray mode = magnifierMode.toUtf8();
+        const QByteArray chord = shortcut.toUtf8();
+        df_toplevel_manager_set_accessibility_policy(
+            m_manager, magnifierEnabled ? 1u : 0u, millionths,
+            magnifierMode.isEmpty() ? nullptr : mode.constData(),
+            shortcut.isEmpty() ? nullptr : chord.constData());
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
                                    bool gestureSpaceSwitch, bool gestureMissionControl)
 {
