@@ -115,6 +115,26 @@ pub struct ExtensionData {
     pub path: String,
 }
 
+/// The USB-accessory policy sub-read (T279).
+///
+/// USBGuard is the host owner when it is installed. The read is deliberately
+/// small: whether the daemon/tooling answered, how many devices it currently
+/// manages, and the one-line policy note. Writes stay with `usbguard`; the
+/// pane never edits a rule.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AccessoriesData {
+    /// Whether the USBGuard tooling answered.
+    pub available: bool,
+    /// `managed` when USBGuard is active, `absent` otherwise.
+    pub policy: String,
+    /// The one-line status (`3 devices managed`, `Not installed`).
+    pub label: String,
+    /// How many devices the policy lists.
+    pub device_count: usize,
+    /// The honest explanation/delegate line.
+    pub note: String,
+}
+
 /// One row in the Advanced sheet.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AdvancedRowData {
@@ -141,6 +161,8 @@ pub struct SecurityData {
     pub hardening: HardeningData,
     /// Installed portal extensions.
     pub extensions: Vec<ExtensionData>,
+    /// The USB-accessory policy (USBGuard).
+    pub accessories: AccessoriesData,
     /// The Advanced sheet rows.
     pub advanced: Vec<AdvancedRowData>,
 }
@@ -215,6 +237,11 @@ impl SecuritySnapshot {
     /// The installed portal extensions.
     pub fn extensions(&self) -> &[ExtensionData] {
         &self.data.extensions
+    }
+
+    /// The USB-accessory policy (USBGuard).
+    pub fn accessories(&self) -> &AccessoriesData {
+        &self.data.accessories
     }
 
     /// The Advanced sheet rows.
@@ -345,12 +372,14 @@ pub fn read_host_security() -> Result<Option<SecurityData>, AdapterError> {
     let encryption = read_encryption();
     let hardening = read_hardening();
     let extensions = read_extensions();
+    let accessories = read_accessories();
     let advanced = read_advanced(&software_sources, &encryption, &hardening);
 
     let any = software_sources.available
         || encryption.available
         || hardening.available
         || !extensions.is_empty()
+        || accessories.available
         || !advanced.is_empty();
     if !any {
         return Ok(None);
@@ -360,6 +389,7 @@ pub fn read_host_security() -> Result<Option<SecurityData>, AdapterError> {
         encryption,
         hardening,
         extensions,
+        accessories,
         advanced,
     }))
 }
@@ -428,6 +458,14 @@ pub fn security_fixture() -> SecurityData {
                 path: "/usr/share/xdg-desktop-portal/portals/gtk.portal".to_owned(),
             },
         ],
+        accessories: AccessoriesData {
+            available: true,
+            policy: "managed".to_owned(),
+            label: "2 devices managed".to_owned(),
+            device_count: 2,
+            note: "USBGuard owns the USB device policy; changes stay with the usbguard CLI."
+                .to_owned(),
+        },
         advanced: vec![
             AdvancedRowData {
                 id: "polkit".to_owned(),
@@ -451,6 +489,37 @@ pub fn security_fixture() -> SecurityData {
                 state: "off".to_owned(),
             },
         ],
+    }
+}
+
+/// Read the USBGuard policy. Absent is a normal state: the accessory row then
+/// states that no device policy is installed and delegates changes to the
+/// distribution.
+fn read_accessories() -> AccessoriesData {
+    if !command_exists("usbguard") {
+        return AccessoriesData {
+            available: false,
+            policy: "absent".to_owned(),
+            label: "Not installed".to_owned(),
+            device_count: 0,
+            note: "USBGuard is not installed, so USB accessories are not restricted.".to_owned(),
+        };
+    }
+    let devices = run("usbguard", &["list-devices"]).unwrap_or_default();
+    let count = devices
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    AccessoriesData {
+        available: true,
+        policy: "managed".to_owned(),
+        label: match count {
+            0 => "No devices managed".to_owned(),
+            1 => "1 device managed".to_owned(),
+            count => format!("{count} devices managed"),
+        },
+        device_count: count,
+        note: "USBGuard owns the USB device policy; changes stay with the usbguard CLI.".to_owned(),
     }
 }
 

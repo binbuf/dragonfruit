@@ -671,10 +671,24 @@ impl AccountsInterface {
     }
 
     /// Create a user account. `account_type` is a stable id (`standard` or
-    /// `administrator`); an unknown id fails without reaching the daemon.
-    fn create_user(&self, user_name: &str, real_name: &str, account_type: &str) -> String {
+    /// `administrator`); an unknown id fails without reaching the daemon. A
+    /// non-empty `password` is set on the new account in the same action.
+    fn create_user(
+        &self,
+        user_name: &str,
+        real_name: &str,
+        account_type: &str,
+        password: &str,
+    ) -> String {
         lock_accounts(&self.host)
-            .create_user(user_name, real_name, account_type)
+            .create_user(user_name, real_name, account_type, password)
+            .to_string()
+    }
+
+    /// Set the password of the user with `uid`. One explicit write.
+    fn set_password(&self, uid: u64, password: &str) -> String {
+        lock_accounts(&self.host)
+            .set_password(uid, password)
             .to_string()
     }
 
@@ -791,6 +805,13 @@ impl AccountsInterface {
     fn set_online_account_sync(&self, id: &str, capability: &str, enabled: bool) -> String {
         lock_accounts(&self.host)
             .set_online_account_sync(id, capability, enabled)
+            .to_string()
+    }
+
+    /// Ask GOA to sign the account in again.
+    fn ensure_online_account_credentials(&self, id: &str) -> String {
+        lock_accounts(&self.host)
+            .ensure_online_account_credentials(id)
             .to_string()
     }
 }

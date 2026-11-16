@@ -142,16 +142,36 @@ impl<S: AccountSource + BiometricsSource + OnlineAccountsSource + Send> Accounts
         online_accounts_report(self.online.set_sync(id, capability, enabled))
     }
 
+    /// Ask the provider to sign the account in again.
+    pub fn ensure_online_account_credentials(&mut self, id: &str) -> Value {
+        online_accounts_report(self.online.ensure_credentials(id))
+    }
+
     /// Create a user. One explicit write; an unknown account-type id is a
-    /// failure, never a guess.
-    pub fn create_user(&mut self, user_name: &str, real_name: &str, account_type: &str) -> Value {
+    /// failure, never a guess. A non-empty `password` is set on the new
+    /// account in the same action.
+    pub fn create_user(
+        &mut self,
+        user_name: &str,
+        real_name: &str,
+        account_type: &str,
+        password: &str,
+    ) -> Value {
         let account_type = parse_account_type(account_type);
         match account_type {
-            Ok(account_type) => {
-                account_report(self.adapter.create_user(user_name, real_name, account_type))
-            }
+            Ok(account_type) => account_report(self.adapter.create_user(
+                user_name,
+                real_name,
+                account_type,
+                password,
+            )),
             Err(report) => report,
         }
+    }
+
+    /// Set the password of the user with `uid`. One explicit write.
+    pub fn set_password(&mut self, uid: u64, password: &str) -> Value {
+        account_report(self.adapter.set_password(uid, password))
     }
 
     /// Delete the user with `uid`. One explicit write.
@@ -405,7 +425,10 @@ pub fn biometrics_snapshot_view(snapshot: &BiometricsSnapshot) -> Value {
         json!({
             "finger": enrollment.finger,
             "label": dragonfruit_account_adapter::finger_label(&enrollment.finger),
+            "stage": enrollment.stage,
+            "stageLabel": enrollment.status,
             "status": enrollment.status,
+            "done": enrollment.done,
         })
     });
     json!({
@@ -429,6 +452,7 @@ pub fn biometrics_snapshot_view(snapshot: &BiometricsSnapshot) -> Value {
             "note": snapshot.password().note,
         },
         "enrolling": enrolling,
+        "enrollmentError": snapshot.enrollment_error(),
     })
 }
 
@@ -591,6 +615,7 @@ mod tests {
     fn a_missing_fprintd_keeps_pam_and_password_live() {
         let biometrics = dragonfruit_account_adapter::MockBiometrics::with_data(
             dragonfruit_account_adapter::BiometricsData {
+                enrollment_error: None,
                 user: "dan".to_owned(),
                 uid: 1000,
                 fprintd_available: false,
@@ -732,7 +757,7 @@ mod tests {
         let mut host = AccountsHost::new(MockAccounts::present(data()));
         host.refresh();
         assert_eq!(
-            host.create_user("kim", "Kim", "standard")["outcome"],
+            host.create_user("kim", "Kim", "standard", "")["outcome"],
             "applied"
         );
         assert_eq!(
@@ -773,7 +798,7 @@ mod tests {
         assert!(report["error"].as_str().unwrap().contains("superuser"));
         // The write never reached the daemon.
         assert_eq!(host.adapter().source().lock().type_sets(), 0);
-        let report = host.create_user("kim", "Kim", "root-user");
+        let report = host.create_user("kim", "Kim", "root-user", "");
         assert_eq!(report["outcome"], "failed");
         assert_eq!(host.adapter().source().lock().creates(), 0);
     }
@@ -794,7 +819,7 @@ mod tests {
         let mut host = AccountsHost::new(MockAccounts::absent());
         host.refresh();
         assert_eq!(
-            host.create_user("kim", "Kim", "standard")["outcome"],
+            host.create_user("kim", "Kim", "standard", "")["outcome"],
             "absent"
         );
         assert_eq!(host.delete_user(1000)["outcome"], "absent");

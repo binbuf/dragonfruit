@@ -28,7 +28,7 @@
 use std::process::ExitCode;
 
 use dragonfruit_accessibility_adapter::HostAccessibility;
-use dragonfruit_account_adapter::HostAccounts;
+use dragonfruit_account_adapter::{FileGroupProvider, HostAccounts};
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_firewall::CommandFirewall;
@@ -136,10 +136,12 @@ fn main() -> ExitCode {
     let mut updates = UpdatesHost::new(
         HostSystem::new().with_provider(Box::new(CommandUpdateProvider::detect())),
     );
-    // AccountsService over the system bus, with no distribution group provider
-    // attached until packaging supplies one (ADR 0138), so the group controls
-    // report absence rather than inventing state.
-    let mut accounts = AccountsHost::new(HostAccounts::new());
+    // AccountsService over the system bus plus the distribution's own group
+    // provider (T279): the group database is read through NSS and writes go
+    // through groupadd/groupdel/gpasswd under the host polkit authority. A host
+    // with neither still reports groups as absent rather than inventing state.
+    let mut accounts =
+        AccountsHost::new(HostAccounts::new().with_provider(Box::new(FileGroupProvider::new())));
     // CUPS and SANE through their client tools; a host with neither is a
     // normal hidden state (ADR 0140).
     let mut printers = PrintersHost::new(HostPrint::new());

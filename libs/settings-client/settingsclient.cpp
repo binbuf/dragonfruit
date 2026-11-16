@@ -355,6 +355,10 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("screenSaver.showDate"), true);
     values.insert(QStringLiteral("screenSaver.showSeconds"), false);
     values.insert(QStringLiteral("desktop.showItems"), QStringLiteral("on-desktop"));
+    // T279: the Privacy & Security master gate and the opt-in analytics
+    // preference (schema revision 36).
+    values.insert(QStringLiteral("privacy.locationServices"), true);
+    values.insert(QStringLiteral("privacy.analytics"), false);
     return values;
 }
 

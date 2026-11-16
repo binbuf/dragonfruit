@@ -955,6 +955,15 @@ restores the stored draft. The shell pushes `lock.*` onto the first-party
 lock scene; the compositor owns the fail-secure state.
 
 <a id="pane-biometrics"></a>
+**T279 status.** The privacy list is grouped into Location Services, App
+access, Analytics & Improvements, and Security; each category carries its own
+glyph and is a keyboard/AT-SPI `SettingsRow`. `privacy.locationServices` is
+the desktop-level master (the portal has no global switch) and gates the
+per-app location writes; `privacy.analytics` is opt-in, defaults off, and is
+stored-only. Security adds the LUKS device sheet and the USBGuard accessory
+row; a portal that is absent keeps the Security half live, and a security tool
+that is absent disables only its row.
+
 ### 5.20 Biometrics & Password
 
 Owner: `fprintd` + PAM + distro adapter. Absence: note; no fingerprint write.
@@ -976,6 +985,13 @@ reader keeps the password half live; a host with no AccountsService keeps the
 fingerprint half live.
 
 <a id="pane-users-groups"></a>
+**T279 status.** The Add Fingerprint flow is a two-step wizard that reports
+fprintd's own `EnrollStatus` stage id (with the raw id visible) and never a
+percentage. A denied write is shown at the row and in the wizard; an
+unsupported reader is the honest no-reader state while the password half stays
+live. The password dialog waits for the host's report and keeps its message on
+a denial.
+
 ### 5.21 Users & Groups
 
 Owner: accountsservice + distro adapter + polkit. Absence: read-only list;
@@ -999,6 +1015,14 @@ distribution's `realm`/SSSD tooling. A host with no SSSD/winbind configuration
 shows "No directory service is configured" and disables only Details.
 
 <a id="pane-online-accounts"></a>
+**T279 status.** Add User carries the password step (name, full name,
+password, confirmation, all labelled) and waits for the host's report; the
+per-user sheet adds one Change/Reset Password action and drops the duplicate
+automatic-login toggle, leaving the one popup. User and group deletion both go
+through a confirmation. Groups are served by the real `FileGroupProvider`
+(NSS read; `groupadd`/`groupdel`/`gpasswd` under pkexec), so a host without a
+provider disables only the group rows.
+
 ### 5.22 Online Accounts
 
 Owner: GNOME Online Accounts if present; otherwise omit. Absence: the pane
@@ -1019,6 +1043,13 @@ reimplemented. With GOA absent the sidebar entry, search result, and deep link
 are all gone — not a dead entry.
 
 <a id="pane-printers"></a>
+**T279 status.** The pane stays visible when GOA is absent: it states
+"Internet accounts are not installed" and offers a delegate action that names
+the distribution package. With GOA present, each account adds a Details sheet
+(provider, identity, capabilities), a Sign in again action backed by GOA's
+`EnsureCredentials`, and the existing sync toggles/removal confirmation. No
+OAuth client is implemented.
+
 ### 5.23 Printers & Scanners
 
 Owner: CUPS + SANE. Absence: note; no add/queue write.

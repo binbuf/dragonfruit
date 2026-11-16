@@ -42,9 +42,12 @@ public:
     virtual void refresh() = 0;
     virtual void refreshBiometrics() = 0;
     virtual void refreshOnlineAccounts() = 0;
-    // The eight explicit writes; the host re-reads and pushes the new view.
+    // The explicit writes; the host re-reads and pushes the new view. A
+    // non-empty password is set on the new account in the same action (T279).
     virtual void createUser(const QString &userName, const QString &realName,
-                            const QString &accountType) = 0;
+                            const QString &accountType, const QString &password) = 0;
+    // Change or reset one user's password (T279).
+    virtual void setPassword(int uid, const QString &password) = 0;
     virtual void deleteUser(int uid) = 0;
     virtual void setAccountType(int uid, const QString &accountType) = 0;
     virtual void setLocked(int uid, bool locked) = 0;
@@ -63,6 +66,8 @@ public:
     virtual void removeOnlineAccount(const QString &id) = 0;
     virtual void setOnlineAccountSync(const QString &id, const QString &capability,
                                       bool enabled) = 0;
+    // Ask GOA to sign the account in again (T279).
+    virtual void ensureOnlineAccountCredentials(const QString &id) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
@@ -72,6 +77,12 @@ signals:
     void biometricsChanged(const QVariantMap &view);
     void onlineAccountsChanged(const QVariantMap &view);
     void availableChanged(bool available);
+    // T279: the host's report for one explicit write. `outcome` is
+    // `applied`, `denied`, `absent`, or `failed`; `note` is the host's own
+    // message (empty on success). The pane shows it at the row instead of
+    // closing the dialog on optimism.
+    void writeFinished(const QString &operation, const QString &outcome,
+                       const QString &note);
 };
 
 // The live client over the user session bus.
@@ -93,7 +104,8 @@ public:
     void refreshBiometrics() override;
     void refreshOnlineAccounts() override;
     void createUser(const QString &userName, const QString &realName,
-                    const QString &accountType) override;
+                    const QString &accountType, const QString &password) override;
+    void setPassword(int uid, const QString &password) override;
     void deleteUser(int uid) override;
     void setAccountType(int uid, const QString &accountType) override;
     void setLocked(int uid, bool locked) override;
@@ -109,6 +121,7 @@ public:
     void removeOnlineAccount(const QString &id) override;
     void setOnlineAccountSync(const QString &id, const QString &capability,
                               bool enabled) override;
+    void ensureOnlineAccountCredentials(const QString &id) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -146,7 +159,8 @@ public:
     void refreshBiometrics() override;
     void refreshOnlineAccounts() override;
     void createUser(const QString &userName, const QString &realName,
-                    const QString &accountType) override;
+                    const QString &accountType, const QString &password) override;
+    void setPassword(int uid, const QString &password) override;
     void deleteUser(int uid) override;
     void setAccountType(int uid, const QString &accountType) override;
     void setLocked(int uid, bool locked) override;
@@ -162,7 +176,19 @@ public:
     void removeOnlineAccount(const QString &id) override;
     void setOnlineAccountSync(const QString &id, const QString &capability,
                               bool enabled) override;
+    void ensureOnlineAccountCredentials(const QString &id) override;
     void resetForTest() override;
+
+    // T279 fixture controls (used by the pane tests only; a no-op live).
+    void setBiometricsDenied(bool denied);
+    void setBiometricsReaderPresent(bool present);
+    void setPasswordOutcome(const QString &outcome, const QString &note);
+    // Move the staged fprintd enrollment to the next stage. The pane tests use
+    // it to observe `enroll-stage-passed` and then completion.
+    void advanceFingerprintEnrollment();
+    // Force one fprintd stage (empty `stage` clears the enrollment).
+    void setFingerprintStage(const QString &stage, bool done);
+    void setOnlineAttentionNeeded(bool needed);
 
 private:
     void rebuild();
@@ -197,6 +223,14 @@ private:
     bool m_pamAuth = true;
     bool m_passwordAvailable = true;
     QVariantMap m_biometricsView;
+    // T279: the staged fprintd enrollment and the fixture write outcomes.
+    QString m_enrollingFinger;
+    QString m_enrollStage;
+    QString m_enrollError;
+    bool m_biometricsDenied = false;
+    bool m_readerPresent = true;
+    QString m_passwordOutcome = QStringLiteral("applied");
+    QString m_passwordNote;
     // T228 online-accounts fixture.
     bool m_onlinePresent = false;
     struct OnlineAccount {
@@ -204,6 +238,7 @@ private:
         QString provider;
         QString providerName;
         QString identity;
+        bool attentionNeeded = false;
         QList<QPair<QString, bool>> capabilities;
     };
     QList<OnlineAccount> m_onlineAccounts;

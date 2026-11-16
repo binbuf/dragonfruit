@@ -8,8 +8,9 @@ import Dragonfruit.Settings
 // and `DF_ACCOUNTS_FIXTURE` (see CMakeLists.txt), so the `Settings` singleton
 // and the host-stack client are deterministic and in-process with no bus (and
 // no AccountsService). The cases cover the user list, the per-user dialog's
-// account-type/lock/auto-login round-trips, adding and deleting a user, the
-// group list and membership writes, and the `Automatically log in as` popup.
+// account-type/lock round-trips, adding a user with a password, changing a
+// password, deleting a user/group behind a confirmation, the group list and
+// membership writes, and the one `Automatically log in as` popup.
 Item {
     id: stage
     width: 1000
@@ -94,20 +95,69 @@ Item {
                     "Standard \u00b7 Locked");
         }
 
-        function test_user_dialog_automatic_login_round_trip() {
+        function test_automatic_login_has_one_control() {
             var shell = make();
             var pane = paneOf(shell);
-            // Sam is not the automatic login user; open Sam.
+            // T279 removed the duplicate toggle from the per-user dialog; the
+            // popup is the one control and it still writes through.
             findChild(pane.userRepeater.itemAt(1), "userInfoButton").clicked();
             compare(pane.selectedUser.userName, "sam");
-            compare(pane.userAutoLoginToggle.checked, false);
+            verify(findChild(pane.userDialog, "userAutoLoginToggle") === null);
+            pane.userDialog.accept();
 
-            pane.userAutoLoginToggle.toggle();
-            tryVerify(function() { return pane.selectedUser.automaticLogin === true; });
-            compare(pane.automaticLoginUser, "sam");
-
-            // AccountsService keeps one automatic login user: Dan is cleared.
+            pane.autoLoginSelect.activateIndex(2); // Sam
+            tryVerify(function() { return pane.automaticLoginUser === "sam"; });
+            compare(pane.findUser(1001).automaticLogin, true);
             compare(pane.findUser(1000).automaticLogin, false);
+        }
+
+        function test_group_delete_needs_a_confirmation() {
+            var shell = make();
+            var pane = paneOf(shell);
+            // Add a user-created group so it is deletable (wheel is a system
+            // group).
+            pane.addGroupButton.clicked();
+            pane.addGroupNameInput.text = "devs";
+            pane.addGroupCreateButton.clicked();
+            tryVerify(function() { return pane.groups.length === 3; });
+
+            var devsRow = null;
+            for (var i = 0; i < pane.groupRepeater.count; ++i)
+                if (findChild(pane.groupRepeater.itemAt(i), "groupNameText").text
+                        === "devs")
+                    devsRow = pane.groupRepeater.itemAt(i);
+            verify(devsRow !== null);
+            findChild(devsRow, "groupInfoButton").clicked();
+            compare(pane.groupDialog.open, true);
+            pane.groupDeleteButton.clicked();
+            compare(pane.groupDeleteDialog.open, true);
+            // Cancel leaves the group in place.
+            pane.groupDeleteDialog.reject();
+            compare(pane.groups.length, 3);
+
+            pane.groupDeleteButton.clicked();
+            pane.groupDeleteConfirm.clicked();
+            tryVerify(function() { return pane.groups.length === 2; });
+        }
+
+        function test_add_user_requires_a_matching_password() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.addUserButton.clicked();
+            compare(pane.addUserDialog.open, true);
+
+            // The password step is part of the sheet: empty and mismatched
+            // passwords never reach the host.
+            pane.addUserNameInput.text = "kim";
+            pane.addUserCreateButton.clicked();
+            compare(pane.addUserErrorNote.text, "A password is required for a new user.");
+            compare(pane.humanUsers.length, 2);
+
+            pane.addUserPasswordInput.text = "one";
+            pane.addUserConfirmPasswordInput.text = "two";
+            pane.addUserCreateButton.clicked();
+            compare(pane.addUserErrorNote.text, "The passwords do not match.");
+            compare(pane.humanUsers.length, 2);
         }
 
         function test_add_user_creates_a_live_row() {
@@ -117,6 +167,8 @@ Item {
             compare(pane.addUserDialog.open, true);
             pane.addUserNameInput.text = "kim";
             pane.addRealNameInput.text = "Kim Lee";
+            pane.addUserPasswordInput.text = "correct horse";
+            pane.addUserConfirmPasswordInput.text = "correct horse";
             pane.addUserTypeSelect.activateIndex(1); // Administrator
             pane.addUserCreateButton.clicked();
 
@@ -125,6 +177,29 @@ Item {
             verify(kim !== null, "the new user is in the live view");
             compare(kim.displayName, "Kim Lee");
             compare(kim.accountType, "administrator");
+            tryVerify(function() { return pane.addUserDialog.open === false; });
+        }
+
+        function test_change_password_waits_and_round_trips() {
+            var shell = make();
+            var pane = paneOf(shell);
+            findChild(pane.userRepeater.itemAt(0), "userInfoButton").clicked();
+            compare(pane.userDialog.open, true);
+            pane.userPasswordButton.clicked();
+            compare(pane.userPasswordDialog.open, true);
+
+            pane.userNewPasswordInput.text = "one";
+            pane.userConfirmPasswordInput.text = "two";
+            pane.submitUserPassword();
+            compare(pane.userPasswordError.text, "The passwords do not match.");
+            compare(pane.userPasswordDialog.open, true);
+
+            pane.userNewPasswordInput.text = "correct horse";
+            pane.userConfirmPasswordInput.text = "correct horse";
+            pane.submitUserPassword();
+            tryVerify(function() { return pane.userPasswordDialog.open === false; });
+            compare(pane.writeOperation, "SetAccountPassword");
+            compare(pane.writeState, "applied");
         }
 
         function test_delete_user_removes_the_row() {
@@ -203,6 +278,23 @@ Item {
             compare(pane.directoryStatusText.text, "Joined: example.com");
             pane.directoryDialog.accept();
             wait(250);
+        }
+
+        // T279: the measured 740×820 window keeps the labelled dialogs and the
+        // list rows reachable.
+        function test_measured_window_740x820_keeps_every_row_reachable() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("users-groups");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = paneOf(shell);
+            verify(pane.width > 0 && pane.width <= 740);
+            for (var i = 0; i < pane.userRepeater.count; ++i)
+                verify(pane.userRepeater.itemAt(i).width <= 740);
+            for (var g = 0; g < pane.groupRepeater.count; ++g)
+                verify(pane.groupRepeater.itemAt(g).width <= 740);
         }
 
         function test_absence_note_replaces_the_lists_without_a_host() {

@@ -481,6 +481,26 @@ AccountsClient *SettingsBridge::ensureAccounts()
             [this](const QVariantMap &) { emit biometricsChanged(); });
     connect(m_accounts, &AccountsClient::onlineAccountsChanged, this,
             [this](const QVariantMap &) { emit onlineAccountsChanged(); });
+    connect(m_accounts, &AccountsClient::writeFinished, this,
+            [this](const QString &operation, const QString &outcome,
+                   const QString &note) {
+                const bool biometrics =
+                    operation == QStringLiteral("StartFingerprintEnrollment")
+                    || operation == QStringLiteral("CancelFingerprintEnrollment")
+                    || operation == QStringLiteral("DeleteFingerprint")
+                    || operation == QStringLiteral("ChangePassword");
+                if (biometrics) {
+                    m_biometricsWriteOperation = operation;
+                    m_biometricsWriteState = outcome;
+                    m_biometricsWriteError = note;
+                    emit biometricsWriteChanged();
+                } else {
+                    m_accountsWriteOperation = operation;
+                    m_accountsWriteState = outcome;
+                    m_accountsWriteError = note;
+                    emit accountsWriteChanged();
+                }
+            });
     if (qobject_cast<MockAccountsClient *>(m_accounts))
         m_accounts->refresh();
     noteAdapterCreated();
@@ -2163,16 +2183,34 @@ static const QString kAccountAdminAction =
     QStringLiteral("org.freedesktop.accounts.user-administration");
 
 void SettingsBridge::createAccount(const QString &userName, const QString &realName,
-                                   const QString &accountType)
+                                   const QString &accountType, const QString &password)
 {
     if (!m_accounts || userName.trimmed().isEmpty())
         return;
+    m_accountsWriteOperation = QStringLiteral("CreateUser");
+    m_accountsWriteState = QStringLiteral("pending");
+    m_accountsWriteError.clear();
+    emit accountsWriteChanged();
     authorizeAccountAction(
         kAccountAdminAction,
         tr("Authentication is required to create a user account."),
-        [this, userName, realName, accountType]() {
-            m_accounts->createUser(userName, realName, accountType);
+        [this, userName, realName, accountType, password]() {
+            m_accounts->createUser(userName, realName, accountType, password);
         });
+}
+
+void SettingsBridge::setAccountPassword(int uid, const QString &password)
+{
+    if (!m_accounts || uid < 0 || password.isEmpty())
+        return;
+    m_accountsWriteOperation = QStringLiteral("SetAccountPassword");
+    m_accountsWriteState = QStringLiteral("pending");
+    m_accountsWriteError.clear();
+    emit accountsWriteChanged();
+    authorizeAccountAction(
+        kAccountAdminAction,
+        tr("Authentication is required to change an account password."),
+        [this, uid, password]() { m_accounts->setPassword(uid, password); });
 }
 
 void SettingsBridge::deleteAccount(int uid)
@@ -2361,6 +2399,12 @@ void SettingsBridge::setPrivacyAvailableFixture(bool available)
         m_privacy->setPrivacyAvailableFixture(available);
 }
 
+void SettingsBridge::setAccessoriesAvailableFixture(bool available)
+{
+    if (auto *mock = qobject_cast<MockPrivacyClient *>(m_privacy))
+        mock->setAccessoriesAvailableFixture(available);
+}
+
 void SettingsBridge::refreshBiometrics()
 {
     if (m_accounts)
@@ -2389,8 +2433,43 @@ void SettingsBridge::deleteFingerprint(const QString &finger)
 
 void SettingsBridge::changePassword(const QString &password)
 {
-    if (m_accounts && !password.isEmpty())
-        m_accounts->changePassword(password);
+    if (!m_accounts || password.isEmpty())
+        return;
+    m_biometricsWriteOperation = QStringLiteral("ChangePassword");
+    m_biometricsWriteState = QStringLiteral("pending");
+    m_biometricsWriteError.clear();
+    emit biometricsWriteChanged();
+    m_accounts->changePassword(password);
+}
+
+void SettingsBridge::setBiometricsDeniedFixture(bool denied)
+{
+    if (auto *mock = qobject_cast<MockAccountsClient *>(m_accounts))
+        mock->setBiometricsDenied(denied);
+}
+
+void SettingsBridge::setBiometricsReaderFixture(bool present)
+{
+    if (auto *mock = qobject_cast<MockAccountsClient *>(m_accounts))
+        mock->setBiometricsReaderPresent(present);
+}
+
+void SettingsBridge::setPasswordOutcomeFixture(const QString &outcome, const QString &note)
+{
+    if (auto *mock = qobject_cast<MockAccountsClient *>(m_accounts))
+        mock->setPasswordOutcome(outcome, note);
+}
+
+void SettingsBridge::advanceFingerprintEnrollmentFixture()
+{
+    if (auto *mock = qobject_cast<MockAccountsClient *>(m_accounts))
+        mock->advanceFingerprintEnrollment();
+}
+
+void SettingsBridge::setFingerprintStageFixture(const QString &stage, bool done)
+{
+    if (auto *mock = qobject_cast<MockAccountsClient *>(m_accounts))
+        mock->setFingerprintStage(stage, done);
 }
 
 void SettingsBridge::resetBiometricsFixture()
@@ -2417,6 +2496,18 @@ void SettingsBridge::removeOnlineAccount(const QString &id)
 {
     if (m_accounts && !id.isEmpty())
         m_accounts->removeOnlineAccount(id);
+}
+
+void SettingsBridge::ensureOnlineAccountCredentials(const QString &id)
+{
+    if (m_accounts && !id.isEmpty())
+        m_accounts->ensureOnlineAccountCredentials(id);
+}
+
+void SettingsBridge::setOnlineAttentionFixture(bool needed)
+{
+    if (auto *mock = qobject_cast<MockAccountsClient *>(m_accounts))
+        mock->setOnlineAttentionNeeded(needed);
 }
 
 void SettingsBridge::setOnlineAccountSync(const QString &id, const QString &capability,

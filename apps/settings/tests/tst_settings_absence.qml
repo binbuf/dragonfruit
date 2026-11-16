@@ -710,7 +710,7 @@ Item {
 
             // A refresh and the account/group writes are safe no-ops.
             Settings.refreshAccounts();
-            Settings.createAccount("kim", "Kim", "standard");
+            Settings.createAccount("kim", "Kim", "standard", "correct horse");
             Settings.setAccountLocked(1000, true);
             Settings.createAccountGroup("devs");
             compare(Settings.accountsAvailable, false);

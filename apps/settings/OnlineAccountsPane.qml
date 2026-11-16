@@ -29,6 +29,10 @@ Item {
     property string selectedProvider: ""
     property string selectedAccountId: ""
     property string addError: ""
+    // The account whose details sheet is open (T279).
+    property string detailsAccountId: ""
+    readonly property var detailsAccount: root.detailsAccountId.length > 0
+        ? root.accountById(root.detailsAccountId) : null
 
     // Test surface.
     property alias accountRepeater: accountRepeater
@@ -38,8 +42,15 @@ Item {
     property alias identityField: identityField
     property alias addErrorNote: addErrorNote
     property alias removeDialog: removeDialog
-    property alias absenceNote: absenceNote
+    property alias absenceNote: absenceGroup
+    property alias absenceButton: absenceButton
+    property alias delegateDialog: delegateDialog
     property alias emptyNote: emptyNote
+    property alias detailsDialog: detailsDialog
+    property alias detailsProvider: detailsProvider
+    property alias detailsIdentity: detailsIdentity
+    property alias detailsCapabilityRepeater: detailsCapabilityRepeater
+    property alias detailsSignInButton: detailsSignInButton
 
     // The shell reparents dialogs to its root so the detail ScrollView's clip
     // cannot cut them off (T227 note).
@@ -153,16 +164,39 @@ Item {
                     description: modelData.attentionNeeded === true
                         ? qsTr("This account needs attention; sign in again.")
                         : qsTr("Signed in.")
-                    showSeparator: modelData.capabilities !== undefined
-                        && modelData.capabilities.length > 0
-                    controlData: Button {
-                        objectName: "onlineAccountsRemoveButton"
-                        text: qsTr("Remove\u2026")
-                        variant: "ghost"
-                        enabled: modelData.locked !== true
-                        onClicked: {
-                            root.selectedAccountId = String(modelData.id);
-                            removeDialog.show();
+                    showSeparator: true
+                    controlData: Row {
+                        spacing: Theme.primitive.spacing.xs
+
+                        Button {
+                            objectName: "onlineAccountsSignInButton"
+                            text: qsTr("Sign in again\u2026")
+                            variant: "ghost"
+                            visible: modelData.attentionNeeded === true
+                            enabled: modelData.locked !== true
+                            onClicked: Settings.ensureOnlineAccountCredentials(
+                                String(modelData.id))
+                        }
+
+                        Button {
+                            objectName: "onlineAccountsDetailsButton"
+                            text: qsTr("Details\u2026")
+                            variant: "ghost"
+                            onClicked: {
+                                root.detailsAccountId = String(modelData.id);
+                                root.detailsDialog.show();
+                            }
+                        }
+
+                        Button {
+                            objectName: "onlineAccountsRemoveButton"
+                            text: qsTr("Remove\u2026")
+                            variant: "ghost"
+                            enabled: modelData.locked !== true
+                            onClicked: {
+                                root.selectedAccountId = String(modelData.id);
+                                removeDialog.show();
+                            }
                         }
                     }
                 }
@@ -191,12 +225,181 @@ Item {
             }
         }
 
-        SettingsAbsenceNotice {
-            id: absenceNote
+        // T279: GOA is optional, but the pane never disappears. The absent
+        // state keeps its header, states why, and offers the delegate action
+        // that explains how the distribution installs the service.
+        SettingsGroup {
+            id: absenceGroup
             objectName: "onlineAccountsAbsenceNote"
-            kind: "disabled-with-reason"
-            show: !root.ready
-            reason: qsTr("Online accounts are not installed.")
+            width: parent.width
+            visible: !root.ready
+
+            Text {
+                objectName: "onlineAccountsAbsenceText"
+                width: parent.width
+                text: qsTr("Internet accounts are not installed.")
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Online Accounts is an optional service. The pane stays "
+                           + "visible so the feature is discoverable; account sign-in "
+                           + "is delegated to the provider once it is installed.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Button {
+                id: absenceButton
+                objectName: "onlineAccountsAbsenceButton"
+                text: qsTr("How to install\u2026")
+                onClicked: root.delegateDialog.show()
+            }
+        }
+    }
+
+    // ── Account details (read-only projection + sign-in delegate) ────────
+    Dialog {
+        id: detailsDialog
+        objectName: "onlineAccountsDetailsDialog"
+        title: root.detailsAccount !== null
+            ? String(root.detailsAccount.providerName !== undefined
+                     ? root.detailsAccount.providerName
+                     : root.detailsAccount.provider)
+            : qsTr("Account Details")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Provider")
+                showSeparator: true
+                controlData: Text {
+                    id: detailsProvider
+                    objectName: "onlineAccountsDetailsProvider"
+                    text: root.detailsAccount !== null
+                        && root.detailsAccount.providerName !== undefined
+                        ? String(root.detailsAccount.providerName) : ""
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Identity")
+                showSeparator: true
+                controlData: Text {
+                    id: detailsIdentity
+                    objectName: "onlineAccountsDetailsIdentity"
+                    text: root.detailsAccount !== null
+                        && root.detailsAccount.identity !== undefined
+                        ? String(root.detailsAccount.identity) : ""
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("The provider owns the sign-in and the credential; this "
+                           + "pane never implements OAuth.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: detailsCapabilityRepeater
+                model: root.detailsAccount !== null
+                    && root.detailsAccount.capabilities !== undefined
+                    ? root.detailsAccount.capabilities : []
+                delegate: SettingsRow {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    label: modelData.label !== undefined
+                        ? String(modelData.label) : String(modelData.id)
+                    showSeparator: false
+                    controlData: Text {
+                        text: modelData.enabled === true ? qsTr("Syncing")
+                                                         : qsTr("Off")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                }
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                id: detailsSignInButton
+                objectName: "onlineAccountsDetailsSignIn"
+                text: qsTr("Sign in again\u2026")
+                visible: root.detailsAccount !== null
+                    && root.detailsAccount.attentionNeeded === true
+                onClicked: {
+                    if (root.detailsAccount !== null)
+                        Settings.ensureOnlineAccountCredentials(
+                            String(root.detailsAccount.id));
+                }
+            }
+
+            Button {
+                text: qsTr("Done")
+                variant: "primary"
+                onClicked: detailsDialog.accept()
+            }
+        }
+    }
+
+    // ── The absent-service delegate ──────────────────────────────────────
+    Dialog {
+        id: delegateDialog
+        objectName: "onlineAccountsDelegateDialog"
+        title: qsTr("Internet accounts are not installed")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: qsTr("Install the distribution's Online Accounts service to add "
+                           + "mail, calendar, contacts, and file accounts. The service "
+                           + "is an optional package on every supported distribution.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Settings does not install packages or implement OAuth; the "
+                           + "provider owns both.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                text: qsTr("Done")
+                variant: "primary"
+                onClicked: delegateDialog.accept()
+            }
         }
     }
 

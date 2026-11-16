@@ -234,6 +234,12 @@ pub trait OnlineAccountsSource {
     ) -> OnlineAccountsOutcome {
         OnlineAccountsOutcome::Absent
     }
+
+    /// Ask the provider to sign the account in again. GOA owns the dialog and
+    /// the credential; this is one explicit call, never an OAuth client.
+    fn ensure_online_account_credentials(&mut self, _id: &str) -> OnlineAccountsOutcome {
+        OnlineAccountsOutcome::Absent
+    }
 }
 
 /// The typed Online Accounts snapshot the pane renders.
@@ -336,6 +342,11 @@ impl<S: OnlineAccountsSource> OnlineAccountsAdapter<S> {
         self.source.set_online_account_sync(id, capability, enabled)
     }
 
+    /// Ask the provider to sign the account in again.
+    pub fn ensure_credentials(&mut self, id: &str) -> OnlineAccountsOutcome {
+        self.source.ensure_online_account_credentials(id)
+    }
+
     /// The live snapshot.
     pub fn snapshot(&self) -> Option<&OnlineAccountsSnapshot> {
         self.state.snapshot()
@@ -435,6 +446,7 @@ pub struct MockOnlineAccounts {
     last_add: Option<(String, String)>,
     last_remove: Option<String>,
     last_sync: Option<(String, String, bool)>,
+    last_ensure: Option<String>,
 }
 
 impl MockOnlineAccounts {
@@ -449,6 +461,7 @@ impl MockOnlineAccounts {
             last_add: None,
             last_remove: None,
             last_sync: None,
+            last_ensure: None,
         }
     }
 
@@ -463,6 +476,7 @@ impl MockOnlineAccounts {
             last_add: None,
             last_remove: None,
             last_sync: None,
+            last_ensure: None,
         }
     }
 
@@ -477,6 +491,7 @@ impl MockOnlineAccounts {
             last_add: None,
             last_remove: None,
             last_sync: None,
+            last_ensure: None,
         }
     }
 
@@ -526,6 +541,11 @@ impl MockOnlineAccounts {
     /// The last sync write.
     pub fn last_sync(&self) -> Option<&(String, String, bool)> {
         self.last_sync.as_ref()
+    }
+
+    /// The last `EnsureCredentials` account id.
+    pub fn last_ensure(&self) -> Option<&str> {
+        self.last_ensure.as_deref()
     }
 
     fn outcome(&self) -> OnlineAccountsOutcome {
@@ -593,6 +613,20 @@ impl OnlineAccountsSource for MockOnlineAccounts {
             self.last_remove = Some(id.to_owned());
             if let Some(data) = self.data.as_mut() {
                 data.accounts.retain(|account| account.id != id);
+            }
+        }
+        outcome
+    }
+
+    fn ensure_online_account_credentials(&mut self, id: &str) -> OnlineAccountsOutcome {
+        let outcome = self.outcome();
+        if outcome.is_applied() {
+            self.writes += 1;
+            self.last_ensure = Some(id.to_owned());
+            if let Some(data) = self.data.as_mut() {
+                if let Some(account) = data.accounts.iter_mut().find(|account| account.id == id) {
+                    account.attention_needed = false;
+                }
             }
         }
         outcome
@@ -733,6 +767,35 @@ pub fn remove_host_online_account(id: &str) -> OnlineAccountsOutcome {
         account.path.as_str(),
         Some(GOA_ACCOUNT_INTERFACE),
         "Remove",
+        &(),
+    ) {
+        Ok(_) => OnlineAccountsOutcome::Applied,
+        Err(error) => classify(error),
+    }
+}
+
+/// Ask GOA to re-run the account's sign-in flow.
+pub fn ensure_host_online_account_credentials(id: &str) -> OnlineAccountsOutcome {
+    if id.is_empty() {
+        return OnlineAccountsOutcome::Absent;
+    }
+    let data = match read_host_online_accounts() {
+        Ok(Some(data)) => data,
+        Ok(None) => return OnlineAccountsOutcome::Absent,
+        Err(error) => return OnlineAccountsOutcome::Failed(error),
+    };
+    let Some(account) = data.accounts.into_iter().find(|account| account.id == id) else {
+        return OnlineAccountsOutcome::Absent;
+    };
+    let connection = match goa_connection() {
+        Some(connection) => connection,
+        None => return OnlineAccountsOutcome::Absent,
+    };
+    match connection.call_method(
+        Some(GOA_SERVICE),
+        account.path.as_str(),
+        Some(GOA_ACCOUNT_INTERFACE),
+        "EnsureCredentials",
         &(),
     ) {
         Ok(_) => OnlineAccountsOutcome::Applied,
@@ -929,6 +992,15 @@ mod tests {
             adapter.source().last_sync(),
             Some(&("account-1".to_owned(), "contacts".to_owned(), true))
         );
+    }
+
+    #[test]
+    fn sign_in_again_is_one_goa_ensure_credentials_call() {
+        let mut adapter = OnlineAccountsAdapter::new(MockOnlineAccounts::present());
+        adapter.refresh();
+        assert!(adapter.ensure_credentials("account-1").is_applied());
+        assert_eq!(adapter.source().last_ensure(), Some("account-1"));
+        assert_eq!(adapter.source().writes(), 1);
     }
 
     #[test]

@@ -252,6 +252,7 @@ void MockPrivacyClient::resetForTest()
           { { QStringLiteral("screencast"),
               { { QStringLiteral("com.obsproject.Studio"), { QStringLiteral("yes") } } } } } },
     };
+    m_accessoriesAvailable = true;
     m_sources = {
         { QStringLiteral("distro:dnf"), QStringLiteral("Fedora repositories"),
           QStringLiteral("distro"), true, false,
@@ -282,6 +283,12 @@ void MockPrivacyClient::setPrivacyAvailableFixture(bool available)
     m_privacyAvailable = available;
     emit changed(m_privacyAvailable ? m_view : QVariantMap());
     emit availableChanged(m_privacyAvailable);
+}
+
+void MockPrivacyClient::setAccessoriesAvailableFixture(bool available)
+{
+    m_accessoriesAvailable = available;
+    rebuildSecurity();
 }
 
 void MockPrivacyClient::setSecuritySourceEnabled(const QString &id, bool enabled)
@@ -655,6 +662,22 @@ void MockPrivacyClient::rebuildSecurity()
                 QStringLiteral("Reported by mokutil."),
                 QStringLiteral("off"));
 
+    QJsonObject accessories;
+    accessories.insert(QStringLiteral("available"), m_accessoriesAvailable);
+    accessories.insert(QStringLiteral("policy"),
+                       m_accessoriesAvailable ? QStringLiteral("managed")
+                                              : QStringLiteral("absent"));
+    accessories.insert(QStringLiteral("label"),
+                       m_accessoriesAvailable ? QStringLiteral("2 devices managed")
+                                              : QStringLiteral("Not installed"));
+    accessories.insert(QStringLiteral("deviceCount"), m_accessoriesAvailable ? 2 : 0);
+    accessories.insert(QStringLiteral("note"),
+                       m_accessoriesAvailable
+                           ? QStringLiteral("USBGuard owns the USB device policy; "
+                                            "changes stay with the usbguard CLI.")
+                           : QStringLiteral("USBGuard is not installed, so USB "
+                                            "accessories are not restricted."));
+
     QVariantMap view;
     view.insert(QStringLiteral("kind"), QStringLiteral("security"));
     view.insert(QStringLiteral("state"), QStringLiteral("available"));
@@ -669,6 +692,7 @@ void MockPrivacyClient::rebuildSecurity()
     view.insert(QStringLiteral("encryption"), encryption.toVariantMap());
     view.insert(QStringLiteral("hardening"), hardening.toVariantMap());
     view.insert(QStringLiteral("extensions"), extensions.toVariantList());
+    view.insert(QStringLiteral("accessories"), accessories.toVariantMap());
     view.insert(QStringLiteral("advanced"), advanced.toVariantList());
     m_securityView = view;
     emit securityChanged(m_securityView);

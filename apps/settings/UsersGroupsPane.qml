@@ -72,7 +72,6 @@ Item {
     property alias userDialog: userDialog
     property alias userTypeSelect: userTypeSelect
     property alias userLockedToggle: userLockedToggle
-    property alias userAutoLoginToggle: userAutoLoginToggle
     property alias userDeleteButton: userDeleteButton
     property alias deleteUserDialog: deleteUserDialog
     property alias deleteUserConfirm: deleteUserConfirm
@@ -80,10 +79,20 @@ Item {
     property alias addUserNameInput: addUserNameInput
     property alias addRealNameInput: addRealNameInput
     property alias addUserTypeSelect: addUserTypeSelect
+    property alias addUserPasswordInput: addUserPasswordInput
+    property alias addUserConfirmPasswordInput: addUserConfirmPasswordInput
+    property alias addUserErrorNote: addUserErrorNote
     property alias addUserCreateButton: addUserCreateButton
+    property alias userPasswordButton: userPasswordButton
+    property alias userPasswordDialog: userPasswordDialog
+    property alias userNewPasswordInput: userNewPasswordInput
+    property alias userConfirmPasswordInput: userConfirmPasswordInput
+    property alias userPasswordError: userPasswordError
     property alias groupDialog: groupDialog
     property alias groupMemberRepeater: groupMemberRepeater
     property alias groupDeleteButton: groupDeleteButton
+    property alias groupDeleteDialog: groupDeleteDialog
+    property alias groupDeleteConfirm: groupDeleteConfirm
     property alias addGroupDialog: addGroupDialog
     property alias addGroupNameInput: addGroupNameInput
     property alias addGroupCreateButton: addGroupCreateButton
@@ -107,8 +116,89 @@ Item {
         { label: qsTr("Administrator"), value: "administrator" }
     ]
 
+    // T279: the account write report. The Add User and password dialogs stay
+    // open until the host's own answer arrives.
+    readonly property string writeOperation: Settings.accountsWriteOperation
+    readonly property string writeState: Settings.accountsWriteState
+    readonly property string writeError: Settings.accountsWriteError
+    readonly property bool userWriteBusy: root.writeOperation === "CreateUser"
+        && root.writeState === "pending"
+    readonly property bool passwordWriteBusy: root.writeOperation === "SetAccountPassword"
+        && root.writeState === "pending"
+    readonly property bool userWriteFailed: root.writeOperation === "CreateUser"
+        && (root.writeState === "denied" || root.writeState === "failed"
+            || root.writeState === "absent")
+    readonly property bool passwordWriteFailed: root.writeOperation === "SetAccountPassword"
+        && (root.writeState === "denied" || root.writeState === "failed"
+            || root.writeState === "absent")
+
     // Opening the pane asks the host for a re-read (a no-op when absent).
     Component.onCompleted: Settings.refreshAccounts()
+
+    function submitNewUser() {
+        if (addUserPasswordInput.text.length === 0) {
+            addUserErrorNote.text = qsTr("A password is required for a new user.");
+            return;
+        }
+        if (addUserPasswordInput.text !== addUserConfirmPasswordInput.text) {
+            addUserErrorNote.text = qsTr("The passwords do not match.");
+            return;
+        }
+        addUserErrorNote.text = "";
+        Settings.createAccount(addUserNameInput.text.trim(),
+                               addRealNameInput.text.trim(),
+                               addUserTypeSelect.currentValue !== undefined
+                                   ? String(addUserTypeSelect.currentValue)
+                                   : "standard",
+                               addUserPasswordInput.text);
+    }
+
+    function submitUserPassword() {
+        if (root.selectedUser === null)
+            return;
+        userPasswordError.text = "";
+        if (userNewPasswordInput.text.length === 0) {
+            userPasswordError.text = qsTr("The password must not be empty.");
+            return;
+        }
+        if (userNewPasswordInput.text !== userConfirmPasswordInput.text) {
+            userPasswordError.text = qsTr("The passwords do not match.");
+            return;
+        }
+        Settings.setAccountPassword(Number(root.selectedUser.uid),
+                                    userNewPasswordInput.text);
+    }
+
+    Connections {
+        target: Settings
+
+        function onAccountsWriteChanged() {
+            if (root.writeOperation === "CreateUser") {
+                if (root.writeState === "applied") {
+                    addUserPasswordInput.text = "";
+                    addUserConfirmPasswordInput.text = "";
+                    addUserErrorNote.text = "";
+                    addUserDialog.accept();
+                } else if (root.userWriteFailed) {
+                    addUserErrorNote.text = root.writeError.length > 0
+                        ? root.writeError
+                        : qsTr("The account service refused the new user.");
+                }
+            }
+            if (root.writeOperation === "SetAccountPassword") {
+                if (root.writeState === "applied") {
+                    userNewPasswordInput.text = "";
+                    userConfirmPasswordInput.text = "";
+                    userPasswordError.text = "";
+                    userPasswordDialog.accept();
+                } else if (root.passwordWriteFailed) {
+                    userPasswordError.text = root.writeError.length > 0
+                        ? root.writeError
+                        : qsTr("The account service refused the password change.");
+                }
+            }
+        }
+    }
 
     function findUser(uid) {
         for (var i = 0; i < root.users.length; ++i)
@@ -624,22 +714,6 @@ Item {
                     }
                 }
 
-                SettingsRow {
-                    objectName: "userAutoLoginRow"
-                    width: parent.width
-                    label: qsTr("Automatically Log In")
-                    showSeparator: false
-                    controlData: Toggle {
-                        id: userAutoLoginToggle
-                        objectName: "userAutoLoginToggle"
-                        accessibleName: qsTr("Automatically Log In")
-                        onToggled: (checked) => {
-                            if (root.selectedUser !== null)
-                                Settings.setAccountAutomaticLogin(
-                                    Number(root.selectedUser.uid), checked);
-                        }
-                    }
-                }
             }
 
             Binding {
@@ -653,16 +727,24 @@ Item {
                 property: "checked"
                 value: root.selectedUser !== null && root.selectedUser.locked === true
             }
-            Binding {
-                target: userAutoLoginToggle
-                property: "checked"
-                value: root.selectedUser !== null
-                    && root.selectedUser.automaticLogin === true
-            }
         }
 
         buttonsData: Row {
             spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                id: userPasswordButton
+                objectName: "userPasswordButton"
+                text: root.selectedUser !== null && root.selectedUser.locked === true
+                    ? qsTr("Reset Password\u2026") : qsTr("Change Password\u2026")
+                enabled: root.selectedUser !== null
+                onClicked: {
+                    userNewPasswordInput.text = "";
+                    userConfirmPasswordInput.text = "";
+                    userPasswordError.text = "";
+                    userPasswordDialog.show();
+                }
+            }
 
             Button {
                 id: userDeleteButton
@@ -714,6 +796,95 @@ Item {
         }
     }
 
+    // ── Change / reset one user's password ────────────────────────────────
+    Dialog {
+        id: userPasswordDialog
+        objectName: "userPasswordDialog"
+        title: root.selectedUser !== null
+            ? qsTr("Change Password for %1").arg(String(root.selectedUser.displayName))
+            : qsTr("Change Password")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: qsTr("The password is handed to the account service; the app "
+                           + "does not store it. The dialog waits for the host's answer.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("New Password")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            AccountField {
+                id: userNewPasswordInput
+                objectName: "userNewPasswordInput"
+                placeholder: qsTr("New Password")
+                echoMode: TextInput.Password
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Confirm Password")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            AccountField {
+                id: userConfirmPasswordInput
+                objectName: "userConfirmPasswordInput"
+                placeholder: qsTr("Confirm Password")
+                echoMode: TextInput.Password
+            }
+
+            Text {
+                objectName: "userPasswordPending"
+                width: parent.width
+                visible: root.passwordWriteBusy
+                text: qsTr("Waiting for the account service\u2026")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                id: userPasswordError
+                objectName: "userPasswordError"
+                width: parent.width
+                visible: text.length > 0
+                color: Theme.color.danger
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: userPasswordDialog.reject()
+            }
+            Button {
+                objectName: "userPasswordConfirm"
+                text: root.passwordWriteBusy ? qsTr("Changing\u2026")
+                                             : qsTr("Change Password")
+                variant: "primary"
+                enabled: !root.passwordWriteBusy
+                onClicked: root.submitUserPassword()
+            }
+        }
+    }
+
     // ── The add-user dialog ───────────────────────────────────────────────
     Dialog {
         id: addUserDialog
@@ -735,16 +906,72 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
+            Text {
+                objectName: "addUserNameLabel"
+                width: parent.width
+                text: qsTr("User Name")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
             AccountField {
                 id: addUserNameInput
                 objectName: "addUserNameInput"
                 placeholder: qsTr("User Name")
             }
 
+            Text {
+                objectName: "addRealNameLabel"
+                width: parent.width
+                text: qsTr("Full Name")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
             AccountField {
                 id: addRealNameInput
                 objectName: "addRealNameInput"
                 placeholder: qsTr("Full Name")
+            }
+
+            Text {
+                objectName: "addUserPasswordLabel"
+                width: parent.width
+                text: qsTr("Password")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            AccountField {
+                id: addUserPasswordInput
+                objectName: "addUserPasswordInput"
+                placeholder: qsTr("Password")
+                echoMode: TextInput.Password
+            }
+
+            Text {
+                objectName: "addUserConfirmPasswordLabel"
+                width: parent.width
+                text: qsTr("Confirm Password")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            AccountField {
+                id: addUserConfirmPasswordInput
+                objectName: "addUserConfirmPasswordInput"
+                placeholder: qsTr("Confirm Password")
+                echoMode: TextInput.Password
+            }
+
+            Text {
+                id: addUserErrorNote
+                objectName: "addUserErrorNote"
+                width: parent.width
+                visible: text.length > 0
+                color: Theme.color.danger
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
             }
 
             SettingsGroup {
@@ -776,23 +1003,20 @@ Item {
             Button {
                 id: addUserCreateButton
                 objectName: "addUserCreateButton"
-                text: qsTr("Create User")
+                text: root.userWriteBusy ? qsTr("Creating\u2026") : qsTr("Create User")
                 variant: "primary"
                 enabled: addUserNameInput.text.trim().length > 0
-                onClicked: {
-                    Settings.createAccount(addUserNameInput.text.trim(),
-                                           addRealNameInput.text.trim(),
-                                           addUserTypeSelect.currentValue !== undefined
-                                               ? String(addUserTypeSelect.currentValue)
-                                               : "standard");
-                    addUserDialog.accept();
-                }
+                    && !root.userWriteBusy
+                onClicked: root.submitNewUser()
             }
         }
 
         onOpened: {
             addUserNameInput.text = "";
             addRealNameInput.text = "";
+            addUserPasswordInput.text = "";
+            addUserConfirmPasswordInput.text = "";
+            addUserErrorNote.text = "";
             addUserTypeSelect.currentIndex = 0;
             addUserNameInput.input.forceActiveFocus();
         }
@@ -867,17 +1091,46 @@ Item {
                 text: qsTr("Delete Group")
                 enabled: root.selectedGroup !== null
                     && root.selectedGroup.system !== true
-                onClicked: {
-                    if (root.selectedGroup !== null)
-                        Settings.deleteAccountGroup(String(root.selectedGroup.name));
-                    groupDialog.accept();
-                }
+                onClicked: root.groupDeleteDialog.show()
             }
 
             Button {
                 text: qsTr("Done")
                 variant: "primary"
                 onClicked: groupDialog.accept()
+            }
+        }
+    }
+
+    // ── The delete-group confirmation ─────────────────────────────────────
+    Dialog {
+        id: groupDeleteDialog
+        objectName: "groupDeleteDialog"
+        title: qsTr("Delete Group")
+        message: root.selectedGroup !== null
+            ? qsTr("\u201c%1\u201d will be removed. This cannot be undone.")
+                .arg(String(root.selectedGroup.name))
+            : ""
+        dismissible: true
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: groupDeleteDialog.reject()
+            }
+            Button {
+                id: groupDeleteConfirm
+                objectName: "groupDeleteConfirm"
+                text: qsTr("Delete")
+                variant: "primary"
+                onClicked: {
+                    if (root.selectedGroup !== null)
+                        Settings.deleteAccountGroup(String(root.selectedGroup.name));
+                    groupDeleteDialog.accept();
+                    groupDialog.accept();
+                }
             }
         }
     }
@@ -889,10 +1142,23 @@ Item {
         title: qsTr("New Group")
         dismissible: true
 
-        contentData: AccountField {
-            id: addGroupNameInput
-            objectName: "addGroupNameInput"
-            placeholder: qsTr("Group Name")
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                objectName: "addGroupNameLabel"
+                width: parent.width
+                text: qsTr("Group Name")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            AccountField {
+                id: addGroupNameInput
+                objectName: "addGroupNameInput"
+                placeholder: qsTr("Group Name")
+            }
         }
 
         buttonsData: Row {
@@ -926,6 +1192,7 @@ Item {
     component AccountField: Rectangle {
         property alias text: input.text
         property alias input: input
+        property alias echoMode: input.echoMode
         property string placeholder: ""
         width: parent ? parent.width : 0
         height: 34

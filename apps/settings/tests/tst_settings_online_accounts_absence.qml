@@ -4,10 +4,10 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Online Accounts absence (T228/T263): GOA is optional, but the pane is always
-// present in the sidebar. With no bridge host (and therefore no GOA service)
-// the pane shows its absent-service state; it is not a dead entry and it does
-// not silently disappear. T279 owns the full absent-service surface.
+// Online Accounts absence (T228/T263/T279): GOA is optional, but the pane is
+// always present in the sidebar. With no bridge host (and therefore no GOA
+// service) the pane shows its explicit absent-service state and a delegate
+// action; it is not a dead entry and it does not silently disappear.
 Item {
     id: stage
     width: 1000
@@ -31,6 +31,26 @@ Item {
             verify(shell.deepLink("settings://pane/online-accounts"));
             verify(SettingsPanes.paneById("online-accounts") !== null);
             verify(shell.paneComponent("online-accounts") !== null);
+        }
+
+        function test_the_absent_pane_states_the_reason_and_delegates() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("online-accounts");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = shell.paneBody.item;
+            verify(pane);
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true);
+            compare(findChild(pane.absenceNote, "onlineAccountsAbsenceText").text,
+                    "Internet accounts are not installed.");
+            compare(pane.absenceButton.text, "How to install\u2026");
+            pane.absenceButton.clicked();
+            compare(pane.delegateDialog.open, true);
+            compare(pane.delegateDialog.title, "Internet accounts are not installed");
+            pane.delegateDialog.accept();
         }
     }
 }

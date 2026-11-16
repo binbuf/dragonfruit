@@ -119,8 +119,14 @@ impl<S: AccountSource + Send> AccountSource for SharedSource<S> {
         user_name: &str,
         real_name: &str,
         account_type: AccountType,
+        password: &str,
     ) -> AccountOutcome {
-        self.lock().create_user(user_name, real_name, account_type)
+        self.lock()
+            .create_user(user_name, real_name, account_type, password)
+    }
+
+    fn set_password(&mut self, uid: u64, password: &str) -> AccountOutcome {
+        self.lock().set_password(uid, password)
     }
 
     fn delete_user(&mut self, uid: u64) -> AccountOutcome {

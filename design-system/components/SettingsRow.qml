@@ -19,6 +19,12 @@ Item {
 
     property string label: ""
     property string description: ""
+    // T279: an optional leading glyph. Privacy & Security categories and other
+    // grouped lists carry a distinct mark; a row without one keeps the plain
+    // anatomy and the same label column.
+    property string leadingIcon: ""
+    property color leadingIconColor: Theme.color.textSecondary
+    property real leadingIconSize: 20
     // T224: an inline failure/validation message. It sits under the label and
     // description so the row explains why a control reverted; empty hides it.
     property string errorText: ""
@@ -74,6 +80,7 @@ Item {
 
     // Test/consumer aliases for the one anatomy.
     property alias labelText: labelText
+    property alias leadingIconItem: leadingIconItem
     property alias descriptionText: descriptionText
     property alias errorLabel: errorTextItem
     property alias labelColumn: labelColumn
@@ -271,10 +278,24 @@ Item {
         Component.onCompleted: root.syncControlLabel()
     }
 
-    Column {
-        id: labelColumn
+    Icon {
+        id: leadingIconItem
+        objectName: "settingsRowLeadingIcon"
+        visible: root.leadingIcon.length > 0
         anchors.left: parent.left
         anchors.leftMargin: Theme.controls.settingsRow.paddingH
+        anchors.verticalCenter: parent.verticalCenter
+        name: root.leadingIcon
+        size: root.leadingIconSize
+        color: root.leadingIconColor
+    }
+
+    Column {
+        id: labelColumn
+        anchors.left: leadingIconItem.visible ? leadingIconItem.right : parent.left
+        anchors.leftMargin: leadingIconItem.visible
+                          ? Theme.primitive.spacing.md
+                          : Theme.controls.settingsRow.paddingH
         anchors.right: controlSlot.left
         anchors.rightMargin: Theme.controls.settingsRow.controlGap
         anchors.verticalCenter: parent.verticalCenter

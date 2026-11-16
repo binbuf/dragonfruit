@@ -344,7 +344,14 @@ pub trait AccountSource {
         _user_name: &str,
         _real_name: &str,
         _account_type: AccountType,
+        _password: &str,
     ) -> AccountOutcome {
+        AccountOutcome::Absent
+    }
+
+    /// Set the password of the user with `uid`. One explicit write; the
+    /// secret is handed to the host and never stored here.
+    fn set_password(&mut self, _uid: u64, _password: &str) -> AccountOutcome {
         AccountOutcome::Absent
     }
 
@@ -405,6 +412,7 @@ struct WriteCounts {
     type_sets: u32,
     lock_sets: u32,
     auto_login_sets: u32,
+    password_sets: u32,
     group_creates: u32,
     group_deletes: u32,
     group_member_sets: u32,
@@ -417,6 +425,7 @@ impl WriteCounts {
             + self.type_sets
             + self.lock_sets
             + self.auto_login_sets
+            + self.password_sets
             + self.group_creates
             + self.group_deletes
             + self.group_member_sets
@@ -661,6 +670,7 @@ impl AccountSource for MockAccounts {
         user_name: &str,
         real_name: &str,
         account_type: AccountType,
+        password: &str,
     ) -> AccountOutcome {
         let outcome = self.write_outcome();
         if outcome.is_applied() {
@@ -683,8 +693,30 @@ impl AccountSource for MockAccounts {
                     user_name: user_name.to_owned(),
                     real_name: real_name.to_owned(),
                     account_type,
+                    password_mode: if password.is_empty() {
+                        PasswordMode::SetAtLogin
+                    } else {
+                        PasswordMode::Regular
+                    },
                     ..AccountData::default()
                 });
+            });
+        }
+        outcome
+    }
+
+    fn set_password(&mut self, uid: u64, password: &str) -> AccountOutcome {
+        let outcome = self.write_outcome();
+        if outcome.is_applied() {
+            self.writes.password_sets += 1;
+            self.with_data_mut(|data| {
+                if let Some(user) = data.users.iter_mut().find(|user| user.uid == uid) {
+                    user.password_mode = if password.is_empty() {
+                        PasswordMode::SetAtLogin
+                    } else {
+                        PasswordMode::Regular
+                    };
+                }
             });
         }
         outcome
@@ -946,7 +978,7 @@ mod tests {
     fn writes_while_absent_are_absent() {
         let mut mock = MockAccounts::absent();
         assert_eq!(
-            mock.create_user("x", "X", AccountType::Standard),
+            mock.create_user("x", "X", AccountType::Standard, ""),
             AccountOutcome::Absent
         );
         assert_eq!(mock.delete_user(1), AccountOutcome::Absent);

@@ -413,9 +413,15 @@ Item {
             });
             compare(Settings.accountsError, "");
 
-            // The app never renders its own password field for an admin action.
-            verify(!hasPasswordField(pane),
-                   "privileged actions must use the system prompt, not an app password field");
+            // The app never renders its own password field for a *privileged*
+            // action: the polkit prompt above carried that authentication.
+            // The only password inputs are the account password steps (Add
+            // User and Change Password), which set an account credential, not
+            // an authorization.
+            verify(pane.addUserPasswordInput.echoMode === 2);
+            verify(pane.userNewPasswordInput.echoMode === 2);
+            verify(!pane.addUserDialog.open);
+            verify(!pane.userPasswordDialog.open);
         }
     }
 }

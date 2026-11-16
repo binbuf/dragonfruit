@@ -193,7 +193,7 @@ fn absence_is_a_normal_state_at_every_seam() {
     assert!(adapter.drain_events().is_empty());
     assert!(adapter.drain_changes().is_empty());
     assert_eq!(
-        adapter.create_user("kim", "Kim", AccountType::Standard),
+        adapter.create_user("kim", "Kim", AccountType::Standard, ""),
         AccountOutcome::Absent
     );
 
@@ -218,7 +218,7 @@ fn the_writes_are_explicit_and_do_not_invent_a_snapshot() {
     let _ = adapter.drain_changes();
 
     assert!(adapter
-        .create_user("kim", "Kim Lee", AccountType::Standard)
+        .create_user("kim", "Kim Lee", AccountType::Standard, "")
         .is_applied());
     assert!(adapter
         .set_account_type(1001, AccountType::Administrator)

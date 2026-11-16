@@ -44,8 +44,9 @@ use crate::biometrics::{
     BiometricsSource,
 };
 use crate::online::{
-    add_host_online_account, read_host_online_accounts, remove_host_online_account,
-    set_host_online_account_sync, OnlineAccountsData, OnlineAccountsOutcome, OnlineAccountsSource,
+    add_host_online_account, ensure_host_online_account_credentials, read_host_online_accounts,
+    remove_host_online_account, set_host_online_account_sync, OnlineAccountsData,
+    OnlineAccountsOutcome, OnlineAccountsSource,
 };
 use crate::source::{
     AccountData, AccountOutcome, AccountSource, AccountType, AccountsData, DirectoryData,
@@ -164,21 +165,54 @@ impl AccountSource for HostAccounts {
         user_name: &str,
         real_name: &str,
         account_type: AccountType,
+        password: &str,
     ) -> AccountOutcome {
         let connection = match daemon_connection() {
             Ok(connection) => connection,
             Err(outcome) => return outcome,
         };
-        match connection.call_method(
+        let reply = match connection.call_method(
             Some(ACCOUNTS_SERVICE),
             ACCOUNTS_ROOT,
             Some(ACCOUNTS_INTERFACE),
             "CreateUser",
             &(user_name, real_name, account_type.code()),
         ) {
+            Ok(reply) => reply,
+            Err(error) => return classify(error),
+        };
+        if password.is_empty() {
+            return AccountOutcome::Applied;
+        }
+        // AccountsService creates the account without a password; the new
+        // user's object path is the one place the host accepts one.
+        let path = reply
+            .body()
+            .deserialize::<OwnedObjectPath>()
+            .map(|path| path.to_string())
+            .unwrap_or_default();
+        if path.is_empty() {
+            return AccountOutcome::Failed(AdapterError::new(
+                "AccountsService did not return the new user path",
+            ));
+        }
+        match connection.call_method(
+            Some(ACCOUNTS_SERVICE),
+            path.as_str(),
+            Some(USER_INTERFACE),
+            "SetPassword",
+            &(password, ""),
+        ) {
             Ok(_) => AccountOutcome::Applied,
             Err(error) => classify(error),
         }
+    }
+
+    fn set_password(&mut self, uid: u64, password: &str) -> AccountOutcome {
+        if password.is_empty() {
+            return AccountOutcome::Denied("the password must not be empty".to_owned());
+        }
+        call_user_method(uid, "SetPassword", &(password, ""))
     }
 
     fn delete_user(&mut self, uid: u64) -> AccountOutcome {
@@ -265,6 +299,10 @@ impl OnlineAccountsSource for HostAccounts {
         enabled: bool,
     ) -> OnlineAccountsOutcome {
         set_host_online_account_sync(id, capability, enabled)
+    }
+
+    fn ensure_online_account_credentials(&mut self, id: &str) -> OnlineAccountsOutcome {
+        ensure_host_online_account_credentials(id)
     }
 }
 

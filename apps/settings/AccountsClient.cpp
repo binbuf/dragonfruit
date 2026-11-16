@@ -20,6 +20,33 @@ const QString kService = QStringLiteral("org.dragonfruit.SystemStatus1");
 const QString kPath = QStringLiteral("/org/dragonfruit/SystemStatus1");
 const QString kInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Accounts");
 
+// The human line for one fprintd `EnrollStatus` stage id (T279). An unknown
+// stage is shown verbatim; the wizard never invents a percentage.
+QString enrollStageLabel(const QString &stage)
+{
+    if (stage.isEmpty())
+        return QStringLiteral("Waiting for the fingerprint sensor");
+    if (stage == QStringLiteral("enroll-stage-passed"))
+        return QStringLiteral("Fingerprint captured; place the same finger again");
+    if (stage == QStringLiteral("enroll-completed"))
+        return QStringLiteral("Fingerprint enrolled");
+    if (stage == QStringLiteral("enroll-retry-scan"))
+        return QStringLiteral("Scan again");
+    if (stage == QStringLiteral("enroll-swipe-too-short"))
+        return QStringLiteral("Swipe too short; try again");
+    if (stage == QStringLiteral("enroll-finger-not-centered"))
+        return QStringLiteral("Center your finger on the sensor");
+    if (stage == QStringLiteral("enroll-remove-and-retry"))
+        return QStringLiteral("Remove your finger and try again");
+    if (stage == QStringLiteral("enroll-data-full"))
+        return QStringLiteral("The fingerprint storage is full");
+    if (stage == QStringLiteral("enroll-failed"))
+        return QStringLiteral("Enrollment failed");
+    if (stage == QStringLiteral("enroll-unknown-error"))
+        return QStringLiteral("The reader reported an unknown error");
+    return stage;
+}
+
 } // namespace
 
 // --- DbusAccountsClient ----------------------------------------------------
@@ -105,9 +132,14 @@ void DbusAccountsClient::refreshOnlineAccounts()
 }
 
 void DbusAccountsClient::createUser(const QString &userName, const QString &realName,
-                                    const QString &accountType)
+                                    const QString &accountType, const QString &password)
 {
-    call(QStringLiteral("CreateUser"), {userName, realName, accountType});
+    call(QStringLiteral("CreateUser"), {userName, realName, accountType, password});
+}
+
+void DbusAccountsClient::setPassword(int uid, const QString &password)
+{
+    call(QStringLiteral("SetAccountPassword"), {uid, password});
 }
 
 void DbusAccountsClient::deleteUser(int uid)
@@ -181,6 +213,11 @@ void DbusAccountsClient::setOnlineAccountSync(const QString &id, const QString &
     call(QStringLiteral("SetOnlineAccountSync"), {id, capability, enabled});
 }
 
+void DbusAccountsClient::ensureOnlineAccountCredentials(const QString &id)
+{
+    call(QStringLiteral("EnsureOnlineAccountCredentials"), {id});
+}
+
 void DbusAccountsClient::call(const QString &method, const QVariantList &arguments)
 {
     auto *iface = new QDBusInterface(m_service, m_path, m_interface,
@@ -204,33 +241,60 @@ void DbusAccountsClient::call(const QString &method, const QVariantList &argumen
         || method == QStringLiteral("ChangePassword");
     const bool isOnlineWrite = method == QStringLiteral("AddOnlineAccount")
         || method == QStringLiteral("RemoveOnlineAccount")
-        || method == QStringLiteral("SetOnlineAccountSync");
+        || method == QStringLiteral("SetOnlineAccountSync")
+        || method == QStringLiteral("EnsureOnlineAccountCredentials");
+    const bool isWrite = isBiometricsWrite || isOnlineWrite
+        || method == QStringLiteral("CreateUser")
+        || method == QStringLiteral("SetAccountPassword");
     auto *watcher = new QDBusPendingCallWatcher(
         iface->asyncCallWithArgumentList(method, arguments), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, isState, isBiometricsState, isOnlineState, isBiometricsWrite,
-             isOnlineWrite, iface, watcher]() {
+            [this, method, isState, isBiometricsState, isOnlineState, isBiometricsWrite,
+             isOnlineWrite, isWrite, iface, watcher]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 iface->deleteLater();
                 watcher->deleteLater();
-                if (!reply.isValid())
+                if (!reply.isValid()) {
+                    if (isWrite)
+                        emit writeFinished(method, QStringLiteral("failed"),
+                                           reply.error().message());
                     return;
-                if (isState)
-                    applyReply(reply.value().toUtf8());
-                else if (isBiometricsState)
-                    applyBiometricsReply(reply.value().toUtf8());
-                else if (isOnlineState)
-                    applyOnlineReply(reply.value().toUtf8());
-                else {
-                    // The write reply is the outcome report; the new state is
-                    // the host's re-read, never invented here.
-                    if (isBiometricsWrite)
-                        refreshBiometrics();
-                    else if (isOnlineWrite)
-                        refreshOnlineAccounts();
-                    else
-                        refresh();
                 }
+                if (isState) {
+                    applyReply(reply.value().toUtf8());
+                    return;
+                }
+                if (isBiometricsState) {
+                    applyBiometricsReply(reply.value().toUtf8());
+                    return;
+                }
+                if (isOnlineState) {
+                    applyOnlineReply(reply.value().toUtf8());
+                    return;
+                }
+                // The write reply is the outcome report; the new state is the
+                // host's re-read, never invented here.
+                if (isWrite) {
+                    QString outcome = QStringLiteral("applied");
+                    QString note;
+                    const QJsonDocument document =
+                        QJsonDocument::fromJson(reply.value().toUtf8());
+                    if (document.isObject()) {
+                        const QJsonObject report = document.object();
+                        outcome = report.value(QStringLiteral("outcome"))
+                                      .toString(outcome);
+                        note = report.value(QStringLiteral("note")).toString();
+                        if (note.isEmpty())
+                            note = report.value(QStringLiteral("error")).toString();
+                    }
+                    emit writeFinished(method, outcome, note);
+                }
+                if (isBiometricsWrite)
+                    refreshBiometrics();
+                else if (isOnlineWrite)
+                    refreshOnlineAccounts();
+                else
+                    refresh();
             });
 }
 
@@ -308,11 +372,18 @@ void MockAccountsClient::resetForTest()
     m_pamUnlock = true;
     m_pamAuth = true;
     m_passwordAvailable = true;
+    m_enrollingFinger.clear();
+    m_enrollStage.clear();
+    m_enrollError.clear();
+    m_biometricsDenied = false;
+    m_readerPresent = true;
+    m_passwordOutcome = QStringLiteral("applied");
+    m_passwordNote.clear();
 
     m_onlinePresent = qEnvironmentVariableIsSet("DF_ONLINE_ACCOUNTS_FIXTURE");
     m_onlineAccounts = {
         { QStringLiteral("account-1"), QStringLiteral("google"), QStringLiteral("Google"),
-          QStringLiteral("dan@example.com"),
+          QStringLiteral("dan@example.com"), false,
           { { QStringLiteral("mail"), true },
             { QStringLiteral("calendar"), true },
             { QStringLiteral("contacts"), false } } },
@@ -341,10 +412,15 @@ void MockAccountsClient::refreshOnlineAccounts()
 }
 
 void MockAccountsClient::createUser(const QString &userName, const QString &realName,
-                                    const QString &accountType)
+                                    const QString &accountType, const QString &password)
 {
     if (userName.trimmed().isEmpty())
         return;
+    if (password.isEmpty()) {
+        emit writeFinished(QStringLiteral("CreateUser"), QStringLiteral("denied"),
+                           QStringLiteral("A password is required for a new user."));
+        return;
+    }
     User user;
     user.uid = m_nextUid++;
     user.userName = userName.trimmed();
@@ -353,6 +429,26 @@ void MockAccountsClient::createUser(const QString &userName, const QString &real
         ? QStringLiteral("administrator") : QStringLiteral("standard");
     m_users.append(user);
     rebuild();
+    emit writeFinished(QStringLiteral("CreateUser"), QStringLiteral("applied"), QString());
+}
+
+void MockAccountsClient::setPassword(int uid, const QString &password)
+{
+    if (password.isEmpty()) {
+        emit writeFinished(QStringLiteral("SetAccountPassword"), QStringLiteral("denied"),
+                           QStringLiteral("The password must not be empty."));
+        return;
+    }
+    bool found = false;
+    for (const User &user : m_users) {
+        if (user.uid == uid)
+            found = true;
+    }
+    if (!found)
+        return;
+    rebuild();
+    emit writeFinished(QStringLiteral("SetAccountPassword"), QStringLiteral("applied"),
+                       QString());
 }
 
 void MockAccountsClient::deleteUser(int uid)
@@ -439,8 +535,60 @@ void MockAccountsClient::startFingerprintEnrollment(const QString &finger)
 {
     if (!m_biometricsPresent || finger.isEmpty())
         return;
-    if (!m_fingers.contains(finger))
-        m_fingers.append(finger);
+    if (!m_readerPresent) {
+        emit writeFinished(QStringLiteral("StartFingerprintEnrollment"),
+                           QStringLiteral("absent"),
+                           QStringLiteral("No fingerprint reader is connected."));
+        return;
+    }
+    if (m_biometricsDenied) {
+        emit writeFinished(QStringLiteral("StartFingerprintEnrollment"),
+                           QStringLiteral("denied"),
+                           QStringLiteral("Authentication was denied."));
+        return;
+    }
+    m_enrollingFinger = finger;
+    m_enrollError.clear();
+    // fprintd's own first stage; never an invented percentage.
+    m_enrollStage = QStringLiteral("enroll-stage-passed");
+    rebuildBiometrics();
+    emit writeFinished(QStringLiteral("StartFingerprintEnrollment"),
+                       QStringLiteral("applied"), QString());
+}
+
+void MockAccountsClient::advanceFingerprintEnrollment()
+{
+    if (m_enrollingFinger.isEmpty())
+        return;
+    if (m_enrollStage == QStringLiteral("enroll-stage-passed")) {
+        if (!m_fingers.contains(m_enrollingFinger))
+            m_fingers.append(m_enrollingFinger);
+        m_enrollStage = QStringLiteral("enroll-completed");
+        m_enrollingFinger.clear();
+    } else {
+        m_enrollingFinger.clear();
+    }
+    rebuildBiometrics();
+}
+
+void MockAccountsClient::setFingerprintStage(const QString &stage, bool done)
+{
+    if (stage.isEmpty()) {
+        m_enrollingFinger.clear();
+        m_enrollStage.clear();
+        rebuildBiometrics();
+        return;
+    }
+    m_enrollStage = stage;
+    if (done) {
+        if (stage == QStringLiteral("enroll-completed")) {
+            if (!m_fingers.contains(m_enrollingFinger))
+                m_fingers.append(m_enrollingFinger);
+        } else {
+            m_enrollError = stage;
+        }
+        m_enrollingFinger.clear();
+    }
     rebuildBiometrics();
 }
 
@@ -448,15 +596,26 @@ void MockAccountsClient::cancelFingerprintEnrollment()
 {
     if (!m_biometricsPresent)
         return;
+    m_enrollingFinger.clear();
+    m_enrollStage.clear();
     rebuildBiometrics();
+    emit writeFinished(QStringLiteral("CancelFingerprintEnrollment"),
+                       QStringLiteral("applied"), QString());
 }
 
 void MockAccountsClient::deleteFingerprint(const QString &finger)
 {
     if (!m_biometricsPresent)
         return;
+    if (m_biometricsDenied) {
+        emit writeFinished(QStringLiteral("DeleteFingerprint"), QStringLiteral("denied"),
+                           QStringLiteral("Authentication was denied."));
+        return;
+    }
     m_fingers.removeAll(finger);
     rebuildBiometrics();
+    emit writeFinished(QStringLiteral("DeleteFingerprint"), QStringLiteral("applied"),
+                       QString());
 }
 
 void MockAccountsClient::changePassword(const QString &password)
@@ -466,6 +625,8 @@ void MockAccountsClient::changePassword(const QString &password)
     // The fixture records only that the write happened; the password is not
     // stored anywhere, matching the live AccountsService path.
     rebuildBiometrics();
+    emit writeFinished(QStringLiteral("ChangePassword"), m_passwordOutcome,
+                       m_passwordNote);
 }
 
 void MockAccountsClient::addOnlineAccount(const QString &provider, const QString &identity)
@@ -478,6 +639,7 @@ void MockAccountsClient::addOnlineAccount(const QString &provider, const QString
     account.providerName = provider == QStringLiteral("google")
         ? QStringLiteral("Google") : QStringLiteral("Nextcloud");
     account.identity = identity;
+    account.attentionNeeded = false;
     account.capabilities = { { QStringLiteral("mail"), true } };
     m_onlineAccounts.append(account);
     rebuildOnlineAccounts();
@@ -505,6 +667,42 @@ void MockAccountsClient::setOnlineAccountSync(const QString &id, const QString &
             if (entry.first == capability)
                 entry.second = enabled;
     }
+    rebuildOnlineAccounts();
+}
+
+void MockAccountsClient::ensureOnlineAccountCredentials(const QString &id)
+{
+    if (!m_onlinePresent)
+        return;
+    for (OnlineAccount &account : m_onlineAccounts)
+        if (account.id == id)
+            account.attentionNeeded = false;
+    rebuildOnlineAccounts();
+    emit writeFinished(QStringLiteral("EnsureOnlineAccountCredentials"),
+                       QStringLiteral("applied"), QString());
+}
+
+void MockAccountsClient::setBiometricsDenied(bool denied)
+{
+    m_biometricsDenied = denied;
+}
+
+void MockAccountsClient::setBiometricsReaderPresent(bool present)
+{
+    m_readerPresent = present;
+    rebuildBiometrics();
+}
+
+void MockAccountsClient::setPasswordOutcome(const QString &outcome, const QString &note)
+{
+    m_passwordOutcome = outcome;
+    m_passwordNote = note;
+}
+
+void MockAccountsClient::setOnlineAttentionNeeded(bool needed)
+{
+    for (OnlineAccount &account : m_onlineAccounts)
+        account.attentionNeeded = needed;
     rebuildOnlineAccounts();
 }
 
@@ -649,7 +847,9 @@ void MockAccountsClient::rebuildBiometrics()
     device.insert(QStringLiteral("scanType"), QStringLiteral("press"));
     device.insert(QStringLiteral("enrolled"), fingers);
     device.insert(QStringLiteral("enrolledCount"), m_fingers.size());
-    device.insert(QStringLiteral("note"), QString());
+    device.insert(QStringLiteral("note"),
+                  m_readerPresent ? QString()
+                                  : QStringLiteral("The reader is not supported."));
     QJsonObject pam;
     pam.insert(QStringLiteral("available"), m_pamAvailable);
     pam.insert(QStringLiteral("unlock"), m_pamUnlock);
@@ -674,11 +874,30 @@ void MockAccountsClient::rebuildBiometrics()
                                         : QStringLiteral("%1 Fingerprints").arg(m_fingers.size()));
     view.insert(QStringLiteral("user"), QStringLiteral("dan"));
     view.insert(QStringLiteral("uid"), 1000);
+    // fprintd is present even when no reader answers; the reader itself is the
+    // absent half, exactly as the live GetDefaultDevice path reports it.
     view.insert(QStringLiteral("fprintdAvailable"), true);
-    view.insert(QStringLiteral("device"), device.toVariantMap());
+    view.insert(QStringLiteral("device"),
+                m_readerPresent ? device.toVariantMap() : QVariant());
     view.insert(QStringLiteral("pam"), pam.toVariantMap());
     view.insert(QStringLiteral("password"), password.toVariantMap());
-    view.insert(QStringLiteral("enrolling"), QVariant());
+    QVariantMap enrolling;
+    if (!m_enrollingFinger.isEmpty()) {
+        enrolling.insert(QStringLiteral("finger"), m_enrollingFinger);
+        QString label = m_enrollingFinger;
+        label.replace(QLatin1Char('-'), QLatin1Char(' '));
+        if (!label.isEmpty())
+            label[0] = label[0].toUpper();
+        enrolling.insert(QStringLiteral("label"), label);
+        enrolling.insert(QStringLiteral("stage"), m_enrollStage);
+        enrolling.insert(QStringLiteral("stageLabel"), enrollStageLabel(m_enrollStage));
+        enrolling.insert(QStringLiteral("status"), enrollStageLabel(m_enrollStage));
+        enrolling.insert(QStringLiteral("done"), false);
+    }
+    view.insert(QStringLiteral("enrolling"),
+                enrolling.isEmpty() ? QVariant() : enrolling);
+    view.insert(QStringLiteral("enrollmentError"),
+                m_enrollError.isEmpty() ? QVariant() : m_enrollError);
     m_biometricsView = view;
     emit biometricsChanged(m_biometricsView);
 }
@@ -724,7 +943,7 @@ void MockAccountsClient::rebuildOnlineAccounts()
         entry.insert(QStringLiteral("identity"), account.identity);
         entry.insert(QStringLiteral("presentationIdentity"), account.identity);
         entry.insert(QStringLiteral("locked"), false);
-        entry.insert(QStringLiteral("attentionNeeded"), false);
+        entry.insert(QStringLiteral("attentionNeeded"), account.attentionNeeded);
         entry.insert(QStringLiteral("capabilities"), capabilities);
         accounts.append(entry);
     }

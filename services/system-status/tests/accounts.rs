@@ -95,7 +95,7 @@ fn the_account_writes_apply_once_and_report_polkit_denials() {
     let mut host = AccountsHost::new(MockAccounts::present(data(true)));
     host.refresh();
     assert_eq!(
-        host.create_user("kim", "Kim", "standard")["outcome"],
+        host.create_user("kim", "Kim", "standard", "")["outcome"],
         "applied"
     );
     assert_eq!(
@@ -145,7 +145,7 @@ fn absence_hides_the_item_and_writes_answer_absence() {
     host.refresh();
     assert_eq!(host.view()["state"], "unavailable");
     assert_eq!(
-        host.create_user("kim", "Kim", "standard")["outcome"],
+        host.create_user("kim", "Kim", "standard", "")["outcome"],
         "absent"
     );
     assert_eq!(host.delete_user(1000)["outcome"], "absent");

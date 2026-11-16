@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 35;
+pub const SCHEMA_VERSION: u32 = 36;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,11 +82,12 @@ pub enum KeyGroup {
     ScreenSaver,
     Desktop,
     Accessibility,
+    Privacy,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 23] = [
+    pub const ALL: [KeyGroup; 24] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -110,6 +111,7 @@ impl KeyGroup {
         KeyGroup::ScreenSaver,
         KeyGroup::Desktop,
         KeyGroup::Accessibility,
+        KeyGroup::Privacy,
     ];
 
     /// The group name used in docs and tests.
@@ -138,6 +140,7 @@ impl KeyGroup {
             KeyGroup::ScreenSaver => "screen-saver",
             KeyGroup::Desktop => "desktop",
             KeyGroup::Accessibility => "accessibility",
+            KeyGroup::Privacy => "privacy",
         }
     }
 }
@@ -2813,6 +2816,37 @@ pub const KEYS: &[KeySpec] = &[
         since: 32,
         summary: "Recorded chord that opens the Accessibility pane; empty disables it.",
     },
+    // ── Privacy policy (T279) ───────────────────────────────────────────
+    // The portal PermissionStore has no global switch and no analytics
+    // collector. The master gate is the desktop's own policy: when it is off
+    // the pane disables every per-app location write. Analytics is opt-in and
+    // stored-only until a collector exists (ADR 0262's stored-only rule).
+    KeySpec {
+        key: "privacy.locationServices",
+        group: KeyGroup::Privacy,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Privacy pane (gates per-app location writes)",
+        since: 36,
+        summary: "Desktop-level Location Services master; off disables every per-app location write.",
+    },
+    KeySpec {
+        key: "privacy.analytics",
+        group: KeyGroup::Privacy,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Privacy pane (stored-only; no collector in this build)",
+        since: 36,
+        summary: "Opt-in analytics preference; off by default and stored only.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -3458,10 +3492,7 @@ mod tests {
         assert_eq!(spec.since, 26);
         assert!(spec.since <= SCHEMA_VERSION);
         for value in ["dragonfruit", "tux"] {
-            assert!(
-                spec.validate(&Value::Text(value.into())).is_ok(),
-                "{value}"
-            );
+            assert!(spec.validate(&Value::Text(value.into())).is_ok(), "{value}");
         }
         assert!(spec.validate(&Value::Text("penguin".into())).is_err());
     }
@@ -3497,11 +3528,7 @@ mod tests {
                 KeyType::Text,
                 KeyDefault::Text("automatic"),
             ),
-            (
-                "menu.tray.hidden",
-                KeyType::TextList,
-                KeyDefault::List(&[]),
-            ),
+            ("menu.tray.hidden", KeyType::TextList, KeyDefault::List(&[])),
         ] {
             let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
             assert_eq!(spec.kind, kind, "{key}");
@@ -3540,11 +3567,7 @@ mod tests {
                 KeyType::TextList,
                 KeyDefault::List(&[]),
             ),
-            (
-                "focus.customProfile",
-                KeyType::Text,
-                KeyDefault::Text(""),
-            ),
+            ("focus.customProfile", KeyType::Text, KeyDefault::Text("")),
             (
                 "lock.requirePasswordAfter",
                 KeyType::Integer,
@@ -3879,12 +3902,36 @@ mod tests {
     #[test]
     fn the_t235_keys_are_declared_in_revision_twenty_five() {
         for (key, kind, default) in [
-            ("quickSettings.page2", KeyType::TextList, KeyDefault::List(&[])),
-            ("quickSettings.page3", KeyType::TextList, KeyDefault::List(&[])),
-            ("quickSettings.pageCount", KeyType::Integer, KeyDefault::Integer(1)),
-            ("quickSettings.activePage", KeyType::Integer, KeyDefault::Integer(0)),
-            ("quickSettings.perDisplay", KeyType::Bool, KeyDefault::Bool(false)),
-            ("quickSettings.spans", KeyType::TextList, KeyDefault::List(&[])),
+            (
+                "quickSettings.page2",
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
+            (
+                "quickSettings.page3",
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
+            (
+                "quickSettings.pageCount",
+                KeyType::Integer,
+                KeyDefault::Integer(1),
+            ),
+            (
+                "quickSettings.activePage",
+                KeyType::Integer,
+                KeyDefault::Integer(0),
+            ),
+            (
+                "quickSettings.perDisplay",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "quickSettings.spans",
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
         ] {
             let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
             assert_eq!(spec.group, KeyGroup::QuickSettings, "{key}");
@@ -3908,11 +3955,31 @@ mod tests {
     fn the_t263_window_state_keys_are_declared_in_revision_twenty_seven() {
         for (key, kind, default) in [
             ("settings.lastPane", KeyType::Text, KeyDefault::Text("")),
-            ("settings.window.width", KeyType::Integer, KeyDefault::Integer(740)),
-            ("settings.window.height", KeyType::Integer, KeyDefault::Integer(820)),
-            ("settings.window.x", KeyType::Integer, KeyDefault::Integer(0)),
-            ("settings.window.y", KeyType::Integer, KeyDefault::Integer(0)),
-            ("settings.window.positioned", KeyType::Bool, KeyDefault::Bool(false)),
+            (
+                "settings.window.width",
+                KeyType::Integer,
+                KeyDefault::Integer(740),
+            ),
+            (
+                "settings.window.height",
+                KeyType::Integer,
+                KeyDefault::Integer(820),
+            ),
+            (
+                "settings.window.x",
+                KeyType::Integer,
+                KeyDefault::Integer(0),
+            ),
+            (
+                "settings.window.y",
+                KeyType::Integer,
+                KeyDefault::Integer(0),
+            ),
+            (
+                "settings.window.positioned",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
         ] {
             let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
             assert_eq!(spec.group, KeyGroup::General, "{key}");
@@ -4057,21 +4124,78 @@ mod tests {
     #[test]
     fn the_accessibility_keys_are_declared_in_revision_thirty_two() {
         for (key, kind, default) in [
-            ("accessibility.textSize", KeyType::Text, KeyDefault::Text("default")),
-            ("accessibility.differentiateWithoutColor", KeyType::Bool, KeyDefault::Bool(false)),
-            ("accessibility.dimFlashingLights", KeyType::Bool, KeyDefault::Bool(false)),
-            ("accessibility.magnifier", KeyType::Bool, KeyDefault::Bool(false)),
-            ("accessibility.magnifierZoom", KeyType::Number, KeyDefault::Number(2.0)),
-            ("accessibility.magnifierMode", KeyType::Text, KeyDefault::Text("follow-focus")),
-            ("accessibility.shortcut", KeyType::Text, KeyDefault::Text("")),
+            (
+                "accessibility.textSize",
+                KeyType::Text,
+                KeyDefault::Text("default"),
+            ),
+            (
+                "accessibility.differentiateWithoutColor",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "accessibility.dimFlashingLights",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "accessibility.magnifier",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "accessibility.magnifierZoom",
+                KeyType::Number,
+                KeyDefault::Number(2.0),
+            ),
+            (
+                "accessibility.magnifierMode",
+                KeyType::Text,
+                KeyDefault::Text("follow-focus"),
+            ),
+            (
+                "accessibility.shortcut",
+                KeyType::Text,
+                KeyDefault::Text(""),
+            ),
         ] {
             let spec = spec(key).unwrap_or_else(|| panic!("{key} is not declared"));
             assert_eq!(spec.group, KeyGroup::Accessibility);
             assert_eq!(spec.kind, kind);
             assert_eq!(spec.default, default);
             assert_eq!(spec.since, 32);
-            assert!(spec.validate(&default.to_value()).is_ok(), "{key} default fails");
+            assert!(
+                spec.validate(&default.to_value()).is_ok(),
+                "{key} default fails"
+            );
         }
+    }
+
+    /// T279: the Privacy & Security master gate and the opt-in analytics
+    /// preference are additive in revision 36. The master gates the pane's
+    /// per-app location writes; analytics is stored-only and defaults off.
+    #[test]
+    fn the_privacy_keys_are_declared_in_revision_thirty_six() {
+        for (key, default) in [
+            ("privacy.locationServices", KeyDefault::Bool(true)),
+            ("privacy.analytics", KeyDefault::Bool(false)),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is not declared"));
+            assert_eq!(spec.group, KeyGroup::Privacy);
+            assert_eq!(spec.kind, KeyType::Bool);
+            assert_eq!(spec.default, default);
+            assert_eq!(spec.since, 36);
+            assert!(
+                spec.validate(&default.to_value()).is_ok(),
+                "{key} default fails"
+            );
+        }
+        assert_eq!(
+            spec("privacy.analytics").unwrap().default,
+            KeyDefault::Bool(false),
+            "analytics must default off"
+        );
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

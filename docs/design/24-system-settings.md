@@ -1092,7 +1092,7 @@ with a note; disable per-app writes.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Location Services | Location | Master + per-app | portal Location | ship |
+| Location Services | Location | Master + per-app | portal Location + `privacy.locationServices` | ship; the master gates the pane's per-app writes |
 | Contacts / Calendars / Reminders / Photos | Same | Disclosure | portal/EDS | ship/adapt |
 | Camera / Microphone | Camera / Microphone | Disclosure | portal | ship |
 | Speech Recognition | Speech recognition | Disclosure | portal | adapt |
@@ -1105,14 +1105,26 @@ with a note; disable per-app writes.
 | Developer Tools | Developer tools | Disclosure | portal | adapt |
 | Sensitive Content Warning | — | Omit | — | omit: no on-device model |
 | Blocked Contacts | — | Omit | — | omit: no system contacts |
-| Analytics & Improvements | Analytics | Toggle | opt-in telemetry | adapt; default off |
+| Analytics & Improvements | Analytics | Toggle | `privacy.analytics` | adapt; opt-in, default off, stored-only |
 | Apple Advertising | — | Omit | — | omit |
 | Allow applications from | Software sources | Popup | Flatpak/distro | ship |
 | FileVault | Disk encryption | Info + Open | LUKS | read-only + delegate |
-| Accessories | USB accessories | Popup | USBGuard | adapt |
+| Accessories | USB accessories | Info + Details | USBGuard | adapt; read-only + delegate |
 | Lockdown Mode | Hardening mode | Info | SELinux/AppArmor/Secure Boot | read-only |
 | Extensions | Extensions | List | portal extensions | delegate |
 | Advanced… | Advanced… | Sheet | polkit/firewall/secure boot | ship |
+
+The list is grouped as the reference groups it: **Location Services** (the
+master plus the per-app list), **App access** (the fourteen remaining macOS
+categories, each with its own glyph), **Analytics & Improvements**, and
+**Security**. Every row is a `SettingsRow`: it is a keyboard stop with a focus
+ring and an AT-SPI name, so a category opens from the keyboard. The portal
+store has no global switch, so `privacy.locationServices` is the desktop-level
+master the pane enforces: turning it off disables the per-app location writes
+and says so. Analytics is opt-in, defaults off, and is marked stored-only in
+the map because this build has no collector. A portal that is absent keeps the
+Security group live and shows one note; a security tool that is absent disables
+only its own row.
 
 ### 4.13 Biometrics & Password — T279
 
@@ -1123,6 +1135,7 @@ independently.
 |---|---|---|---|---|
 | Change Password | Change password | Button | PAM/accountsservice | ship |
 | Touch ID / Add Fingerprint | Fingerprints | List + add/delete | fprintd | ship |
+| Add Fingerprint… | Add Fingerprint… | Wizard | fprintd `EnrollStatus` | ship; stage text, never a percentage |
 | Use Touch ID to unlock | Use fingerprint to unlock | Toggle | PAM + `biometrics.unlock` | ship as read-only status |
 | Use Touch ID for purchases | — | Omit | — | omit |
 | Use Touch ID for autofill | Use fingerprint for authentication | Toggle | PAM | ship as read-only status |
@@ -1134,6 +1147,14 @@ settings app does not edit `/etc/pam.d`. Fast user switching, purchase
 authorization, and watch unlock are omitted because no display manager exposes
 a fingerprint-triggered switch and there is no secure element; a toggle for
 them would be a control with no consumer.
+
+The enrollment wizard reports fprintd's own `EnrollStatus` stage id (for
+example `enroll-stage-passed`) with a human line, and shows the raw id; it
+never invents a percentage. A denied write is shown at the row and inside the
+wizard, and an unsupported reader is the honest "No fingerprint reader is
+connected" state while the password half stays live. The password dialog stays
+open until the host's report arrives: a denial leaves the view unchanged and
+shows the host's message.
 
 ### 4.14 Users & Groups — T279
 
@@ -1153,6 +1174,16 @@ keep Add/Edit disabled with reasons.
 | — | Change/reset password | Button | accountsservice/polkit | ship |
 | — | Delete user/group | Confirm | distro adapter | ship |
 
+Add User carries the password step: the name, full name, password, and
+confirmation are labelled fields, the create action waits for the host's
+report, and a mismatch never reaches AccountsService. The per-user sheet has
+one Change/Reset Password action; the duplicate automatic-login toggle is
+removed, leaving the one `Automatically log in as` popup. Deleting a user or a
+group always goes through a confirmation. The group half is a real
+distribution provider (`FileGroupProvider`): the group database is read
+through NSS and writes go through `groupadd`/`groupdel`/`gpasswd` under the
+host polkit authority; a host with no provider disables only the group rows.
+
 ### 4.15 Online Accounts — T279
 
 Owner: GNOME Online Accounts if present; otherwise a visible delegate state.
@@ -1166,6 +1197,13 @@ Absence: the pane stays in the sidebar with an explicit note.
 | Details | Details | Sheet | GOA | ship |
 | — | Remove account | Button + confirm | GOA | ship |
 | — | Sign in again | Button | GOA | adapt |
+
+GOA is optional, but the pane is not: with no service it keeps its header and
+states "Internet accounts are not installed", with a delegate action that
+explains the distribution package. With GOA present, each account row offers
+Details (provider, identity, and the capability list), Sign in again (GOA's
+own `EnsureCredentials`, never an OAuth client), and Remove behind a
+confirmation. The sync toggles remain the service's per-capability writes.
 
 ### 4.16 Printers & Scanners — T280
 

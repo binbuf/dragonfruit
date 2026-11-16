@@ -94,8 +94,15 @@ impl<S: AccountSource> AccountsAdapter<S> {
         user_name: &str,
         real_name: &str,
         account_type: AccountType,
+        password: &str,
     ) -> AccountOutcome {
-        self.source.create_user(user_name, real_name, account_type)
+        self.source
+            .create_user(user_name, real_name, account_type, password)
+    }
+
+    /// Set the password of the user with `uid`. One explicit write.
+    pub fn set_password(&mut self, uid: u64, password: &str) -> AccountOutcome {
+        self.source.set_password(uid, password)
     }
 
     /// Delete the user account with `uid`. One explicit write.
@@ -189,7 +196,7 @@ impl<S: AccountSource> Adapter for AccountsAdapter<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::{AccountData, AccountsData, MockAccounts};
+    use crate::source::{AccountData, AccountsData, MockAccounts, PasswordMode};
 
     fn data() -> AccountsData {
         AccountsData {
@@ -202,6 +209,24 @@ mod tests {
             groups: Some(vec![]),
             directory: None,
         }
+    }
+
+    #[test]
+    fn a_new_user_gets_the_password_it_was_created_with() {
+        let mut adapter = AccountsAdapter::new(MockAccounts::present(data()));
+        adapter.refresh();
+        assert!(adapter
+            .create_user("kim", "Kim", AccountType::Standard, "correct horse")
+            .is_applied());
+        adapter.refresh();
+        let kim = adapter
+            .snapshot()
+            .unwrap()
+            .user_by_name("kim")
+            .unwrap()
+            .clone();
+        assert_eq!(kim.password_mode, PasswordMode::Regular);
+        assert!(adapter.set_password(kim.uid, "another horse").is_applied());
     }
 
     #[test]
@@ -300,7 +325,7 @@ mod tests {
         adapter.refresh();
 
         assert!(adapter
-            .create_user("kim", "Kim", AccountType::Standard)
+            .create_user("kim", "Kim", AccountType::Standard, "")
             .is_applied());
         assert!(adapter
             .set_account_type(1000, AccountType::Administrator)
@@ -330,7 +355,7 @@ mod tests {
         let mut adapter = AccountsAdapter::new(MockAccounts::absent());
         adapter.refresh();
         assert_eq!(
-            adapter.create_user("kim", "Kim", AccountType::Standard),
+            adapter.create_user("kim", "Kim", AccountType::Standard, ""),
             AccountOutcome::Absent
         );
         // A write never invents state: the adapter stays absent until a read.
@@ -343,7 +368,7 @@ mod tests {
         let mut adapter =
             AccountsAdapter::new(MockAccounts::present(data()).deny_writes("polkit: denied"));
         adapter.refresh();
-        let outcome = adapter.create_user("kim", "Kim", AccountType::Standard);
+        let outcome = adapter.create_user("kim", "Kim", AccountType::Standard, "");
         assert_eq!(outcome.denial_note(), Some("polkit: denied"));
         assert!(adapter.state().is_available());
         assert!(adapter.state().slot(AdapterId::ACCOUNTS).visible);

@@ -120,6 +120,8 @@ public:
     void setSecuritySourceEnabled(const QString &id, bool enabled) override;
     void resetForTest() override;
     void setPrivacyAvailableFixture(bool available) override;
+    // T279: the USBGuard accessory policy state.
+    void setAccessoriesAvailableFixture(bool available);
 
 private:
     void rebuild();
@@ -152,5 +154,6 @@ private:
         QString note;
     };
     QList<SoftwareSource> m_sources;
+    bool m_accessoriesAvailable = true;
     QVariantMap m_securityView;
 };

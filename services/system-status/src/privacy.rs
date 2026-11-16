@@ -370,6 +370,13 @@ pub fn security_snapshot_view(snapshot: &SecuritySnapshot) -> Value {
             "detail": snapshot.hardening().detail,
         },
         "extensions": extensions,
+        "accessories": {
+            "available": snapshot.accessories().available,
+            "policy": snapshot.accessories().policy,
+            "label": snapshot.accessories().label,
+            "deviceCount": snapshot.accessories().device_count,
+            "note": snapshot.accessories().note,
+        },
         "advanced": advanced,
     })
 }
@@ -563,6 +570,10 @@ mod tests {
         assert_eq!(view["extensions"].as_array().unwrap().len(), 2);
         assert_eq!(view["advanced"].as_array().unwrap().len(), 3);
         assert_eq!(view["enabledSourceCount"], 2);
+        // T279: the USBGuard accessory policy is part of the security read.
+        assert_eq!(view["accessories"]["available"], true);
+        assert_eq!(view["accessories"]["deviceCount"], 2);
+        assert_eq!(view["accessories"]["policy"], "managed");
     }
 
     #[test]

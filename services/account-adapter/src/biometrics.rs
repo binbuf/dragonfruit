@@ -19,12 +19,16 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::{Duration, Instant};
 
 use dragonfruit_system_adapters::{
     Adapter, AdapterError, AdapterEvent, AdapterId, AdapterState, ConnectionState, Subscription,
 };
-use zbus::blocking::Connection;
+use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
 use crate::accounts::{
@@ -75,6 +79,27 @@ pub fn finger_label(finger: &str) -> &str {
     }
 }
 
+/// A human label for one fprintd `EnrollStatus` stage id.
+///
+/// The stage ids are fprintd's own vocabulary; an unknown id is shown verbatim
+/// so a future stage is never disguised as a percentage or a guess.
+pub fn enroll_stage_label(stage: &str) -> &str {
+    match stage {
+        "" => "Waiting for the fingerprint sensor",
+        "enroll-stage-passed" => "Fingerprint captured; place the same finger again",
+        "enroll-completed" => "Fingerprint enrolled",
+        "enroll-retry-scan" => "Scan again",
+        "enroll-swipe-too-short" => "Swipe too short; try again",
+        "enroll-finger-not-centered" => "Center your finger on the sensor",
+        "enroll-remove-and-retry" => "Remove your finger and try again",
+        "enroll-data-full" => "The fingerprint storage is full",
+        "enroll-failed" => "Enrollment failed",
+        "enroll-unknown-error" => "The reader reported an unknown error",
+        "enroll-cancelled" => "Enrollment cancelled",
+        other => other,
+    }
+}
+
 /// The fingerprint reader and its enrolled fingers.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FingerprintDeviceData {
@@ -119,8 +144,13 @@ pub struct PasswordData {
 pub struct EnrollmentData {
     /// The finger being enrolled.
     pub finger: String,
-    /// The status line.
+    /// fprintd's own stage id (`enroll-stage-passed`, `enroll-completed`, …).
+    /// Empty until the reader reports the first stage.
+    pub stage: String,
+    /// The human line derived from the stage; never a percentage.
     pub status: String,
+    /// Whether fprintd reported the enrollment complete.
+    pub done: bool,
 }
 
 /// The raw Biometrics and Password read.
@@ -140,6 +170,9 @@ pub struct BiometricsData {
     pub password: PasswordData,
     /// The in-flight enrollment, when one is running.
     pub enrolling: Option<EnrollmentData>,
+    /// The last failed enrollment stage, shown at the row until the next
+    /// enrollment starts. fprintd's own id, never an invented message.
+    pub enrollment_error: Option<String>,
 }
 
 /// The result of one biometrics write.
@@ -251,6 +284,11 @@ impl BiometricsSnapshot {
     /// The in-flight enrollment.
     pub fn enrolling(&self) -> Option<&EnrollmentData> {
         self.data.enrolling.as_ref()
+    }
+
+    /// The last failed enrollment stage, when one is pending acknowledgement.
+    pub fn enrollment_error(&self) -> Option<&str> {
+        self.data.enrollment_error.as_deref()
     }
 
     /// Whether any biometrics owner answered.
@@ -376,6 +414,8 @@ impl<S: BiometricsSource> Adapter for BiometricsAdapter<S> {
 #[derive(Debug, Default)]
 pub struct BiometricsHostState {
     session: Option<EnrollmentSession>,
+    /// The last failed enrollment stage, kept until a new enrollment starts.
+    last_error: Option<String>,
 }
 
 #[derive(Debug)]
@@ -384,12 +424,83 @@ struct EnrollmentSession {
     finger: String,
     baseline: usize,
     started: Instant,
+    /// fprintd's last `EnrollStatus(result, done)` signal.
+    stage: Arc<Mutex<Option<(String, bool)>>>,
+    stop: Arc<AtomicBool>,
 }
 
 impl BiometricsHostState {
     /// Whether an enrollment is in flight.
     pub fn is_enrolling(&self) -> bool {
         self.session.is_some()
+    }
+
+    /// The last failed enrollment stage, when one is pending acknowledgement.
+    pub fn last_error(&self) -> Option<&str> {
+        self.last_error.as_deref()
+    }
+}
+
+/// Subscribe to fprintd's `EnrollStatus` signals for one device.
+///
+/// The blocking zbus iterator lives on its own thread for the duration of the
+/// enrollment. The thread exits on fprintd's `done` signal, on the stop flag,
+/// or when the match iterator is torn down; a cancel wakes it with one
+/// `enroll-cancelled` signal so it never lingers.
+fn spawn_enroll_listener(
+    device_path: String,
+    stage: Arc<Mutex<Option<(String, bool)>>>,
+    stop: Arc<AtomicBool>,
+) {
+    std::thread::spawn(move || {
+        let Ok(connection) = Connection::system() else {
+            return;
+        };
+        let Ok(rule) = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .interface(FPRINT_DEVICE_INTERFACE)
+            .and_then(|builder| builder.member("EnrollStatus"))
+            .and_then(|builder| builder.path(device_path.as_str()))
+            .map(|builder| builder.build())
+        else {
+            return;
+        };
+        let Ok(iterator) = MessageIterator::for_match_rule(rule, &connection, Some(8)) else {
+            return;
+        };
+        for message in iterator {
+            if stop.load(Ordering::SeqCst) {
+                break;
+            }
+            let Ok(message) = message else {
+                continue;
+            };
+            let Ok((result, done)) = message.body().deserialize::<(String, bool)>() else {
+                continue;
+            };
+            if let Ok(mut slot) = stage.lock() {
+                *slot = Some((result, done));
+            }
+            if done {
+                break;
+            }
+        }
+    });
+}
+
+/// Wake and retire the enrollment listener.
+fn stop_enroll_listener(session: &EnrollmentSession) {
+    session.stop.store(true, Ordering::SeqCst);
+    // The listener's match rule has no sender filter, so a matching signal
+    // from our own connection unblocks its pending `next()`.
+    if let Ok(connection) = Connection::system() {
+        let _ = connection.emit_signal(
+            None::<&str>,
+            session.device_path.as_str(),
+            FPRINT_DEVICE_INTERFACE,
+            "EnrollStatus",
+            &("enroll-cancelled", false),
+        );
     }
 }
 
@@ -419,6 +530,7 @@ pub fn biometrics_fixture() -> BiometricsData {
                 .to_owned(),
         },
         enrolling: None,
+        enrollment_error: None,
     }
 }
 
@@ -556,7 +668,9 @@ impl BiometricsSource for MockBiometrics {
                 }
                 data.enrolling = Some(EnrollmentData {
                     finger: finger.to_owned(),
-                    status: "Enrolled".to_owned(),
+                    stage: "enroll-completed".to_owned(),
+                    status: enroll_stage_label("enroll-completed").to_owned(),
+                    done: true,
                 });
             }
         }
@@ -632,6 +746,7 @@ pub fn read_host_biometrics(
         pam,
         password,
         enrolling,
+        enrollment_error: state.last_error.clone(),
     }))
 }
 
@@ -742,6 +857,13 @@ fn read_fprintd(
     let mut enrolling = None;
     if let Some(session) = state.session.as_ref() {
         let expired = session.started.elapsed() > Duration::from_secs(120);
+        let stage = session
+            .stage
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+            .unwrap_or_default();
+        let (stage_id, stage_done) = stage;
         let enrolled = device
             .as_ref()
             .map(|device| {
@@ -752,7 +874,8 @@ fn read_fprintd(
                     && device.enrolled.len() > session.baseline
             })
             .unwrap_or(false);
-        if enrolled || expired {
+        let failed = stage_done && stage_id != "enroll-completed" || expired;
+        if enrolled || stage_done || expired {
             let _ = connection.call_method(
                 Some(FPRINT_SERVICE),
                 session.device_path.as_str(),
@@ -767,15 +890,25 @@ fn read_fprintd(
                 "Release",
                 &(),
             );
+            stop_enroll_listener(session);
+            // A failed stage stays visible at the row; a completed one clears
+            // it. The stage id is fprintd's own, never a fabricated message.
+            if failed {
+                state.last_error = Some(if expired {
+                    "enroll-timed-out".to_owned()
+                } else {
+                    stage_id
+                });
+            } else {
+                state.last_error = None;
+            }
             state.session = None;
         } else {
             enrolling = Some(EnrollmentData {
                 finger: session.finger.clone(),
-                status: if expired {
-                    "Enrollment timed out".to_owned()
-                } else {
-                    "Touch the fingerprint sensor".to_owned()
-                },
+                stage: stage_id.clone(),
+                status: enroll_stage_label(&stage_id).to_owned(),
+                done: false,
             });
         }
     }
@@ -889,11 +1022,17 @@ pub fn start_host_enrollment(state: &mut BiometricsHostState, finger: &str) -> B
         );
         return classify_biometrics(error);
     }
+    let stage = Arc::new(Mutex::new(None));
+    let stop = Arc::new(AtomicBool::new(false));
+    spawn_enroll_listener(device_path.clone(), stage.clone(), stop.clone());
+    state.last_error = None;
     state.session = Some(EnrollmentSession {
         device_path,
         finger: finger.to_owned(),
         baseline,
         started: Instant::now(),
+        stage,
+        stop,
     });
     BiometricsOutcome::Applied
 }
@@ -904,6 +1043,7 @@ pub fn cancel_host_enrollment(state: &mut BiometricsHostState) -> BiometricsOutc
         return BiometricsOutcome::Absent;
     };
     let Ok(connection) = Connection::system() else {
+        stop_enroll_listener(&session);
         return BiometricsOutcome::Absent;
     };
     let _ = connection.call_method(
@@ -920,6 +1060,7 @@ pub fn cancel_host_enrollment(state: &mut BiometricsHostState) -> BiometricsOutc
         "Release",
         &(),
     );
+    stop_enroll_listener(&session);
     BiometricsOutcome::Applied
 }
 
@@ -1038,6 +1179,35 @@ fn classify_biometrics(error: zbus::Error) -> BiometricsOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enroll_stages_keep_fprintds_own_vocabulary() {
+        assert_eq!(
+            enroll_stage_label("enroll-stage-passed"),
+            "Fingerprint captured; place the same finger again"
+        );
+        assert_eq!(
+            enroll_stage_label("enroll-completed"),
+            "Fingerprint enrolled"
+        );
+        assert_eq!(enroll_stage_label("enroll-failed"), "Enrollment failed");
+        // An unknown future stage is shown verbatim, never disguised.
+        assert_eq!(
+            enroll_stage_label("enroll-future-stage"),
+            "enroll-future-stage"
+        );
+        // No stage is ever a percentage.
+        for stage in [
+            "",
+            "enroll-stage-passed",
+            "enroll-completed",
+            "enroll-retry-scan",
+            "enroll-failed",
+            "enroll-unknown-error",
+        ] {
+            assert!(!enroll_stage_label(stage).contains('%'));
+        }
+    }
 
     #[test]
     fn the_fixture_is_deterministic() {

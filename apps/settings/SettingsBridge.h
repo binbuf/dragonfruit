@@ -266,6 +266,23 @@ class SettingsBridge : public QObject
     Q_PROPERTY(QVariantMap onlineAccounts READ onlineAccounts NOTIFY onlineAccountsChanged)
     Q_PROPERTY(bool onlineAccountsAvailable READ onlineAccountsAvailable NOTIFY
                    onlineAccountsChanged)
+    // T279: the last biometrics/account write report. The password dialog
+    // stays open until `biometricsWriteState` is `applied`; a denial or an
+    // unsupported reader is shown at the row. `idle` until the first write.
+    Q_PROPERTY(QString biometricsWriteOperation READ biometricsWriteOperation NOTIFY
+                   biometricsWriteChanged)
+    Q_PROPERTY(QString biometricsWriteState READ biometricsWriteState NOTIFY
+                   biometricsWriteChanged)
+    Q_PROPERTY(QString biometricsWriteError READ biometricsWriteError NOTIFY
+                   biometricsWriteChanged)
+    // The last account write (create user / set password) report, so the
+    // Add User and password dialogs wait for the host too.
+    Q_PROPERTY(QString accountsWriteOperation READ accountsWriteOperation NOTIFY
+                   accountsWriteChanged)
+    Q_PROPERTY(QString accountsWriteState READ accountsWriteState NOTIFY
+                   accountsWriteChanged)
+    Q_PROPERTY(QString accountsWriteError READ accountsWriteError NOTIFY
+                   accountsWriteChanged)
     // The Accessibility view from the bridge host (T-15.14b): `{ state, glyph,
     // label, present, enabled, enabledLabel, screenReader, screenReaderLabel }`.
     // Empty when the host (or the AT-SPI bus) is absent; the pane renders the
@@ -392,6 +409,12 @@ public:
     QVariantMap writeErrors() const;
     QVariantMap writeStates() const;
     QString accountsError() const { return m_accountsError; }
+    QString biometricsWriteOperation() const { return m_biometricsWriteOperation; }
+    QString biometricsWriteState() const { return m_biometricsWriteState; }
+    QString biometricsWriteError() const { return m_biometricsWriteError; }
+    QString accountsWriteOperation() const { return m_accountsWriteOperation; }
+    QString accountsWriteState() const { return m_accountsWriteState; }
+    QString accountsWriteError() const { return m_accountsWriteError; }
     QVariantList wallpaperPresets() const;
     QVariantList providerItems() const;
     QVariantList defaultBrowserChoices() const;
@@ -726,7 +749,8 @@ public:
     // `administrator`); automatic login takes a uid (`0` clears it).
     Q_INVOKABLE void refreshAccounts();
     Q_INVOKABLE void createAccount(const QString &userName, const QString &realName,
-                                   const QString &accountType);
+                                   const QString &accountType, const QString &password);
+    Q_INVOKABLE void setAccountPassword(int uid, const QString &password);
     Q_INVOKABLE void deleteAccount(int uid);
     Q_INVOKABLE void setAccountType(int uid, const QString &accountType);
     Q_INVOKABLE void setAccountLocked(int uid, bool locked);
@@ -778,6 +802,8 @@ public:
     // Test seam (`DF_PRIVACY_FIXTURE` only): hide the portal store while the
     // security host stays live.
     Q_INVOKABLE void setPrivacyAvailableFixture(bool available);
+    // T279: the USBGuard accessory policy state in the privacy fixture.
+    Q_INVOKABLE void setAccessoriesAvailableFixture(bool available);
 
     // T228: the Biometrics & Password pane. The password is handed straight to
     // the host; it is never stored or logged by the app.
@@ -787,6 +813,13 @@ public:
     Q_INVOKABLE void deleteFingerprint(const QString &finger);
     Q_INVOKABLE void changePassword(const QString &password);
     Q_INVOKABLE void resetBiometricsFixture();
+    // T279 fixture controls: a denied polkit write, an unsupported reader, the
+    // password outcome, and the staged fprintd enrollment. No-ops live.
+    Q_INVOKABLE void setBiometricsDeniedFixture(bool denied);
+    Q_INVOKABLE void setBiometricsReaderFixture(bool present);
+    Q_INVOKABLE void setPasswordOutcomeFixture(const QString &outcome, const QString &note);
+    Q_INVOKABLE void advanceFingerprintEnrollmentFixture();
+    Q_INVOKABLE void setFingerprintStageFixture(const QString &stage, bool done);
 
     // T228: the Online Accounts pane.
     Q_INVOKABLE void refreshOnlineAccounts();
@@ -794,7 +827,10 @@ public:
     Q_INVOKABLE void removeOnlineAccount(const QString &id);
     Q_INVOKABLE void setOnlineAccountSync(const QString &id, const QString &capability,
                                           bool enabled);
+    Q_INVOKABLE void ensureOnlineAccountCredentials(const QString &id);
     Q_INVOKABLE void resetOnlineAccountsFixture();
+    // T279 fixture control: mark the fixture account as needing a sign-in.
+    Q_INVOKABLE void setOnlineAttentionFixture(bool needed);
 
     // T-15.14b: the Accessibility pane's one seam. `refreshAccessibility`
     // re-reads the bridge host on pane open; the adapter is read-only, so there
@@ -959,6 +995,9 @@ signals:
     void securityChanged();
     void biometricsChanged();
     void onlineAccountsChanged();
+    // T279: the host's write report for the account/security panes.
+    void biometricsWriteChanged();
+    void accountsWriteChanged();
     // The Accessibility view or availability changed (T-15.14b).
     void accessibilityChanged();
     // T275: a delegate launch attempt completed (`ok` false when the program
@@ -1055,6 +1094,12 @@ private:
     QHash<QString, std::function<void()>> m_pendingAuthActions;
     int m_authRequestCounter = 0;
     QString m_accountsError;
+    QString m_biometricsWriteOperation;
+    QString m_biometricsWriteState = QStringLiteral("idle");
+    QString m_biometricsWriteError;
+    QString m_accountsWriteOperation;
+    QString m_accountsWriteState = QStringLiteral("idle");
+    QString m_accountsWriteError;
     QVariantList m_presets;
     bool m_chooserAvailable = false;
     QString m_requestPath;

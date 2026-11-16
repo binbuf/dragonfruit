@@ -3,17 +3,23 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Biometrics & Password pane (T228).
+// The Biometrics & Password pane (T228; T279 completion).
 //
 // Three host owners meet here, and each degrades on its own:
 //
 //  * AccountsService owns the password write. The dialog collects a new
-//    password and hands it straight to the host; the app never stores it.
-//  * fprintd lists, enrolls, and deletes fingerprints. No reader is a normal
-//    note, not an error.
+//    password, hands it straight to the host, and stays open until the host's
+//    own report arrives; the app never stores it.
+//  * fprintd lists, enrolls, and deletes fingerprints. The enrollment wizard
+//    reports fprintd's own `EnrollStatus` stage text — never an invented
+//    percentage — and a denied write or an unsupported reader is shown at the
+//    row. No reader is a normal note, not an error.
 //  * PAM is read from `/etc/pam.d`. The unlock/authentication rows are
 //    read-only because changing PAM is system policy; they are hidden when
 //    `pam_fprintd.so` is not configured, so no dead toggle is drawn.
+//
+// A fast-user-switching row is deliberately absent: no display manager exposes
+// a fingerprint-triggered switch, so a control for it would have no consumer.
 Item {
     id: root
 
@@ -28,26 +34,54 @@ Item {
         ? root.view.password : ({})
     readonly property var enrolling: root.view.enrolling !== undefined
         ? root.view.enrolling : null
+    readonly property string enrollmentError: root.view.enrollmentError !== undefined
+        && root.view.enrollmentError !== null
+        ? String(root.view.enrollmentError) : ""
     readonly property bool fprintdAvailable: root.view.fprintdAvailable === true
     readonly property bool pamAvailable: root.pam.available === true
     readonly property bool passwordAvailable: root.password.available === true
+
+    // T279: the host's write report. `idle` until the first write; a pending
+    // password keeps its dialog open, a denial leaves the view unchanged.
+    readonly property string writeOperation: Settings.biometricsWriteOperation
+    readonly property string writeState: Settings.biometricsWriteState
+    readonly property string writeError: Settings.biometricsWriteError
+    readonly property bool passwordBusy: root.writeOperation === "ChangePassword"
+        && root.writeState === "pending"
+    readonly property bool passwordFailed: root.writeOperation === "ChangePassword"
+        && (root.writeState === "denied" || root.writeState === "failed"
+            || root.writeState === "absent")
+    readonly property string fingerprintError: {
+        if (root.enrollmentError.length > 0)
+            return qsTr("The reader reported: %1").arg(root.enrollmentError);
+        if (root.writeState === "denied" || root.writeState === "failed"
+                || root.writeState === "absent")
+            return root.writeError;
+        return "";
+    }
 
     property string selectedFinger: "right-index-finger"
     property string passwordError: ""
 
     // Test surface.
+    property alias passwordRow: passwordRow
     property alias passwordButton: passwordButton
     property alias changePasswordDialog: changePasswordDialog
     property alias newPasswordField: newPasswordField
     property alias confirmPasswordField: confirmPasswordField
     property alias passwordErrorNote: passwordErrorNote
+    property alias passwordPendingNote: passwordPendingNote
     property alias addFingerButton: addFingerButton
     property alias addFingerDialog: addFingerDialog
     property alias fingerSelect: fingerSelect
     property alias fingerRepeater: fingerRepeater
+    property alias fingerprintRow: fingerprintRow
     property alias deleteFingerDialog: deleteFingerDialog
     property alias cancelEnrollButton: cancelEnrollButton
     property alias enrollingNote: enrollingNote
+    property alias enrollStageText: enrollStageText
+    property alias enrollRawStageText: enrollRawStageText
+    property alias enrollDialogError: enrollDialogError
     property alias pamUnlockToggle: pamUnlockToggle
     property alias pamAuthToggle: pamAuthToggle
     property alias absenceNote: absenceNote
@@ -86,6 +120,13 @@ Item {
         onTriggered: Settings.refreshBiometrics()
     }
 
+    function fingerEnrolled(finger) {
+        for (var i = 0; i < root.fingers.length; ++i)
+            if (String(root.fingers[i].id) === String(finger))
+                return true;
+        return false;
+    }
+
     function submitPassword() {
         root.passwordError = "";
         if (newPasswordField.text.length === 0) {
@@ -96,15 +137,50 @@ Item {
             root.passwordError = qsTr("The passwords do not match.");
             return;
         }
+        // The dialog waits: the host report closes it on success and leaves it
+        // open with the denial on failure.
         Settings.changePassword(newPasswordField.text);
-        newPasswordField.text = "";
-        confirmPasswordField.text = "";
-        changePasswordDialog.accept();
     }
 
     function startEnrollment() {
+        root.selectedFinger = fingerSelect.currentValue !== undefined
+            ? String(fingerSelect.currentValue) : root.selectedFinger;
+        addFingerDialog.started = true;
+        addFingerDialog.errorText = "";
         Settings.startFingerprintEnrollment(root.selectedFinger);
-        addFingerDialog.accept();
+    }
+
+    // The wizard closes when the host reports the finger enrolled. A failed
+    // stage stays in the dialog (and at the row) until the user cancels.
+    onEnrollingChanged: {
+        if (!addFingerDialog.started || root.enrolling !== null)
+            return;
+        if (root.fingerEnrolled(root.selectedFinger))
+            addFingerDialog.finish();
+    }
+
+    Connections {
+        target: Settings
+
+        function onBiometricsWriteChanged() {
+            if (root.writeOperation === "ChangePassword") {
+                if (root.writeState === "applied") {
+                    newPasswordField.text = "";
+                    confirmPasswordField.text = "";
+                    root.passwordError = "";
+                    changePasswordDialog.accept();
+                } else if (root.passwordFailed) {
+                    root.passwordError = root.writeError.length > 0
+                        ? root.writeError
+                        : qsTr("The account service refused the password change.");
+                }
+            }
+            if (addFingerDialog.started && root.writeOperation === "StartFingerprintEnrollment"
+                    && (root.writeState === "denied" || root.writeState === "failed"
+                        || root.writeState === "absent")) {
+                addFingerDialog.errorText = root.writeError;
+            }
+        }
     }
 
     Column {
@@ -118,11 +194,15 @@ Item {
             title: qsTr("Password")
 
             SettingsRow {
+                id: passwordRow
+                objectName: "biometricsPasswordRow"
                 width: parent.width
+                leadingIcon: "lock"
                 label: qsTr("Change password\u2026")
                 description: root.passwordAvailable
                     ? String(root.password.note || "")
                     : qsTr("The account service is not running, so the password cannot be changed.")
+                errorText: root.passwordFailed ? root.passwordError : ""
                 showSeparator: false
                 controlData: Button {
                     id: passwordButton
@@ -145,7 +225,10 @@ Item {
             title: qsTr("Fingerprints")
 
             SettingsRow {
+                id: fingerprintRow
+                objectName: "biometricsFingerprintRow"
                 width: parent.width
+                leadingIcon: "fingerprint"
                 label: root.device !== null && root.device.name !== undefined
                     ? String(root.device.name) : qsTr("Fingerprint reader")
                 description: root.fprintdAvailable
@@ -153,6 +236,7 @@ Item {
                        ? qsTr("%1 enrolled fingerprint(s).").arg(root.fingers.length)
                        : qsTr("No fingerprint reader is connected."))
                     : qsTr("The fingerprint service is not running.")
+                errorText: root.fingerprintError
                 showSeparator: root.fingers.length > 0
                 controlData: Button {
                     id: addFingerButton
@@ -162,6 +246,9 @@ Item {
                         && root.enrolling === null
                     onClicked: {
                         root.selectedFinger = "right-index-finger";
+                        addFingerDialog.started = false;
+                        addFingerDialog.errorText = "";
+                        fingerSelect.currentIndex = 0;
                         addFingerDialog.show();
                     }
                 }
@@ -294,10 +381,18 @@ Item {
             Text {
                 width: parent.width
                 text: qsTr("The new password is handed to the account service; "
-                           + "the app does not store it.")
+                           + "the app does not store it. The dialog waits for the "
+                           + "host's answer.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("New Password")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
             }
 
             Rectangle {
@@ -321,6 +416,13 @@ Item {
                     selectByMouse: true
                     onAccepted: root.submitPassword()
                 }
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Confirm Password")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
             }
 
             Rectangle {
@@ -347,6 +449,17 @@ Item {
             }
 
             Text {
+                id: passwordPendingNote
+                objectName: "biometricsPasswordPending"
+                width: parent.width
+                visible: root.passwordBusy
+                text: qsTr("Waiting for the account service\u2026")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
                 id: passwordErrorNote
                 objectName: "biometricsPasswordError"
                 width: parent.width
@@ -366,19 +479,28 @@ Item {
             }
             Button {
                 objectName: "biometricsChangePasswordConfirm"
-                text: qsTr("Change Password")
+                text: root.passwordBusy ? qsTr("Changing\u2026") : qsTr("Change Password")
                 variant: "primary"
+                enabled: !root.passwordBusy
                 onClicked: root.submitPassword()
             }
         }
     }
 
-    // ── Add fingerprint ──────────────────────────────────────────────────
+    // ── Add fingerprint (the enrollment wizard) ──────────────────────────
     Dialog {
         id: addFingerDialog
         objectName: "biometricsAddFingerDialog"
         title: qsTr("Add Fingerprint")
         dismissible: true
+
+        // Step 1 chooses the finger; step 2 reports fprintd's own stages.
+        property bool started: false
+        property string errorText: ""
+
+        function finish() {
+            addFingerDialog.accept();
+        }
 
         contentData: Column {
             width: parent.width
@@ -386,6 +508,7 @@ Item {
 
             Text {
                 width: parent.width
+                visible: !addFingerDialog.started
                 text: qsTr("Choose the finger to enroll, then touch the sensor.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -396,9 +519,58 @@ Item {
                 id: fingerSelect
                 objectName: "biometricsFingerSelect"
                 width: parent.width
+                visible: !addFingerDialog.started
                 accessibleName: qsTr("Finger")
                 model: root.fingerModel
                 onSelected: (value) => root.selectedFinger = String(value)
+            }
+
+            Text {
+                id: enrollStageText
+                objectName: "biometricsEnrollStage"
+                width: parent.width
+                visible: addFingerDialog.started
+                text: root.enrolling !== null
+                    ? String(root.enrolling.status)
+                    : qsTr("Waiting for the fingerprint sensor\u2026")
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                id: enrollRawStageText
+                objectName: "biometricsEnrollRawStage"
+                width: parent.width
+                visible: addFingerDialog.started && root.enrolling !== null
+                         && String(root.enrolling.stage || "").length > 0
+                text: root.enrolling !== null
+                    ? qsTr("fprintd stage: %1").arg(String(root.enrolling.stage))
+                    : ""
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                id: enrollDialogError
+                objectName: "biometricsEnrollError"
+                width: parent.width
+                visible: addFingerDialog.errorText.length > 0
+                text: addFingerDialog.errorText
+                color: Theme.color.danger
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                visible: addFingerDialog.started
+                text: qsTr("Lift and place the same finger until the reader "
+                           + "reports the fingerprint enrolled.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
             }
         }
 
@@ -406,15 +578,22 @@ Item {
             spacing: Theme.controls.dialog.buttonGap
             Button {
                 text: qsTr("Cancel")
-                onClicked: addFingerDialog.reject()
+                onClicked: {
+                    if (addFingerDialog.started && root.enrolling !== null)
+                        Settings.cancelFingerprintEnrollment();
+                    addFingerDialog.reject();
+                }
             }
             Button {
                 objectName: "biometricsStartEnroll"
+                visible: !addFingerDialog.started
                 text: qsTr("Start")
                 variant: "primary"
                 onClicked: root.startEnrollment()
             }
         }
+
+        onClosed: addFingerDialog.started = false
     }
 
     // ── Delete fingerprint confirmation ──────────────────────────────────

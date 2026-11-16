@@ -3,24 +3,26 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Privacy & Security pane (T-15.13b; T228 completion).
+// The Privacy & Security pane (T-15.13b; T279 completion).
 //
-// The pane has two halves, both read from the bridge host:
+// Two owners meet here, and each degrades on its own:
 //
-//  * Privacy — the macOS reference categories mapped to the closest Linux
-//    portal permission. A row states the Linux difference, and opening it
-//    shows the per-app tristate the portal PermissionStore holds. Categories
-//    with no portal table are explicitly delegated (address book, AT-SPI,
-//    polkit, …); they never draw a fake TCC-style toggle. The remaining portal
-//    tables (Notifications, USB, Remote Desktop, …) are listed under "Other
-//    portal permissions" because they are real host state even though macOS
-//    has no matching row.
-//  * Security — software sources, read-only disk encryption and hardening,
-//    installed portal extensions, and an Advanced host-stack sheet.
+//  * Privacy — the macOS categories mapped to the closest Linux portal
+//    permission, grouped the way the reference groups them: Location Services
+//    (a master gate plus the per-app list), app access to other apps and
+//    hardware, Analytics, and the remaining real portal tables. A category
+//    with no portal table is explicitly delegated; it never draws a fake
+//    TCC-style toggle.
+//  * Security — software sources, read-only disk encryption with a delegate
+//    sheet, USB accessories (USBGuard), hardening, portal extensions, and the
+//    Advanced host-stack sheet.
 //
-// No durable settingsd preference lives on this pane: the portal store and the
-// host tools are the state. Every write is one explicit adapter call and the
-// host re-reads, so the pane never invents a result.
+// No per-app permission is cached: the portal store is the state and every
+// write is one explicit adapter call followed by a host re-read. The one
+// durable preference is the Location Services master (`privacy.locationServices`),
+// which gates the pane's per-app location writes because the portal store has
+// no global switch. Analytics is opt-in, off by default, and stored only until
+// a collector exists.
 Item {
     id: root
 
@@ -28,14 +30,28 @@ Item {
     readonly property var view: Settings.privacy
     readonly property bool available: Settings.privacyAvailable
     readonly property bool ready: root.available && root.view.state === "available"
-    readonly property var categories: root.view.categories !== undefined
-        ? root.view.categories : []
     readonly property var mappedCategories: root.view.macCategories !== undefined
         ? root.view.macCategories : []
     readonly property var otherCategories: root.view.otherCategories !== undefined
         ? root.view.otherCategories : []
     readonly property int appCount: root.view.appCount !== undefined
         ? Number(root.view.appCount) : 0
+
+    // Location Services is its own group: the master gate plus the one
+    // disclosure row that opens the per-app list.
+    readonly property var locationCategory: root.findMapped("location")
+    // Every other macOS category, in the reference order.
+    readonly property var appCategories: {
+        var out = [];
+        for (var i = 0; i < root.mappedCategories.length; ++i)
+            if (String(root.mappedCategories[i].id) !== "location")
+                out.push(root.mappedCategories[i]);
+        return out;
+    }
+    readonly property bool locationEnabled:
+        Settings.values["privacy.locationServices"] !== false
+    readonly property bool analyticsEnabled:
+        Settings.values["privacy.analytics"] === true
 
     readonly property var security: Settings.security
     readonly property bool securityAvailable: Settings.securityAvailable
@@ -47,10 +63,14 @@ Item {
         ? root.softwareSources.sources : []
     readonly property var encryption: root.security.encryption !== undefined
         ? root.security.encryption : ({})
+    readonly property var encryptionDevices: root.encryption.devices !== undefined
+        ? root.encryption.devices : []
     readonly property var hardening: root.security.hardening !== undefined
         ? root.security.hardening : ({})
     readonly property var extensions: root.security.extensions !== undefined
         ? root.security.extensions : []
+    readonly property var accessories: root.security.accessories !== undefined
+        ? root.security.accessories : ({})
     readonly property var advancedRows: root.security.advanced !== undefined
         ? root.security.advanced : []
     readonly property int enabledSourceCount:
@@ -67,8 +87,14 @@ Item {
     // state through their Binding instead of being rebuilt mid-interaction.
     property var dialogApps: []
     readonly property var selectedApps: root.appsFor(root.selectedCategoryId)
+    readonly property bool selectedIsLocation:
+        root.selectedCategoryId === "location"
 
     // Test surface.
+    property alias locationGroup: locationGroup
+    property alias locationMasterToggle: locationMasterToggle
+    property alias locationRow: locationRow
+    property alias appGroup: appGroup
     property alias categoryRepeater: categoryRepeater
     property alias otherRepeater: otherRepeater
     property alias absenceNote: absenceNote
@@ -76,11 +102,20 @@ Item {
     property alias permissionRepeater: permissionRepeater
     property alias permissionDialog: permissionDialog
     property alias noAppsNote: noAppsNote
+    property alias locationMasterNote: locationMasterNote
+    property alias analyticsGroup: analyticsGroup
+    property alias analyticsToggle: analyticsToggle
     property alias securityGroup: securityGroup
     property alias securityAbsenceNote: securityAbsenceNote
     property alias sourcesButton: sourcesButton
     property alias sourcesDialog: sourcesDialog
     property alias sourceRepeater: sourceRepeater
+    property alias encryptionButton: encryptionButton
+    property alias encryptionDialog: encryptionDialog
+    property alias encryptionDeviceRepeater: encryptionDeviceRepeater
+    property alias accessoriesButton: accessoriesButton
+    property alias accessoriesDialog: accessoriesDialog
+    property alias accessoriesNote: accessoriesNote
     property alias extensionsButton: extensionsButton
     property alias extensionsDialog: extensionsDialog
     property alias advancedButton: advancedButton
@@ -102,18 +137,50 @@ Item {
         { label: qsTr("Not Set"), value: "unset" }
     ]
 
+    // The category glyph vocabulary. A category without an entry falls back to
+    // the pane glyph so a future portal table is still readable.
+    readonly property var categoryIcons: ({
+        "location": "privacy-location",
+        "contacts": "privacy-contacts",
+        "calendars": "privacy-calendars",
+        "reminders": "privacy-reminders",
+        "photos": "privacy-photos",
+        "camera": "privacy-camera",
+        "microphone": "privacy-microphone",
+        "speech": "privacy-speech",
+        "accessibility": "privacy-accessibility",
+        "fullDisk": "privacy-full-disk",
+        "files": "privacy-files",
+        "screenRecording": "privacy-screen-recording",
+        "automation": "privacy-automation",
+        "appManagement": "privacy-app-management",
+        "developerTools": "privacy-developer-tools"
+    })
+
     // Opening the pane asks both hosts for a re-read (a no-op when absent).
     Component.onCompleted: {
         Settings.refreshPrivacy();
         Settings.refreshSecurity();
     }
 
-    function findCategory(id) {
+    function iconFor(id) {
+        return root.categoryIcons[id] !== undefined
+            ? String(root.categoryIcons[id]) : "privacy";
+    }
+
+    function findMapped(id) {
         for (var i = 0; i < root.mappedCategories.length; ++i)
-            if (root.mappedCategories[i].id === id)
+            if (String(root.mappedCategories[i].id) === id)
                 return root.mappedCategories[i];
+        return null;
+    }
+
+    function findCategory(id) {
+        var mapped = root.findMapped(id);
+        if (mapped !== null)
+            return mapped;
         for (var j = 0; j < root.otherCategories.length; ++j)
-            if (root.otherCategories[j].id === id)
+            if (String(root.otherCategories[j].id) === id)
                 return root.otherCategories[j];
         return null;
     }
@@ -194,107 +261,111 @@ Item {
         return names.length === 0 ? qsTr("None enabled") : names.join(", ");
     }
 
+    function accessoriesLabel() {
+        if (root.accessories.label !== undefined)
+            return String(root.accessories.label);
+        return root.accessories.available == true
+            ? qsTr("Managed") : qsTr("Not installed");
+    }
+
     Column {
         id: content
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        // ── The macOS privacy rows mapped to Linux ────────────────────────
-        Column {
+        // ── Location Services ─────────────────────────────────────────────
+        SettingsGroup {
+            id: locationGroup
+            objectName: "privacyLocationGroup"
             width: parent.width
             visible: root.ready
+            title: qsTr("Location Services")
+
+            SettingsRow {
+                objectName: "privacyLocationMasterRow"
+                width: parent.width
+                label: qsTr("Location Services")
+                description: qsTr("The portal has no global switch; turning this off "
+                                  + "disables the per-app location controls below.")
+                settingsId: "locationMaster"
+                settingsKey: "privacy.locationServices"
+                controlData: Toggle {
+                    id: locationMasterToggle
+                    objectName: "privacyLocationMasterToggle"
+                    accessibleName: qsTr("Location Services")
+                    checked: root.locationEnabled
+                    onToggled: (value) => Settings.set("privacy.locationServices", value)
+                }
+            }
+
+            SettingsRow {
+                id: locationRow
+                objectName: "privacyLocationRow"
+                width: parent.width
+                leadingIcon: root.iconFor("location")
+                label: root.locationCategory !== null
+                    ? String(root.locationCategory.label) : qsTr("Location")
+                description: root.locationCategory !== null
+                    ? String(root.locationCategory.difference) : ""
+                settingsId: "location"
+                disclosure: true
+                showSeparator: false
+                onDisclosureClicked: root.openCategory("location")
+                controlData: Text {
+                    objectName: "privacyLocationSummary"
+                    text: root.locationCategory !== null
+                        ? String(root.locationCategory.summary) : ""
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
+            }
+
+            Text {
+                id: locationMasterNote
+                objectName: "privacyLocationMasterNote"
+                width: parent.width
+                visible: !root.locationEnabled
+                text: qsTr("Location Services is off. Per-app location writes are disabled.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        // ── App access to other apps and hardware ─────────────────────────
+        SettingsGroup {
+            id: appGroup
+            objectName: "privacyAppGroup"
+            width: parent.width
+            visible: root.ready
+            title: qsTr("App access")
 
             Repeater {
                 id: categoryRepeater
-                model: root.mappedCategories
-                delegate: Item {
+                model: root.appCategories
+                delegate: SettingsRow {
                     id: categoryRow
                     required property var modelData
                     required property int index
-                    readonly property var category: modelData
-                    width: parent ? parent.width : 0
-                    height: 64
-                    Accessible.role: Accessible.Grouping
-                    Accessible.name: categoryRow.category.label
-                    Accessible.description: categoryRow.category.difference
-
-                    Icon {
-                        id: categoryIcon
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.controls.settingsRow.paddingH
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "privacy"
-                        size: 20
-                        color: Theme.color.textSecondary
-                    }
-
-                    Column {
-                        anchors.left: categoryIcon.right
-                        anchors.leftMargin: Theme.primitive.spacing.md
-                        anchors.right: categorySummary.left
-                        anchors.rightMargin: Theme.controls.settingsRow.controlGap
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Theme.primitive.spacing.xxs
-
-                        Text {
-                            objectName: "privacyCategoryLabel"
-                            width: parent.width
-                            text: categoryRow.category.label
-                            color: Theme.color.textPrimary
-                            font.pixelSize: Theme.controls.button.fontSize
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            objectName: "privacyCategoryDifference"
-                            width: parent.width
-                            text: categoryRow.category.difference
-                            color: Theme.color.textTertiary
-                            font.pixelSize: Theme.primitive.font.sizeSm
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    Text {
-                        id: categorySummary
+                    width: parent.width
+                    leadingIcon: root.iconFor(String(modelData.id))
+                    label: modelData.label
+                    description: modelData.difference
+                    settingsId: String(modelData.id)
+                    disclosure: true
+                    showSeparator: categoryRow.index < root.appCategories.length - 1
+                    onDisclosureClicked: root.openCategory(modelData.id)
+                    controlData: Text {
                         objectName: "privacyCategorySummary"
-                        anchors.right: categoryChevron.left
-                        anchors.rightMargin: Theme.primitive.spacing.sm
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: categoryRow.category.summary !== undefined
-                            ? String(categoryRow.category.summary) : ""
+                        text: categoryRow.modelData.summary !== undefined
+                            ? String(categoryRow.modelData.summary) : ""
                         color: Theme.color.textSecondary
                         font.pixelSize: Theme.primitive.font.sizeSm
-                        elide: Text.ElideRight
                     }
 
-                    Icon {
-                        id: categoryChevron
-                        objectName: "privacyCategoryChevron"
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.controls.settingsRow.paddingH
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "chevron-right"
-                        size: 14
-                        color: Theme.color.textTertiary
-                    }
-
-                    MouseArea {
-                        objectName: "privacyCategoryArea"
-                        anchors.fill: parent
-                        onClicked: root.openCategory(categoryRow.category.id)
-                    }
-
-                    Rectangle {
-                        visible: categoryRow.index < root.mappedCategories.length - 1
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.controls.settingsRow.paddingH
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.controls.settingsRow.paddingH
-                        anchors.bottom: parent.bottom
-                        height: Theme.controls.window.borderWidth
-                        color: Theme.color.separator
-                    }
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: categoryRow.label
+                    Accessible.description: categoryRow.description
                 }
             }
 
@@ -333,6 +404,34 @@ Item {
             }
         }
 
+        // ── Analytics ─────────────────────────────────────────────────────
+        SettingsGroup {
+            id: analyticsGroup
+            objectName: "privacyAnalyticsGroup"
+            width: parent.width
+            visible: root.ready
+            title: qsTr("Analytics & Improvements")
+
+            SettingsRow {
+                objectName: "privacyAnalyticsRow"
+                width: parent.width
+                leadingIcon: "privacy-analytics"
+                label: qsTr("Share analytics with the distribution")
+                description: qsTr("Off by default. This build has no analytics collector, "
+                                  + "so the choice is stored only.")
+                settingsId: "analytics"
+                settingsKey: "privacy.analytics"
+                showSeparator: false
+                controlData: Toggle {
+                    id: analyticsToggle
+                    objectName: "privacyAnalyticsToggle"
+                    accessibleName: qsTr("Share analytics with the distribution")
+                    checked: root.analyticsEnabled
+                    onToggled: (value) => Settings.set("privacy.analytics", value)
+                }
+            }
+        }
+
         // ── Host absent ───────────────────────────────────────────────────
         SettingsGroup {
             width: parent.width
@@ -359,6 +458,7 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                leadingIcon: "software-update"
                 label: qsTr("Software sources")
                 description: root.securityReady
                     ? qsTr("Applications can be installed from %1.").arg(root.sourceSummary())
@@ -375,20 +475,67 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                leadingIcon: "privacy-encryption"
                 label: qsTr("Disk encryption")
                 description: root.encryption.note !== undefined
                     ? String(root.encryption.note) : ""
-                controlData: Text {
-                    objectName: "privacyEncryptionLabel"
-                    text: root.encryption.label !== undefined
-                        ? String(root.encryption.label) : qsTr("Unknown")
-                    color: Theme.color.textSecondary
-                    font.pixelSize: Theme.primitive.font.sizeSm
+                controlData: Row {
+                    spacing: Theme.primitive.spacing.sm
+
+                    Text {
+                        objectName: "privacyEncryptionLabel"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.encryption.label !== undefined
+                            ? String(root.encryption.label) : qsTr("Unknown")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+
+                    Button {
+                        id: encryptionButton
+                        objectName: "privacyEncryptionButton"
+                        text: qsTr("Open\u2026")
+                        enabled: root.securityReady
+                            && root.encryption.available == true
+                        onClicked: root.encryptionDialog.show()
+                    }
                 }
             }
 
             SettingsRow {
                 width: parent.width
+                leadingIcon: "privacy-accessories"
+                label: qsTr("USB accessories")
+                description: root.securityReady
+                    ? (root.accessories.note !== undefined
+                       ? String(root.accessories.note)
+                       : qsTr("USBGuard owns the device policy."))
+                    : qsTr("The security host stack is unavailable.")
+                controlData: Row {
+                    spacing: Theme.primitive.spacing.sm
+
+                    Text {
+                        objectName: "privacyAccessoriesLabel"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.accessoriesLabel()
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+
+                    Button {
+                        id: accessoriesButton
+                        objectName: "privacyAccessoriesButton"
+                        text: qsTr("Details\u2026")
+                        enabled: root.securityReady
+                            && root.accessories.available == true
+                        onClicked: root.accessoriesDialog.show()
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                leadingIcon: "privacy-hardening"
                 label: qsTr("Hardening mode")
                 description: root.hardening.detail !== undefined
                     ? String(root.hardening.detail) : ""
@@ -431,16 +578,13 @@ Item {
             }
         }
 
-        Text {
+        SettingsAbsenceNotice {
             id: securityAbsenceNote
             objectName: "privacySecurityAbsenceNote"
-            width: parent.width
-            visible: !root.securityReady
-            text: qsTr("Security status is unavailable because the host "
-                       + "tools did not answer.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
+            kind: "read-only"
+            show: !root.securityReady
+            reason: qsTr("Security status is unavailable because the host "
+                         + "tools did not answer.")
         }
     }
 
@@ -480,6 +624,16 @@ Item {
             }
 
             Text {
+                width: parent.width
+                visible: root.selectedIsLocation && !root.locationEnabled
+                text: qsTr("Location Services is off; these per-app choices are "
+                           + "read-only until it is turned back on.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
                 id: noAppsNote
                 objectName: "privacyNoApps"
                 width: parent.width
@@ -509,6 +663,7 @@ Item {
                         id: permissionSelect
                         objectName: "privacyPermissionSelect"
                         accessibleName: qsTr("Permission for %1").arg(permissionRow.modelData.app)
+                        enabled: !root.selectedIsLocation || root.locationEnabled
                         model: root.permissionModel
                         onSelected: (value) => {
                             if (String(value) === "unset")
@@ -597,6 +752,123 @@ Item {
                 text: qsTr("Done")
                 variant: "primary"
                 onClicked: sourcesDialog.accept()
+            }
+        }
+    }
+
+    // ── Disk encryption (read-only + delegate) ───────────────────────────
+    Dialog {
+        id: encryptionDialog
+        objectName: "privacyEncryptionDialog"
+        title: qsTr("Disk encryption")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: root.encryption.note !== undefined
+                    ? String(root.encryption.note) : ""
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: encryptionDeviceRepeater
+                model: root.encryptionDevices
+                delegate: SettingsRow {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    label: modelData.name
+                    description: (modelData.kind !== undefined
+                                  ? String(modelData.kind) : "")
+                                 + (modelData.fstype !== undefined
+                                    && String(modelData.fstype).length > 0
+                                    ? " \u00b7 " + String(modelData.fstype) : "")
+                    showSeparator: index < root.encryptionDevices.length - 1
+                    controlData: Text {
+                        text: modelData.mountpoints !== undefined
+                            ? modelData.mountpoints.join(", ") : ""
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Unlocking and recovery stay with the distribution's "
+                           + "cryptsetup tools; Settings reports the state only.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                text: qsTr("Done")
+                variant: "primary"
+                onClicked: encryptionDialog.accept()
+            }
+        }
+    }
+
+    // ── USB accessories (USBGuard) ───────────────────────────────────────
+    Dialog {
+        id: accessoriesDialog
+        objectName: "privacyAccessoriesDialog"
+        title: qsTr("USB accessories")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                id: accessoriesNote
+                objectName: "privacyAccessoriesNote"
+                width: parent.width
+                text: root.accessories.note !== undefined
+                    ? String(root.accessories.note) : ""
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Policy")
+                description: qsTr("Reported by USBGuard; Settings never edits a rule.")
+                showSeparator: false
+                controlData: Text {
+                    objectName: "privacyAccessoriesPolicy"
+                    text: root.accessoriesLabel()
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: qsTr("Manage devices with the distribution's usbguard command.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                text: qsTr("Done")
+                variant: "primary"
+                onClicked: accessoriesDialog.accept()
             }
         }
     }

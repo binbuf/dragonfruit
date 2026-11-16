@@ -68,9 +68,10 @@ pub use privacy::{
     PERMISSION_STORE_SERVICE,
 };
 pub use security::{
-    read_host_security, security_fixture, AdvancedRowData, EncryptionData, EncryptionDeviceData,
-    ExtensionData, HardeningData, MockSecurity, SecurityAdapter, SecurityData, SecurityOutcome,
-    SecuritySnapshot, SecuritySource, SoftwareSourceData, SoftwareSourcesData,
+    read_host_security, security_fixture, AccessoriesData, AdvancedRowData, EncryptionData,
+    EncryptionDeviceData, ExtensionData, HardeningData, MockSecurity, SecurityAdapter,
+    SecurityData, SecurityOutcome, SecuritySnapshot, SecuritySource, SoftwareSourceData,
+    SoftwareSourcesData,
 };
 pub use source::{
     AppPermissionData, MockPrivacy, PrivacyData, PrivacyOutcome, PrivacySource, ResourceData,

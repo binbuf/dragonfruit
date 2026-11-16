@@ -63,6 +63,8 @@ freezes the v1 key set.
 | `accessibility.magnifierZoom` | d | 2.0 | 1.0–8.0 | apps/settings | compositor/magnifier | Magnifier zoom factor, 1.0 (off) to 8.0. |
 | `accessibility.magnifierMode` | s | `follow-focus` | `follow-focus`/`follow-caret` | apps/settings | compositor/magnifier | What the magnifier keeps in view: the focused window or its caret. |
 | `accessibility.shortcut` | s | `` (empty) | | apps/settings | shell/compositor shortcut engine | Recorded chord that opens the Accessibility pane; empty disables it. |
+| `privacy.locationServices` | b | true | | apps/settings | apps/settings Privacy pane (gates per-app location writes) | Desktop-level Location Services master; off disables every per-app location write. |
+| `privacy.analytics` | b | false | | apps/settings | apps/settings Privacy pane (stored-only; no collector in this build) | Opt-in analytics preference; off by default and stored only. |
 | `input.repeatDelay` | x | 200 | 0–5000 ms | settingsd | compositor/input keyboard repeat | Milliseconds before a held key begins repeating. |
 | `input.repeatRate` | x | 25 | 0–200 Hz | settingsd | compositor/input keyboard repeat | Key repeat rate in keys per second; 0 disables repeat. |
 | `input.pointerSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | compositor/input pointer acceleration | Pointer tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral. |
