@@ -26,8 +26,12 @@ QtObject {
     //     essential, thirdParty }
     property var items: []
     // -1 keeps every item in the row. A non-negative value is the slot budget;
-    // T233 will feed this from the measured bar width.
+    // T233 feeds this from the measured bar width.
     property int maxVisible: -1
+    // T277: the Menu Bar pane's overflow policy. `always` keeps the overflow
+    // affordance present and moves every third-party item into it, even when
+    // the measured row has room. The system items stay in the row.
+    property bool forceOverflow: false
     // Priorities at or above this value are third-party items even when the
     // producer forgot the explicit `thirdParty` flag.
     property int thirdPartyPriority: 1000
@@ -118,17 +122,22 @@ QtObject {
         // budget and never appears in the overflow list. It stays in the row
         // to keep later indices stable.
         var visibleCount = 0;
+        var systemVisible = 0;
         for (var v = 0; v < ordered.length; ++v) {
-            if (ordered[v].available)
+            if (ordered[v].available) {
                 visibleCount++;
+                if (!ordered[v].thirdParty)
+                    systemVisible++;
+            }
         }
-        if (maxVisible < 0 || visibleCount <= maxVisible)
+        var budget = registry.forceOverflow ? systemVisible : registry.maxVisible;
+        if (budget < 0 || visibleCount <= budget)
             return { row: ordered, overflow: [] };
 
         var row = ordered.slice();
         var overflow = [];
         // Third-party items leave first, from the end of their block.
-        for (var i = row.length - 1; i >= 0 && visibleCount > maxVisible; --i) {
+        for (var i = row.length - 1; i >= 0 && visibleCount > budget; --i) {
             if (row[i].thirdParty && row[i].available) {
                 overflow.unshift(row[i]);
                 row.splice(i, 1);
@@ -138,7 +147,7 @@ QtObject {
         // Only then do optional system items leave. `essential` items
         // (clock, Quick Settings, the overflow affordance itself) stay put
         // while there is room.
-        for (var j = row.length - 1; j >= 0 && visibleCount > maxVisible; --j) {
+        for (var j = row.length - 1; j >= 0 && visibleCount > budget; --j) {
             if (!row[j].essential && row[j].available) {
                 overflow.unshift(row[j]);
                 row.splice(j, 1);
@@ -150,7 +159,7 @@ QtObject {
         // The row never clips, and the synthesized overflow affordance still
         // makes every removed item reachable. A budget of zero therefore
         // renders only the overflow affordance.
-        for (var k = row.length - 1; k >= 0 && visibleCount > maxVisible; --k) {
+        for (var k = row.length - 1; k >= 0 && visibleCount > budget; --k) {
             if (row[k].available) {
                 overflow.unshift(row[k]);
                 row.splice(k, 1);

@@ -79,18 +79,21 @@ QtObject {
           owner: "BlueZ" },
         { id: "airdrop", label: qsTr("Nearby Transfer"), category: "connectivity",
           glyph: "airdrop", span: "2x1", kind: "action", expandable: true,
-          owner: "" },
+          owner: "",
+          reason: qsTr("Nearby Transfer is not available on this system.") },
         { id: "vpn", label: qsTr("VPN"), category: "connectivity",
           glyph: "vpn", span: "2x1", kind: "info", expandable: true,
           owner: "NetworkManager" },
         // Now Playing
         { id: "now-playing", label: qsTr("Now Playing"),
           category: "now-playing", glyph: "now-playing", span: "2x2",
-          kind: "media", expandable: true, owner: "" },
+          kind: "media", expandable: true, owner: "",
+          reason: qsTr("No media player is publishing Now Playing.") },
         // Desktop & Finder
         { id: "stage-manager", label: qsTr("Stage"),
           category: "desktop-finder", glyph: "stage-manager", span: "1x1",
-          kind: "action", expandable: true, owner: "" },
+          kind: "action", expandable: true, owner: "",
+          reason: qsTr("Stage is not part of this build.") },
         { id: "edit-controls", label: qsTr("Edit Controls"),
           category: "all-controls", glyph: "edit-controls", span: "footer",
           kind: "edit", expandable: false, owner: "shell" },
@@ -103,7 +106,8 @@ QtObject {
           kind: "toggle", expandable: true, owner: "settingsd" },
         { id: "keyboard-brightness", label: qsTr("Keyboard Brightness"),
           category: "display-brightness", glyph: "keyboard-brightness",
-          span: "2x1", kind: "info", expandable: true, owner: "" },
+          span: "2x1", kind: "info", expandable: true, owner: "",
+          reason: qsTr("No keyboard backlight is exposed.") },
         // Focus
         { id: "focus", label: qsTr("Focus"), category: "focus",
           glyph: "focus", span: "2x1", kind: "toggle", expandable: true,
@@ -114,7 +118,8 @@ QtObject {
           owner: "PipeWire / WirePlumber" },
         { id: "airplay-audio", label: qsTr("Audio Casting"),
           category: "sounds", glyph: "airplay-audio", span: "1x1",
-          kind: "info", expandable: true, owner: "" },
+          kind: "info", expandable: true, owner: "",
+          reason: qsTr("Audio casting is not available on this system.") },
         // Battery
         { id: "battery", label: qsTr("Battery"), category: "battery",
           glyph: "battery", span: "2x1", kind: "info", expandable: true,
@@ -133,7 +138,7 @@ QtObject {
           owner: "libinput" },
         { id: "shortcuts", label: qsTr("Shortcuts"), category: "shortcuts",
           glyph: "shortcuts", span: "2x1", kind: "info", expandable: true,
-          owner: "" },
+          owner: "", reason: qsTr("No shortcut editor is shipped.") },
         // Screenshot
         { id: "capture-screen", label: qsTr("Capture Screen"),
           category: "screenshot", glyph: "capture-screen", span: "1x1",
@@ -165,34 +170,39 @@ QtObject {
           owner: "portal PermissionStore" },
         { id: "utilities", label: qsTr("Utilities"), category: "utilities",
           glyph: "utilities", span: "2x1", kind: "info", expandable: true,
-          owner: "" },
+          owner: "", reason: qsTr("No Utilities provider is shipped.") },
         // Home / Notes / Voice Memos
         { id: "home-control", label: qsTr("Home"), category: "home",
           glyph: "home-control", span: "2x1", kind: "info", expandable: true,
-          owner: "" },
+          owner: "", reason: qsTr("No Home provider is shipped.") },
         { id: "notes", label: qsTr("Notes"), category: "notes",
           glyph: "notes", span: "2x1", kind: "info", expandable: true,
-          owner: "" },
+          owner: "", reason: qsTr("No Notes provider is shipped.") },
         { id: "voice-memos", label: qsTr("Voice Memos"),
           category: "voice-memos", glyph: "voice-memos", span: "2x1",
-          kind: "info", expandable: true, owner: "" },
+          kind: "info", expandable: true, owner: "",
+          reason: qsTr("No Voice Memos provider is shipped.") },
         // Fast User Switching
         { id: "fast-user-switching", label: qsTr("Fast User Switching"),
           category: "fast-user-switching", glyph: "fast-user-switching",
-          span: "2x1", kind: "info", expandable: true, owner: "" },
+          span: "2x1", kind: "info", expandable: true, owner: "",
+          reason: qsTr("No fast user switching provider is shipped.") },
         // Accessibility
         { id: "accessibility", label: qsTr("Accessibility"),
           category: "accessibility", glyph: "accessibility", span: "2x1",
           kind: "info", expandable: true, owner: "AT-SPI" },
         { id: "hearing-accessibility", label: qsTr("Hearing"),
           category: "hearing-accessibility", glyph: "hearing",
-          span: "2x1", kind: "info", expandable: true, owner: "" },
+          span: "2x1", kind: "info", expandable: true, owner: "",
+          reason: qsTr("No hearing accessibility provider is shipped.") },
         { id: "motor-accessibility", label: qsTr("Motor"),
           category: "motor-accessibility", glyph: "motor",
-          span: "2x1", kind: "info", expandable: true, owner: "" },
+          span: "2x1", kind: "info", expandable: true, owner: "",
+          reason: qsTr("No motor accessibility provider is shipped.") },
         { id: "vision-accessibility", label: qsTr("Vision"),
           category: "vision-accessibility", glyph: "vision",
-          span: "2x1", kind: "info", expandable: true, owner: "" }
+          span: "2x1", kind: "info", expandable: true, owner: "",
+          reason: qsTr("No vision accessibility provider is shipped.") }
     ]
 
     // The measured default panel inventory (13 modules, in reference order).
@@ -255,6 +265,39 @@ QtObject {
     function defaultSpan(id) {
         var entry = root.module(id);
         return entry !== null ? entry.span : "2x1";
+    }
+
+    function moduleOwner(id) {
+        var entry = root.module(id);
+        return entry !== null && entry.owner !== undefined ? String(entry.owner) : "";
+    }
+
+    // A module is addable only when a real provider owns it. The catalogue
+    // still lists an ownerless module so its absence is inspectable, but the
+    // management surfaces never offer it as a live addition.
+    function isAddable(id) {
+        return id === "edit-controls" || root.moduleOwner(id).length > 0;
+    }
+
+    function moduleReason(id) {
+        var entry = root.module(id);
+        if (entry !== null && entry.reason !== undefined)
+            return String(entry.reason);
+        if (entry !== null && !root.isAddable(id))
+            return qsTr("No provider is available on this system.");
+        return "";
+    }
+
+    // The controls the Menu Bar pane may pin to the menu bar. The order is the
+    // reference order; a module with no `menu.control.*` mapping is omitted.
+    readonly property var menuBarIds: {
+        var out = [];
+        for (var i = 0; i < root.catalogueIds.length; ++i) {
+            var id = root.catalogueIds[i];
+            if (root.menuBarKey(id).length > 0)
+                out.push(id);
+        }
+        return out;
     }
 
     function menuBarKey(id) {

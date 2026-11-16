@@ -563,14 +563,27 @@ Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
 | Hearing | Hearing | Checkbox | `menu.control.hearing` | Module |
 | Menu Bar Only | Menu bar items | List | existing: `menu.control.*` | Clock, Search, Wi-Fi, Bluetooth, Battery, Focus, Screen Mirroring, Display, Sound |
 | Other Modules | Other modules | List | `settingsd` | Accessibility shortcuts, etc. |
-| Add Controls… | Add controls… | Sheet | `settingsd` | Customization |
+| Add Controls… | Add controls… | Sheet | `settingsd` + registry | Customization |
+| — | Pages | List + add/rename/delete/select | `quickSettings.pageCount` / `pageNames` | Live |
+| — | Control sizes | Menu | `quickSettings.spans` | Live |
+| — | Preview | Panel | registry + `quickSettings.modules` | Live |
+| — | Reset Quick Settings | Button | `quickSettings.*` + `menu.control.*` | Live |
 
 **T227 status.** The pane ships the ordered module list and the menu-bar-only
 set. `quickSettings.modules` is the live Control Center order (removing an id
 hides that module immediately); `quickSettings.menuBarOnly` removes an item
 from the panel while its existing `menu.control.*` mark stays in the menu bar.
-The per-display row is disabled with a T235 reason (one Control Center surface
-today); "Other modules"/"Add controls…" remain T235.
+
+**T277 status.** The pane consumes `ControlCenterRegistry` directly: the 37
+modules are grouped by the same 22 categories as Edit Controls, with a
+category filter and a live 4-column preview. Pages have durable names
+(`quickSettings.pageNames`), add/rename/delete/select; spans cycle through the
+measured set; the Add Controls sheet lists only modules with a real provider
+and shows the registry's reason on the ownerless ones. The per-display row is
+disabled with the exact one-surface reason. An explicit empty module list is a
+real empty panel (only the Edit Controls footer), not the default fallback.
+Reset restores the modules, pages, names, spans, per-display policy,
+menu-bar-only set, and the `menu.control.*` marks the surface owns.
 
 <a id="pane-menu-bar"></a>
 ### 5.9 Menu Bar
@@ -588,13 +601,31 @@ Owner: `settingsd` → shell/menu bar. Absence: live on defaults; no error.
 | Spotlight | Search | Checkbox | `menu.control.search` | Show/hide |
 | Wi-Fi | Wi-Fi | Checkbox | existing: `menu.control.wifi` | Show/hide |
 | Bluetooth | Bluetooth | Checkbox | existing: `menu.control.bluetooth` | Show/hide |
-| Battery | Battery | Checkbox + options | existing: `menu.control.battery` | Show percentage/energy |
+| Battery | Battery | Checkbox + options | existing: `menu.control.battery` + `power.showPercentage` | Show percentage/energy |
 | AirDrop | — | Omit | — | No permissive equivalent |
-| Focus | Focus | Checkbox + popup | existing: `menu.control.focus` | Show when active/always |
-| Screen Mirroring | Screen Casting | Checkbox + popup | `menu.control.screenMirroring` | Show when active/always |
-| Display | Display | Checkbox + popup | `menu.control.display` | Show when active/always |
-| Sound | Sound | Checkbox + popup | existing: `menu.control.volume` | Show when active/always |
-| — | Third-party items | List | StatusNotifier registry | Show/hide; overflow policy |
+| Focus | Focus | Checkbox + options | existing: `menu.control.focus` + `menu.control.focusAlways` | Show when active, or always |
+| Screen Mirroring | Screen Casting | Disabled row | `menu.control.screenMirroring` | No menu-bar item; start casting from Quick Settings |
+| Display | Display | Disabled row | `menu.control.display` | No menu-bar item; the Display module lives in Quick Settings |
+| Sound | Sound | Checkbox + options | existing: `menu.control.volume` + `menu.control.volumeWhenActive` | Show always, or hide while muted |
+| — | Third-party items | List | StatusNotifier registry + `menu.tray.hidden` | Allow/deny each live item |
+| — | Overflow policy | Popup | `menu.overflow` | Automatic or always-show overflow (Linux-only) |
+| — | Workspace indicator | Toggle | `menu.control.workspaces` | Live active-Space projection (Linux-only) |
+| — | Show application menus | Toggle | `menu.global` | Linux-only; first-party local menus when off |
+| — | Show on every display | Disabled row | `quickSettings.perDisplay` | One shell surface; per-display needs a compositor overlay per output |
+| — | Reset Control Center | Button | `menu.control.*` + options | Restore the menu-bar surface |
+
+**T277 status.** The pane has one Clock row with the visibility mark and the
+Clock Options sheet (declared inside the pane, so the T266 dialog adopts the
+window overlay). Battery, Focus, and Sound have per-control option sheets
+(`power.showPercentage`, `menu.control.focusAlways`,
+`menu.control.volumeWhenActive`). Display and Screen Casting are listed
+disabled with the exact "no menu-bar item" reason. The third-party list is the
+live app-index StatusNotifier view and writes `menu.tray.hidden`, which the
+shell's `applyStatusItems` reads. The Linux-only rows are live: `menu.overflow`
+maps to `StatusItemRegistry.forceOverflow`, `menu.control.workspaces` maps to
+the compositor's active-Space projection, and `menu.global` is the existing
+global-menu toggle. Reset restores the behavior keys, clock options,
+visibility marks, per-control options, tray allowances, and Linux-only rows.
 
 <a id="pane-search"></a>
 ### 5.10 Search (Spotlight-equivalent)

@@ -221,6 +221,20 @@ that owns the application menu and lets status items follow all displays or
 the active one. The Menu Bar pane lists every live `menu.control.*` key and the
 overflow rule.
 
+**T277 status.** The Menu Bar pane is the configuration half of this section.
+It has one Clock row with the visibility mark and the Clock Options sheet,
+per-control option sheets for Battery (`power.showPercentage`), Focus
+(`menu.control.focusAlways`), and Sound (`menu.control.volumeWhenActive`), a
+third-party "Allow in the Menu Bar" list backed by app-index's live
+StatusNotifier view and the durable `menu.tray.hidden` list, Add Controls, and
+Reset. `menu.overflow` is the Linux-only policy: `automatic` keeps the
+measured width rule, `always` sets `StatusItemRegistry.forceOverflow` so the
+overflow affordance is present and every third-party item starts in it.
+`menu.control.workspaces` adds the live active-Space indicator from
+`ShellProtocol::overviewWorkspaces()` (hidden with one Space; activation opens
+Mission Control). Display and Screen Casting are shown disabled with the
+exact "no menu-bar item" reason rather than as dead toggles.
+
 The system menu and application menu are **shell-owned chrome**, not part of
 the application's exported model: an app that exports nothing still gets a
 complete menu bar, and an app that exports menus gets them *after* the fixed
@@ -1112,6 +1126,15 @@ Control Center
 ├── Keyboard ────────── compositor / xkbcommon
 └── Accessibility ───── shell + toolkit services
 ```
+
+**T277 status.** The panel's grid, expanded sheets, pages, and spans come from
+`ControlCenterRegistry` and `ControlCenter.qml` (T235). The Settings Quick
+Settings pane is a management surface over the same registry: categorized
+modules, named pages, span cycling, Add Controls, a live 4-column preview, and
+Reset. An explicit empty `quickSettings.modules` renders only the Edit Controls
+footer; the pane no longer treats the empty list as "restore the defaults".
+`EditControls.qml` shares the page names and resets the same `menu.control.*`
+marks, so the panel footer and the Settings pane cannot drift.
 
 ## Notifications and OSD
 

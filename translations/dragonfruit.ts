@@ -231,7 +231,59 @@ Open source system software</source>
 <context>
     <name>AccessibilityPane</name>
     <message>
-        <source>Accessibility</source>
+        <source>1×</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>8×</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility Shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility bridge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility is ready.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a non-colour cue to controls. The checked toggle carries a check glyph as well as the accent fill.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied by the compositor at the next session start. The Appearance pane owns the same key.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied live by the compositor magnifier.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio descriptions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-play animated images</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Background sounds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Balance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Captions</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -239,11 +291,123 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Color filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delegated to the session speech engine.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delegated to the session speech engine. The sample proves the delegate is wired.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Differentiate without color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dim flashing lights</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Display</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Increase Contrast</source>
+        <source>Display contrast</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Double-click speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extra Large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Flash the screen on alert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focused window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Follow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Follow the focused window, or its text caret when the compositor has a caret source.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full keyboard access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hearing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hover text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ignore built-in trackpad</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Increase contrast</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert colors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep attention cues but reduce their amplitude so a flash does not dominate the scene.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Launch the session's on-screen keyboard.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live speech</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live speech is ready.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum time between two clicks for a double-click. Applied live by the compositor.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu bar size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mono audio</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -251,7 +415,167 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Off</source>
+        <source>Motor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse keys</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name recognition</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: PipeWire has no per-session mono downmix control in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: audio descriptions are content-level, not a shell preference.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: neither spd-say nor espeak-ng is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: no background-sound player is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: no live-caption delegate is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: no on-screen keyboard program is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: no speech-to-text service is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: no switch-control service is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor allocates a fixed menu-bar height at session start.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor has no colour-filter pass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor has no display-contrast adjustment pass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor has no keyboard-driven pointer mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor has no slow-key acceptance delay.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor has no sticky-key state machine.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor has no whole-scene colour-inversion pass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the compositor's window decoration has no title-icon slot yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the cursor theme has no per-colour override in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the design system has no shape-cue pass for toolbar buttons.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the input backend has no per-device ignore policy in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the session has no real-time text service.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the shell has no animated-image surface to gate in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the shell has no full-output flash surface in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: the text cursor blink is toolkit-owned; no per-app override exists.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: there is no on-device name model.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: there is no personal-voice equivalent in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: there is no vocal-shortcut engine in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: this build has no global full-keyboard mode; the Keyboard pane's navigation key is the current surface.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available: this build has no hover-text overlay that can read the text under the pointer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On-screen keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Orca</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Orca not installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output balance from Left to Right. The Sound pane owns the same key; the audio engine's balance consumer is still deferred.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Personal voice</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pointer colors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pointer size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prefer non-blinking cursor</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -259,11 +583,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reduce Motion</source>
+        <source>RTT</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reduce Transparency</source>
+        <source>Read &amp; Speak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read &amp; speak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Record a chord that opens this pane from any application. The compositor's one shortcut engine owns the binding.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduce motion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduce transparency</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -271,11 +611,51 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reported by the assistive technology over AT-SPI.</source>
+        <source>Reported by the assistive technology over AT-SPI. Open Orca to change its settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Screen Reader</source>
+        <source>Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scale interface text through the one design-system type scale.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen reader</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show toolbar button shapes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show window title icons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slow keys</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Small</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speak Sample</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speech</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sticky keys</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -283,15 +663,59 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The accessibility service (AT-SPI) is not running, so the live screen reader status is unavailable. Your preference below still applies.</source>
+        <source>Switch control</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The toolkit accessibility bridge.</source>
+        <source>Text caret</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The accessibility service (AT-SPI) is not running, so the live screen reader and bridge status are unavailable. The preferences below still apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The accessibility service (AT-SPI) is not running, so the live screen-reader status is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor magnifies the whole output and maps pointer input back to the content.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The toolkit accessibility bridge that screen readers and other assistive tools use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use keyboard shortcuts to zoom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Vision</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vocal shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom level</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -305,7 +729,27 @@ Open source system software</source>
 <context>
     <name>AppearancePane</name>
     <message>
+        <source>%1 highlight · %2 folders · %3 icons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 scheme · %2 accent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 unavailable on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Accent color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accent from wallpaper</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -318,6 +762,14 @@ Open source system software</source>
     </message>
     <message>
         <source>Appearance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied the next time you sign in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied the next time you sign in; the compositor reads the cursor theme at session start.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -337,6 +789,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Automatic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic shows bars while a view is focused, hovered, or scrolling; When scrolling hides them at rest; Always keeps them visible.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Automatically</source>
         <translation type="unfinished"></translation>
     </message>
@@ -349,11 +809,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Click in the scroll bar to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Coral</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Cursor size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cursor theme</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Custom accent color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom folder color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom highlight color</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -369,7 +857,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Desktop integration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dragonfruit keeps the traffic lights on the left. Moving them needs the compositor decoration policy (window decoration owner).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Enter a color like #4a7dff.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Folder color</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -389,7 +893,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Icon &amp; widget style</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Icon theme</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Jump to the next page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Jump to the spot that's clicked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Left</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -401,11 +925,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Maps to an installed icon theme.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maps to an installed icon theme. </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Material effects</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Medium</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Motion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Multicolor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Needs the shell's wallpaper color sampler; use a custom accent above until it lands (wallpaper owner).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No cursor theme is installed. Install a cursor theme to use this row.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No icon theme is installed. Install an icon theme to use this row.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -425,11 +977,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Overrides the icon &amp; widget style with a specific installed theme.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Preview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Reduced motion is the Accessibility preference; it disables window and control animation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll bars</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -453,7 +1013,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Transparency</source>
+        <source>The shell selects the glass tier from the GPU budget and the rollout policy (design-system Glass owner); there is no per-pane override.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tints the plain folder icon in Files and the Dock. Automatic keeps the shipped folder artwork.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unavailable while Reduce Transparency is on. Turn it off in Accessibility to use this slider.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -465,7 +1033,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Window control layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Windows and scroll bars</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>selected</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -801,11 +1377,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>0%</source>
+        <source>%1 samples over the %2.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>0m</source>
+        <source>0%</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -813,15 +1389,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>30m</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>50%</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>60m</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -861,7 +1429,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Charge history is not provided by this system.</source>
+        <source>Charge limit</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -878,6 +1446,22 @@ Open source system software</source>
     </message>
     <message>
         <source>Choose the power profile the system applies. Balanced is the default.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Collecting history: %1 reading so far.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dim on battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable the automatic suspend stage. Dim, blank, and lock still apply.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -917,6 +1501,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Lower the display brightness while the machine runs on battery.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>More power settings</source>
         <translation type="unfinished"></translation>
     </message>
@@ -925,15 +1513,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No battery history for the %1.</source>
+        <source>No battery history has been sampled yet. History starts when the system status service starts; refresh to record a reading now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No media pipeline in this session exposes a battery optimization switch.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No power profiles are available on this system.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>No screen-on history for the %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -945,7 +1533,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>On battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open Lock Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optimize video streaming while on battery</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -957,11 +1553,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Power Adapter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Power Mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Power Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power adapter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prevent sleep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh history</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -981,7 +1593,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The range the history charts cover.</source>
+        <source>The live power source UPower reports.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The range the history chart covers.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -993,7 +1609,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>This battery does not report a charge threshold.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This battery does not report its design capacity.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This session does not report screen-on time.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This system has no battery. Battery health and charge state appear when a battery is present.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UPower does not expose a last-charged timestamp.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UPower is not running, so battery health and charge state are not available. The power options below stay live.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1009,7 +1645,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Usage history needs a present battery. The sampler starts when the system status service starts.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Usage range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wake for network access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wake-on-LAN is a host firmware setting; the session bus cannot change it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2178,6 +2826,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Audio casting is not available on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Battery</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2270,6 +2922,58 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Nearby Transfer is not available on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Home provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Notes provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Utilities provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Voice Memos provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No fast user switching provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No hearing accessibility provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No keyboard backlight is exposed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No media player is publishing Now Playing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No motor accessibility provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No provider is available on this system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No shortcut editor is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No vision accessibility provider is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Notes</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2315,6 +3019,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage is not part of this build.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2519,6 +3227,10 @@ Open source system software</source>
 <context>
     <name>DesktopDockPane</name>
     <message>
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Always</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2527,11 +3239,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Ask to keep changes when closing documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Automatically hide and show the Dock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Background clicks belong to the desktop layer; reveal-on-click lands with T245b.</source>
+        <source>Available with Stage.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Available with desktop widgets.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2543,11 +3263,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose an action and optional modifier for each screen corner.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Click wallpaper to reveal desktop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Close windows when quitting an application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default web browser</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Desktop &amp; Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop widgets are not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dim widgets on desktop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2559,11 +3299,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Dock position on screen</source>
+        <source>Dock size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Dock size</source>
+        <source>Drag windows to screen edges to tile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag windows to the menu bar to fill the screen</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2571,11 +3315,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>In Stage</source>
+        <source>Hold Option while dragging to tile</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Lands with Stage (T242).</source>
+        <source>Hot Corners…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In Full Screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In Stage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2611,7 +3363,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No widget host is implemented; widgets remain an explicit OPEN row.</source>
+        <source>No first-party app lifecycle consumer yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No first-party app opens tabbed documents yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No first-party document app asks yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No installed web browser was found.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2627,7 +3391,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>On Desktop shows the Files desktop icons; In Stage leaves them to Stage (T242).</source>
+        <source>On Desktop shows the Files desktop icons; In Stage leaves them to Stage.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>One</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2639,7 +3407,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Position on screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prefer tabs when opening documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Recent apps in Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reveal-on-click is not available yet; the desktop layer owns background clicks.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2648,6 +3432,14 @@ Open source system software</source>
     </message>
     <message>
         <source>Scale Effect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Widgets</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2667,6 +3459,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show windows from an application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Size</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2679,11 +3475,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Stage lands with T242.</source>
+        <source>Stage is not available yet; window staging is not implemented.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Unavailable</source>
+        <source>The shortcut editor is not available yet; system shortcuts are fixed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tiled windows have margins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Used for web links and web-search results.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When windows are open</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2691,7 +3499,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Window Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Window tiling is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Window title bar double-click action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspaces, gestures, and window arrangement.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2744,6 +3568,22 @@ Open source system software</source>
 <context>
     <name>DisplaysPane</name>
     <message>
+        <source> · Main</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 × %2 · %3 Hz%4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>180°</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2764,6 +3604,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Adaptive color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Advanced</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2776,6 +3620,30 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Arrange displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Arrangement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Arrange…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatically adjust brightness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bright</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2784,11 +3652,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Built-in Display</source>
+        <source>Color Profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Color profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current refresh rate</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default profile</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2804,11 +3688,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Displays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extend display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Large</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Larger Text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Main display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mirror display</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2820,7 +3720,43 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Night Light</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Night light</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Night light schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Night light temperature</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not reported</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open advanced display settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh rate</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2828,11 +3764,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Resolution list, HDR, VRR, and overscan. Unsupported rows name the OPEN compositor/colord half; brightness and rotation stay in their own groups above.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Rotation</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Rotation, refresh, arrangement, night light, color, HDR, VRR, and brightness. Unsupported rows name the OPEN compositor/colord half.</source>
+        <source>Schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Selected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2840,7 +3792,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Temperature</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The compositor owns the output level and reports the applied value back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor reports no output. Display preferences stay live and apply when one appears.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2848,7 +3808,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Using a scaled resolution may affect performance.</source>
+        <source>Use as</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use this display as</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Using a scaled resolution may affect performance. The compositor applies this selection to every output; per-output overrides are OPEN.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When connected to TV</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3384,6 +4356,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a name for this Quick Settings page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Choose what appears in Quick Settings.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3412,6 +4392,26 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename Page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename this Quick Settings page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Renamed the page to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Reset</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3436,7 +4436,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show on all displays (per-display surfaces remain OPEN)</source>
+        <source>Show on all displays is disabled: the shell ships one Quick Settings surface, and per-display panels need a compositor overlay per output.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5093,6 +6093,10 @@ Open source system software</source>
 <context>
     <name>MenuBarPane</name>
     <message>
+        <source>%1 options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>10</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5121,7 +6125,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Add Controls…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Menu Bar Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add controls…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow %1 in the menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow in the Menu Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Always</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Always show the overflow menu</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic moves items into the overflow menu only when the measured bar runs out of room. Always keeps the overflow menu visible and moves third-party items into it first.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5133,7 +6169,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Battery Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose how this control appears in the menu bar.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5145,6 +6189,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Choose which controls appear in the menu bar.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose which system controls appear in the menu bar.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Clock</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5153,11 +6205,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Clock Options…</source>
+        <source>Clock options</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Date &amp; Time</source>
+        <source>Disabled: the shell ships one Quick Settings and menu-bar surface. Per-display panels need a compositor overlay per output.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display has no menu-bar item; the Display module lives in Quick Settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5173,7 +6233,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Draw the battery percentage beside the glyph.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide the Sound mark while the output is muted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide while muted</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5185,11 +6261,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Menu Bar Behavior</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Menu Bar Controls</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Never</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No third-party menu-bar items are installed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5205,6 +6289,22 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Option</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Options…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overflow policy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Quick Settings</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5213,7 +6313,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset the menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restores the menu-bar behavior, clock options, control visibility, per-control options, third-party allowances, and the Linux-only rows.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen Casting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen casting has no menu-bar item; start casting from Quick Settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show %1 in the menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show application menus in the menu bar</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5225,7 +6357,43 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show on every display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show percentage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the Focus mark even when no Focus mode is on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the active workspace number in the menu bar. It is live from the compositor and hidden when only one workspace exists.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the clock in the menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the date and time in the menu bar.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show the workspace indicator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show when Focus is off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Sound</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sound Options</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5241,7 +6409,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The StatusNotifier host is not running, so no third-party items are available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The settings daemon is not running, so these preferences apply from the built-in defaults. The menu bar itself is drawn by the shell.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Third-party applications can add their own StatusNotifier items. Turn one off to keep it out of the menu bar; its application keeps running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Third-party items</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5249,18 +6429,50 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>When off, first-party applications keep their own local menus.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Wi-Fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace indicator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>MissionControlPane</name>
     <message>
+        <source>Activating a window on another workspace follows it there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic workspace reordering is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatically rearrange workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bottom Left</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Bottom Left hot corner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Left hot corner modifier</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5272,7 +6484,47 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Bottom Right hot corner modifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Command</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Displays have separate workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag windows to the top to open Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag-to-Overview is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each display keeps its own workspace list in the compositor; a shared-space mode is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Group windows by application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Grouping windows by application is not available yet.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5284,7 +6536,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Move the pointer to a corner to perform an action. Choose – to leave a corner inactive.</source>
+        <source>Menu Bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move the pointer to a corner to perform an action. Choose – to leave a corner inactive, or hold a modifier while entering the corner.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Normal workspaces every display starts with.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5292,11 +6552,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Option</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Reveal every open window and workspace in the overview with a three-finger swipe.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shift</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show Dock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5312,7 +6600,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Switch to an application's workspace</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The settings daemon is not running, so these preferences apply from the built-in defaults. Overview itself is run by the compositor.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The shortcut editor is not available yet; system shortcuts are fixed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5324,11 +6620,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Top Left hot corner modifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Top Right</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Top Right hot corner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Right hot corner modifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Window Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6603,35 +7919,79 @@ Open source system software</source>
 <context>
     <name>QuickSettingsPane</name>
     <message>
-        <source>Accessibility</source>
+        <source>%1 is unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Audio Casting</source>
+        <source>%1 · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Battery</source>
+        <source>%1 · Not in Quick Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Bluetooth</source>
+        <source>+</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Capture Screen</source>
+        <source>Add</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Clock</source>
+        <source>Add Controls</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Dark Mode</source>
+        <source>Add Controls…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Display</source>
+        <source>Add a control to the active page. Unavailable modules are listed with their reason and are not addable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add controls…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All Controls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Always in the panel footer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Always shown in the panel footer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Category</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a control for %1. A control with no provider is listed with its reason and cannot be added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a name for this Quick Settings page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disabled: the shell ships one Quick Settings surface. Per-display panels need a compositor overlay per output.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6639,7 +7999,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Down</source>
+        <source>Done</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6647,19 +8007,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Fast User Switching</source>
+        <source>In the menu bar and panel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Focus</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Hearing Accessibility</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Home</source>
+        <source>In the menu bar only</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6668,22 +8020,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Keep these items in the menu bar and remove them from the Quick Settings panel.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Keyboard</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Keyboard Brightness</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Lock Screen</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Menu Bar</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6699,10 +8035,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Motor Accessibility</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Move %1 down</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6711,31 +8043,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Nearby Transfer</source>
+        <source>Page %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Notes</source>
+        <source>Pages</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Now Playing</source>
+        <source>Pages hold different sets of controls. The first page is the one the panel opens on by default; each page has its own name.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Off shows Quick Settings on the active display only. The per-display surfaces themselves remain OPEN.</source>
+        <source>Preview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Overview</source>
+        <source>Remove the active page</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Printers</source>
+        <source>Rename</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Privacy</source>
+        <source>Rename Page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename the active page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6743,23 +8083,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Restore the default Quick Settings modules</source>
+        <source>Reset Quick Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Restore the default modules</source>
+        <source>Resize %1, currently %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Screen Casting</source>
+        <source>Restores the modules, pages, names, spans, menu-bar-only set, per-display policy, and the menu-bar marks this surface owns.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Screenshot</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Shortcuts</source>
+        <source>Show %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6775,47 +8111,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Software Update</source>
+        <source>The measured 4-column grid for the active page. It updates as modules, spans, and menu-bar-only choices change.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Sound</source>
+        <source>The same categories Edit Controls uses. A control with no provider is listed with its reason and cannot be added.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Stage</source>
+        <source>This page is empty</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Storage</source>
+        <source>Unavailable on this system</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Up</source>
+        <source>—</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Users</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Utilities</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>VPN</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Vision Accessibility</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Voice Memos</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Wi-Fi</source>
+        <source>−</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7281,6 +8597,41 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>SettingsBridge</name>
+    <message>
+        <source>Clear</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Clear icon theme is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Dark icon theme is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Tinted icon theme is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No icon theme is installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tinted</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SettingsDebugView</name>
     <message>
         <source>%1  |  owner: %2  |  absence: %3</source>
@@ -7382,7 +8733,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Accent from wallpaper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility Shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accessibility bridge</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7390,7 +8753,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Accessibility shortcuts</source>
+        <source>Accessibility shortcut</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7498,7 +8861,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Audio</source>
+        <source>Ask to keep changes when closing documents</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7515,6 +8878,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Auto-hide menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto-play animated images</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7542,6 +8909,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Automatically rearrange workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Automation</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7555,6 +8926,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Background services</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Background sounds</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7574,6 +8949,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Balance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Battery</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7587,10 +8966,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Battery level</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Battery options</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7654,6 +9029,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Charge limit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Charging</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7663,6 +9042,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Cityscapes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click in the scroll bar to</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7679,6 +9062,18 @@ Open source system software</source>
     </message>
     <message>
         <source>Clock options...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close windows when quitting an application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Color filters</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7714,6 +9109,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Cursor size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cursor theme</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Dark mode</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7730,15 +9133,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Default browser</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Default paper size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Default printer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default web browser</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7751,6 +9154,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Desktop and Dock preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop integration</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7786,6 +9193,22 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Differentiate without color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dim flashing lights</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dim on battery</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dim widgets on desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Directory account</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7803,6 +9226,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display contrast</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7826,6 +9253,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Displays have separate workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Do Not Disturb</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7839,6 +9270,18 @@ Open source system software</source>
     </message>
     <message>
         <source>Double-click speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag windows to screen edges to tile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag windows to the menu bar to fill the screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag windows to the top to open Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7898,6 +9341,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Flash the screen on alert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Focus</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7906,7 +9353,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Folder color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Follow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Full disk access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full keyboard access</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7919,6 +9378,10 @@ Open source system software</source>
     </message>
     <message>
         <source>General</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Group windows by application</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7938,10 +9401,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Hearing devices</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>High dynamic range</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7950,7 +9409,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Hold Option while dragging to tile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Hot Corners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hot Corners...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7963,6 +9430,22 @@ Open source system software</source>
     </message>
     <message>
         <source>IPv6</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Icon &amp; widget style</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Icon theme</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ignore built-in trackpad</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Increase contrast</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7983,6 +9466,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Internet sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert colors</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8038,7 +9525,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Live captions</source>
+        <source>Live speech</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8082,10 +9569,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Magnifier</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Manage storage...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8095,6 +9578,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Mapping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Material effects</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8111,6 +9598,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Menu bar items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu bar size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8146,6 +9637,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Mono audio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>More Info...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8163,6 +9658,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Mouse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse keys</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8202,6 +9701,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Night light schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Night light temperature</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No game controller service is available.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8226,6 +9733,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>On-screen keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Online Accounts</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8247,6 +9758,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Open password manager</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Optimize video streaming</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8278,11 +9793,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Overflow policy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overscan</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Overview preferences stay live on the schema defaults.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Page names</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8298,11 +9825,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Per-output selector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Permissions are unavailable because the permission store is not running.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Personal Hotspot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Personal voice</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8314,7 +9849,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Pointer control</source>
+        <source>Pointer colors</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8322,7 +9857,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Pointer size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Pointer speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power adapter</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8338,11 +9881,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Prefer non-blinking cursor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prefer tabs when opening documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Presentation preferences stay live; the per-app list shows its own absence note.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Press Super key to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prevent sleep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8390,6 +9949,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>RTT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Read &amp; Speak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Read &amp; speak</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8403,6 +9970,14 @@ Open source system software</source>
     </message>
     <message>
         <source>Recent items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduce motion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reduce transparency</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8447,6 +10022,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Quick Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8522,10 +10101,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Scroll bars</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Scroll method</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8578,6 +10153,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Shortcuts...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8586,7 +10165,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show Widgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show application menus in menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show application menus in the menu bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show battery percentage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8610,11 +10201,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show on every display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show password hints</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Show previews</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show scroll bars</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8626,7 +10225,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show toolbar button shapes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show user name/photo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show window title icons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show windows from an application</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8639,6 +10250,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slow keys</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8663,6 +10278,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Space</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speech</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8694,6 +10313,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Sticky keys</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Storage</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8715,6 +10338,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Switch control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch to an application's workspace</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8742,6 +10369,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Text size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The shipped default wallpaper is always available; Featured is empty, never an error.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8751,6 +10382,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Third-party items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tiled windows have margins</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8798,11 +10433,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Use as</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Use fingerprint for authentication</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Use fingerprint to unlock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use keyboard shortcuts to zoom</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8854,6 +10497,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Vocal shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Voice control</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8863,6 +10510,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Volumes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wake for network access</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8910,6 +10561,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Window control layout</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Window title bar double-click action</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8918,7 +10573,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Windows and scroll bars</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>WireGuard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace indicator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8927,6 +10598,14 @@ Open source system software</source>
     </message>
     <message>
         <source>Your photos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zoom level</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9599,6 +11278,29 @@ Open source system software</source>
     </message>
 </context>
 <context>
+    <name>ShortcutRecorder</name>
+    <message>
+        <source>Accessibility shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Activate to record a shortcut.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Press keys…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Record Shortcut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recording. Press Escape to cancel.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Sidebar</name>
     <message>
         <source>Pane</source>
@@ -10012,7 +11714,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1 of %2</source>
+        <source>%1 of %2 used</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10040,7 +11742,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Filesystem usage is unavailable because df did not answer.</source>
+        <source>Filesystem usage is unavailable because df did not answer. Volume rows and the Manage action stay live.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Free</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10064,11 +11770,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No mountable volumes.</source>
+        <source>No mountable volume is present. Removable media appears here when it is connected.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No storage devices are available on this system.</source>
+        <source>No mountable volumes.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10076,7 +11782,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Opens the Files app; formatting and partitioning are delegated to the disk utility.</source>
+        <source>Open the Files app to manage storage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opens the Files app at your home folder. Formatting and partitioning stay in the disk utility.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10089,6 +11799,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Review %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UDisks2 is not running, so volume actions are unavailable. Filesystem usage and the Manage action stay live.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10124,6 +11838,49 @@ Open source system software</source>
     </message>
     <message>
         <source>The system authentication service is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Style</name>
+    <message>
+        <source>Authentication is required to change a user account type.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to change a user account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to change automatic login.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to change group membership.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to create a group.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to create a user account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to delete a group.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Authentication is required to delete a user account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The host default-apps delegate did not accept the change.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -10865,39 +12622,15 @@ Provider: %2</source>
 <context>
     <name>WallpaperPreset</name>
     <message>
-        <source>Authentication is required to change a user account type.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Authentication is required to change a user account.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Authentication is required to change automatic login.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Authentication is required to change group membership.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Authentication is required to create a group.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Authentication is required to create a user account.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Authentication is required to delete a group.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Authentication is required to delete a user account.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Authentication was denied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -11681,6 +13414,10 @@ Provider: %2</source>
         <source>The compositor capture path is unavailable.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Workspace %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>screencastbridge</name>
@@ -11703,6 +13440,10 @@ Provider: %2</source>
 <context>
     <name>shellcontroller</name>
     <message>
+        <source>%1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Accessibility</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11711,11 +13452,19 @@ Provider: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Battery %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bluetooth</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Focus off</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

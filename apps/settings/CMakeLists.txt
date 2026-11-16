@@ -115,6 +115,9 @@ target_link_libraries(dragonfruit-settings-ui PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-design-systemplugin
     dragonfruit-settings-client
+    # T277: the Quick Settings pane consumes the shell's one
+    # `ControlCenterRegistry`; it never keeps a second module list.
+    dragonfruit-shell-control-center
 )
 
 qt_add_executable(dragonfruit-settings
@@ -129,6 +132,7 @@ target_link_libraries(dragonfruit-settings PRIVATE
     dragonfruit-system-font
     dragonfruit-i18n
     dragonfruit-settings-uiplugin
+    dragonfruit-shell-control-centerplugin
 )
 qt_import_qml_plugins(dragonfruit-settings)
 

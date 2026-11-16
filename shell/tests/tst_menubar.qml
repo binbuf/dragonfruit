@@ -1243,6 +1243,32 @@ Item {
                     "overflow");
         }
 
+        // T277: `menu.overflow` = always keeps the overflow affordance and
+        // moves every third-party item into it even when the row has room.
+        function test_force_overflow_always_moves_third_party_items() {
+            var registry = make(registryComponent, {
+                maxVisible: -1,
+                forceOverflow: true,
+                items: [
+                    { id: "wifi", icon: "wifi", priority: 10 },
+                    { id: "clock", icon: "", priority: 70, kind: "clock",
+                      essential: true },
+                    { id: "tray:one", icon: "application", priority: 1000,
+                      thirdParty: true, accessibleName: "Tray One" },
+                    { id: "tray:two", icon: "application", priority: 1001,
+                      thirdParty: true, accessibleName: "Tray Two" }
+                ]
+            });
+            compare(registry.rowItems.length, 2);
+            compare(registry.rowItems[0].id, "wifi");
+            compare(registry.rowItems[1].id, "clock");
+            compare(registry.overflowItems.length, 2);
+            compare(registry.overflowItems[0].id, "tray:one");
+            compare(registry.overflowItems[1].id, "tray:two");
+            compare(registry.statusRowItems[registry.statusRowItems.length - 1].id,
+                    "overflow");
+        }
+
         function test_registry_keeps_essential_system_items_in_the_row() {
             var registry = make(registryComponent, {
                 maxVisible: 3,

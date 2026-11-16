@@ -3031,6 +3031,82 @@ void SettingsBridge::refreshDefaultBrowsers()
     emit defaultBrowserChanged();
 }
 
+void SettingsBridge::refreshThirdPartyMenuBarItems()
+{
+    // T277: the Menu Bar pane's "Allow in the Menu Bar" list. The live items
+    // are the StatusNotifier/AppIndicator registrations app-index owns; the
+    // Settings app never talks to the watcher itself. A fixture keeps the
+    // headless pane deterministic, and a missing app-index is a normal
+    // absence (an empty list, not an error).
+    const bool fixture = qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE");
+    QVariantList items;
+    bool available = false;
+    if (fixture) {
+        available = true;
+        items = {
+            QVariantMap{
+                { QStringLiteral("id"), QStringLiteral("example-chat") },
+                { QStringLiteral("name"), QStringLiteral("org.example.ExampleChat") },
+                { QStringLiteral("label"), QStringLiteral("Example Chat") },
+                { QStringLiteral("icon"), QStringLiteral("chat") },
+                { QStringLiteral("iconPath"), QString() },
+                { QStringLiteral("tooltip"), QStringLiteral("Example Chat") },
+                { QStringLiteral("state"), QStringLiteral("ok") }
+            },
+            QVariantMap{
+                { QStringLiteral("id"), QStringLiteral("example-sync") },
+                { QStringLiteral("name"), QStringLiteral("org.example.ExampleSync") },
+                { QStringLiteral("label"), QStringLiteral("Example Sync") },
+                { QStringLiteral("icon"), QStringLiteral("sync") },
+                { QStringLiteral("iconPath"), QString() },
+                { QStringLiteral("tooltip"), QStringLiteral("Example Sync") },
+                { QStringLiteral("state"), QStringLiteral("ok") }
+            }
+        };
+    } else if (QDBusConnection::sessionBus().isConnected()) {
+        QDBusInterface index(QStringLiteral("org.dragonfruit.AppIndex1"),
+                             QStringLiteral("/org/dragonfruit/AppIndex1"),
+                             QStringLiteral("org.dragonfruit.AppIndex1"),
+                             QDBusConnection::sessionBus(), this);
+        if (index.isValid()) {
+            const QDBusReply<QString> reply = index.call(QStringLiteral("TrayItems"));
+            if (reply.isValid()) {
+                available = true;
+                const QJsonArray records =
+                    QJsonDocument::fromJson(reply.value().toUtf8()).array();
+                for (const QJsonValue &value : records) {
+                    const QJsonObject record = value.toObject();
+                    const QString name =
+                        record.value(QStringLiteral("name")).toString();
+                    if (name.isEmpty())
+                        continue;
+                    const QString title =
+                        record.value(QStringLiteral("title")).toString();
+                    const QString id = record.value(QStringLiteral("id")).toString();
+                    items.append(QVariantMap{
+                        { QStringLiteral("id"), id.isEmpty() ? name : id },
+                        { QStringLiteral("name"), name },
+                        { QStringLiteral("label"), title.isEmpty() ? name : title },
+                        { QStringLiteral("icon"),
+                          record.value(QStringLiteral("iconName")).toString() },
+                        { QStringLiteral("iconPath"),
+                          record.value(QStringLiteral("iconPath")).toString() },
+                        { QStringLiteral("tooltip"),
+                          record.value(QStringLiteral("tooltip")).toString() },
+                        { QStringLiteral("state"),
+                          record.value(QStringLiteral("needsAttention")).toBool()
+                              ? QStringLiteral("attention")
+                              : QStringLiteral("ok") }
+                    });
+                }
+            }
+        }
+    }
+    m_thirdPartyMenuBarItems = items;
+    m_thirdPartyMenuBarAvailable = available;
+    emit thirdPartyMenuBarItemsChanged();
+}
+
 void SettingsBridge::setDefaultBrowser(const QString &desktopId)
 {
     if (desktopId.isEmpty())

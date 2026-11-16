@@ -98,8 +98,8 @@ inset come from the in-repo structural measurements
 | Storage | yes | Dead Manage row; no chart/total/free; volumes have no capacity | T273 |
 | Appearance | yes | Missing icon/widget style, folder color, scroll-bar click; transparency slider active under override; seven one-row cards | T274 |
 | Accessibility | yes | Three settingsd rows against a five-section macOS IA; map claims rows that do not exist | T275 |
-| Quick Settings | yes | 37-row Up/Down list; unavailable modules offered; Edit Controls no-op; empty list restores defaults | T277 |
-| Menu Bar | yes | No third-party section, Add Controls, Reset, or per-control options | T277 |
+| Quick Settings | yes | Categorized registry modules; pages with names; spans; Add Controls; live preview; Reset; unavailable modules carry the registry reason | — |
+| Menu Bar | yes | Per-control options; third-party StatusNotifier list; Add Controls; Reset; one Clock row; Linux-only rows | — |
 | Search | yes | No-op surface; shortcut free text; indexing rows name nonexistent keys; “wifi” returns no results | T265, T282 |
 | Privacy & Security | yes | Flat un-carded list with one icon, no keyboard, missing master/analytics/accessory rows | T279 |
 | Desktop & Dock | yes | Missing Desktop & Stage Manager, Widgets, Windows, Mission Control groups | T276 |
@@ -1016,6 +1016,19 @@ defaults; unavailable modules show a reason and are not addable.
 | — | Reset Control Center | Button | `quickSettings.*` + `menu.control.*` | ship |
 | — | Live preview | Panel | shell | ship |
 
+**T277 status.** The pane consumes the shell's one `ControlCenterRegistry`
+(no second module list) and renders its 37 modules in the registry's 22
+categories. Pages have add/rename/delete/select and durable names
+(`quickSettings.pageNames`); spans cycle through the measured 1x1/2x1/2x2/4x1
+set; the live preview is the same 4-column grid. The Add Controls sheet lists
+only modules with a real provider; an ownerless module is listed with the
+registry's reason and has no Add control. An explicit empty
+`quickSettings.modules` stays empty (the panel keeps only its Edit Controls
+footer); Reset restores the measured default list, pages, names, spans,
+per-display policy, menu-bar-only set, and the `menu.control.*` marks the
+surface owns. The per-display row is disabled with the exact one-surface
+reason. Keyboard Up/Down and a drag handle both reorder the active page.
+
 ### 4.10 Menu Bar — T277
 
 Owner: settingsd → shell. Absence: live on defaults.
@@ -1035,6 +1048,21 @@ Owner: settingsd → shell. Absence: live on defaults.
 | — | Overflow policy | Popup | shell | adapt (Linux-only) |
 | — | Workspace indicator | Checkbox | `menu.control.workspaces` | adapt (Linux-only) |
 | — | Global app menu | Toggle | `menu.global` | ship (Linux-only) |
+
+**T277 status.** One Clock row carries the visibility mark and the Clock
+Options sheet; the sheet is declared inside the pane and adopts the T266
+window overlay, so it never clips inside the detail scroll. Battery, Focus,
+and Sound have per-control option sheets (`power.showPercentage`,
+`menu.control.focusAlways`, `menu.control.volumeWhenActive`); Display and
+Screen Casting are listed disabled with the exact "no menu-bar item" reason
+instead of shipping a dead toggle. The third-party section lists the live
+StatusNotifier items app-index reports and writes the durable
+`menu.tray.hidden` allowance list the shell reads in `applyStatusItems`. The
+Linux-only rows are live: `menu.overflow` (`automatic`/`always`),
+`menu.control.workspaces` (the compositor's active-Space projection),
+`menu.global`, and a disabled per-display panel row with the one-surface
+reason. Reset restores the behavior keys, clock options, visibility marks,
+per-control options, tray allowances, and Linux-only rows.
 
 ### 4.11 Search — T265
 
@@ -1576,8 +1604,8 @@ from the first live T263 run; they are part of the same release bar.
 | P1-12 | Mouse and Trackpad share `input.pointerSpeed`/`input.naturalScroll`; most Tahoe gestures are missing | `InputPane.qml` | T280 |
 | P1-13 | Privacy is a flat un-carded list with one icon, no keyboard access, and missing master/analytics/accessory rows | `PrivacyPane.qml` | T279 |
 | P1-14 | Online Accounts disappears entirely when GOA is absent; Add has no sign-in step | `SettingsPanes.qml`, `OnlineAccountsPane.qml` | T279 |
-| P1-15 | Quick Settings is a 37-row flat list with Up/Down buttons; unavailable modules are offered; Edit Controls is a no-op; empty list restores defaults | `QuickSettingsPane.qml` | T277 |
-| P1-16 | Menu Bar has no third-party section, Add Controls, Reset, or per-control options | `MenuBarPane.qml` | T277 |
+| P1-15 | Quick Settings is a 37-row flat list with Up/Down buttons; unavailable modules are offered; Edit Controls is a no-op; empty list restores defaults | `QuickSettingsPane.qml` | T277 (landed: categorized registry, pages/names/spans/Add Controls/preview/Reset, empty stays empty, ownerless never addable) |
+| P1-16 | Menu Bar has no third-party section, Add Controls, Reset, or per-control options | `MenuBarPane.qml` | T277 (landed: per-control options, live third-party list, Add Controls, Reset, one Clock row, Linux-only rows) |
 | P1-17 | Search results are a flat ungrouped list; “wifi”, “control center”, “mission control” return no results | `SettingsSearch.qml`, `SettingsSearchResults.qml` | T265 (landed) |
 | P1-18 | General is missing Autofill & Passwords and the Transfer or Reset structure; sub-panes hide settingsd rows with their host adapter | `GeneralPane.qml`, `DateTimePane.qml`, `LanguageRegionPane.qml` | T269, T270 |
 | P1-19 | Focus has no focus list/Add/Delete/Filters; profile/mode/rows duplicate the same state | `FocusPane.qml` | T278 |

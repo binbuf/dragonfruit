@@ -276,6 +276,7 @@ constexpr int Wifi = 10;
 constexpr int Bluetooth = 20;
 constexpr int Battery = 30;
 constexpr int Volume = 40;
+constexpr int Workspaces = 45;
 constexpr int Search = 50;
 constexpr int Focus = 55;
 constexpr int Notifications = 60;
@@ -2793,6 +2794,19 @@ void ShellController::applyStatusItems()
             .value(QStringLiteral("menu.control.") + QLatin1String(id), true)
             .toBool();
     };
+    // T277: the per-control options and the tray allowance list. The keys are
+    // additive with the visibility key: an option never resurrects a control
+    // the user hid.
+    const bool focusAlways =
+        menuControls.value(QStringLiteral("menu.control.focusAlways"), false)
+            .toBool();
+    const bool volumeWhenActive =
+        menuControls.value(QStringLiteral("menu.control.volumeWhenActive"), false)
+            .toBool();
+    const bool workspacesVisible =
+        menuControls.value(QStringLiteral("menu.control.workspaces"), true).toBool();
+    const QStringList hiddenTray =
+        menuControls.value(QStringLiteral("menu.tray.hidden")).toStringList();
 
     // Wi-Fi, volume, and battery are live from the bridge host (T-07.5a/b);
     // an absent daemon hides the slot, an error shows it visible but inert
@@ -2828,9 +2842,12 @@ void ShellController::applyStatusItems()
     QString audioGlyph = audio.value(QStringLiteral("glyph")).toString();
     if (audioGlyph.isEmpty())
         audioGlyph = QStringLiteral("volume");
+    const bool volumeVisible =
+        audio.value(QStringLiteral("visible")).toBool()
+        && controlEnabled("volume")
+        && !(volumeWhenActive && audio.value(QStringLiteral("muted")).toBool());
     items << statusItem(QStringLiteral("volume"), audioGlyph, QString(), tr("Volume"),
-                        audio.value(QStringLiteral("visible")).toBool()
-                            && controlEnabled("volume"),
+                        volumeVisible,
                         audio.value(QStringLiteral("volume")).toReal(),
                         audio.value(QStringLiteral("enabled")).toBool(),
                         StatusPriority::Volume, tr("Volume"), QStringLiteral("volume"),
@@ -2873,6 +2890,16 @@ void ShellController::applyStatusItems()
     focusItem.insert(QStringLiteral("kind"), QStringLiteral("status"));
     focusItem.insert(QStringLiteral("thirdParty"), false);
     focusItem.insert(QStringLiteral("essential"), false);
+    // T277: `menu.control.focusAlways` keeps the crescent in the row while
+    // Focus is off. The item is a status mark, not a toggle; the service's
+    // own policy still decides the active mode.
+    if (focusAlways && m_notificationClient && m_notificationClient->isAvailable()
+            && !focusItem.value(QStringLiteral("available")).toBool()) {
+        focusItem.insert(QStringLiteral("available"), true);
+        focusItem.insert(QStringLiteral("enabled"), true);
+        focusItem.insert(QStringLiteral("state"), QStringLiteral("ok"));
+        focusItem.insert(QStringLiteral("accessibleName"), tr("Focus off"));
+    }
     if (!controlEnabled("focus")) {
         focusItem.insert(QStringLiteral("available"), false);
         focusItem.insert(QStringLiteral("enabled"), false);
@@ -2934,11 +2961,39 @@ void ShellController::applyStatusItems()
                         StatusPriority::MissionControl, tr("Overview"), QString(),
                         QStringLiteral("ok"), QStringLiteral("action"), true);
 
+    // T277: the Linux-only workspace indicator. It is a live projection of
+    // the compositor's per-output Space list; it hides when there is only one
+    // Space. Activation opens Mission Control's workspace strip.
+    if (workspacesVisible && m_protocol) {
+        const QVariantList workspaces = m_protocol->overviewWorkspaces();
+        int activeIndex = -1;
+        for (const QVariant &entry : workspaces) {
+            const QVariantMap space = entry.toMap();
+            if (space.value(QStringLiteral("active")).toBool()) {
+                activeIndex = space.value(QStringLiteral("index")).toInt();
+                break;
+            }
+        }
+        if (workspaces.size() > 1 && activeIndex >= 0) {
+            const QString name = tr("Workspace %1").arg(activeIndex + 1);
+            items << statusItem(QStringLiteral("workspaces"),
+                                QStringLiteral("workspace"),
+                                QString::number(activeIndex + 1), name, true,
+                                0.8, true, StatusPriority::Workspaces, name,
+                                QString(), QStringLiteral("ok"),
+                                QStringLiteral("action"), true);
+        }
+    }
+
     // Third-party StatusNotifier/AppIndicator items (T-14.3/T231). They join
     // the same registry, so sizing/hover/dark-light treatment is identical and
     // the overflow policy can push them out before any system item.
     int trayPriority = StatusPriority::ThirdParty;
     for (const TrayItem &tray : m_trayItems) {
+        // T277: "Allow in the Menu Bar" is the durable hidden-name list. The
+        // item keeps running; only its menu-bar slot is removed.
+        if (hiddenTray.contains(tray.name))
+            continue;
         QVariantMap item =
             statusItem(QStringLiteral("tray:") + tray.name,
                        QStringLiteral("application"), QString(),
@@ -4515,6 +4570,9 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty(
         "quickSettingsPage3",
         settingsValues.value(QStringLiteral("quickSettings.page3")));
+    m_controlCenterItem->setProperty(
+        "quickSettingsPageNames",
+        settingsValues.value(QStringLiteral("quickSettings.pageNames")));
     m_controlCenterItem->setProperty(
         "quickSettingsPageCount",
         settingsValues.value(QStringLiteral("quickSettings.pageCount"), 1));
@@ -6439,6 +6497,10 @@ void ShellController::onStatusItemActivated(const QString &itemId)
         toggleNotificationCenter();
         return;
     }
+    if (itemId == QLatin1String("workspaces")) {
+        onMissionControlRequested();
+        return;
+    }
     // Status-item popups consume the T-20 adapters; until then this is a
     // no-op beyond the bar's own dismissal.
     qInfo() << "shell: status item activated:" << itemId;
@@ -7649,6 +7711,14 @@ void ShellController::applyMenuBarPolicy()
             == QStringLiteral("tux")
         ? QStringLiteral("tux")
         : QStringLiteral("dragonfruit");
+    // T277: the Linux-only overflow policy. `always` keeps the overflow
+    // affordance visible and moves third-party items into it first.
+    const QString overflow =
+        values.value(QStringLiteral("menu.overflow"), QStringLiteral("automatic"))
+            .toString()
+            == QStringLiteral("always")
+        ? QStringLiteral("always")
+        : QStringLiteral("automatic");
     // T230: `menu.recentItems` now has a consumer: the system menu's Recent
     // Items submenu. Clamp to the schema's 0..50 range.
     const int recentItems =
@@ -7676,6 +7746,7 @@ void ShellController::applyMenuBarPolicy()
         m_item->setProperty("showBackground", showBackground);
         m_item->setProperty("autoHideMode", autoHide);
         m_item->setProperty("osGlyph", osGlyph);
+        m_item->setProperty("overflowPolicy", overflow);
         // T201: the compositor owns the per-output reveal. Forward the policy
         // through the same Settings refresh path as the rest of the pane.
         if (m_protocol)
@@ -8962,6 +9033,8 @@ void ShellController::refreshOverviewData()
     if (!m_overviewItem)
         return;
     m_overviewItem->setProperty("workspaces", m_protocol->overviewWorkspaces());
+    // T277: the menu-bar workspace indicator is the same projection.
+    applyStatusItems();
     m_overviewItem->setProperty("minimizedWindows", m_protocol->minimizedWindows());
     m_overviewItem->setProperty("windows", m_protocol->overviewWindows());
 }

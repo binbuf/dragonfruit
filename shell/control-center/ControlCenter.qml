@@ -54,6 +54,7 @@ Item {
     property var quickSettingsMenuBarOnly: []
     property var quickSettingsPage2: []
     property var quickSettingsPage3: []
+    property var quickSettingsPageNames: []
     property int quickSettingsPageCount: 1
     property int quickSettingsActivePage: 0
     property bool quickSettingsPerDisplay: false
@@ -81,9 +82,13 @@ Item {
             return root.quickSettingsPage2 ? Array.from(root.quickSettingsPage2) : [];
         if (page === 2)
             return root.quickSettingsPage3 ? Array.from(root.quickSettingsPage3) : [];
-        if (root.quickSettingsModules && root.quickSettingsModules.length > 0)
-            return Array.from(root.quickSettingsModules);
-        return root.defaultModuleOrder.slice();
+        // An explicit empty list is a real state (the user removed every
+        // control). Only an absent key falls back to the measured default;
+        // the Settings pane writes the default list on Reset.
+        if (root.quickSettingsModules === undefined
+                || root.quickSettingsModules === null)
+            return root.defaultModuleOrder.slice();
+        return Array.from(root.quickSettingsModules);
     }
 
     readonly property var moduleOrder: root.pageModuleList(root.activePage)
@@ -604,7 +609,8 @@ Item {
             span: root.registry.spanFor(id, root.spanMap),
             category: entry.category,
             owner: entry.owner,
-            expandable: entry.expandable
+            expandable: entry.expandable,
+            reason: root.registry.moduleReason(id)
         };
         if (state !== undefined) {
             for (var key in state)
@@ -2104,12 +2110,12 @@ Item {
         visible: root.editMode
         width: root.registry.editWindowWidth
         height: root.registry.editWindowHeight
-        panelModules: root.quickSettingsModules.length > 0
-            ? root.quickSettingsModules : root.defaultModuleOrder
+        panelModules: root.pageModuleList(0)
         page2: root.quickSettingsPage2
         page3: root.quickSettingsPage3
         pageCount: root.pageCount
         activePage: root.activePage
+        pageNames: root.quickSettingsPageNames
         menuBarOnly: root.quickSettingsMenuBarOnly
         spans: root.spanMap
         perDisplay: root.quickSettingsPerDisplay

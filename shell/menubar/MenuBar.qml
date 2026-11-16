@@ -106,6 +106,10 @@ Rectangle {
     // this property is the bar's copy of the policy so the scene and its tests
     // share the same semantics. `visibleIn()` is the pure rule.
     property string autoHideMode: "full-screen"
+    // T277: `menu.overflow`. `automatic` lets the measured width decide;
+    // `always` keeps the overflow affordance visible and moves every
+    // third-party item into it first.
+    property string overflowPolicy: "automatic"
     // Test/introspection helpers for the policy rule.
     readonly property bool autoHideAlways: autoHideMode === "always"
     readonly property bool autoHideInFullscreen: autoHideMode === "full-screen"
@@ -183,6 +187,7 @@ Rectangle {
         id: statusRegistry
         items: menuBar._statusSource
         maxVisible: menuBar.effectiveStatusCapacity
+        forceOverflow: menuBar.overflowPolicy === "always"
     }
 
     // T233: the status-row budget is measured, not guessed. The hidden

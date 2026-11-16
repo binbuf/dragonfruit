@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 33;
+pub const SCHEMA_VERSION: u32 = 34;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1800,6 +1800,75 @@ pub const KEYS: &[KeySpec] = &[
         since: 24,
         summary: "Show the Quick Settings item in the menu bar.",
     },
+    // ── T277: per-control options, tray allowances, Linux-only rows ─────
+    // These are the durable options the Menu Bar pane's per-control sheets
+    // and Linux-only rows own. They never add a second visibility path: the
+    // `menu.control.*` key still decides whether the control is offered.
+    KeySpec {
+        key: "menu.control.focusAlways",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 34,
+        summary: "Show the Focus mark even when no Focus mode is active.",
+    },
+    KeySpec {
+        key: "menu.control.volumeWhenActive",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 34,
+        summary: "Hide the Sound mark while the default output is muted.",
+    },
+    KeySpec {
+        key: "menu.control.workspaces",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 34,
+        summary: "Show the active workspace indicator in the menu bar.",
+    },
+    KeySpec {
+        key: "menu.overflow",
+        group: KeyGroup::Menu,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("automatic"),
+        allowed: &["automatic", "always"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 34,
+        summary: "When the status row overflows: only when the measured bar is full, or always.",
+    },
+    KeySpec {
+        key: "menu.tray.hidden",
+        group: KeyGroup::Menu,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 34,
+        summary: "Third-party StatusNotifier item names the user has removed from the menu bar.",
+    },
     // ── Printers & Scanners (T-15.12b) ──────────────────────────────────
     // CUPS owns the queues, the system default destination, and the job
     // queue; SANE owns the scanner inventory (ADR 0140). The one durable
@@ -2442,6 +2511,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/control-center",
         since: 25,
         summary: "Per-module measured span overrides, encoded as id=1x1|2x1|2x2|4x1.",
+    },
+    KeySpec {
+        key: "quickSettings.pageNames",
+        group: KeyGroup::QuickSettings,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Quick Settings pane",
+        since: 34,
+        summary: "User-facing names for the Control Center pages; empty entries fall back to Page N.",
     },
     // ── Search (T227) ────────────────────────────────────────────────────
     // Durable Spotlight-equivalent preferences. T246 owns the search service
@@ -3330,6 +3412,64 @@ mod tests {
             );
         }
         assert!(spec.validate(&Value::Text("penguin".into())).is_err());
+    }
+
+    /// T277 completes the Quick Settings and Menu Bar management surfaces.
+    /// The page names, the per-control options, the tray allowance list, and
+    /// the Linux-only overflow/workspace rows are additive in revision 34.
+    #[test]
+    fn the_t277_management_keys_are_declared_in_revision_thirty_four() {
+        for (key, kind, default) in [
+            (
+                "quickSettings.pageNames",
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
+            (
+                "menu.control.focusAlways",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "menu.control.volumeWhenActive",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "menu.control.workspaces",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            (
+                "menu.overflow",
+                KeyType::Text,
+                KeyDefault::Text("automatic"),
+            ),
+            (
+                "menu.tray.hidden",
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 34, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        let overflow = spec("menu.overflow").unwrap();
+        for value in ["automatic", "always"] {
+            assert!(
+                overflow.validate(&Value::Text(value.into())).is_ok(),
+                "{value}"
+            );
+        }
+        assert!(overflow.validate(&Value::Text("sometimes".into())).is_err());
     }
 
     /// The glass preference and its two accessibility overrides are additive

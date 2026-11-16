@@ -118,6 +118,14 @@ class SettingsBridge : public QObject
     Q_PROPERTY(QString defaultBrowser READ defaultBrowser NOTIFY defaultBrowserChanged)
     Q_PROPERTY(QString defaultBrowserError READ defaultBrowserError NOTIFY
                    defaultBrowserChanged)
+    // T277: the live StatusNotifier/AppIndicator items from app-index, for the
+    // Menu Bar pane's "Allow in the Menu Bar" list. Each entry is
+    // `{ id, name, label, icon, iconPath, tooltip, state }`. Empty when
+    // app-index is absent; that is a normal absence, never an error.
+    Q_PROPERTY(QVariantList thirdPartyMenuBarItems READ thirdPartyMenuBarItems
+                   NOTIFY thirdPartyMenuBarItemsChanged)
+    Q_PROPERTY(bool thirdPartyMenuBarAvailable READ thirdPartyMenuBarAvailable
+                   NOTIFY thirdPartyMenuBarItemsChanged)
     // The Bluetooth view from the bridge host (T-15.1b): `{ state, present,
     // powered, discovering, label, adapterName, knownDevices, nearbyDevices }`.
     // Empty when the host (or BlueZ) is absent; the pane renders the absence
@@ -389,6 +397,8 @@ public:
     QVariantList defaultBrowserChoices() const;
     QString defaultBrowser() const;
     QString defaultBrowserError() const;
+    QVariantList thirdPartyMenuBarItems() const { return m_thirdPartyMenuBarItems; }
+    bool thirdPartyMenuBarAvailable() const { return m_thirdPartyMenuBarAvailable; }
     QVariantMap bluetooth() const;
     bool bluetoothAvailable() const;
     QString bluetoothWriteOperation() const { return m_bluetoothWriteOperation; }
@@ -570,6 +580,9 @@ public:
     // T276: re-read the installed browser choices and the host default. The
     // Desktop & Dock pane calls this on open; a fixture makes it deterministic.
     Q_INVOKABLE void refreshDefaultBrowsers();
+    // T277: re-read the live third-party menu-bar items from app-index. The
+    // Menu Bar pane calls this on open; a fixture makes it deterministic.
+    Q_INVOKABLE void refreshThirdPartyMenuBarItems();
     // T276: choose a default browser. Persists `defaults.browser` and asks the
     // freedesktop default-apps delegate to apply it; a missing delegate keeps
     // the persisted choice and reports the error on the row.
@@ -897,6 +910,7 @@ signals:
     void wallpaperChooserAvailableChanged();
     // T276: the default-browser choices/value/error changed.
     void defaultBrowserChanged();
+    void thirdPartyMenuBarItemsChanged();
     // T270: the chosen backup destination's local path.
     void backupDestinationChosen(const QString &path);
     // T270: the last General host write's operation/state/message changed.
@@ -1067,6 +1081,9 @@ private:
     QString m_defaultBrowser;
     QString m_defaultBrowserError;
     bool m_defaultBrowserLoaded = false;
+    // T277: the third-party StatusNotifier items the Menu Bar pane lists.
+    QVariantList m_thirdPartyMenuBarItems;
+    bool m_thirdPartyMenuBarAvailable = false;
     QVariantList m_providerItems;
     QString m_providerStatus;
     QString m_providerDefault;

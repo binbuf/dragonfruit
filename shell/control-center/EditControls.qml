@@ -13,6 +13,7 @@ Item {
     property var panelModules: []
     property var page2: []
     property var page3: []
+    property var pageNames: []
     property int pageCount: 1
     property int activePage: 0
     property var menuBarOnly: []
@@ -20,6 +21,8 @@ Item {
     property bool perDisplay: false
     // The live module states, keyed by id: `{ available, subtitle }`.
     property var states: ({})
+    // The page a rename dialog is editing; -1 when closed.
+    property int renamePageIndex: -1
 
     // ── Outputs ──────────────────────────────────────────────────────────
     signal closed()
@@ -48,6 +51,26 @@ Item {
         if (page === 2)
             return "quickSettings.page3";
         return "quickSettings.modules";
+    }
+
+    function pageName(page) {
+        if (root.pageNames && root.pageNames[page] !== undefined
+                && String(root.pageNames[page]).length > 0)
+            return String(root.pageNames[page]);
+        return qsTr("Page %1").arg(page + 1);
+    }
+
+    function renamePage(page, name) {
+        if (page < 0 || page >= root.pageCount)
+            return;
+        var names = root.pageNames ? Array.from(root.pageNames) : [];
+        while (names.length <= page)
+            names.push("");
+        names[page] = String(name).trim().length > 0
+            ? String(name).trim() : qsTr("Page %1").arg(page + 1);
+        root.pageNames = names;
+        root.quickSettingsWriteRequested("quickSettings.pageNames", names);
+        root.statusMessage = qsTr("Renamed the page to %1").arg(names[page]);
     }
 
     function writePage(page, list) {
@@ -96,6 +119,13 @@ Item {
     function setEnabled(id, enabled) {
         if (id === "edit-controls")
             return;
+        // A module with no provider is not addable. Removing one that is
+        // already present stays possible so an older persisted list can be
+        // cleaned up.
+        if (enabled && !ControlCenterRegistry.isAddable(id)) {
+            root.statusMessage = ControlCenterRegistry.moduleReason(id);
+            return;
+        }
         var page = root.activePage;
         var list = root.pageList(page);
         var at = list.indexOf(id);
@@ -184,8 +214,15 @@ Item {
         if (root.pageCount >= 3)
             return;
         var next = root.pageCount + 1;
+        var names = root.pageNames ? Array.from(root.pageNames) : [];
+        while (names.length < next)
+            names.push("");
+        if (String(names[next - 1]).length === 0)
+            names[next - 1] = qsTr("Page %1").arg(next);
+        root.pageNames = names;
         root.pageCount = next;
         root.activePage = next - 1;
+        root.quickSettingsWriteRequested("quickSettings.pageNames", names);
         root.quickSettingsWriteRequested("quickSettings.pageCount", next);
         root.quickSettingsWriteRequested("quickSettings.activePage", next - 1);
     }
@@ -199,7 +236,15 @@ Item {
             root.writePage(1, root.page3 ? Array.from(root.page3) : []);
         }
         root.writePage(last, []);
+        var names = root.pageNames ? Array.from(root.pageNames) : [];
+        while (names.length <= last)
+            names.push("");
+        names.splice(last, 1);
+        while (names.length > 0 && String(names[names.length - 1]).length === 0)
+            names.pop();
+        root.pageNames = names;
         root.pageCount = last;
+        root.quickSettingsWriteRequested("quickSettings.pageNames", names);
         root.quickSettingsWriteRequested("quickSettings.pageCount", last);
         if (root.activePage >= last) {
             root.activePage = Math.max(0, last - 1);
@@ -219,6 +264,7 @@ Item {
         root.panelModules = ControlCenterRegistry.defaultModules.slice();
         root.page2 = [];
         root.page3 = [];
+        root.pageNames = [];
         root.pageCount = 1;
         root.activePage = 0;
         root.menuBarOnly = [];
@@ -228,11 +274,20 @@ Item {
                             ControlCenterRegistry.defaultModules.slice());
         root.quickSettingsWriteRequested("quickSettings.page2", []);
         root.quickSettingsWriteRequested("quickSettings.page3", []);
+        root.quickSettingsWriteRequested("quickSettings.pageNames", []);
         root.quickSettingsWriteRequested("quickSettings.pageCount", 1);
         root.quickSettingsWriteRequested("quickSettings.activePage", 0);
         root.quickSettingsWriteRequested("quickSettings.menuBarOnly", []);
         root.quickSettingsWriteRequested("quickSettings.spans", []);
         root.quickSettingsWriteRequested("quickSettings.perDisplay", false);
+        // Reset owns the menu-bar marks these modules use. A reset must not
+        // leave a control hidden from the menu bar with no visible reason.
+        for (var i = 0; i < ControlCenterRegistry.menuBarIds.length; ++i) {
+            var key = ControlCenterRegistry.menuBarKey(
+                ControlCenterRegistry.menuBarIds[i]);
+            if (key.length > 0)
+                root.quickSettingsWriteRequested(key, true);
+        }
         root.statusMessage = qsTr("Restored the default Quick Settings");
     }
 
@@ -403,14 +458,17 @@ Item {
                             border.width: root.activePage === index ? 1 : 0
                             border.color: Theme.color.accent
                             Accessible.role: Accessible.PageTab
-                            Accessible.name: qsTr("Page %1").arg(index + 1)
+                            Accessible.name: root.pageName(index)
                             Accessible.selected: root.activePage === index
                             Text {
                                 anchors.centerIn: parent
-                                text: qsTr("Page %1").arg(index + 1)
+                                text: root.pageName(index)
                                 color: root.activePage === index
                                     ? Theme.color.accent : Theme.color.textSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                                width: parent.width - 8
+                                horizontalAlignment: Text.AlignHCenter
                             }
                             TapHandler {
                                 onTapped: root.selectPage(index)
@@ -435,6 +493,17 @@ Item {
                     }
 
                     Button {
+                        objectName: "editControlsRenamePage"
+                        text: qsTr("Rename\u2026")
+                        accessibleName: qsTr("Rename this Quick Settings page")
+                        onClicked: {
+                            root.renamePageIndex = root.activePage;
+                            renameInput.text = root.pageName(root.activePage);
+                            renameDialog.show();
+                        }
+                    }
+
+                    Button {
                         objectName: "editControlsReset"
                         text: qsTr("Reset")
                         accessibleName: qsTr("Restore the default Quick Settings")
@@ -455,12 +524,13 @@ Item {
                 Row {
                     id: perDisplayRow
                     width: parent.width
-                    height: 26
+                    height: 44
                     spacing: Theme.primitive.spacing.sm
 
                     Toggle {
                         objectName: "editControlsPerDisplay"
                         checked: root.perDisplay
+                        enabled: false
                         accessibleName: qsTr("Show Quick Settings on all displays")
                         anchors.verticalCenter: parent.verticalCenter
                         onToggled: (checked) =>
@@ -470,9 +540,13 @@ Item {
 
                     Text {
                         width: parent.width - 60
-                        text: qsTr("Show on all displays (per-display surfaces remain OPEN)")
-                        color: Theme.color.textSecondary
+                        text: qsTr("Show on all displays is disabled: the shell "
+                                   + "ships one Quick Settings surface, and "
+                                   + "per-display panels need a compositor "
+                                   + "overlay per output.")
+                        color: Theme.color.textTertiary
                         font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -573,6 +647,49 @@ Item {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // Rename a page (T277). The dialog is declared inside the surface so it
+    // adopts the window overlay layer; it never lands inside the 245 pt
+    // sidebar or the control list.
+    Dialog {
+        id: renameDialog
+        objectName: "editControlsRenameDialog"
+        title: qsTr("Rename Page")
+        message: qsTr("Choose a name for this Quick Settings page.")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            TextInput {
+                id: renameInput
+                objectName: "editControlsRenameInput"
+                width: parent.width
+                height: Theme.controls.button.height
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: renameDialog.reject()
+            }
+            Button {
+                text: qsTr("Rename")
+                variant: "primary"
+                onClicked: {
+                    root.renamePage(root.renamePageIndex, renameInput.text);
+                    renameDialog.accept();
                 }
             }
         }

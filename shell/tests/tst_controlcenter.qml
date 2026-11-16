@@ -1761,7 +1761,7 @@ lockPolicy: lockPolicyModel(600),
             verify(wifiTile === null || wifiTile.visible === false);
 
             // Restoring the built-in order restores every module.
-            panel.quickSettingsModules = [];
+            panel.quickSettingsModules = ControlCenterRegistry.defaultModules.slice();
             panel.quickSettingsMenuBarOnly = [];
             compare(panel.tiles.length, 13);
             compare(panel.tiles[0].id, "wifi");
@@ -1772,7 +1772,7 @@ lockPolicy: lockPolicyModel(600),
 
         function defaultPanel(props) {
             var merged = props || {};
-            merged.quickSettingsModules = [];
+            merged.quickSettingsModules = ControlCenterRegistry.defaultModules.slice();
             return make(merged);
         }
 
@@ -1852,6 +1852,18 @@ lockPolicy: lockPolicyModel(600),
                 verify(all.indexOf(ControlCenterRegistry.defaultModules[j]) >= 0);
             verify(ControlCenterRegistry.defaultModules.length
                    < all.length);
+        }
+
+        // T277: an explicit empty list is a real state, not the default. The
+        // panel keeps the Edit Controls footer so the user can add controls
+        // back without a hidden reset path.
+        function test_empty_list_renders_only_the_edit_controls_footer() {
+            var panel = make({ quickSettingsModules: [] });
+            compare(panel.tiles.length, 0);
+            compare(panel.gridTiles.length, 0);
+            compare(panel.footerTiles.length, 1);
+            compare(panel.footerTiles[0].id, "edit-controls");
+            compare(panel.footerTiles[0].footer, true);
         }
 
         function test_span_size_math_is_the_measured_grid() {
@@ -2053,6 +2065,48 @@ lockPolicy: lockPolicyModel(600),
             verify(keys.indexOf("quickSettings.modules") >= 0);
             verify(keys.indexOf("quickSettings.spans") >= 0);
             verify(keys.indexOf("quickSettings.perDisplay") >= 0);
+            // T277: Reset also covers page names and the menu-bar marks it
+            // owns; it never leaves a control hidden with no visible reason.
+            verify(keys.indexOf("quickSettings.pageNames") >= 0);
+            verify(keys.indexOf("menu.control.wifi") >= 0);
+            verify(keys.indexOf("menu.control.bluetooth") >= 0);
+            verify(keys.indexOf("menu.control.focus") >= 0);
+        }
+
+        // T277: Edit Controls shares the durable page names the Settings pane
+        // writes, so the two management surfaces cannot show different tabs.
+        function test_edit_controls_page_names_round_trip() {
+            var editor = createTemporaryObject(editComponent, stage, {
+                panelModules: ["wifi"],
+                pageCount: 2,
+                activePage: 1,
+                pageNames: ["Home", "Work"]
+            });
+            verify(editor !== null);
+            compare(editor.pageName(0), "Home");
+            compare(editor.pageName(1), "Work");
+            quickSettingsWriteSpy.target = editor;
+            quickSettingsWriteSpy.clear();
+            editor.renamePage(1, "Office");
+            compare(quickSettingsWriteSpy.count, 1);
+            compare(quickSettingsWriteSpy.signalArguments[0][0],
+                    "quickSettings.pageNames");
+            compare(editor.pageName(1), "Office");
+        }
+
+        // T277: an ownerless module is never added from Edit Controls.
+        function test_edit_controls_does_not_add_an_ownerless_module() {
+            var editor = createTemporaryObject(editComponent, stage, {
+                panelModules: ["wifi"],
+                pageCount: 1,
+                activePage: 0
+            });
+            verify(editor !== null);
+            quickSettingsWriteSpy.target = editor;
+            quickSettingsWriteSpy.clear();
+            editor.setEnabled("airdrop", true);
+            compare(quickSettingsWriteSpy.count, 0);
+            verify(editor.statusMessage.length > 0);
         }
 
         function test_keyboard_and_ax_on_the_grid() {

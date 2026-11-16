@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 33). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 34). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -221,6 +221,12 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("menu.control.clock"), true);
     values.insert(QStringLiteral("menu.control.notifications"), true);
     values.insert(QStringLiteral("menu.control.controlCenter"), true);
+    // Revision 34 (T277): per-control options, tray allowances, Linux rows.
+    values.insert(QStringLiteral("menu.control.focusAlways"), false);
+    values.insert(QStringLiteral("menu.control.volumeWhenActive"), false);
+    values.insert(QStringLiteral("menu.control.workspaces"), true);
+    values.insert(QStringLiteral("menu.overflow"), QStringLiteral("automatic"));
+    values.insert(QStringLiteral("menu.tray.hidden"), QStringList());
     values.insert(QStringLiteral("sound.alertSound"), QStringLiteral("Chime"));
     values.insert(QStringLiteral("sound.playEffectsThrough"), QStringLiteral("output"));
     values.insert(QStringLiteral("sound.alertVolume"), 0.8);
@@ -324,8 +330,9 @@ QVariantMap buildSchemaDefaults()
     // Revision 25 (T235): the measured grid, pages and per-display policy.
     values.insert(QStringLiteral("quickSettings.page2"), QStringList());
     values.insert(QStringLiteral("quickSettings.page3"), QStringList());
-    values.insert(QStringLiteral("quickSettings.pageCount"), 1);
-    values.insert(QStringLiteral("quickSettings.activePage"), 0);
+    values.insert(QStringLiteral("quickSettings.pageNames"), QStringList());
+    values.insert(QStringLiteral("quickSettings.pageCount"), qlonglong(1));
+    values.insert(QStringLiteral("quickSettings.activePage"), qlonglong(0));
     values.insert(QStringLiteral("quickSettings.perDisplay"), false);
     values.insert(QStringLiteral("quickSettings.spans"), QStringList());
     values.insert(QStringLiteral("search.categories"), QStringList({
