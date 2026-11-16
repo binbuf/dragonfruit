@@ -26,6 +26,20 @@ use crate::source::{InputData, InputDeviceData, InputSource};
 /// The libinput control tool (ships with `libinput`).
 pub const LIBINPUT_BIN: &str = "libinput";
 
+/// Whether a keyboard backlight LED is exposed under `/sys/class/leds`
+/// (T280). The compositor owns the actual level; this probe only decides
+/// whether the pane's brightness rows are available or kept with a reason.
+pub fn backlight_available() -> bool {
+    let Ok(entries) = std::fs::read_dir("/sys/class/leds") else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        name.contains("kbd_backlight") && entry.path().join("brightness").is_file()
+    })
+}
+
 impl InputData {
     /// Decode one `libinput list-devices` run into the raw input read.
     ///
@@ -190,19 +204,22 @@ impl InputSource for CommandLibinput {
             .map(|text| controllers_from_proc(&text))
             .unwrap_or_default();
         let dictation = dictation_available();
+        let backlight = backlight_available();
         let Some(text) = libinput else {
-            if controllers.is_empty() && !dictation {
+            if controllers.is_empty() && !dictation && !backlight {
                 return Ok(None);
             }
             return Ok(Some(InputData {
                 controllers,
                 dictation_available: dictation,
+                backlight_available: backlight,
                 ..InputData::default()
             }));
         };
         let mut data = InputData::from_list_devices(&text);
         data.controllers = controllers;
         data.dictation_available = dictation;
+        data.backlight_available = backlight;
         Ok(Some(data))
     }
 

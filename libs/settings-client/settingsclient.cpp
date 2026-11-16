@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 35). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 37). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -151,6 +151,11 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("gestures.enabled"), true);
     values.insert(QStringLiteral("gestures.spaceSwitch"), true);
     values.insert(QStringLiteral("gestures.missionControl"), true);
+    values.insert(QStringLiteral("gestures.pages"), QStringLiteral("two-finger"));
+    values.insert(QStringLiteral("gestures.fullscreen"), QStringLiteral("three-finger"));
+    values.insert(QStringLiteral("gestures.notifications"), false);
+    values.insert(QStringLiteral("gestures.showDesktop"), true);
+    values.insert(QStringLiteral("gestures.appWindows"), true);
     values.insert(QStringLiteral("appearance.colorScheme"), QStringLiteral("auto"));
     values.insert(QStringLiteral("appearance.accent"), QString());
     values.insert(QStringLiteral("appearance.transparency"), 0.5255);
@@ -196,6 +201,26 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("input.sources"), QStringList());
     values.insert(QStringLiteral("input.replacements"), QStringList());
     values.insert(QStringLiteral("input.dictation"), false);
+    values.insert(QStringLiteral("input.dictationLanguage"), QString());
+    values.insert(QStringLiteral("input.dictationMicrophone"), QString());
+    values.insert(QStringLiteral("input.dictationShortcut"), QString());
+    values.insert(QStringLiteral("input.dictationAutoPunctuation"), false);
+    values.insert(QStringLiteral("input.mouse.pointerSpeed"), 0.0);
+    values.insert(QStringLiteral("input.mouse.naturalScroll"), true);
+    values.insert(QStringLiteral("input.mouse.secondaryClick"), QStringLiteral("right"));
+    values.insert(QStringLiteral("input.mouse.smartZoom"), true);
+    values.insert(QStringLiteral("input.mouse.pointerAcceleration"), true);
+    values.insert(QStringLiteral("input.mouse.leftHanded"), false);
+    values.insert(QStringLiteral("input.mouse.scrollSpeed"), 0.0);
+    values.insert(QStringLiteral("input.mouse.scrollMethod"), QStringLiteral("button"));
+    values.insert(QStringLiteral("input.mouse.doubleClickSpeed"), qlonglong(400));
+    values.insert(QStringLiteral("input.trackpad.pointerSpeed"), 0.0);
+    values.insert(QStringLiteral("input.trackpad.naturalScroll"), true);
+    values.insert(QStringLiteral("input.trackpad.secondaryClick"), QStringLiteral("right"));
+    values.insert(QStringLiteral("input.trackpad.clickPressure"), 0.5);
+    values.insert(QStringLiteral("input.trackpad.smartZoom"), true);
+    values.insert(QStringLiteral("input.trackpad.pinchZoom"), true);
+    values.insert(QStringLiteral("input.trackpad.rotate"), true);
     values.insert(QStringLiteral("power.showPercentage"), false);
     values.insert(QStringLiteral("power.historyRange"), qlonglong(0));
     values.insert(QStringLiteral("power.dimOnBattery"), false);
@@ -432,6 +457,8 @@ const char *const kScreenSaverStyle[] = { "clock", "none" };
 const char *const kDesktopItems[] = { "on-desktop", "in-stage" };
 const char *const kTextSize[] = { "small", "default", "large", "extra-large" };
 const char *const kMagnifierMode[] = { "follow-focus", "follow-caret" };
+const char *const kGestureFingerCount[] = { "off", "two-finger", "three-finger" };
+const char *const kGestureFullScreen[] = { "off", "three-finger", "four-finger" };
 
 const Constraint kConstraints[] = {
     { "dock.size", nullptr, 0, true, 0.0, true, 1.0 },
@@ -458,6 +485,16 @@ const Constraint kConstraints[] = {
     { "input.scrollSpeed", nullptr, 0, true, -1.0, true, 1.0 },
     { "input.doubleClickSpeed", nullptr, 0, true, 100.0, true, 900.0 },
     { "input.lookUp", kLookUp, 3, false, 0, false, 0 },
+    { "gestures.pages", kGestureFingerCount, 3, false, 0, false, 0 },
+    { "gestures.fullscreen", kGestureFullScreen, 3, false, 0, false, 0 },
+    { "input.mouse.pointerSpeed", nullptr, 0, true, -1.0, true, 1.0 },
+    { "input.mouse.secondaryClick", kSecondaryClick, 2, false, 0, false, 0 },
+    { "input.mouse.scrollSpeed", nullptr, 0, true, -1.0, true, 1.0 },
+    { "input.mouse.scrollMethod", kScrollMethod, 3, false, 0, false, 0 },
+    { "input.mouse.doubleClickSpeed", nullptr, 0, true, 100.0, true, 900.0 },
+    { "input.trackpad.pointerSpeed", nullptr, 0, true, -1.0, true, 1.0 },
+    { "input.trackpad.secondaryClick", kSecondaryClick, 2, false, 0, false, 0 },
+    { "input.trackpad.clickPressure", nullptr, 0, true, 0.0, true, 1.0 },
     { "power.historyRange", nullptr, 0, true, 0.0, true, 1.0 },
     { "idle.dim", nullptr, 0, true, 0.0, true, 86400.0 },
     { "idle.blank", nullptr, 0, true, 0.0, true, 86400.0 },

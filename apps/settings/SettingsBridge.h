@@ -651,9 +651,12 @@ public:
     Q_INVOKABLE void refreshSound();
     Q_INVOKABLE void setSoundVolume(double volume);
     Q_INVOKABLE void setSoundMute(bool muted);
+    Q_INVOKABLE void setSoundSourceVolume(double volume);
+    Q_INVOKABLE void setSoundSourceMute(bool muted);
     Q_INVOKABLE void setSoundDefaultSink(int id);
     Q_INVOKABLE void setSoundDefaultSource(int id);
     Q_INVOKABLE void playTestSound();
+    Q_INVOKABLE void playAlertSound();
 
     // T-15.4b: the Keyboard/Mouse/Trackpad pane's one inventory seam.
     // `refreshInput` re-reads the bridge host on pane open; the view is
@@ -661,6 +664,9 @@ public:
     // when the host is absent.
     Q_INVOKABLE void refreshInput();
     Q_INVOKABLE void testController(const QString &path);
+    // T280: clear the last controller test report when a dialog opens, so a
+    // fresh test never shows the previous controller's outcome.
+    Q_INVOKABLE void clearControllerTest();
 
     // T-15.6b: the Battery pane's one seam. `refreshBattery` re-reads the
     // bridge host on pane open; `setPowerProfile` selects the active profile by
@@ -777,6 +783,10 @@ public:
     Q_INVOKABLE void loadPrinterOptions(const QString &name);
     Q_INVOKABLE void setPrinterOption(const QString &name, const QString &key,
                                       const QString &value);
+    Q_INVOKABLE void removePrinter(const QString &name);
+    Q_INVOKABLE void printTestPage(const QString &name);
+    Q_INVOKABLE void setPrinterShared(const QString &name, bool shared);
+    Q_INVOKABLE void openScanner(const QString &device);
     // Test seam (`DF_PRINTERS_FIXTURE` only): restore the in-process fixture's
     // initial queues. A no-op on the live client.
     Q_INVOKABLE void resetPrintersFixture();

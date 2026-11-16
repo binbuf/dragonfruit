@@ -167,6 +167,7 @@ void MockInputClient::rebuild()
     view.insert(QStringLiteral("mouseCount"), 1);
     view.insert(QStringLiteral("touchpadCount"), 1);
     view.insert(QStringLiteral("dictationAvailable"), false);
+    view.insert(QStringLiteral("backlightAvailable"), true);
 
     QVariantMap controller;
     controller.insert(QStringLiteral("name"), QStringLiteral("Microsoft X-Box 360 pad"));

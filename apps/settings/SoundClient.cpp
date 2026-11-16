@@ -78,6 +78,16 @@ void DbusSoundClient::setMute(bool muted)
     call(QStringLiteral("SetMute"), {muted});
 }
 
+void DbusSoundClient::setSourceVolume(double volume)
+{
+    call(QStringLiteral("SetSourceVolume"), {volume});
+}
+
+void DbusSoundClient::setSourceMute(bool muted)
+{
+    call(QStringLiteral("SetSourceMute"), {muted});
+}
+
 void DbusSoundClient::setDefaultSink(int id)
 {
     call(QStringLiteral("SetDefaultSink"), {id});
@@ -91,6 +101,11 @@ void DbusSoundClient::setDefaultSource(int id)
 void DbusSoundClient::playTestSound()
 {
     call(QStringLiteral("PlayTestSound"), {});
+}
+
+void DbusSoundClient::playAlertSound()
+{
+    call(QStringLiteral("PlayAlertSound"), {});
 }
 
 void DbusSoundClient::call(const QString &method, const QVariantList &arguments)
@@ -164,6 +179,20 @@ void MockSoundClient::setMute(bool muted)
     rebuild();
 }
 
+void MockSoundClient::setSourceVolume(double volume)
+{
+    m_sourceVolume = qBound(0.0, volume, 1.0);
+    if (m_sourceVolume > 0.0)
+        m_sourceMuted = false;
+    rebuild();
+}
+
+void MockSoundClient::setSourceMute(bool muted)
+{
+    m_sourceMuted = muted;
+    rebuild();
+}
+
 void MockSoundClient::setDefaultSink(int id)
 {
     if (id == 7 || id == 9)
@@ -184,6 +213,12 @@ void MockSoundClient::playTestSound()
     rebuild();
 }
 
+void MockSoundClient::playAlertSound()
+{
+    ++m_alertSounds;
+    rebuild();
+}
+
 void MockSoundClient::rebuild()
 {
     const int percent = m_muted ? 0 : qRound(m_volume * 100.0);
@@ -200,6 +235,10 @@ void MockSoundClient::rebuild()
     view.insert(QStringLiteral("percent"), percent);
     view.insert(QStringLiteral("muted"), m_muted);
     view.insert(QStringLiteral("testSounds"), m_testSounds);
+    view.insert(QStringLiteral("alertSounds"), m_alertSounds);
+    view.insert(QStringLiteral("sourceVolume"), m_sourceVolume);
+    view.insert(QStringLiteral("sourcePercent"), qRound(m_sourceVolume * 100.0));
+    view.insert(QStringLiteral("sourceMuted"), m_sourceMuted);
     view.insert(QStringLiteral("defaultSink"),
                 m_defaultSinkId == 9 ? QStringLiteral("headphones")
                                      : QStringLiteral("speakers"));
@@ -229,10 +268,10 @@ void MockSoundClient::rebuild()
 
     QVariantList sources;
     sources.append(device(20, QStringLiteral("microphone"),
-                          QStringLiteral("Built-in Microphone"), 0.5, false,
-                          m_defaultSourceId == 20));
+                          QStringLiteral("Built-in Microphone"), m_sourceVolume,
+                          m_sourceMuted, m_defaultSourceId == 20));
     sources.append(device(21, QStringLiteral("usb-mic"), QStringLiteral("USB Microphone"),
-                          0.5, false, m_defaultSourceId == 21));
+                          m_sourceVolume, m_sourceMuted, m_defaultSourceId == 21));
     view.insert(QStringLiteral("sources"), sources);
     view.insert(QStringLiteral("sinkCount"), sinks.size());
     view.insert(QStringLiteral("sourceCount"), sources.size());

@@ -39,6 +39,11 @@ Item {
 
     readonly property bool muted: view.muted === true
     readonly property real volume: view.volume !== undefined ? Number(view.volume) : 0.0
+    // T280: the input half has its own level and mute. They never reuse the
+    // sink values: a microphone muted on its own tab must not mute playback.
+    readonly property real sourceVolume:
+        view.sourceVolume !== undefined ? Number(view.sourceVolume) : 0.0
+    readonly property bool sourceMuted: view.sourceMuted === true
 
     // The settingsd-backed Sound Effects / Balance values.
     readonly property string alertSound: Settings.values["sound.alertSound"] || "Chime"
@@ -82,7 +87,12 @@ Item {
     property alias deviceRepeater: deviceRepeater
     property alias outputVolumeSlider: outputVolumeSlider
     property alias muteToggle: muteToggle
+    property alias inputVolumeSlider: inputVolumeSlider
+    property alias inputMuteToggle: inputMuteToggle
+    property alias alertPlayButton: alertPlayButton
     property alias balanceSlider: balanceSlider
+    property alias balanceNote: balanceNote
+    property alias perAppRow: perAppRow
     property alias absenceNote: absenceNote
 
     implicitWidth: 480
@@ -129,6 +139,25 @@ Item {
         Settings.setSoundMute(!root.muted);
     }
 
+    // Moving the level is a separate action from unmuting: the slider always
+    // shows the real level, and a commit while muted unmutes first so the
+    // change is audible (macOS' own behavior).
+    function commitOutputVolume(value) {
+        if (!root.ready)
+            return;
+        if (root.muted)
+            Settings.setSoundMute(false);
+        Settings.setSoundVolume(value);
+    }
+
+    function commitInputVolume(value) {
+        if (!root.ready)
+            return;
+        if (root.sourceMuted)
+            Settings.setSoundSourceMute(false);
+        Settings.setSoundSourceVolume(value);
+    }
+
     // Opening the pane asks the host for a re-read (a no-op when absent).
     Component.onCompleted: Settings.refreshSound()
 
@@ -146,13 +175,27 @@ Item {
             SettingsRow {
                 width: parent.width
                 label: qsTr("Alert sound")
-                controlData: Select {
-                    id: alertSoundSelect
-                    accessibleName: qsTr("Alert sound")
-                    model: root.alertSoundOptions
-                    onActivated: (index) => Settings.set(
-                                    "sound.alertSound",
-                                    root.alertSoundOptions[index].value)
+                controlData: Row {
+                    spacing: Theme.primitive.spacing.sm
+
+                    Select {
+                        id: alertSoundSelect
+                        accessibleName: qsTr("Alert sound")
+                        model: root.alertSoundOptions
+                        onActivated: (index) => Settings.set(
+                                        "sound.alertSound",
+                                        root.alertSoundOptions[index].value)
+                    }
+
+                    Button {
+                        id: alertPlayButton
+                        objectName: "soundAlertPlay"
+                        text: qsTr("Play")
+                        variant: "ghost"
+                        accessibleName: qsTr("Preview the alert sound")
+                        enabled: root.ready
+                        onClicked: Settings.playAlertSound()
+                    }
                 }
             }
 
@@ -372,7 +415,7 @@ Item {
                         accessibleName: qsTr("Output volume")
                         minLabel: qsTr("Low")
                         maxLabel: qsTr("High")
-                        onCommitted: (value) => Settings.setSoundVolume(value)
+                        onCommitted: (value) => root.commitOutputVolume(value)
                     }
                 }
             }
@@ -389,9 +432,59 @@ Item {
                 }
             }
 
+            // Input volume + Mute are input-only, and write the default
+            // source. They are hidden on Output, never shared with it.
+            Item {
+                width: parent.width
+                height: root.outputTab
+                    ? 0 : inputVolumeColumn.implicitHeight + 2 * Theme.primitive.spacing.sm
+                visible: !root.outputTab
+
+                Column {
+                    id: inputVolumeColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.controls.settingsRow.paddingH
+                    anchors.rightMargin: Theme.controls.settingsRow.paddingH
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.primitive.spacing.xxs
+
+                    Text {
+                        text: qsTr("Input volume")
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                    }
+
+                    Slider {
+                        id: inputVolumeSlider
+                        width: parent.width
+                        from: 0.0
+                        to: 1.0
+                        enabled: root.ready
+                        accessibleName: qsTr("Input volume")
+                        minLabel: qsTr("Low")
+                        maxLabel: qsTr("High")
+                        onCommitted: (value) => root.commitInputVolume(value)
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                visible: !root.outputTab
+                label: qsTr("Input mute")
+                controlData: Toggle {
+                    id: inputMuteToggle
+                    text: ""
+                    enabled: root.ready
+                    onToggled: (checked) => Settings.setSoundSourceMute(checked)
+                }
+            }
+
             SettingsRow {
                 objectName: "soundTestRow"
                 width: parent.width
+                visible: root.outputTab
                 label: qsTr("Test")
                 description: qsTr("Play a short test sound through the selected output.")
                 controlData: Button {
@@ -406,8 +499,9 @@ Item {
             // ── Balance ───────────────────────────────────────────────────
             Item {
                 width: parent.width
-                implicitHeight: balanceColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.sm
+                visible: root.outputTab
+                implicitHeight: visible
+                    ? balanceColumn.implicitHeight + 2 * Theme.primitive.spacing.sm : 0
 
                 Column {
                     id: balanceColumn
@@ -434,6 +528,36 @@ Item {
                         maxLabel: qsTr("Right")
                         onCommitted: (value) => Settings.set("sound.balance", value)
                     }
+
+                    Text {
+                        id: balanceNote
+                        objectName: "soundBalanceNote"
+                        width: parent.width
+                        text: qsTr("Stored-only: WirePlumber has no per-channel "
+                                   + "balance control in the control CLI this "
+                                   + "adapter uses.")
+                        color: Theme.color.textTertiary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            SettingsRow {
+                id: perAppRow
+                objectName: "soundPerAppRow"
+                width: parent.width
+                visible: root.outputTab
+                label: qsTr("Per-app volume")
+                description: qsTr("This adapter reads the graph through pw-dump "
+                                  + "and wpctl, which do not expose per-app "
+                                  + "stream levels. Use the distribution's "
+                                  + "PipeWire mixer for per-app volume.")
+                showSeparator: false
+                controlData: Button {
+                    objectName: "soundPerAppButton"
+                    text: qsTr("Not available")
+                    enabled: false
                 }
             }
         }
@@ -495,12 +619,22 @@ Item {
     Binding {
         target: outputVolumeSlider
         property: "value"
-        value: root.muted ? 0.0 : root.volume
+        value: root.volume
     }
     Binding {
         target: muteToggle
         property: "checked"
         value: root.muted
+    }
+    Binding {
+        target: inputVolumeSlider
+        property: "value"
+        value: root.sourceVolume
+    }
+    Binding {
+        target: inputMuteToggle
+        property: "checked"
+        value: root.sourceMuted
     }
     Binding {
         target: balanceSlider

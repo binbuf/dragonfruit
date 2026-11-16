@@ -105,3 +105,33 @@ fn a_failed_write_keeps_the_live_list_and_the_last_snapshot() {
     assert!(slot.visible && slot.enabled);
     assert_eq!(adapter.snapshot().unwrap(), &before);
 }
+
+#[test]
+fn the_input_half_has_its_own_volume_and_mute_writes() {
+    let mut adapter = connected_adapter();
+    let _ = adapter.drain_events();
+
+    assert_eq!(adapter.set_source_volume(0.3), SetOutcome::Applied);
+    adapter.refresh();
+    let snapshot = adapter.snapshot().unwrap();
+    assert!((snapshot.source_volume() - 0.3).abs() < 0.001);
+    assert!(!snapshot.source_muted());
+    // The sink's level is untouched: these are separate devices.
+    assert_eq!(snapshot.volume_percent(), 60);
+
+    assert_eq!(adapter.set_source_mute(true), SetOutcome::Applied);
+    adapter.refresh();
+    assert!(adapter.snapshot().unwrap().source_muted());
+    assert_eq!(adapter.source().source_volume_writes(), 1);
+    assert_eq!(adapter.source().source_mute_writes(), 1);
+    assert_eq!(adapter.source().volume_writes(), 0);
+    assert_eq!(adapter.source().mute_writes(), 0);
+}
+
+#[test]
+fn the_alert_preview_is_one_playback_action() {
+    let mut adapter = connected_adapter();
+    assert_eq!(adapter.play_alert_sound(), SetOutcome::Applied);
+    assert_eq!(adapter.source().alert_sounds(), 1);
+    assert_eq!(adapter.source().test_sounds(), 0);
+}

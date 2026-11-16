@@ -39,6 +39,11 @@ freezes the v1 key set.
 | `gestures.enabled` | b | true | | settingsd | compositor/input | Master switch for trackpad gesture recognition. |
 | `gestures.spaceSwitch` | b | true | | settingsd | compositor/input | Horizontal swipe switches Spaces. |
 | `gestures.missionControl` | b | true | | settingsd | compositor/input | Vertical swipe opens Mission Control. |
+| `gestures.pages` | s | `two-finger` | `off`/`two-finger`/`three-finger` | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Finger count for the page-swipe gesture; off disables it (T280). |
+| `gestures.fullscreen` | s | `three-finger` | `off`/`three-finger`/`four-finger` | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Finger count for the full-screen-app swipe; off disables it (T280). |
+| `gestures.notifications` | b | false | | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Two-finger swipe from the right edge opens Notification Center (T280). |
+| `gestures.showDesktop` | b | true | | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Spread the thumb and three fingers to reveal the desktop (T280). |
+| `gestures.appWindows` | b | true | | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Swipe down with three fingers to show the app's windows (T280). |
 | `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. The Control Center dark-mode tile writes `dark`/`light` only (T-11.3b). |
 | `appearance.accent` | s | `` (empty) | `#rrggbb` or empty | settingsd | shell/design-system Theme | Accent color override (`#rrggbb`); empty uses the token default. |
 | `appearance.transparency` | d | 0.5255 | 0.0–1.0 | apps/settings | shell/design-system Glass, compositor/material | Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255 and is the default for the shipped replacement glass (ADR 0234). |
@@ -85,6 +90,26 @@ freezes the v1 key set.
 | `input.sources` | as | `[]` | | apps/settings | shell/compositor keymap | Ordered keyboard layout ids; the first is the active source. Empty follows the host keymap. |
 | `input.replacements` | as | `[]` | | apps/settings | input method (T253) | Text replacements as `from\tto` entries for the session input method. |
 | `input.dictation` | b | false | | apps/settings | speech-to-text delegate (when installed) | Enable dictation when a speech-to-text service is installed. |
+| `input.dictationLanguage` | s | `` (empty) | | apps/settings | speech-to-text delegate (T253) | BCP-47 language id for dictation; empty follows the session locale (T280). |
+| `input.dictationMicrophone` | s | `` (empty) | | apps/settings | speech-to-text delegate (T253) | Input device name for dictation; empty uses the default source (T280). |
+| `input.dictationShortcut` | s | `` (empty) | | apps/settings | shortcut engine (T245a) | Keyboard shortcut that starts dictation; empty uses the delegate default (T280). |
+| `input.dictationAutoPunctuation` | b | false | | apps/settings | speech-to-text delegate (T253) | Let the dictation delegate insert punctuation automatically (T280). |
+| `input.mouse.pointerSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | stored-only: compositor/input mouse pointer acceleration bridge pending | Mouse tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral (T280). |
+| `input.mouse.naturalScroll` | b | true | | apps/settings | stored-only: compositor/input mouse scrolling bridge pending | Natural scrolling for the mouse wheel (T280). |
+| `input.mouse.secondaryClick` | s | `right` | `right`/`left` | apps/settings | stored-only: compositor/input mouse buttons bridge pending | Which mouse button a secondary click uses (T280). |
+| `input.mouse.smartZoom` | b | true | | apps/settings | stored-only: compositor/input mouse gestures bridge pending | Double-click with one finger to smart-zoom the content under the pointer (T280). |
+| `input.mouse.pointerAcceleration` | b | true | | apps/settings | stored-only: compositor/input mouse acceleration bridge pending | Apply pointer acceleration to mouse motion; off uses a flat curve (T280). |
+| `input.mouse.leftHanded` | b | false | | apps/settings | stored-only: compositor/input mouse buttons bridge pending | Swap the mouse's primary and secondary buttons (T280). |
+| `input.mouse.scrollSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | stored-only: compositor/input mouse scrolling bridge pending | Mouse wheel scroll speed, -1.0 (slow) to 1.0 (fast) (T280). |
+| `input.mouse.scrollMethod` | s | `button` | `two-finger`/`edge`/`button` | apps/settings | stored-only: compositor/input mouse scrolling bridge pending | How the mouse scrolls; a wheel reports button scrolling (T280). |
+| `input.mouse.doubleClickSpeed` | d | 400.0 | 100–900 ms | apps/settings | stored-only: compositor/input mouse double-click interval bridge pending | Maximum milliseconds between two mouse clicks for a double-click (T280). |
+| `input.trackpad.pointerSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | stored-only: compositor/input trackpad pointer acceleration bridge pending | Trackpad tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral (T280). |
+| `input.trackpad.naturalScroll` | b | true | | apps/settings | stored-only: compositor/input trackpad scrolling bridge pending | Natural scrolling for the trackpad (T280). |
+| `input.trackpad.secondaryClick` | s | `right` | `right`/`left` | apps/settings | stored-only: compositor/input trackpad buttons bridge pending | Which button a trackpad secondary click uses (T280). |
+| `input.trackpad.clickPressure` | d | 0.5 | 0.0–1.0 | apps/settings | stored-only: compositor/input trackpad pressure bridge pending | Trackpad click pressure, 0.0 (light) to 1.0 (firm) (T280). |
+| `input.trackpad.smartZoom` | b | true | | apps/settings | stored-only: compositor/input trackpad gestures bridge pending | Double-tap with two fingers to smart-zoom the content under the pointer (T280). |
+| `input.trackpad.pinchZoom` | b | true | | apps/settings | stored-only: compositor/input trackpad gestures bridge pending | Pinch with two fingers to zoom (T280). |
+| `input.trackpad.rotate` | b | true | | apps/settings | stored-only: compositor/input trackpad gestures bridge pending | Rotate with two fingers to rotate the content (T280). |
 | `power.showPercentage` | b | false | | apps/settings | shell/MenuBar battery item | Show the battery percentage beside the menu-bar glyph. |
 | `power.historyRange` | x | 0 | 0–1 | apps/settings | apps/settings Battery pane | Battery usage range: 0 = last 24 hours, 1 = last 10 days. |
 | `power.dimOnBattery` | b | false | | apps/settings | shell/display forwarder | Reduce the display brightness while the machine runs on battery. |

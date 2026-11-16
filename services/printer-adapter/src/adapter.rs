@@ -122,6 +122,27 @@ impl<S: PrintSource> PrinterAdapter<S> {
         self.source.set_printer_option(name, key, value)
     }
 
+    /// Remove a queue (T280). One explicit write.
+    pub fn remove_printer(&mut self, name: &str) -> PrintOutcome {
+        self.source.remove_printer(name)
+    }
+
+    /// Print a test page through `name` (T280). One explicit write.
+    pub fn print_test_page(&mut self, name: &str) -> PrintOutcome {
+        self.source.print_test_page(name)
+    }
+
+    /// Share or unshare a queue (T280). One explicit write.
+    pub fn set_printer_shared(&mut self, name: &str, shared: bool) -> PrintOutcome {
+        self.source.set_printer_shared(name, shared)
+    }
+
+    /// Open the host scanner application on `device` (T280). A delegated
+    /// action; absence means no scanner application is installed.
+    pub fn open_scanner(&mut self, device: &str) -> PrintOutcome {
+        self.source.open_scanner(device)
+    }
+
     /// The live snapshot, when at least one half of the host stack answered.
     pub fn snapshot(&self) -> Option<&PrintSnapshot> {
         self.state.snapshot()
@@ -326,6 +347,24 @@ mod tests {
         assert_eq!(adapter.source().accept_sets(), 1);
         assert_eq!(adapter.source().job_cancels(), 1);
         assert_eq!(adapter.source().writes(), 3);
+    }
+
+    #[test]
+    fn the_t280_actions_delegate_to_the_source() {
+        let mut adapter = PrinterAdapter::new(MockPrint::present(data()));
+        adapter.refresh();
+
+        assert!(adapter.print_test_page("Canon_MF230").is_applied());
+        assert!(adapter
+            .set_printer_shared("Canon_MF230", true)
+            .is_applied());
+        assert!(adapter.open_scanner("epson2:net:127.0.0.1").is_applied());
+        assert!(adapter.remove_printer("Canon_MF230").is_applied());
+
+        assert_eq!(adapter.source().test_pages(), 1);
+        assert_eq!(adapter.source().shares(), 1);
+        assert_eq!(adapter.source().scanner_opens(), 1);
+        assert_eq!(adapter.source().removes(), 1);
     }
 
     #[test]

@@ -302,6 +302,19 @@ impl AudioInterface {
         lock(&self.host).set_mute(muted).to_string()
     }
 
+    /// Set the default source's linear volume (0..=1) (T280). Returns the
+    /// JSON report.
+    fn set_source_volume(&self, volume: f64) -> String {
+        lock(&self.host)
+            .set_source_volume(volume as f32)
+            .to_string()
+    }
+
+    /// Set the default source's mute state (T280). Returns the JSON report.
+    fn set_source_mute(&self, muted: bool) -> String {
+        lock(&self.host).set_source_mute(muted).to_string()
+    }
+
     /// Flip the default sink's mute state. Returns the JSON report.
     fn toggle_mute(&self) -> String {
         lock(&self.host).toggle_mute().to_string()
@@ -323,6 +336,11 @@ impl AudioInterface {
     /// JSON report.
     fn play_test_sound(&self) -> String {
         lock(&self.host).play_test_sound().to_string()
+    }
+
+    /// Preview the chosen alert sound (T280). Returns the JSON report.
+    fn play_alert_sound(&self) -> String {
+        lock(&self.host).play_alert_sound().to_string()
     }
 }
 
@@ -878,6 +896,29 @@ impl PrintersInterface {
         lock_printers(&self.host)
             .set_printer_option(name, key, value)
             .to_string()
+    }
+
+    /// Remove a queue (T280). Returns the JSON report.
+    fn remove_printer(&self, name: &str) -> String {
+        lock_printers(&self.host).remove_printer(name).to_string()
+    }
+
+    /// Print a test page (T280). Returns the JSON report.
+    fn print_test_page(&self, name: &str) -> String {
+        lock_printers(&self.host).print_test_page(name).to_string()
+    }
+
+    /// Share or unshare a queue (T280). Returns the JSON report.
+    fn set_printer_shared(&self, name: &str, shared: bool) -> String {
+        lock_printers(&self.host)
+            .set_printer_shared(name, shared)
+            .to_string()
+    }
+
+    /// Open the host scanner application on a SANE device (T280). Returns the
+    /// JSON report.
+    fn open_scanner(&self, device: &str) -> String {
+        lock_printers(&self.host).open_scanner(device).to_string()
     }
 }
 

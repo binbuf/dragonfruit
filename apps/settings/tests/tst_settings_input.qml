@@ -48,6 +48,31 @@ Item {
             Settings.set("gestures.enabled", true);
             Settings.set("gestures.spaceSwitch", true);
             Settings.set("gestures.missionControl", true);
+            Settings.set("gestures.pages", "two-finger");
+            Settings.set("gestures.fullscreen", "three-finger");
+            Settings.set("gestures.notifications", false);
+            Settings.set("gestures.showDesktop", true);
+            Settings.set("gestures.appWindows", true);
+            Settings.set("input.dictationLanguage", "");
+            Settings.set("input.dictationMicrophone", "");
+            Settings.set("input.dictationShortcut", "");
+            Settings.set("input.dictationAutoPunctuation", false);
+            Settings.set("input.mouse.pointerSpeed", 0.0);
+            Settings.set("input.mouse.naturalScroll", true);
+            Settings.set("input.mouse.secondaryClick", "right");
+            Settings.set("input.mouse.smartZoom", true);
+            Settings.set("input.mouse.pointerAcceleration", true);
+            Settings.set("input.mouse.leftHanded", false);
+            Settings.set("input.mouse.scrollSpeed", 0.0);
+            Settings.set("input.mouse.scrollMethod", "button");
+            Settings.set("input.mouse.doubleClickSpeed", 400);
+            Settings.set("input.trackpad.pointerSpeed", 0.0);
+            Settings.set("input.trackpad.naturalScroll", true);
+            Settings.set("input.trackpad.secondaryClick", "right");
+            Settings.set("input.trackpad.clickPressure", 0.5);
+            Settings.set("input.trackpad.smartZoom", true);
+            Settings.set("input.trackpad.pinchZoom", true);
+            Settings.set("input.trackpad.rotate", true);
         }
 
         function make(paneId) {
@@ -120,6 +145,41 @@ Item {
             compare(Settings.values["input.emojiKeyAction"], "none");
         }
 
+        function test_keyboard_shortcuts_and_dictation_options() {
+            var shell = make("keyboard");
+            var pane = paneOf(shell);
+
+            verify(pane.shortcutsRow.visible);
+            pane.shortcutsDialog.show();
+            waitForRendering(stage);
+            verify(pane.shortcutsDialog.open);
+            pane.shortcutsDialog.accept();
+            wait(250);
+
+            pane.dictationOptionsDialog.show();
+            waitForRendering(stage);
+            pane.dictationLanguageInput.text = "de-DE";
+            pane.dictationLanguageInput.editingFinished();
+            compare(Settings.values["input.dictationLanguage"], "de-DE");
+            pane.dictationAutoPunctuationToggle.toggle();
+            compare(Settings.values["input.dictationAutoPunctuation"], true);
+            pane.dictationOptionsDialog.accept();
+            wait(250);
+        }
+
+        function test_keyboard_input_sources_reorder() {
+            var shell = make("keyboard");
+            var pane = paneOf(shell);
+            Settings.setList("input.sources", ["us", "de", "fr"]);
+            pane.moveSource("fr", -1);
+            compare(Settings.values["input.sources"][1], "fr");
+            pane.moveSource("fr", -1);
+            compare(Settings.values["input.sources"][0], "fr");
+            compare(Settings.values["input.sources"][1], "us");
+            pane.removeSource("de");
+            compare(Settings.values["input.sources"].length, 2);
+        }
+
         function test_keyboard_input_sources_replacements_and_dictation() {
             var shell = make("keyboard");
             var pane = paneOf(shell);
@@ -152,34 +212,59 @@ Item {
 
         // -- Mouse ------------------------------------------------------------
 
-        function test_mouse_pane_round_trips_the_pointer_rows() {
+        function test_mouse_pane_round_trips_the_mouse_specific_rows() {
             var shell = make("mouse");
             var pane = paneOf(shell);
             verify(pane.mouse, "the body is in its mouse section");
 
             pane.pointerSpeedSlider.setValue(0.75);
             pane.pointerSpeedSlider.commit();
-            verify(Math.abs(Settings.values["input.pointerSpeed"] - 0.75) < 0.001);
+            verify(Math.abs(Settings.values["input.mouse.pointerSpeed"] - 0.75) < 0.001);
+            // The trackpad's own key and the legacy shared key stay put.
+            verify(Math.abs(Settings.values["input.trackpad.pointerSpeed"]) < 0.001);
+            verify(Math.abs(Settings.values["input.pointerSpeed"]) < 0.001);
 
             pane.naturalScrollToggle.toggle();
-            compare(Settings.values["input.naturalScroll"], false);
+            compare(Settings.values["input.mouse.naturalScroll"], false);
+            compare(Settings.values["input.trackpad.naturalScroll"], true);
 
             pane.leftHandedToggle.toggle();
-            compare(Settings.values["input.leftHanded"], true);
+            compare(Settings.values["input.mouse.leftHanded"], true);
 
             pane.scrollMethodSelect.activateIndex(1); // Edge Scrolling
-            compare(Settings.values["input.scrollMethod"], "edge");
+            compare(Settings.values["input.mouse.scrollMethod"], "edge");
 
             pane.secondaryClickSelect.activateIndex(1); // Left
-            compare(Settings.values["input.secondaryClick"], "left");
+            compare(Settings.values["input.mouse.secondaryClick"], "left");
 
             pane.scrollSpeedSlider.setValue(-0.3);
             pane.scrollSpeedSlider.commit();
-            verify(Math.abs(Settings.values["input.scrollSpeed"] - (-0.3)) < 0.001);
+            verify(Math.abs(Settings.values["input.mouse.scrollSpeed"] - (-0.3)) < 0.001);
 
             pane.doubleClickSlider.setValue(1.0);
             pane.doubleClickSlider.commit();
-            compare(Settings.values["input.doubleClickSpeed"], 900);
+            compare(Settings.values["input.mouse.doubleClickSpeed"], 900);
+
+            pane.mouseSmartZoomToggle.toggle();
+            compare(Settings.values["input.mouse.smartZoom"], false);
+            pane.pointerAccelerationToggle.toggle();
+            compare(Settings.values["input.mouse.pointerAcceleration"], false);
+        }
+
+        function test_mouse_more_gestures_round_trip() {
+            var shell = make("mouse");
+            var pane = paneOf(shell);
+
+            pane.mouseGesturePagesSelect.activateIndex(2);
+            compare(Settings.values["gestures.pages"], "three-finger");
+            pane.mouseGestureFullScreenSelect.activateIndex(2);
+            compare(Settings.values["gestures.fullscreen"], "four-finger");
+            pane.mouseGestureNotificationsToggle.toggle();
+            compare(Settings.values["gestures.notifications"], true);
+            pane.mouseGestureAppWindowsToggle.toggle();
+            compare(Settings.values["gestures.appWindows"], false);
+            pane.mouseGestureShowDesktopToggle.toggle();
+            compare(Settings.values["gestures.showDesktop"], false);
         }
 
         // -- Trackpad ---------------------------------------------------------
@@ -207,7 +292,12 @@ Item {
 
             pane.trackpadSpeed.setValue(-0.5);
             pane.trackpadSpeed.commit();
-            verify(Math.abs(Settings.values["input.pointerSpeed"] - (-0.5)) < 0.001);
+            verify(Math.abs(Settings.values["input.trackpad.pointerSpeed"] - (-0.5)) < 0.001);
+            verify(Math.abs(Settings.values["input.mouse.pointerSpeed"]) < 0.001);
+
+            pane.trackpadClickPressureSlider.setValue(0.8);
+            pane.trackpadClickPressureSlider.commit();
+            verify(Math.abs(Settings.values["input.trackpad.clickPressure"] - 0.8) < 0.001);
 
             pane.tapToClickToggle.toggle();
             compare(Settings.values["input.tapToClick"], false);
@@ -220,22 +310,50 @@ Item {
             compare(Settings.values["gestures.missionControl"], false);
 
             pane.trackpadSecondarySelect.activateIndex(1);
-            compare(Settings.values["input.secondaryClick"], "left");
+            compare(Settings.values["input.trackpad.secondaryClick"], "left");
             pane.lookUpSelect.activateIndex(2); // Off
             compare(Settings.values["input.lookUp"], "off");
             pane.hapticsToggle.toggle();
             compare(Settings.values["input.haptics"], false);
         }
 
+        function test_trackpad_scroll_zoom_and_more_gestures_round_trip() {
+            var shell = make("trackpad");
+            var pane = paneOf(shell);
+            pane.tabIndex = 1;
+            waitForRendering(stage);
+            pane.trackpadNaturalToggle.toggle();
+            compare(Settings.values["input.trackpad.naturalScroll"], false);
+            pane.pinchZoomToggle.toggle();
+            compare(Settings.values["input.trackpad.pinchZoom"], false);
+            pane.trackpadSmartZoomToggle.toggle();
+            compare(Settings.values["input.trackpad.smartZoom"], false);
+            pane.rotateToggle.toggle();
+            compare(Settings.values["input.trackpad.rotate"], false);
+
+            pane.tabIndex = 2;
+            waitForRendering(stage);
+            pane.gesturePagesSelect.activateIndex(2);
+            compare(Settings.values["gestures.pages"], "three-finger");
+            pane.gestureFullScreenSelect.activateIndex(2);
+            compare(Settings.values["gestures.fullscreen"], "four-finger");
+            pane.gestureNotificationsToggle.toggle();
+            compare(Settings.values["gestures.notifications"], true);
+            pane.gestureAppWindowsToggle.toggle();
+            compare(Settings.values["gestures.appWindows"], false);
+            pane.gestureShowDesktopToggle.toggle();
+            compare(Settings.values["gestures.showDesktop"], false);
+        }
+
         function test_external_change_converges_into_the_pane() {
             var shell = make("mouse");
             var pane = paneOf(shell);
-            Settings.set("input.pointerSpeed", 0.25);
-            verify(Math.abs(pane.pointerSpeed - 0.25) < 0.001);
-            Settings.set("input.naturalScroll", false);
+            Settings.set("input.mouse.pointerSpeed", 0.25);
+            verify(Math.abs(pane.mousePointerSpeed - 0.25) < 0.001);
+            Settings.set("input.mouse.naturalScroll", false);
             compare(pane.naturalScrollToggle.checked, false);
-            Settings.set("input.scrollMethod", "button");
-            compare(pane.scrollMethodSelect.currentIndex, 2);
+            Settings.set("input.mouse.scrollMethod", "two-finger");
+            compare(pane.scrollMethodSelect.currentIndex, 0);
         }
     }
 }

@@ -106,6 +106,23 @@ pub trait AudioSource {
     /// Set the default sink's mute state. The one mute write.
     fn set_mute(&mut self, muted: bool) -> SetOutcome;
 
+    /// Set the default source's linear volume (0..=1) (T280). The input half
+    /// of the pane uses its own write, never the sink one.
+    fn set_source_volume(&mut self, _volume: f32) -> SetOutcome {
+        SetOutcome::Absent
+    }
+
+    /// Set the default source's mute state (T280).
+    fn set_source_mute(&mut self, _muted: bool) -> SetOutcome {
+        SetOutcome::Absent
+    }
+
+    /// Preview the chosen alert sound (T280). A playback action, not a
+    /// routing change; the default reuses the test-sound path.
+    fn play_alert_sound(&mut self) -> SetOutcome {
+        self.play_test_sound()
+    }
+
     /// Route playback to the sink with this PipeWire node id: the output
     /// device switch (`wpctl set-default <id>`). One explicit write.
     fn set_default_sink(&mut self, id: u32) -> SetOutcome;
@@ -139,7 +156,10 @@ pub struct MockAudio {
     mute_writes: u32,
     default_sink_writes: u32,
     default_source_writes: u32,
+    source_volume_writes: u32,
+    source_mute_writes: u32,
     test_sounds: u32,
+    alert_sounds: u32,
 }
 
 impl MockAudio {
@@ -155,7 +175,10 @@ impl MockAudio {
             mute_writes: 0,
             default_sink_writes: 0,
             default_source_writes: 0,
+            source_volume_writes: 0,
+            source_mute_writes: 0,
             test_sounds: 0,
+            alert_sounds: 0,
         }
     }
 
@@ -171,7 +194,10 @@ impl MockAudio {
             mute_writes: 0,
             default_sink_writes: 0,
             default_source_writes: 0,
+            source_volume_writes: 0,
+            source_mute_writes: 0,
             test_sounds: 0,
+            alert_sounds: 0,
         }
     }
 
@@ -187,7 +213,10 @@ impl MockAudio {
             mute_writes: 0,
             default_sink_writes: 0,
             default_source_writes: 0,
+            source_volume_writes: 0,
+            source_mute_writes: 0,
             test_sounds: 0,
+            alert_sounds: 0,
         }
     }
 
@@ -250,9 +279,24 @@ impl MockAudio {
         self.default_source_writes
     }
 
+    /// How many input volume writes the source has served (T280).
+    pub fn source_volume_writes(&self) -> u32 {
+        self.source_volume_writes
+    }
+
+    /// How many input mute writes the source has served (T280).
+    pub fn source_mute_writes(&self) -> u32 {
+        self.source_mute_writes
+    }
+
     /// The number of test sounds the source played (T229).
     pub fn test_sounds(&self) -> u32 {
         self.test_sounds
+    }
+
+    /// The number of alert previews the source played (T280).
+    pub fn alert_sounds(&self) -> u32 {
+        self.alert_sounds
     }
 
     /// The simulated default sink's current linear volume, after any writes.
@@ -280,6 +324,11 @@ impl MockAudio {
         self.default_source().map(|source| source.volume)
     }
 
+    /// The simulated default source's current mute state, after any writes.
+    pub fn source_muted(&self) -> Option<bool> {
+        self.default_source().map(|source| source.muted)
+    }
+
     fn default_sink(&self) -> Option<&SinkData> {
         let data = self.data.as_ref()?;
         let name = data.default_sink.as_deref()?;
@@ -296,6 +345,12 @@ impl MockAudio {
         let data = self.data.as_ref()?;
         let name = data.default_source.as_deref()?;
         data.sources.iter().find(|source| source.name == name)
+    }
+
+    fn default_source_mut(&mut self) -> Option<&mut SourceData> {
+        let data = self.data.as_mut()?;
+        let name = data.default_source.clone()?;
+        data.sources.iter_mut().find(|source| source.name == name)
     }
 
     /// A read/write failure, or absence, in that order.
@@ -343,6 +398,31 @@ impl AudioSource for MockAudio {
         }
         if let Some(sink) = self.default_sink_mut() {
             sink.muted = muted;
+        }
+        SetOutcome::Applied
+    }
+
+    fn set_source_volume(&mut self, volume: f32) -> SetOutcome {
+        self.source_volume_writes += 1;
+        if let Some(outcome) = self.write_outcome() {
+            return outcome;
+        }
+        if let Some(source) = self.default_source_mut() {
+            source.volume = volume.clamp(0.0, 1.0);
+            if source.volume > 0.0 {
+                source.muted = false;
+            }
+        }
+        SetOutcome::Applied
+    }
+
+    fn set_source_mute(&mut self, muted: bool) -> SetOutcome {
+        self.source_mute_writes += 1;
+        if let Some(outcome) = self.write_outcome() {
+            return outcome;
+        }
+        if let Some(source) = self.default_source_mut() {
+            source.muted = muted;
         }
         SetOutcome::Applied
     }
@@ -398,6 +478,14 @@ impl AudioSource for MockAudio {
             return outcome;
         }
         self.test_sounds += 1;
+        SetOutcome::Applied
+    }
+
+    fn play_alert_sound(&mut self) -> SetOutcome {
+        if let Some(outcome) = self.write_outcome() {
+            return outcome;
+        }
+        self.alert_sounds += 1;
         SetOutcome::Applied
     }
 }

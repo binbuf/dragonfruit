@@ -39,6 +39,9 @@ Item {
     property alias testDialog: testDialog
     property alias mappingDialog: mappingDialog
     property alias mappingText: mappingText
+    property alias testCloseButton: testCloseButton
+    property alias mappingCloseButton: mappingCloseButton
+    property alias testOutcomeLabel: testOutcomeLabel
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -50,6 +53,9 @@ Item {
     function openTest(controller) {
         root.selectedName = controller.name;
         root.selectedPath = controller.path;
+        // A fresh dialog never shows the previous controller's outcome while
+        // the new read is in flight.
+        Settings.clearControllerTest();
         Settings.testController(controller.path);
         root.testDialog.show();
     }
@@ -205,12 +211,14 @@ Item {
         title: root.selectedName.length > 0
             ? qsTr("Test %1").arg(root.selectedName) : qsTr("Test Controller")
         dismissible: true
+        showCloseAction: false
 
         contentData: Column {
             width: parent.width
             spacing: Theme.primitive.spacing.sm
 
             Text {
+                id: testOutcomeLabel
                 objectName: "controllerTestOutcome"
                 width: parent.width
                 text: root.outcomeLabel(root.testOutcome)
@@ -244,6 +252,26 @@ Item {
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
             }
+
+            Text {
+                width: parent.width
+                text: qsTr("Rumble is not implemented in this build; the "
+                           + "controller's force-feedback path is a follow-up.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                id: testCloseButton
+                objectName: "controllerTestClose"
+                text: qsTr("Close")
+                variant: "primary"
+                onClicked: testDialog.accept()
+            }
         }
     }
 
@@ -253,6 +281,7 @@ Item {
         title: root.selectedName.length > 0
             ? qsTr("Mapping — %1").arg(root.selectedName) : qsTr("Mapping")
         dismissible: true
+        showCloseAction: false
 
         contentData: Column {
             width: parent.width
@@ -276,6 +305,17 @@ Item {
                 color: Theme.color.textTertiary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                id: mappingCloseButton
+                objectName: "controllerMappingClose"
+                text: qsTr("Close")
+                variant: "primary"
+                onClicked: mappingDialog.accept()
             }
         }
     }

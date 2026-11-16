@@ -307,6 +307,19 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
         write_report(&outcome)
     }
 
+    /// Set the default source's linear volume (T280). The input half's one
+    /// volume write; the sink level is untouched.
+    pub fn set_source_volume(&mut self, volume: f32) -> Value {
+        let outcome = self.audio.set_source_volume(volume);
+        write_report(&outcome)
+    }
+
+    /// Set the default source's mute state (T280).
+    pub fn set_source_mute(&mut self, muted: bool) -> Value {
+        let outcome = self.audio.set_source_mute(muted);
+        write_report(&outcome)
+    }
+
     /// Route output to the sink with this PipeWire node id (T-15.3b): the
     /// output-device switch the Sound pane raises. One explicit write.
     pub fn set_default_sink(&mut self, id: u32) -> Value {
@@ -325,6 +338,12 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
     /// explicit playback action; it changes no routing or level.
     pub fn play_test_sound(&mut self) -> Value {
         let outcome = self.audio.play_test_sound();
+        write_report(&outcome)
+    }
+
+    /// Preview the chosen alert sound (T280). One explicit playback action.
+    pub fn play_alert_sound(&mut self) -> Value {
+        let outcome = self.audio.play_alert_sound();
         write_report(&outcome)
     }
 
@@ -554,6 +573,8 @@ pub fn audio_view<A: AudioSource>(adapter: &AudioAdapter<A>) -> Value {
         "volume": snapshot.volume(),
         "percent": snapshot.volume_percent(),
         "muted": snapshot.muted(),
+        "sourceVolume": snapshot.source_volume(),
+        "sourceMuted": snapshot.source_muted(),
         "defaultSink": snapshot.default_sink,
         "defaultSource": snapshot.default_source,
         "sinkCount": snapshot.sink_count(),
@@ -652,9 +673,7 @@ fn history_view(history: &BatteryHistory) -> Value {
     let samples: Vec<Value> = history
         .window(now, MAX_RANGE_SECS)
         .into_iter()
-        .map(|(seconds_ago, percent)| {
-            json!({ "secondsAgo": seconds_ago, "percent": percent })
-        })
+        .map(|(seconds_ago, percent)| json!({ "secondsAgo": seconds_ago, "percent": percent }))
         .collect();
     json!({
         "state": if samples.is_empty() { "empty" } else { "available" },

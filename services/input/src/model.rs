@@ -297,6 +297,8 @@ pub struct InputSnapshot {
     pub controllers: Vec<Controller>,
     /// Whether a speech-to-text command is installed (T229).
     pub dictation_available: bool,
+    /// Whether the host exposes a keyboard backlight (T280).
+    pub backlight_available: bool,
 }
 
 impl InputSnapshot {
@@ -322,6 +324,7 @@ impl InputSnapshot {
             devices,
             controllers,
             dictation_available: data.dictation_available,
+            backlight_available: data.backlight_available,
         }
     }
 
@@ -398,6 +401,11 @@ impl InputSnapshot {
     /// Whether a speech-to-text command is installed (T229).
     pub fn dictation_available(&self) -> bool {
         self.dictation_available
+    }
+
+    /// Whether the host exposes a keyboard backlight (T280).
+    pub fn backlight_available(&self) -> bool {
+        self.backlight_available
     }
 
     /// The devices that appeared or disappeared relative to `previous`,
@@ -515,6 +523,14 @@ mod tests {
         assert_eq!(snapshot.glyph(), "input");
         assert_eq!(snapshot.controller_count(), 0);
         assert!(!snapshot.dictation_available());
+        assert!(!snapshot.backlight_available());
+    }
+
+    #[test]
+    fn the_keyboard_backlight_probe_is_carried_through() {
+        let mut raw = InputData::default();
+        raw.backlight_available = true;
+        assert!(InputSnapshot::from_data(&raw).backlight_available());
     }
 
     #[test]

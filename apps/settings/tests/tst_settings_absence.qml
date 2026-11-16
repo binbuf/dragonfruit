@@ -485,9 +485,9 @@ Item {
 
             pane.pointerSpeedSlider.setValue(0.5);
             pane.pointerSpeedSlider.commit();
-            verify(Math.abs(Settings.values["input.pointerSpeed"] - 0.5) < 0.001);
+            verify(Math.abs(Settings.values["input.mouse.pointerSpeed"] - 0.5) < 0.001);
             pane.naturalScrollToggle.toggle();
-            compare(Settings.values["input.naturalScroll"], false);
+            compare(Settings.values["input.mouse.naturalScroll"], false);
         }
 
         // Mission Control is compositor-native: the pane's rows are settingsd

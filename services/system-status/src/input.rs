@@ -120,6 +120,7 @@ pub fn input_snapshot_view(snapshot: &InputSnapshot) -> Value {
             .collect::<Vec<Value>>(),
         "controllerCount": snapshot.controller_count(),
         "dictationAvailable": snapshot.dictation_available(),
+        "backlightAvailable": snapshot.backlight_available(),
         "devices": devices,
     })
 }

@@ -32,6 +32,10 @@ pub struct InputData {
     /// Whether a speech-to-text command is installed (T229). Dictation is
     /// delegated; this only enables the pane's row.
     pub dictation_available: bool,
+    /// Whether the host exposes a keyboard backlight (T280). A missing
+    /// backlight disables the brightness rows with a reason; it never hides
+    /// the stored preference.
+    pub backlight_available: bool,
 }
 
 /// One libinput device, flattened from one `Device:` record.
@@ -179,6 +183,13 @@ impl MockInput {
         self.data
             .get_or_insert_with(InputData::default)
             .dictation_available = available;
+    }
+
+    /// Replace the keyboard-backlight probe.
+    pub fn set_backlight_available(&mut self, available: bool) {
+        self.data
+            .get_or_insert_with(InputData::default)
+            .backlight_available = available;
     }
 
     /// The host stack becomes unavailable.

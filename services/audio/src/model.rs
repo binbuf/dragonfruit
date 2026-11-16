@@ -129,6 +129,21 @@ impl AudioSnapshot {
         self.default_sink().map(|sink| sink.muted).unwrap_or(false)
     }
 
+    /// The default source's linear volume, or `0.0` when there is no input
+    /// device (T280).
+    pub fn source_volume(&self) -> f32 {
+        self.default_source_device()
+            .map(|source| source.volume)
+            .unwrap_or(0.0)
+    }
+
+    /// Whether the default source is muted (T280).
+    pub fn source_muted(&self) -> bool {
+        self.default_source_device()
+            .map(|source| source.muted)
+            .unwrap_or(false)
+    }
+
     /// The default sink's volume as 0–100.
     pub fn volume_percent(&self) -> u8 {
         percent(self.volume())

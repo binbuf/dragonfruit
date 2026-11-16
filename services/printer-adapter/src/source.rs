@@ -178,6 +178,11 @@ pub struct PrinterData {
     /// This queue is the default destination.
     #[serde(default)]
     pub is_default: bool,
+    /// The queue is shared over the network (`printer-is-shared`). CUPS's
+    /// client tools do not always report it, so the default is `false` and the
+    /// pane labels the toggle as a write-only state when the read omits it.
+    #[serde(default)]
+    pub shared: bool,
     /// The jobs currently waiting in the queue.
     #[serde(default)]
     pub jobs: Vec<PrintJobData>,
@@ -411,6 +416,29 @@ pub trait PrintSource {
     fn set_printer_option(&mut self, _name: &str, _key: &str, _value: &str) -> PrintOutcome {
         PrintOutcome::Absent
     }
+
+    /// Remove a CUPS queue (`lpadmin -x`). One explicit write (T280).
+    fn remove_printer(&mut self, _name: &str) -> PrintOutcome {
+        PrintOutcome::Absent
+    }
+
+    /// Print one CUPS test page through `name` (`lp -d`). One explicit write
+    /// (T280).
+    fn print_test_page(&mut self, _name: &str) -> PrintOutcome {
+        PrintOutcome::Absent
+    }
+
+    /// Share or unshare a queue (`lpadmin -o printer-is-shared`). One explicit
+    /// write (T280).
+    fn set_printer_shared(&mut self, _name: &str, _shared: bool) -> PrintOutcome {
+        PrintOutcome::Absent
+    }
+
+    /// Open the host scanner application on a SANE device (T280). A delegated
+    /// action: absent when no scanner application is installed.
+    fn open_scanner(&mut self, _device: &str) -> PrintOutcome {
+        PrintOutcome::Absent
+    }
 }
 
 /// How the simulated daemon answers write requests.
@@ -430,11 +458,21 @@ struct WriteCounts {
     default_sets: u32,
     accept_sets: u32,
     job_cancels: u32,
+    removes: u32,
+    test_pages: u32,
+    shares: u32,
+    scanner_opens: u32,
 }
 
 impl WriteCounts {
     fn total(&self) -> u32 {
-        self.default_sets + self.accept_sets + self.job_cancels
+        self.default_sets
+            + self.accept_sets
+            + self.job_cancels
+            + self.removes
+            + self.test_pages
+            + self.shares
+            + self.scanner_opens
     }
 }
 
@@ -628,6 +666,26 @@ impl MockPrint {
         self.writes.job_cancels
     }
 
+    /// How many queues the source has removed (T280).
+    pub fn removes(&self) -> u32 {
+        self.writes.removes
+    }
+
+    /// How many test pages the source has printed (T280).
+    pub fn test_pages(&self) -> u32 {
+        self.writes.test_pages
+    }
+
+    /// How many share writes the source has served (T280).
+    pub fn shares(&self) -> u32 {
+        self.writes.shares
+    }
+
+    /// How many scanner hand-offs the source has served (T280).
+    pub fn scanner_opens(&self) -> u32 {
+        self.writes.scanner_opens
+    }
+
     /// How many write requests the source has served in total. Lets a test
     /// prove a write is one explicit call, never a loop.
     pub fn writes(&self) -> u32 {
@@ -749,6 +807,53 @@ impl PrintSource for MockPrint {
             if let Some(option) = self.options.iter_mut().find(|option| option.key == key) {
                 option.value = value.to_owned();
             }
+        }
+        outcome
+    }
+
+    fn remove_printer(&mut self, name: &str) -> PrintOutcome {
+        let outcome = self.write_outcome();
+        if outcome.is_applied() {
+            self.writes.removes += 1;
+            self.printers.retain(|printer| printer.name != name);
+            if self.default_printer == name {
+                self.default_printer.clear();
+            }
+        }
+        outcome
+    }
+
+    fn print_test_page(&mut self, name: &str) -> PrintOutcome {
+        let outcome = self.write_outcome();
+        if outcome.is_applied() {
+            self.writes.test_pages += 1;
+            let id = 900 + self.writes.test_pages;
+            if let Some(printer) = self.printer_mut(name) {
+                printer.jobs.push(PrintJobData {
+                    id,
+                    user: "test".to_owned(),
+                    size: 0,
+                });
+            }
+        }
+        outcome
+    }
+
+    fn set_printer_shared(&mut self, name: &str, shared: bool) -> PrintOutcome {
+        let outcome = self.write_outcome();
+        if outcome.is_applied() {
+            self.writes.shares += 1;
+            if let Some(printer) = self.printer_mut(name) {
+                printer.shared = shared;
+            }
+        }
+        outcome
+    }
+
+    fn open_scanner(&mut self, _device: &str) -> PrintOutcome {
+        let outcome = self.write_outcome();
+        if outcome.is_applied() {
+            self.writes.scanner_opens += 1;
         }
         outcome
     }

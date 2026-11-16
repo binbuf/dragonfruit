@@ -48,6 +48,10 @@ Item {
         ? root.findPrinter(root.selectedPrinterName) : null
     // T229: discovery, add, and options.
     readonly property var discovery: Settings.printerDiscovery
+    // T280: a discovery/options read is in flight. The dialog states it
+    // instead of flashing an empty list and calling it "no devices".
+    property bool discoveryBusy: false
+    property bool optionsBusy: false
     readonly property var discoveryDevices: discovery.devices !== undefined
         ? discovery.devices : []
     readonly property var optionsReport: Settings.printerOptions
@@ -85,6 +89,14 @@ Item {
     property alias optionsDialog: optionsDialog
     property alias optionsRepeater: optionsRepeater
     property alias optionsAbsenceNote: optionsAbsenceNote
+    property alias discoveryBusyNote: discoveryBusyNote
+    property alias optionsBusyNote: optionsBusyNote
+    property alias removeButton: removeButton
+    property alias removeConfirmDialog: removeConfirmDialog
+    property alias removeConfirmButton: removeConfirmButton
+    property alias testPageButton: testPageButton
+    property alias shareToggle: shareToggle
+    property alias addPrinterCancel: addPrinterCancel
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -103,6 +115,12 @@ Item {
 
     // Opening the pane asks the host for a re-read (a no-op when absent).
     Component.onCompleted: Settings.refreshPrinters()
+
+    Connections {
+        target: Settings
+        function onPrinterDiscoveryChanged() { root.discoveryBusy = false; }
+        function onPrinterOptionsChanged() { root.optionsBusy = false; }
+    }
 
     function findPrinter(name) {
         for (var i = 0; i < root.printers.length; ++i)
@@ -129,11 +147,27 @@ Item {
     }
 
     function openAddPrinter() {
+        // Every open starts from a clean form: a previous name/URI/driver
+        // must never leak into the next queue.
         root.addName = "";
         root.addUri = "";
         root.addDriver = "everywhere";
+        root.addNameInput.text = "";
+        root.addUriInput.text = "";
+        root.addDriverInput.text = "";
+        root.discoveryBusy = true;
         Settings.discoverPrinters();
         root.addPrinterDialog.show();
+    }
+
+    function resetAddPrinter() {
+        root.addName = "";
+        root.addUri = "";
+        root.addDriver = "everywhere";
+        root.addNameInput.text = "";
+        root.addUriInput.text = "";
+        root.addDriverInput.text = "";
+        root.discoveryBusy = false;
     }
 
     function chooseDevice(device) {
@@ -143,14 +177,29 @@ Item {
             var tail = uri.substring(uri.lastIndexOf("/") + 1);
             root.addName = tail.length > 0 ? tail : uri;
         }
+        // The form fields are the visible contract; keep them in step with
+        // the programmatic fill (and with a prior edit).
+        root.addNameInput.text = root.addName;
+        root.addUriInput.text = root.addUri;
+        root.addDriverInput.text = root.addDriver;
     }
 
     function openOptions() {
         if (root.selectedPrinter === null)
             return;
         root.optionsPrinterName = String(root.selectedPrinter.name);
+        root.optionsBusy = true;
         Settings.loadPrinterOptions(root.optionsPrinterName);
         root.optionsDialog.show();
+    }
+
+    function removeSelectedPrinter() {
+        if (root.selectedPrinter === null)
+            return;
+        Settings.removePrinter(String(root.selectedPrinter.name));
+        root.selectedPrinterName = "";
+        root.printerDialog.accept();
+        root.removeConfirmDialog.accept();
     }
 
     function optionIndex(option, value) {
@@ -446,11 +495,22 @@ Item {
                         color: Theme.color.textSecondary
                     }
 
+                    Button {
+                        id: scannerOpenButton
+                        objectName: "scannerOpenButton"
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.controls.settingsRow.paddingH
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Open Scanner")
+                        variant: "ghost"
+                        onClicked: Settings.openScanner(String(scannerRow.scanner.device))
+                    }
+
                     Column {
                         anchors.left: scannerIcon.right
                         anchors.leftMargin: Theme.primitive.spacing.md
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.controls.settingsRow.paddingH
+                        anchors.right: scannerOpenButton.left
+                        anchors.rightMargin: Theme.controls.settingsRow.controlGap
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.primitive.spacing.xxs
 
@@ -562,7 +622,6 @@ Item {
                     width: parent.width
                     label: qsTr("Accept New Jobs")
                     description: qsTr("Pause the queue by rejecting new jobs.")
-                    showSeparator: false
                     controlData: Toggle {
                         id: acceptJobsToggle
                         objectName: "printerAcceptJobsToggle"
@@ -578,6 +637,32 @@ Item {
                             property: "checked"
                             value: root.selectedPrinter !== null
                                 && root.selectedPrinter.acceptingJobs === true
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    objectName: "printerShareRow"
+                    width: parent.width
+                    label: qsTr("Share this printer")
+                    description: qsTr("CUPS does not always report the current "
+                                      + "share flag; this toggle writes it.")
+                    showSeparator: false
+                    controlData: Toggle {
+                        id: shareToggle
+                        objectName: "printerShareToggle"
+                        accessibleName: qsTr("Share this printer")
+                        onToggled: (checked) => {
+                            if (root.selectedPrinter !== null)
+                                Settings.setPrinterShared(
+                                    String(root.selectedPrinter.name), checked);
+                        }
+
+                        Binding {
+                            target: shareToggle
+                            property: "checked"
+                            value: root.selectedPrinter !== null
+                                && root.selectedPrinter.shared === true
                         }
                     }
                 }
@@ -634,6 +719,25 @@ Item {
             spacing: Theme.controls.dialog.buttonGap
 
             Button {
+                id: removeButton
+                objectName: "printerRemoveButton"
+                text: qsTr("Remove…")
+                enabled: root.selectedPrinter !== null
+                onClicked: root.removeConfirmDialog.show()
+            }
+
+            Button {
+                id: testPageButton
+                objectName: "printerTestPageButton"
+                text: qsTr("Print Test Page")
+                enabled: root.selectedPrinter !== null
+                onClicked: {
+                    if (root.selectedPrinter !== null)
+                        Settings.printTestPage(String(root.selectedPrinter.name));
+                }
+            }
+
+            Button {
                 id: optionsButton
                 objectName: "printerOptionsButton"
                 text: qsTr("Options & Supplies…")
@@ -661,6 +765,45 @@ Item {
         }
     }
 
+    // ── Remove confirmation (T280) ────────────────────────────────────────
+    Dialog {
+        id: removeConfirmDialog
+        objectName: "removePrinterDialog"
+        title: qsTr("Remove Printer?")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: root.selectedPrinter !== null
+                    ? qsTr("Remove “%1” from this system? Its queued jobs "
+                           + "will be discarded.").arg(String(root.selectedPrinter.displayName))
+                    : qsTr("Remove this printer?")
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                text: qsTr("Cancel")
+                onClicked: removeConfirmDialog.reject()
+            }
+            Button {
+                id: removeConfirmButton
+                objectName: "printerRemoveConfirm"
+                text: qsTr("Remove")
+                variant: "danger"
+                onClicked: root.removeSelectedPrinter()
+            }
+        }
+    }
+
     // ── Add Printer dialog (T229) ─────────────────────────────────────────
     Dialog {
         id: addPrinterDialog
@@ -683,9 +826,19 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
+            Text {
+                id: discoveryBusyNote
+                objectName: "addPrinterDiscoveryBusy"
+                width: parent.width
+                visible: root.discoveryBusy
+                text: qsTr("Searching for printers…")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
             Repeater {
                 id: addDeviceRepeater
-                model: root.discoveryDevices
+                model: root.discoveryBusy ? [] : root.discoveryDevices
                 delegate: SettingsRow {
                     required property var modelData
                     width: parent.width
@@ -704,7 +857,7 @@ Item {
 
             Text {
                 width: parent.width
-                visible: root.discoveryDevices.length === 0
+                visible: !root.discoveryBusy && root.discoveryDevices.length === 0
                 text: qsTr("No printer devices were discovered.")
                 color: Theme.color.textTertiary
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -763,8 +916,12 @@ Item {
             spacing: Theme.controls.dialog.buttonGap
 
             Button {
+                id: addPrinterCancel
                 text: qsTr("Cancel")
-                onClicked: addPrinterDialog.reject()
+                onClicked: {
+                    root.resetAddPrinter();
+                    addPrinterDialog.reject();
+                }
             }
 
             Button {
@@ -796,10 +953,20 @@ Item {
             spacing: Theme.primitive.spacing.sm
 
             Text {
+                id: optionsBusyNote
+                objectName: "printerOptionsBusy"
+                width: parent.width
+                visible: root.optionsBusy
+                text: qsTr("Loading options…")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+
+            Text {
                 id: optionsAbsenceNote
                 objectName: "printerOptionsAbsence"
                 width: parent.width
-                visible: root.optionsReport.outcome === "error"
+                visible: !root.optionsBusy && root.optionsReport.outcome === "error"
                 text: root.optionsReport.error !== undefined
                     ? String(root.optionsReport.error)
                     : qsTr("This queue does not report configurable options.")
@@ -810,7 +977,7 @@ Item {
 
             Repeater {
                 id: optionsRepeater
-                model: root.printerOptionRows
+                model: root.optionsBusy ? [] : root.printerOptionRows
                 delegate: SettingsRow {
                     required property var modelData
                     width: parent.width

@@ -63,6 +63,8 @@ pub struct Printer {
     pub enabled: bool,
     /// This queue is the default destination.
     pub is_default: bool,
+    /// The queue is shared over the network (T280).
+    pub shared: bool,
     /// The jobs currently waiting.
     pub jobs: Vec<PrintJob>,
 }
@@ -80,6 +82,7 @@ impl Printer {
             accepting_jobs: data.accepting_jobs,
             enabled: data.enabled,
             is_default: data.is_default,
+            shared: data.shared,
             jobs: data.jobs.iter().map(PrintJob::from_data).collect(),
         }
     }
@@ -525,6 +528,7 @@ mod tests {
                     enabled: true,
                     is_default: true,
                     jobs: vec![],
+                    ..PrinterData::default()
                 },
             ]),
             default_printer: "Canon_MF230".to_owned(),

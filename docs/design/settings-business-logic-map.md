@@ -890,15 +890,20 @@ Owner: PipeWire/WirePlumber + `settingsd`.
 | Play sound on startup | Startup sound | Toggle | existing: `sound.playOnStartup` | Live |
 | Play user interface sound effects | UI sounds | Toggle | existing: `sound.uiEffects` | Live |
 | Play feedback when volume changed | Volume feedback | Toggle | existing: `sound.volumeFeedback` | Live |
-| Output | Output | Tab | PipeWire | Device table, volume, balance, mute |
+| Output | Output | Tab | PipeWire | Device table, volume, mute |
 | Input | Input | Tab | PipeWire | Device table, volume, mute |
 | — | Test | Button | PipeWire | Plays a test sound |
+| — | Balance | Slider | `sound.balance` | Stored-only; no per-channel write |
+| — | Per-app volume | List | PipeWire | Disabled: CLI exposes no stream levels |
 
-**T229 status.** The Test row calls `Audio.PlayTestSound`: `pw-play` (falling
-back to `paplay`) plays `audio-test-signal.oga`/`bell.oga`/`Front_Center.wav`,
-whichever exists. A host with no player or no sound file disables only the
-button; the Sound Effects and Balance keys stay live. `sound.balance` remains a
-stored preference until a per-channel sink write lands.
+**T280 status.** Alert sound has a Play preview
+(`Audio.PlayAlertSound`). The Output slider keeps the real level while muted;
+a commit unmutes first. The Input tab writes `audio.sourceVolume`/
+`audio.sourceMuted` through their own calls. Test still calls
+`Audio.PlayTestSound`: `pw-play` (falling back to `paplay`) plays
+`audio-test-signal.oga`/`bell.oga`/`Front_Center.wav`. Balance stays stored
+until a per-channel sink write lands, and the pane says so. Per-app volume is
+disabled with the `pw-dump`/`wpctl` limitation rather than presented as live.
 
 <a id="pane-focus"></a>
 ### 5.18 Focus
@@ -1061,14 +1066,19 @@ Owner: CUPS + SANE. Absence: note; no add/queue write.
 | Printer list | Printers | List | CUPS | Status, queue, options |
 | Add Printer, Scanner, or Fax… | Add printer or scanner… | Button | CUPS/SANE | Discovery |
 | Options & Supplies… | Options & supplies… | Sheet | CUPS | Driver/status |
-| — | Scanners | List | SANE | Scan action (delegated) |
+| — | Scanners | List + Open Scanner | SANE | Delegated; absent app disables |
+| — | Remove printer | Button + confirm | CUPS | `lpadmin -x` |
+| — | Print test page | Button | CUPS | `lp -d` |
+| — | Share this printer | Toggle | CUPS | `lpadmin -o printer-is-shared` |
 
-**T229 status.** `Add Printer or Scanner…` opens the `lpinfo -v` discovery
-list, then `lpadmin -p <name> -E -v <uri> -m <driver>` adds the queue. The
-per-printer dialog's **Options & Supplies…** sheet reads `lpoptions -p <queue>
--l` and writes one `lpoptions -p <queue> -o key=value` per change. A queue with
-no configurable options is an honest empty sheet; a host with no CUPS disables
-Add and Options. A full job manager and driver installation remain out of
+**T280 status.** `Add Printer or Scanner…` resets every field, reports the
+discovery read, then `lpadmin -p <name> -E -v <uri> -m <driver>` adds the
+queue. The per-printer dialog adds Remove (confirmed), Print Test Page
+(`lp -d <queue> /usr/share/cups/data/testprint`), Share, and the scanner list's
+Open Scanner (`simple-scan`/`xsane`, delegated). **Options & Supplies…** reads
+`lpoptions -p <queue> -l` with a loading state and writes one option per
+change. A queue with no options is an honest empty sheet; a host with no CUPS
+disables the writes. A full job manager and driver installation remain out of
 scope.
 
 <a id="pane-keyboard"></a>
@@ -1080,24 +1090,26 @@ Owner: `settingsd` + compositor input + ibus/fcitx5.
 |---|---|---|---|---|
 | Key repeat rate | Key repeat rate | Slider | existing: `input.repeatRate` | Live |
 | Delay until repeat | Repeat delay | Slider | existing: `input.repeatDelay` | Live |
-| Adjust keyboard brightness in low light | Auto keyboard brightness | Toggle | existing: `input.adjustBrightnessLowLight` | Sensor-dependent |
-| Keyboard brightness | Keyboard brightness | Slider | existing: `input.keyboardBrightness` | Hardware-dependent |
-| Turn backlight off after inactivity | Backlight off after | Popup | existing: `input.backlightOffAfter` | Hardware-dependent |
-| Press ⌘ key to | Press Super key to | Popup | existing: `input.emojiKeyAction` | Emoji/symbols |
-| Keyboard navigation | Keyboard navigation | Toggle | existing: `input.keyboardNavigation` | Live |
-| Keyboard Shortcuts… | Keyboard shortcuts… | Sheet | `settingsd` | Shortcut editor |
-| Input Sources | Input sources | Popup + Edit | ibus/fcitx5 + `localectl` | Add/remove; absent → note |
-| Text Replacements… | Text replacements… | Sheet | `settingsd`/IME | List |
+| Adjust keyboard brightness in low light | Auto keyboard brightness | Toggle | existing: `input.adjustBrightnessLowLight` | Stored-only; backlight probe |
+| Keyboard brightness | Keyboard brightness | Slider | existing: `input.keyboardBrightness` | Stored-only; backlight probe |
+| Turn backlight off after inactivity | Backlight off after | Popup | existing: `input.backlightOffAfter` | Stored-only; backlight probe |
+| Press ⌘ key to | Press Super key to | Popup | existing: `input.emojiKeyAction` | Stored-only; emoji bridge pending |
+| Keyboard navigation | Keyboard navigation | Toggle | existing: `input.keyboardNavigation` | Stored-only; no consumer |
+| Keyboard Shortcuts… | Keyboard shortcuts… | Sheet | shortcut engine | Read-only inspector |
+| Input Sources | Input sources | Popup + Edit | ibus/fcitx5 + `localectl` | Add/remove/order; absent → note |
+| Text Replacements… | Text replacements… | Sheet | `settingsd`/IME | Add/remove |
 | Dictation | Dictation | Toggle + options | speech-to-text delegate | Optional; absent → note |
 
-**T229 status.** `Input sources` is the ordered `input.sources` list (first
-entry active); the shell forwards the first entry to the compositor keymap over
-`df_toplevel_manager.set_keyboard_layout` (v10). `Text replacements` edits the
-`input.replacements` `from\tto` list for the session input method (T253).
-`Dictation` is enabled only when `nerd-dictation`, `whisper`,
-`faster-whisper`, or `vosk-transcriber` is installed; otherwise the row is
-present and disabled with its reason. `Keyboard Shortcuts…` remains omitted
-until a shortcut editor exists.
+**T280 status.** `Input sources` is the ordered `input.sources` list (first
+entry active) with Up/Down/Remove; the shell forwards the first entry to the
+compositor keymap over `df_toplevel_manager.set_keyboard_layout` (v10).
+`Text replacements` edits the `input.replacements` `from\tto` list.
+`Dictation` is enabled only when a speech-to-text command is installed and its
+Options sheet writes `input.dictationLanguage`/`Microphone`/`Shortcut`/
+`AutoPunctuation`. `Keyboard shortcuts…` is a read-only inspector over the
+shell table. The three brightness rows are disabled with a reason when no
+keyboard-backlight LED exists and are stored-only until the bridge lands;
+keyboard navigation and the emoji-panel action are stored-only too.
 
 <a id="pane-mouse"></a>
 ### 5.25 Mouse
@@ -1106,19 +1118,22 @@ Owner: `settingsd` + compositor input.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Tracking speed | Pointer speed | Slider | existing: `input.pointerSpeed` | Live |
-| Natural scrolling | Natural scrolling | Toggle | existing: `input.naturalScroll` | Live |
-| Secondary click | Secondary click | Popup | `input.secondaryClick` | Right/left |
-| Scroll speed | Scroll speed | Slider | `input.scrollSpeed` | Live |
-| Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | Live |
-| — | Scroll method | Popup | existing: `input.scrollMethod` | Two fingers/edge/button |
-| — | Left-handed | Toggle | existing: `input.leftHanded` | Live |
+| Tracking speed | Pointer speed | Slider | `input.mouse.pointerSpeed` | Mouse-specific; stored-only bridge |
+| Natural scrolling | Natural scrolling | Toggle | `input.mouse.naturalScroll` | Mouse-specific; stored-only bridge |
+| Secondary click | Secondary click | Popup | `input.mouse.secondaryClick` | Right/left |
+| Smart zoom | Smart zoom | Toggle | `input.mouse.smartZoom` | Stored-only; gesture bridge |
+| Pointer acceleration | Pointer acceleration | Toggle | `input.mouse.pointerAcceleration` | Stored-only; acceleration bridge |
+| Scroll speed | Scroll speed | Slider | `input.mouse.scrollSpeed` | Mouse-specific |
+| Double-click speed | Double-click speed | Slider | `input.mouse.doubleClickSpeed` | Mouse-specific |
+| — | Scroll method | Popup | `input.mouse.scrollMethod` | Two fingers/edge/button |
+| — | Left-handed | Toggle | `input.mouse.leftHanded` | Mouse-specific |
+| More gestures | More gestures | Group | `gestures.pages`/`fullscreen`/`notifications`/`appWindows`/`showDesktop` | Stored-only; recognizer family pending |
 
-**T229 status.** Secondary click (`right`/`left`), scroll speed, and
-double-click speed join the pointer policy. They travel with the existing
-pointer keys in `df_toplevel_manager.set_pointer_policy` (v10); the compositor
-stores them in `PointerSettings`, and the backend applies the stored default
-when it configures a libinput device.
+**T280 status.** A mouse and a trackpad are separate devices with separate
+`input.mouse.*` and `input.trackpad.*` keys. The pointer-speed, natural-scroll,
+secondary-click, scroll, double-click, and left-handed rows no longer share the
+trackpad's keys. The new families are stored-only until the compositor's
+per-device/gesture bridge reads them, and each row says so.
 
 <a id="pane-trackpad"></a>
 ### 5.26 Trackpad
@@ -1127,21 +1142,25 @@ Owner: `settingsd` + compositor input (libinput).
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Tracking speed | Pointer speed | Slider | existing: `input.pointerSpeed` | Live |
-| Click | Click pressure | Slider | `input.tapToClick`/pressure | Hardware-dependent |
+| Tracking speed | Pointer speed | Slider | `input.trackpad.pointerSpeed` | Trackpad-specific |
+| Click | Click pressure | Slider | `input.trackpad.clickPressure` | Hardware-dependent |
 | Force Click and haptic feedback | Haptic feedback | Toggle | `input.haptics` | Hardware-dependent |
 | Look up & data detectors | Look up | Popup | `input.lookUp` | Gesture mapping |
-| Secondary click | Secondary click | Popup | `input.secondaryClick` | Two-finger/click |
+| Secondary click | Secondary click | Popup | `input.trackpad.secondaryClick` | Two-finger/click |
 | Tap to click | Tap to click | Toggle | existing: `input.tapToClick` | Live |
-| Scroll & Zoom | Scroll & zoom | Tab | `input.naturalScroll`/`input.pinchZoom` | Live |
-| More Gestures | More gestures | Tab | `gestures.*` | Mission Control/workspaces |
+| Natural scrolling | Natural scrolling | Toggle | `input.trackpad.naturalScroll` | Trackpad-specific |
+| Zoom in or out | Pinch to zoom | Toggle | `input.trackpad.pinchZoom` | Trackpad-specific |
+| Smart zoom | Smart zoom | Toggle | `input.trackpad.smartZoom` | Trackpad-specific |
+| Rotate | Rotate | Toggle | `input.trackpad.rotate` | Trackpad-specific |
+| More Gestures | More gestures | Tab | `gestures.enabled`/`spaceSwitch`/`missionControl` + the five families | Live master/swipe; families stored-only |
 | Set Up Bluetooth Trackpad… | Pair trackpad… | Button | BlueZ | If supported |
 
-**T229 status.** `Look up` (`force-click`/`three-finger`/`off`), Secondary
-click, and Haptics join the Point & Click tab. Haptics is enabled only when the
-inventory reports a touchpad; the preference is kept for the next one. The
-Bluetooth hand-off navigates to the Bluetooth pane and disables when BlueZ is
-absent.
+**T280 status.** The Point & Click tab adds Click pressure; Scroll & Zoom
+adds Pinch/Smart zoom/Rotate; More Gestures adds pages, full-screen apps,
+Notification Center, app windows, and Show Desktop. Haptics is enabled only
+when the inventory reports a touchpad; the preference is kept for the next one.
+The preview states the active tab. The Bluetooth hand-off navigates to the
+Bluetooth pane and disables when BlueZ is absent.
 
 <a id="pane-game-controllers"></a>
 ### 5.27 Game Controllers
@@ -1151,15 +1170,17 @@ Owner: udev/SDL; optional. Absence: note; no mapping write.
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Connected controllers | Controllers | List | udev/SDL | Device info |
-| Mapping | Mapping | Sheet | SDL mapping | Optional |
-| — | Test | Button | SDL | Rumble/input test |
+| Mapping | Mapping | Sheet + Close | SDL mapping | Optional; read-only |
+| — | Test | Dialog + Close | SDL | Fresh report per open |
+| — | Rumble test | — | SDL | Disabled with reason |
 
-**T229 status.** The Game Controllers pane is shipped and optional. The input
+**T280 status.** The Game Controllers pane is shipped and optional. The input
 adapter reads `/proc/bus/input/devices` for joystick/gamepad records and the
 session's SDL mapping table, so a host with no controller is a live empty list.
-`Test` reads one event from the `js`/`event` node with a two-second timeout and
-reports event/timeout/permission/absent; `Mapping` shows the SDL line read-only.
-A remapper and mapping editor are deliberately out of scope.
+`Test` clears the previous report, reads one event from the `js`/`event` node
+with a two-second timeout, and reports event/timeout/permission/absent; both
+Test and Mapping have explicit Close actions. `Rumble test` is disabled with
+its reason. A remapper and mapping editor are deliberately out of scope.
 
 ## 6. Cross-cutting settings keys
 

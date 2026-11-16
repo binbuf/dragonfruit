@@ -49,6 +49,12 @@ pub const SCANIMAGE_BIN: &str = "scanimage";
 pub const LPINFO_BIN: &str = "lpinfo";
 /// The CUPS per-queue option tool (`cups-client`).
 pub const LPOPTIONS_BIN: &str = "lpoptions";
+/// The CUPS print tool (T280).
+pub const LP_BIN: &str = "lp";
+/// The scanner front-ends the Open Scanner action may launch, in order (T280).
+pub const SCANNER_APPS: [&str; 2] = ["simple-scan", "xsane"];
+/// The CUPS test-page document, when the distribution ships one.
+pub const TEST_PAGE: &str = "/usr/share/cups/data/testprint";
 
 /// The live CUPS + SANE source.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +128,38 @@ impl PrintSource for HostPrint {
             LPOPTIONS_BIN,
             &["-p", name, "-o", &format!("{key}={value}")],
         )
+    }
+
+    fn remove_printer(&mut self, name: &str) -> PrintOutcome {
+        run_write(LPADMIN_BIN, &["-x", name])
+    }
+
+    fn print_test_page(&mut self, name: &str) -> PrintOutcome {
+        if !std::path::Path::new(TEST_PAGE).is_file() {
+            return PrintOutcome::Absent;
+        }
+        run_write(LP_BIN, &["-d", name, TEST_PAGE])
+    }
+
+    fn set_printer_shared(&mut self, name: &str, shared: bool) -> PrintOutcome {
+        let value = if shared { "true" } else { "false" };
+        run_write(
+            LPADMIN_BIN,
+            &["-p", name, "-o", &format!("printer-is-shared={value}")],
+        )
+    }
+
+    fn open_scanner(&mut self, device: &str) -> PrintOutcome {
+        for app in SCANNER_APPS {
+            match Command::new(app).arg(device).spawn() {
+                Ok(_) => return PrintOutcome::Applied,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return PrintOutcome::Failed(AdapterError::new(format!("{app}: {error}")))
+                }
+            }
+        }
+        PrintOutcome::Absent
     }
 }
 
@@ -265,6 +303,8 @@ pub fn printers_from_lpstat(output: &str) -> (Vec<PrinterData>, String) {
                 printer.location = value.trim().to_owned();
             } else if let Some(value) = trimmed.strip_prefix("Status:") {
                 printer.state_message = value.trim().to_owned();
+            } else if let Some(value) = trimmed.strip_prefix("Shared:") {
+                printer.shared = matches!(value.trim(), "Yes" | "yes" | "true");
             }
             continue;
         }

@@ -37,8 +37,16 @@ pub const TEST_SOUNDS: [&str; 3] = [
     "/usr/share/sounds/freedesktop/stereo/bell.oga",
     "/usr/share/sounds/alsa/Front_Center.wav",
 ];
+/// The first existing alert-preview file, in preference order (T280).
+pub const ALERT_SOUNDS: [&str; 3] = [
+    "/usr/share/sounds/freedesktop/stereo/bell.oga",
+    "/usr/share/sounds/freedesktop/stereo/complete.oga",
+    "/usr/share/sounds/alsa/Front_Center.wav",
+];
 /// The symbolic id `wpctl` resolves to the current default sink.
 pub const DEFAULT_SINK_TARGET: &str = "@DEFAULT_AUDIO_SINK@";
+/// The symbolic id `wpctl` resolves to the current default source (T280).
+pub const DEFAULT_SOURCE_TARGET: &str = "@DEFAULT_AUDIO_SOURCE@";
 
 impl AudioData {
     /// Decode one `pw-dump` snapshot into the raw audio read.
@@ -234,6 +242,16 @@ impl AudioSource for CommandAudio {
         run_wpctl(&["set-mute", DEFAULT_SINK_TARGET, value])
     }
 
+    fn set_source_volume(&mut self, volume: f32) -> SetOutcome {
+        let volume = volume.clamp(0.0, 1.0);
+        run_wpctl(&["set-volume", DEFAULT_SOURCE_TARGET, &format!("{volume}")])
+    }
+
+    fn set_source_mute(&mut self, muted: bool) -> SetOutcome {
+        let value = if muted { "1" } else { "0" };
+        run_wpctl(&["set-mute", DEFAULT_SOURCE_TARGET, value])
+    }
+
     fn set_default_sink(&mut self, id: u32) -> SetOutcome {
         // `wpctl set-default <id>` sets the default node; the sink/source
         // distinction is implied by the node's own media class.
@@ -245,30 +263,38 @@ impl AudioSource for CommandAudio {
     }
 
     fn play_test_sound(&mut self) -> SetOutcome {
-        let Some(file) = TEST_SOUNDS
-            .iter()
-            .find(|path| std::path::Path::new(path).is_file())
-        else {
-            return SetOutcome::Absent;
-        };
-        for bin in [PW_PLAY_BIN, PAPLAY_BIN] {
-            match Command::new(bin).arg(file).output() {
-                Ok(output) if output.status.success() => return SetOutcome::Applied,
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return SetOutcome::Failed(AdapterError::new(format!(
-                        "{bin}: {}",
-                        stderr.trim()
-                    )));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => {
-                    return SetOutcome::Failed(AdapterError::new(format!("{bin}: {error}")))
-                }
-            }
-        }
-        SetOutcome::Absent
+        play_file(&TEST_SOUNDS)
     }
+
+    fn play_alert_sound(&mut self) -> SetOutcome {
+        // The alert preview uses the first freedesktop bell/alert file the
+        // host ships. It is the same playback seam as the test sound; the
+        // pane owns which alert id is selected (the id maps to no bundled
+        // artwork).
+        play_file(&ALERT_SOUNDS)
+    }
+}
+
+/// Play the first existing file in `choices` through `pw-play`/`paplay`.
+fn play_file(choices: &[&str]) -> SetOutcome {
+    let Some(file) = choices
+        .iter()
+        .find(|path| std::path::Path::new(path).is_file())
+    else {
+        return SetOutcome::Absent;
+    };
+    for bin in [PW_PLAY_BIN, PAPLAY_BIN] {
+        match Command::new(bin).arg(file).output() {
+            Ok(output) if output.status.success() => return SetOutcome::Applied,
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return SetOutcome::Failed(AdapterError::new(format!("{bin}: {}", stderr.trim())));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return SetOutcome::Failed(AdapterError::new(format!("{bin}: {error}"))),
+        }
+    }
+    SetOutcome::Absent
 }
 
 /// Run one `wpctl` write and map its result to the adapter outcome.

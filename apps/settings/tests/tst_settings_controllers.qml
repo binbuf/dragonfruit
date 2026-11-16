@@ -60,6 +60,28 @@ Item {
             wait(250);
         }
 
+        function test_dialogs_have_close_buttons_and_a_fresh_test_state() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.openTest(pane.controllers[0]);
+            tryVerify(function() { return pane.testDialog.open; });
+            pane.testCloseButton.clicked();
+            tryVerify(function() { return !pane.testDialog.open; });
+
+            // A new open clears the previous report before the read starts;
+            // once cleared the dialog says Waiting, never an old outcome.
+            Settings.testController(pane.controllers[0].path);
+            tryVerify(function() { return Settings.controllerTest.outcome === "event"; });
+            Settings.clearControllerTest();
+            compare(pane.testOutcome, "");
+            compare(pane.testOutcomeLabel.text, "Waiting…");
+
+            pane.openMapping(pane.controllers[0]);
+            tryVerify(function() { return pane.mappingDialog.open; });
+            pane.mappingCloseButton.clicked();
+            tryVerify(function() { return !pane.mappingDialog.open; });
+        }
+
         function test_mapping_sheet_is_read_only_and_explains_absence() {
             var shell = make();
             var pane = paneOf(shell);

@@ -129,6 +129,26 @@ void DbusPrintersClient::setPrinterOption(const QString &name, const QString &ke
     call(QStringLiteral("SetPrinterOption"), {name, key, value});
 }
 
+void DbusPrintersClient::removePrinter(const QString &name)
+{
+    call(QStringLiteral("RemovePrinter"), {name});
+}
+
+void DbusPrintersClient::printTestPage(const QString &name)
+{
+    call(QStringLiteral("PrintTestPage"), {name});
+}
+
+void DbusPrintersClient::setPrinterShared(const QString &name, bool shared)
+{
+    call(QStringLiteral("SetPrinterShared"), {name, shared});
+}
+
+void DbusPrintersClient::openScanner(const QString &device)
+{
+    call(QStringLiteral("OpenScanner"), {device});
+}
+
 void DbusPrintersClient::callReport(const QString &method, const QVariantList &arguments,
                                     bool options)
 {
@@ -216,16 +236,18 @@ void MockPrintersClient::resetForTest()
 {
     m_cupsAvailable = true;
     m_saneAvailable = true;
+    m_testPages = 0;
+    m_scannerOpens = 0;
     m_printers = {
         { QStringLiteral("Canon_MF230"), QStringLiteral("Canon MF230"),
           QStringLiteral("Canon MF230 Series"), QStringLiteral("Office"),
           QStringLiteral("ipp://192.168.0.5/ipp/print"), QStringLiteral("idle"),
-          QStringLiteral("Idle, Last Used"), true, true, true,
+          QStringLiteral("Idle, Last Used"), true, true, true, false,
           { { 12, QStringLiteral("dan"), 2048 } } },
         { QStringLiteral("HP_LaserJet"), QStringLiteral("HP LaserJet"),
           QString(), QString(), QStringLiteral("ipp://192.168.0.9/ipp/print"),
           QStringLiteral("processing"), QStringLiteral("Printing"), true, true,
-          false, { { 9, QStringLiteral("sam"), 64 } } },
+          false, false, { { 9, QStringLiteral("sam"), 64 } } },
     };
     m_scanners = {
         { QStringLiteral("epson2:net:192.168.0.7"),
@@ -343,6 +365,45 @@ void MockPrintersClient::setPrinterOption(const QString &name, const QString &ke
     printerOptions(name);
 }
 
+void MockPrintersClient::removePrinter(const QString &name)
+{
+    for (int i = 0; i < m_printers.size(); ++i) {
+        if (m_printers[i].name == name) {
+            m_printers.removeAt(i);
+            break;
+        }
+    }
+    rebuild();
+}
+
+void MockPrintersClient::printTestPage(const QString &name)
+{
+    for (Printer &printer : m_printers) {
+        if (printer.name == name) {
+            ++m_testPages;
+            printer.jobs.append({ 900 + m_testPages, QStringLiteral("test"), 0 });
+            break;
+        }
+    }
+    rebuild();
+}
+
+void MockPrintersClient::setPrinterShared(const QString &name, bool shared)
+{
+    for (Printer &printer : m_printers) {
+        if (printer.name == name)
+            printer.shared = shared;
+    }
+    rebuild();
+}
+
+void MockPrintersClient::openScanner(const QString &device)
+{
+    Q_UNUSED(device);
+    ++m_scannerOpens;
+    rebuild();
+}
+
 void MockPrintersClient::rebuild()
 {
     QList<Printer> printers = m_printers;
@@ -380,6 +441,7 @@ void MockPrintersClient::rebuild()
         entry.insert(QStringLiteral("stateLabel"), stateLabel(printer.state));
         entry.insert(QStringLiteral("stateMessage"), printer.stateMessage);
         entry.insert(QStringLiteral("acceptingJobs"), printer.acceptingJobs);
+        entry.insert(QStringLiteral("shared"), printer.shared);
         entry.insert(QStringLiteral("enabled"), printer.enabled);
         entry.insert(QStringLiteral("isDefault"), printer.isDefault);
         entry.insert(QStringLiteral("jobCount"), jobArray.size());
@@ -437,6 +499,8 @@ void MockPrintersClient::rebuild()
     view.insert(QStringLiteral("scannersAvailable"), m_saneAvailable);
     view.insert(QStringLiteral("printerCount"), printerCount);
     view.insert(QStringLiteral("scannerCount"), scannerCount);
+    view.insert(QStringLiteral("testPages"), m_testPages);
+    view.insert(QStringLiteral("scannerOpens"), m_scannerOpens);
     view.insert(QStringLiteral("queuedJobCount"), queuedJobs);
     view.insert(QStringLiteral("defaultPrinter"), defaultPrinter);
     view.insert(QStringLiteral("printers"), printerArray.toVariantList());

@@ -91,6 +91,22 @@ impl<S: AudioSource> AudioAdapter<S> {
         outcome
     }
 
+    /// Set the default source's linear volume (T280). The input half's one
+    /// volume write; otherwise the same contract as [`set_volume`](Self::set_volume).
+    pub fn set_source_volume(&mut self, volume: f32) -> SetOutcome {
+        let outcome = self.source.set_source_volume(volume);
+        self.note_write(&outcome);
+        outcome
+    }
+
+    /// Set the default source's mute state (T280). The input half's one mute
+    /// write; otherwise the same contract as [`set_volume`](Self::set_volume).
+    pub fn set_source_mute(&mut self, muted: bool) -> SetOutcome {
+        let outcome = self.source.set_source_mute(muted);
+        self.note_write(&outcome);
+        outcome
+    }
+
     /// Route playback to the sink with this PipeWire node id. The output
     /// device switch; otherwise the same contract as
     /// [`set_volume`](Self::set_volume). The snapshot keeps the old default
@@ -114,6 +130,14 @@ impl<S: AudioSource> AudioAdapter<S> {
     /// action, not a routing change.
     pub fn play_test_sound(&mut self) -> SetOutcome {
         let outcome = self.source.play_test_sound();
+        self.note_write(&outcome);
+        outcome
+    }
+
+    /// Preview the chosen alert sound (T280). A playback action, not a routing
+    /// change.
+    pub fn play_alert_sound(&mut self) -> SetOutcome {
+        let outcome = self.source.play_alert_sound();
         self.note_write(&outcome);
         outcome
     }

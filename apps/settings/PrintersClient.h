@@ -44,6 +44,11 @@ public:
     virtual void printerOptions(const QString &name) = 0;
     virtual void setPrinterOption(const QString &name, const QString &key,
                                   const QString &value) = 0;
+    // T280: remove, test page, share, and the scanner hand-off.
+    virtual void removePrinter(const QString &name) = 0;
+    virtual void printTestPage(const QString &name) = 0;
+    virtual void setPrinterShared(const QString &name, bool shared) = 0;
+    virtual void openScanner(const QString &device) = 0;
     // Test seam: restore the fixture's initial state. A no-op on the live
     // client, which has no fixture to reset.
     virtual void resetForTest() {}
@@ -77,6 +82,10 @@ public:
     void printerOptions(const QString &name) override;
     void setPrinterOption(const QString &name, const QString &key,
                           const QString &value) override;
+    void removePrinter(const QString &name) override;
+    void printTestPage(const QString &name) override;
+    void setPrinterShared(const QString &name, bool shared) override;
+    void openScanner(const QString &device) override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -114,6 +123,10 @@ public:
     void printerOptions(const QString &name) override;
     void setPrinterOption(const QString &name, const QString &key,
                           const QString &value) override;
+    void removePrinter(const QString &name) override;
+    void printTestPage(const QString &name) override;
+    void setPrinterShared(const QString &name, bool shared) override;
+    void openScanner(const QString &device) override;
     void resetForTest() override;
 
 private:
@@ -136,6 +149,7 @@ private:
         bool acceptingJobs = true;
         bool enabled = true;
         bool isDefault = false;
+        bool shared = false;
         QList<Job> jobs;
     };
     struct Scanner {
@@ -149,5 +163,7 @@ private:
     QList<QVariantMap> m_options;
     bool m_cupsAvailable = true;
     bool m_saneAvailable = true;
+    int m_testPages = 0;
+    int m_scannerOpens = 0;
     QVariantMap m_view;
 };

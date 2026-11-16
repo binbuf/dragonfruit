@@ -34,10 +34,15 @@ public:
     // The explicit writes; the host re-reads and pushes the new view.
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
+    // T280: the input half's own volume/mute, never the sink's.
+    virtual void setSourceVolume(double volume) = 0;
+    virtual void setSourceMute(bool muted) = 0;
     virtual void setDefaultSink(int id) = 0;
     virtual void setDefaultSource(int id) = 0;
     // T229: play a short test sound through the default output.
     virtual void playTestSound() = 0;
+    // T280: preview the chosen alert sound.
+    virtual void playAlertSound() = 0;
 
 signals:
     void changed(const QVariantMap &view);
@@ -58,9 +63,12 @@ public:
     void refresh() override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
+    void setSourceVolume(double volume) override;
+    void setSourceMute(bool muted) override;
     void setDefaultSink(int id) override;
     void setDefaultSource(int id) override;
     void playTestSound() override;
+    void playAlertSound() override;
 
 private:
     void call(const QString &method, const QVariantList &arguments);
@@ -88,16 +96,22 @@ public:
     void refresh() override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
+    void setSourceVolume(double volume) override;
+    void setSourceMute(bool muted) override;
     void setDefaultSink(int id) override;
     void setDefaultSource(int id) override;
     void playTestSound() override;
+    void playAlertSound() override;
 
 private:
     void rebuild();
     double m_volume = 0.6;
     bool m_muted = false;
+    double m_sourceVolume = 0.5;
+    bool m_sourceMuted = false;
     int m_defaultSinkId = 7;
     int m_defaultSourceId = 20;
     int m_testSounds = 0;
+    int m_alertSounds = 0;
     QVariantMap m_view;
 };

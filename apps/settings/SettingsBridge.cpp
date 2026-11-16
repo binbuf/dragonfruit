@@ -1852,6 +1852,18 @@ void SettingsBridge::setSoundMute(bool muted)
         m_sound->setMute(muted);
 }
 
+void SettingsBridge::setSoundSourceVolume(double volume)
+{
+    if (m_sound)
+        m_sound->setSourceVolume(volume);
+}
+
+void SettingsBridge::setSoundSourceMute(bool muted)
+{
+    if (m_sound)
+        m_sound->setSourceMute(muted);
+}
+
 void SettingsBridge::setSoundDefaultSink(int id)
 {
     if (m_sound)
@@ -1870,6 +1882,12 @@ void SettingsBridge::playTestSound()
         m_sound->playTestSound();
 }
 
+void SettingsBridge::playAlertSound()
+{
+    if (m_sound)
+        m_sound->playAlertSound();
+}
+
 void SettingsBridge::refreshInput()
 {
     if (m_input)
@@ -1882,6 +1900,14 @@ void SettingsBridge::testController(const QString &path)
 {
     if (m_input)
         m_input->testController(path);
+}
+
+void SettingsBridge::clearControllerTest()
+{
+    if (m_controllerTest.isEmpty())
+        return;
+    m_controllerTest.clear();
+    emit controllerTestChanged();
 }
 
 void SettingsBridge::refreshBattery()
@@ -2343,6 +2369,30 @@ void SettingsBridge::setPrinterOption(const QString &name, const QString &key,
 {
     if (m_printers && !name.isEmpty() && !key.isEmpty())
         m_printers->setPrinterOption(name, key, value);
+}
+
+void SettingsBridge::removePrinter(const QString &name)
+{
+    if (m_printers && !name.isEmpty())
+        m_printers->removePrinter(name);
+}
+
+void SettingsBridge::printTestPage(const QString &name)
+{
+    if (m_printers && !name.isEmpty())
+        m_printers->printTestPage(name);
+}
+
+void SettingsBridge::setPrinterShared(const QString &name, bool shared)
+{
+    if (m_printers && !name.isEmpty())
+        m_printers->setPrinterShared(name, shared);
+}
+
+void SettingsBridge::openScanner(const QString &device)
+{
+    if (m_printers && !device.isEmpty())
+        m_printers->openScanner(device);
 }
 
 void SettingsBridge::resetPrintersFixture()

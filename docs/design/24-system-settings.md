@@ -1218,8 +1218,8 @@ Owner: CUPS + SANE. Absence: keep the sections; disable add/queue writes.
 | Options & Supplies… | Options & supplies… | Sheet | CUPS | ship |
 | — | Remove printer | Button + confirm | CUPS | ship |
 | — | Print test page | Button | CUPS | ship |
-| — | Share this printer | Toggle | CUPS | ship |
-| — | Scanners | List + Open scanner | SANE | delegate |
+| — | Share this printer | Toggle | CUPS | ship; read is best-effort |
+| — | Scanners | List + Open scanner | SANE | delegate; absent app disables |
 
 ### 4.17 Keyboard — T280
 
@@ -1229,15 +1229,15 @@ live; hardware inventory shows a reason.
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Key repeat / Delay until repeat | Key repeat / Repeat delay | Slider | `input.repeatRate`/`input.repeatDelay` | ship |
-| Adjust keyboard brightness in low light | Auto keyboard brightness | Toggle | `input.adjustBrightnessLowLight` | adapt; hardware bridge |
-| Keyboard brightness | Keyboard brightness | Slider | `input.keyboardBrightness` | adapt; hardware bridge |
-| Turn backlight off after inactivity | Backlight off after | Popup | `input.backlightOffAfter` | adapt |
-| Press fn key to / Press Super key to | Press Super key to | Popup | `input.emojiKeyAction` | adapt |
-| Keyboard navigation | Keyboard navigation | Toggle | `input.keyboardNavigation` | ship; compositor consumer |
-| Keyboard Shortcuts… | Keyboard shortcuts… | Sheet | shortcut engine | ship |
-| Input Sources | Input sources | List + add | `input.sources` | ship |
+| Adjust keyboard brightness in low light | Auto keyboard brightness | Toggle | `input.adjustBrightnessLowLight` | stored-only; hardware bridge pending |
+| Keyboard brightness | Keyboard brightness | Slider | `input.keyboardBrightness` | stored-only; hardware bridge pending |
+| Turn backlight off after inactivity | Backlight off after | Popup | `input.backlightOffAfter` | stored-only; hardware bridge pending |
+| Press fn key to / Press Super key to | Press Super key to | Popup | `input.emojiKeyAction` | stored-only; emoji bridge pending |
+| Keyboard navigation | Keyboard navigation | Toggle | `input.keyboardNavigation` | stored-only; no compositor consumer |
+| Keyboard Shortcuts… | Keyboard shortcuts… | Sheet | shortcut engine | ship; read-only inspector |
+| Input Sources | Input sources | List + add/remove/order | `input.sources` | ship |
 | Text Replacements… | Text replacements… | Sheet | `input.replacements` | ship; IME consumer |
-| Dictation | Dictation | Toggle + language/mic/shortcut | speech-to-text delegate | adapt/delegate |
+| Dictation | Dictation | Toggle + language/mic/shortcut | speech-to-text delegate | adapt/delegate; options sheet |
 | Touch Bar | — | Omit | — | omit |
 
 ### 4.18 Mouse — T280
@@ -1247,14 +1247,14 @@ inventory shows a reason.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Tracking speed | Pointer speed | Slider | `input.pointerSpeed` | ship; mouse-specific key |
-| Natural scrolling | Natural scrolling | Toggle | `input.naturalScroll` | ship; mouse-specific |
-| Secondary click | Secondary click | Popup | `input.secondaryClick` | ship |
-| Smart zoom | Smart zoom | Toggle | `input.smartZoom` | adapt |
-| More Gestures | More gestures | Disclosure | `gestures.*` | adapt |
-| Pointer acceleration | Pointer acceleration | Toggle/slider | `input.pointerAcceleration` | adapt |
-| — | Left-handed | Toggle | `input.leftHanded` | ship |
-| — | Scroll speed / method | Slider/popup | `input.scrollSpeed`/`input.scrollMethod` | ship |
+| Tracking speed | Pointer speed | Slider | `input.mouse.pointerSpeed` | ship; mouse-specific key |
+| Natural scrolling | Natural scrolling | Toggle | `input.mouse.naturalScroll` | ship; mouse-specific |
+| Secondary click | Secondary click | Popup | `input.mouse.secondaryClick` | ship |
+| Smart zoom | Smart zoom | Toggle | `input.mouse.smartZoom` | stored-only; gesture bridge pending |
+| More Gestures | More gestures | Disclosure | `gestures.*` | stored-only; recognizer family pending |
+| Pointer acceleration | Pointer acceleration | Toggle | `input.mouse.pointerAcceleration` | stored-only; acceleration bridge pending |
+| — | Left-handed | Toggle | `input.mouse.leftHanded` | ship |
+| — | Scroll speed / method | Slider/popup | `input.mouse.scrollSpeed`/`input.mouse.scrollMethod` | ship |
 
 ### 4.19 Trackpad — T280
 
@@ -1267,7 +1267,7 @@ no-trackpad state explains the kept preference.
 |---|---|---|---|---|
 | Tracking speed | Pointer speed | Slider | `input.trackpad.pointerSpeed` | ship; trackpad-specific |
 | Click | Click pressure | Slider | `input.trackpad.clickPressure` | adapt |
-| Force Click and haptic feedback | Haptics | Toggle | `input.haptics` | ship |
+| Force Click and haptic feedback | Haptics | Toggle | `input.haptics` | ship; hardware reason |
 | Look up & data detectors | Look up | Popup | `input.lookUp` | ship |
 | Secondary click | Secondary click | Popup | `input.trackpad.secondaryClick` | ship |
 | Tap to click | Tap to click | Toggle | `input.tapToClick` | ship |
@@ -1285,12 +1285,12 @@ no-trackpad state explains the kept preference.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Swipe between pages | Swipe between pages | Popup | `gestures.pages` | ship |
-| Swipe between full-screen applications | Swipe between full-screen apps | Popup | `gestures.fullscreen` | ship |
-| Notification Center | Notification Center | Toggle | `gestures.notifications` | ship |
-| Mission Control | Overview | Popup | `gestures.overview` | ship |
-| App Exposé | App windows | Popup | `gestures.appExpose` | ship |
-| Show Desktop | Show desktop | Toggle | `gestures.showDesktop` | ship |
+| Swipe between pages | Swipe between pages | Popup | `gestures.pages` | ship; recognizer family pending |
+| Swipe between full-screen applications | Swipe between full-screen apps | Popup | `gestures.fullscreen` | ship; recognizer family pending |
+| Notification Center | Notification Center | Toggle | `gestures.notifications` | ship; recognizer family pending |
+| Mission Control | Overview | Toggle | `gestures.missionControl` | ship |
+| App Exposé | App windows | Toggle | `gestures.appWindows` | ship; recognizer family pending |
+| Show Desktop | Show desktop | Toggle | `gestures.showDesktop` | ship; recognizer family pending |
 | — | Set up Bluetooth trackpad… | Button | BlueZ | ship |
 
 ### 4.20 Desktop & Dock — T276
@@ -1538,10 +1538,11 @@ disable device routing with a note.
 | Play sound on startup | Startup sound | Toggle | `sound.playOnStartup` | ship |
 | Play user interface sound effects | UI sounds | Toggle | `sound.uiEffects` | ship |
 | Play feedback when volume is changed | Volume feedback | Toggle | `sound.volumeFeedback` | ship |
-| Output | Output | Tab + device table | PipeWire | ship; volume, mute, balance |
+| Output | Output | Tab + device table | PipeWire | ship; volume, mute |
 | Input | Input | Tab + device table | PipeWire | ship; volume, mute |
 | — | Test | Button | PipeWire | ship |
-| — | Per-app volume | List | PipeWire | adapt (Linux-only) |
+| — | Balance | Slider | `sound.balance` | stored-only; no per-channel write |
+| — | Per-app volume | List | PipeWire | disabled-with-reason; CLI exposes no stream levels |
 
 ### 4.27 Focus — T278
 
@@ -1607,9 +1608,27 @@ mapping/test.
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Connected controllers | Controllers | List | udev/SDL | ship |
-| Mapping | Mapping | Sheet | SDL mapping | adapt; read-only first |
-| Test | Test | Dialog + close | SDL | ship |
-| — | Rumble test | Button | SDL | adapt |
+| Mapping | Mapping | Sheet + Close | SDL mapping | adapt; read-only first |
+| Test | Test | Dialog + Close | SDL | ship; fresh state |
+| — | Rumble test | — | SDL | adapt; disabled-with-reason |
+
+**T280 status.** The six device/input panes now share one honest boundary.
+Sound's Input tab writes the default source's volume and mute through their own
+`SetSourceVolume`/`SetSourceMute` calls; the Output slider keeps the real level
+while muted (a commit unmutes), the alert row previews through `pw-play`, and
+Balance is labelled stored-only because the control CLI has no per-channel
+write. Keyboard adds a read-only shortcut inspector, input-source add/remove/
+reorder, dictation options, and disables the three brightness rows with a reason
+when `/sys/class/leds` has no keyboard-backlight LED; the brightness, keyboard-
+navigation, and emoji-panel rows are stored-only until their bridges exist.
+Mouse and Trackpad have separate `input.mouse.*` and `input.trackpad.*` keys,
+the full Point & Click / Scroll & Zoom / More Gestures inventory, and the new
+gesture families. Printers add/remove/test/share/scanner hand-off join the
+queue reads, with explicit discovery/options loading states. Game Controllers'
+Test and Mapping sheets have Close actions and a freshly cleared test state
+before each read; Rumble is disabled with its reason. The new mouse/trackpad
+and gesture keys are stored-only until the compositor reads the families, and
+the panes say so.
 
 ## 5. Linux-specific additions
 
@@ -1687,9 +1706,9 @@ from the first live T263 run; they are part of the same release bar.
 | P1-7 | Storage “Manage storage…” is a dead row; no chart/total/free; volume rows have no capacity | `StoragePane.qml` | T273 |
 | P1-8 | Battery renders two permanently empty charts; options are incomplete; range is duplicated | `BatteryPane.qml` | T273 |
 | P1-9 | Users & Groups has no password path for a new user, no change-password row, group delete without confirmation | `UsersGroupsPane.qml` | T279 |
-| P1-10 | Printers add dialog is disconnected from its visible fields; no remove/test/share; scanner rows have no action | `PrintersScannersPane.qml` | T280 |
-| P1-11 | Sound mute zeroes the volume slider; Input tab shows output controls; Balance has no consumer | `SoundPane.qml` | T280 |
-| P1-12 | Mouse and Trackpad share `input.pointerSpeed`/`input.naturalScroll`; most Tahoe gestures are missing | `InputPane.qml` | T280 |
+| P1-10 | Printers add dialog is disconnected from its visible fields; no remove/test/share; scanner rows have no action | `PrintersScannersPane.qml` | T280 (landed: reset fields + discovery/options loading, remove/test/share, Open Scanner delegate) |
+| P1-11 | Sound mute zeroes the volume slider; Input tab shows output controls; Balance has no consumer | `SoundPane.qml` | T280 (landed: level survives mute, input volume/mute, alert preview, Balance stored-only, per-app disabled-with-reason) |
+| P1-12 | Mouse and Trackpad share `input.pointerSpeed`/`input.naturalScroll`; most Tahoe gestures are missing | `InputPane.qml` | T280 (landed: separate `input.mouse.*`/`input.trackpad.*`, click pressure, pinch/smart/rotate, full More Gestures) |
 | P1-13 | Privacy is a flat un-carded list with one icon, no keyboard access, and missing master/analytics/accessory rows | `PrivacyPane.qml` | T279 |
 | P1-14 | Online Accounts disappears entirely when GOA is absent; Add has no sign-in step | `SettingsPanes.qml`, `OnlineAccountsPane.qml` | T279 |
 | P1-15 | Quick Settings is a 37-row flat list with Up/Down buttons; unavailable modules are offered; Edit Controls is a no-op; empty list restores defaults | `QuickSettingsPane.qml` | T277 (landed: categorized registry, pages/names/spans/Add Controls/preview/Reset, empty stays empty, ownerless never addable) |
@@ -1697,7 +1716,7 @@ from the first live T263 run; they are part of the same release bar.
 | P1-17 | Search results are a flat ungrouped list; “wifi”, “control center”, “mission control” return no results | `SettingsSearch.qml`, `SettingsSearchResults.qml` | T265 (landed) |
 | P1-18 | General is missing Autofill & Passwords and the Transfer or Reset structure; sub-panes hide settingsd rows with their host adapter | `GeneralPane.qml`, `DateTimePane.qml`, `LanguageRegionPane.qml` | T269, T270 |
 | P1-19 | Focus has no focus list/Add/Delete/Filters; profile/mode/rows duplicate the same state | `FocusPane.qml` | T278 (landed: one list + detail, Add/Delete, filters, validated shortcut) |
-| P1-20 | Keyboard brightness/navigation/dictation/replacements are presented as live with no consumer | `InputPane.qml`, `schema.rs` | T280, T282 |
+| P1-20 | Keyboard brightness/navigation/dictation/replacements are presented as live with no consumer | `InputPane.qml`, `schema.rs` | T280 (landed: backlight probe + disabled-with-reason brightness, stored-only labels for navigation/emoji), T282 |
 
 ### P2 — polish
 

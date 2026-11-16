@@ -37,6 +37,7 @@ fn data() -> PrintData {
                 enabled: true,
                 is_default: true,
                 jobs: vec![],
+                ..PrinterData::default()
             },
         ]),
         default_printer: "Canon_MF230".to_owned(),

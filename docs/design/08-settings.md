@@ -395,6 +395,38 @@ the one source for every disabled row, and the advanced sheet no longer
 duplicates brightness or rotation. `make t273-data-panes-capture` writes
 live/empty/absence stills in light and dark.
 
+### The T280 device/input completion
+
+T280 closes the six device/input panes against the reviewed row inventory
+(ADR [0281](adr/0281-device-input-pane-completion.md)):
+
+- **Sound**: Output and Input are separate surfaces. `SetSourceVolume`/
+  `SetSourceMute` write the default source; the Output slider always shows the
+  real level and a commit while muted unmutes first. The alert row has a Play
+  preview (`Audio.PlayAlertSound`), Balance is explicitly stored-only, and
+  Per-app volume is disabled with the CLI limitation rather than faked.
+- **Keyboard**: a read-only Keyboard Shortcuts inspector over the shell's one
+  accelerator table, ordered input sources with Up/Down/Remove, a dictation
+  options sheet (language, microphone, shortcut, punctuation), and a hardware
+  backlight probe (`/sys/class/leds/*kbd_backlight/brightness`). Brightness,
+  keyboard-navigation, and emoji-panel rows are stored-only and say so.
+- **Mouse / Trackpad**: separate `input.mouse.*` and `input.trackpad.*`
+  families replace the shared pointer keys; Trackpad gains Click pressure,
+  Pinch/Smart zoom/Rotate, and the full More Gestures set. The new
+  mouse/trackpad/gesture keys are stored-only until the compositor reads the
+  families (the panes state that).
+- **Printers & Scanners**: Remove (with confirmation), Print Test Page, Share,
+  and the delegated Open Scanner action join the queue rows; the Add sheet
+  resets every field and reports discovery, and Options reports its loading
+  state.
+- **Game Controllers**: Test and Mapping sheets have Close actions; opening
+  Test clears the previous report before the read; Rumble is disabled with its
+  reason.
+
+Schema revision 37 adds the two pointer families, the five remaining gesture
+families, and the four dictation options. Live evidence is
+`make t280-devices-capture` (`docs/captures/t280-*.png`).
+
 Schema revision 22 adds `input.secondaryClick`, `input.scrollSpeed`,
 `input.doubleClickSpeed`, `input.haptics`, `input.lookUp`, `input.sources`,
 `input.replacements`, `input.dictation`, `power.showPercentage`, and

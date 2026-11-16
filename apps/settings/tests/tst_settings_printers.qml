@@ -147,6 +147,58 @@ Item {
                    "the discovered device becomes a queue");
         }
 
+        function test_add_dialog_resets_fields_and_shows_discovery_state() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.addPrinterButton.clicked();
+            tryVerify(function() { return pane.addPrinterDialog.open; });
+            pane.addNameInput.text = "Stale_Name";
+            pane.addUriInput.text = "ipp://stale/ipp/print";
+            pane.addPrinterCancel.clicked();
+            wait(150);
+
+            pane.addPrinterButton.clicked();
+            tryVerify(function() { return pane.addPrinterDialog.open; });
+            compare(pane.addName, "");
+            compare(pane.addUri, "");
+            compare(pane.addNameInput.text, "");
+            compare(pane.addUriInput.text, "");
+            compare(pane.discoveryBusy, false);
+            compare(pane.discoveryBusyNote.visible, false);
+            pane.addPrinterDialog.reject();
+            wait(150);
+        }
+
+        function test_remove_test_page_share_and_scanner_actions() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var row = findChild(pane.printerRepeater.itemAt(1), "printerRowArea");
+            mouseClick(row, row.width / 2, row.height / 2);
+            compare(pane.selectedPrinter.name, "HP_LaserJet");
+
+            compare(pane.shareToggle.checked, false);
+            pane.shareToggle.toggle();
+            tryVerify(function() { return pane.findPrinter("HP_LaserJet").shared === true; });
+
+            var pages = Number(Settings.printers.testPages || 0);
+            pane.testPageButton.clicked();
+            tryVerify(function() {
+                return Number(Settings.printers.testPages || 0) === pages + 1;
+            });
+
+            pane.removeButton.clicked();
+            tryVerify(function() { return pane.removeConfirmDialog.open; });
+            pane.removeConfirmButton.clicked();
+            tryVerify(function() { return pane.printers.length === 1; });
+            verify(pane.findPrinter("HP_LaserJet") === null);
+
+            var opens = Number(Settings.printers.scannerOpens || 0);
+            findChild(pane.scannerRepeater.itemAt(0), "scannerOpenButton").clicked();
+            tryVerify(function() {
+                return Number(Settings.printers.scannerOpens || 0) === opens + 1;
+            });
+        }
+
         function test_options_sheet_reads_and_writes_a_queue_option() {
             var shell = make();
             var pane = paneOf(shell);

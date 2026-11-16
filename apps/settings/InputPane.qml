@@ -39,21 +39,85 @@ Item {
     readonly property bool present: view.state === "available"
     readonly property bool ready: root.available && root.present
     readonly property var devices: view.devices !== undefined ? view.devices : []
+    // T280: the host exposes a keyboard backlight LED. When false the three
+    // brightness rows stay visible, disabled, and explain why; their stored
+    // preference is kept for the next keyboard that has one.
+    readonly property bool backlightAvailable: view.backlightAvailable === true
 
     // The settingsd-backed preference values.
     readonly property int repeatRate: Settings.values["input.repeatRate"] !== undefined
         ? Number(Settings.values["input.repeatRate"]) : 25
     readonly property int repeatDelay: Settings.values["input.repeatDelay"] !== undefined
         ? Number(Settings.values["input.repeatDelay"]) : 200
-    readonly property real pointerSpeed:
+    // Legacy pointer values remain the fallback for an upgrade from a schema
+    // that predates the per-device families. New writes always target the
+    // mouse.* or trackpad.* key below; a shared write is a bug (T280).
+    readonly property real legacyPointerSpeed:
         Settings.values["input.pointerSpeed"] !== undefined
             ? Number(Settings.values["input.pointerSpeed"]) : 0.0
-    readonly property bool naturalScroll:
-        Settings.values["input.naturalScroll"] === true
+    readonly property real mousePointerSpeed:
+        Settings.values["input.mouse.pointerSpeed"] !== undefined
+            ? Number(Settings.values["input.mouse.pointerSpeed"])
+            : root.legacyPointerSpeed
+    readonly property real trackpadPointerSpeed:
+        Settings.values["input.trackpad.pointerSpeed"] !== undefined
+            ? Number(Settings.values["input.trackpad.pointerSpeed"])
+            : root.legacyPointerSpeed
+    readonly property bool mouseNaturalScroll:
+        Settings.values["input.mouse.naturalScroll"] !== undefined
+            ? Settings.values["input.mouse.naturalScroll"] === true
+            : Settings.values["input.naturalScroll"] === true
+    readonly property bool trackpadNaturalScroll:
+        Settings.values["input.trackpad.naturalScroll"] !== undefined
+            ? Settings.values["input.trackpad.naturalScroll"] === true
+            : Settings.values["input.naturalScroll"] === true
+    readonly property string mouseSecondaryClick:
+        Settings.values["input.mouse.secondaryClick"]
+            || Settings.values["input.secondaryClick"] || "right"
+    readonly property string trackpadSecondaryClick:
+        Settings.values["input.trackpad.secondaryClick"]
+            || Settings.values["input.secondaryClick"] || "right"
+    readonly property bool mouseSmartZoom:
+        Settings.values["input.mouse.smartZoom"] !== false
+    readonly property bool mousePointerAcceleration:
+        Settings.values["input.mouse.pointerAcceleration"] !== false
+    readonly property bool mouseLeftHanded:
+        Settings.values["input.mouse.leftHanded"] !== undefined
+            ? Settings.values["input.mouse.leftHanded"] === true
+            : Settings.values["input.leftHanded"] === true
+    readonly property real mouseScrollSpeed:
+        Settings.values["input.mouse.scrollSpeed"] !== undefined
+            ? Number(Settings.values["input.mouse.scrollSpeed"])
+            : root.scrollSpeed
+    readonly property string mouseScrollMethod:
+        Settings.values["input.mouse.scrollMethod"]
+            || Settings.values["input.scrollMethod"] || "button"
+    readonly property int mouseDoubleClickSpeed:
+        Settings.values["input.mouse.doubleClickSpeed"] !== undefined
+            ? Number(Settings.values["input.mouse.doubleClickSpeed"])
+            : root.doubleClickSpeed
+    readonly property string trackpadLookUp:
+        Settings.values["input.lookUp"] || "force-click"
+    readonly property real trackpadClickPressure:
+        Settings.values["input.trackpad.clickPressure"] !== undefined
+            ? Number(Settings.values["input.trackpad.clickPressure"]) : 0.5
+    readonly property bool trackpadSmartZoom:
+        Settings.values["input.trackpad.smartZoom"] !== false
+    readonly property bool trackpadPinchZoom:
+        Settings.values["input.trackpad.pinchZoom"] !== false
+    readonly property bool trackpadRotate:
+        Settings.values["input.trackpad.rotate"] !== false
+    readonly property string gesturePages:
+        Settings.values["gestures.pages"] || "two-finger"
+    readonly property string gestureFullScreen:
+        Settings.values["gestures.fullscreen"] || "three-finger"
+    readonly property bool gestureNotifications:
+        Settings.values["gestures.notifications"] === true
+    readonly property bool gestureShowDesktop:
+        Settings.values["gestures.showDesktop"] !== false
+    readonly property bool gestureAppWindows:
+        Settings.values["gestures.appWindows"] !== false
     readonly property bool tapToClick: Settings.values["input.tapToClick"] === true
-    readonly property bool leftHanded: Settings.values["input.leftHanded"] === true
-    readonly property string scrollMethod:
-        Settings.values["input.scrollMethod"] || "two-finger"
     readonly property real keyboardBrightness:
         Settings.values["input.keyboardBrightness"] !== undefined
             ? Number(Settings.values["input.keyboardBrightness"]) : 0.5
@@ -120,6 +184,29 @@ Item {
         { value: "right", label: qsTr("Right") },
         { value: "left", label: qsTr("Left") }
     ]
+    readonly property var gesturePagesOptions: [
+        { value: "off", label: qsTr("Off") },
+        { value: "two-finger", label: qsTr("Swipe with Two Fingers") },
+        { value: "three-finger", label: qsTr("Swipe with Three Fingers") }
+    ]
+    readonly property var gestureFullScreenOptions: [
+        { value: "off", label: qsTr("Off") },
+        { value: "three-finger", label: qsTr("Swipe with Three Fingers") },
+        { value: "four-finger", label: qsTr("Swipe with Four Fingers") }
+    ]
+    // T280: the read-only shortcut catalog the shell's accelerator table
+    // exposes. Editing is delegated to the shortcut engine (T245a); the sheet
+    // is a real inspector, not a fake recorder.
+    readonly property var shortcutRows: [
+        { keys: "Super", action: qsTr("Open the application menu") },
+        { keys: "Super+Tab", action: qsTr("Switch applications") },
+        { keys: "Super+`", action: qsTr("Cycle this app's windows") },
+        { keys: "Super+Shift+3", action: qsTr("Screenshot the screen") },
+        { keys: "Super+Shift+4", action: qsTr("Screenshot a selection") },
+        { keys: "Super+Q", action: qsTr("Close the focused window") },
+        { keys: "Super+M", action: qsTr("Minimize the focused window") },
+        { keys: "Super+Space", action: qsTr("Open search") }
+    ]
     readonly property var lookUpOptions: [
         { value: "force-click", label: qsTr("Pressure Click") },
         { value: "three-finger", label: qsTr("Three-Finger Click") },
@@ -145,8 +232,7 @@ Item {
         Settings.values["input.doubleClickSpeed"] !== undefined
             ? Number(Settings.values["input.doubleClickSpeed"]) : 400
     readonly property bool haptics: Settings.values["input.haptics"] !== false
-    readonly property string lookUp:
-        Settings.values["input.lookUp"] || "force-click"
+    readonly property string lookUp: root.trackpadLookUp
     property string newSource: ""
     property string newReplacementFrom: ""
     property string newReplacementTo: ""
@@ -189,19 +275,39 @@ Item {
     property alias lookUpSelect: lookUpSelect
     property alias trackpadSecondarySelect: trackpadSecondarySelect
     property alias pairTrackpadRow: pairTrackpadRow
+    // T280 surfaces.
+    property alias shortcutsRow: shortcutsRow
+    property alias shortcutsDialog: shortcutsDialog
+    property alias dictationOptionsButton: dictationOptionsButton
+    property alias dictationOptionsDialog: dictationOptionsDialog
+    property alias dictationLanguageInput: dictationLanguageInput
+    property alias dictationMicrophoneInput: dictationMicrophoneInput
+    property alias dictationShortcutInput: dictationShortcutInput
+    property alias dictationAutoPunctuationToggle: dictationAutoPunctuationToggle
+    property alias mouseSmartZoomToggle: mouseSmartZoomToggle
+    property alias pointerAccelerationToggle: pointerAccelerationToggle
+    property alias mouseGesturePagesSelect: mouseGesturePagesSelect
+    property alias mouseGestureFullScreenSelect: mouseGestureFullScreenSelect
+    property alias mouseGestureNotificationsToggle: mouseGestureNotificationsToggle
+    property alias mouseGestureShowDesktopToggle: mouseGestureShowDesktopToggle
+    property alias mouseGestureAppWindowsToggle: mouseGestureAppWindowsToggle
+    property alias trackpadNaturalToggle: trackpadNaturalToggle
+    property alias trackpadClickPressureSlider: trackpadClickPressureSlider
+    property alias trackpadSmartZoomToggle: trackpadSmartZoomToggle
+    property alias pinchZoomToggle: pinchZoomToggle
+    property alias rotateToggle: rotateToggle
+    property alias gesturePagesSelect: gesturePagesSelect
+    property alias gestureFullScreenSelect: gestureFullScreenSelect
+    property alias gestureNotificationsToggle: gestureNotificationsToggle
+    property alias gestureShowDesktopToggle: gestureShowDesktopToggle
+    property alias gestureAppWindowsToggle: gestureAppWindowsToggle
+    property alias backlightAbsenceNote: backlightAbsenceNote
+    property alias previewCaption: previewCaption
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
 
     width: parent ? parent.width : implicitWidth
-
-    function scrollMethodIndex() {
-        for (var i = 0; i < root.scrollMethodOptions.length; ++i) {
-            if (root.scrollMethodOptions[i].value === root.scrollMethod)
-                return i;
-        }
-        return 0;
-    }
 
     function backlightOffIndex() {
         for (var i = 0; i < root.backlightOffOptions.length; ++i) {
@@ -217,6 +323,36 @@ Item {
 
     function secondaryClickIndex(value) {
         return value === "left" ? 1 : 0;
+    }
+
+    function scrollMethodIndexFor(value) {
+        for (var i = 0; i < root.scrollMethodOptions.length; ++i) {
+            if (root.scrollMethodOptions[i].value === value)
+                return i;
+        }
+        return 0;
+    }
+
+    function gesturePagesIndex() {
+        for (var i = 0; i < root.gesturePagesOptions.length; ++i)
+            if (root.gesturePagesOptions[i].value === root.gesturePages)
+                return i;
+        return 0;
+    }
+
+    function gestureFullScreenIndex() {
+        for (var i = 0; i < root.gestureFullScreenOptions.length; ++i)
+            if (root.gestureFullScreenOptions[i].value === root.gestureFullScreen)
+                return i;
+        return 0;
+    }
+
+    function mouseDoubleClickFraction() {
+        return (root.mouseDoubleClickSpeed - 100) / 800.0;
+    }
+
+    function clickPressurePercent() {
+        return Math.round(root.trackpadClickPressure * 100);
     }
 
     function lookUpIndex() {
@@ -249,6 +385,18 @@ Item {
         if (at < 0)
             return;
         list.splice(at, 1);
+        Settings.setList("input.sources", list);
+    }
+
+    // The first source is the compositor's active layout; reordering is a
+    // write of the same ordered list, never a second index.
+    function moveSource(value, delta) {
+        var list = root.inputSources.slice();
+        var at = list.indexOf(value);
+        var to = at + delta;
+        if (at < 0 || to < 0 || to >= list.length)
+            return;
+        list.splice(to, 0, list.splice(at, 1)[0]);
         Settings.setList("input.sources", list);
     }
 
@@ -463,16 +611,34 @@ Item {
             visible: root.keyboard
             title: qsTr("Keyboard Brightness")
 
+            Text {
+                id: backlightAbsenceNote
+                objectName: "inputBacklightAbsence"
+                width: parent.width
+                visible: root.ready && !root.backlightAvailable
+                text: qsTr("No keyboard backlight is present. The three "
+                           + "brightness preferences are kept for the next "
+                           + "keyboard that has one.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                topPadding: Theme.primitive.spacing.xs
+            }
+
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Adjust keyboard brightness in low light")
                 settingsId: "adjustBrightness"
                 owner: "settingsd"
                 settingsKey: "input.adjustBrightnessLowLight"
-                description: qsTr("The hardware backlight bridge is a follow-up.")
+                description: qsTr("Stored-only: the compositor keyboard-backlight "
+                                  + "bridge is not implemented in this build.")
                 controlData: Toggle {
                     id: adjustBrightnessToggle
                     text: ""
+                    enabled: root.backlightAvailable
                     onToggled: (checked) =>
                         Settings.set("input.adjustBrightnessLowLight", checked)
                 }
@@ -503,6 +669,7 @@ Item {
                         width: parent.width
                         from: 0.0
                         to: 1.0
+                        enabled: root.backlightAvailable
                         accessibleName: qsTr("Keyboard brightness")
                         minLabel: qsTr("Dim")
                         maxLabel: qsTr("Bright")
@@ -528,6 +695,7 @@ Item {
                 settingsKey: "input.backlightOffAfter"
                 controlData: Select {
                     id: backlightOffSelect
+                    enabled: root.backlightAvailable
                     accessibleName: qsTr("Turn keyboard backlight off after inactivity")
                     model: root.backlightOffOptions
                     onActivated: (index) => Settings.set(
@@ -549,9 +717,9 @@ Item {
                 settingsId: "keyboardNavigation"
                 owner: "settingsd"
                 settingsKey: "input.keyboardNavigation"
-                description: qsTr("Use keyboard navigation to move focus between "
-                                  + "controls. Press the Tab key to move focus forward "
-                                  + "and Shift Tab to move focus backward.")
+                description: qsTr("Stored-only: no compositor consumer reads "
+                                  + "this key yet. Press Tab to move focus forward "
+                                  + "and Shift Tab to move it backward.")
                 controlData: Toggle {
                     id: keyboardNavigationToggle
                     text: ""
@@ -566,6 +734,8 @@ Item {
                 settingsId: "emojiKey"
                 owner: "settingsd"
                 settingsKey: "input.emojiKeyAction"
+                description: qsTr("Stored-only: the emoji-panel bridge is not "
+                                  + "implemented in this build.")
                 showSeparator: false
                 controlData: Select {
                     id: emojiKeySelect
@@ -584,6 +754,20 @@ Item {
             width: parent.width
             visible: root.keyboard
             title: qsTr("Text Input")
+
+            SettingsRow {
+                id: shortcutsRow
+                objectName: "inputShortcutsRow"
+                width: parent.width
+                label: qsTr("Keyboard shortcuts")
+                description: qsTr("Inspect the shell's global accelerators. "
+                                  + "Editing is delegated to the shortcut engine.")
+                controlData: Button {
+                    objectName: "inputShortcutsOpen"
+                    text: qsTr("Shortcuts…")
+                    onClicked: root.shortcutsDialog.show()
+                }
+            }
 
             SettingsRow {
                 id: sourcesRow
@@ -625,12 +809,25 @@ Item {
                     ? qsTr("Use a speech-to-text service to dictate text.")
                     : qsTr("Dictation is unavailable because no speech-to-text service is installed.")
                 showSeparator: false
-                controlData: Toggle {
-                    id: dictationToggle
-                    objectName: "inputDictationToggle"
-                    text: ""
-                    enabled: root.dictationAvailable
-                    onToggled: (checked) => Settings.set("input.dictation", checked)
+                controlData: Row {
+                    spacing: Theme.primitive.spacing.sm
+
+                    Toggle {
+                        id: dictationToggle
+                        objectName: "inputDictationToggle"
+                        text: ""
+                        enabled: root.dictationAvailable
+                        onToggled: (checked) => Settings.set("input.dictation", checked)
+                    }
+
+                    Button {
+                        id: dictationOptionsButton
+                        objectName: "inputDictationOptions"
+                        text: qsTr("Options…")
+                        variant: "ghost"
+                        enabled: root.dictationAvailable
+                        onClicked: root.dictationOptionsDialog.show()
+                    }
                 }
             }
 
@@ -681,15 +878,16 @@ Item {
                         width: parent.width
                         from: -1.0
                         to: 1.0
-                        accessibleName: qsTr("Tracking speed")
+                        accessibleName: qsTr("Mouse tracking speed")
                         minLabel: qsTr("Slow")
                         maxLabel: qsTr("Fast")
-                        onCommitted: (value) => Settings.set("input.pointerSpeed", value)
+                        onCommitted: (value) =>
+                            Settings.set("input.mouse.pointerSpeed", value)
                     }
                     Text {
                         width: parent.width
                         visible: text.length > 0
-                        text: String(Settings.writeErrors["input.pointerSpeed"] || "")
+                        text: String(Settings.writeErrors["input.mouse.pointerSpeed"] || "")
                         color: Theme.color.danger
                         font.pixelSize: Theme.primitive.font.sizeSm
                         wrapMode: Text.WordWrap
@@ -700,43 +898,79 @@ Item {
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Natural scrolling")
-                settingsId: "naturalScroll"
+                settingsId: "mouseNaturalScroll"
                 owner: "settingsd"
-                settingsKey: "input.naturalScroll"
-                description: qsTr("Content moves in the same direction as your fingers.")
+                settingsKey: "input.mouse.naturalScroll"
+                description: qsTr("Content moves in the same direction as the wheel.")
                 controlData: Toggle {
                     id: naturalScrollToggle
                     text: ""
-                    onToggled: (checked) => Settings.set("input.naturalScroll", checked)
+                    onToggled: (checked) =>
+                        Settings.set("input.mouse.naturalScroll", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Pointer acceleration")
+                settingsId: "mousePointerAcceleration"
+                owner: "settingsd"
+                settingsKey: "input.mouse.pointerAcceleration"
+                description: qsTr("Apply pointer acceleration to mouse motion; "
+                                  + "off uses a flat curve.")
+                controlData: Toggle {
+                    id: pointerAccelerationToggle
+                    objectName: "mousePointerAcceleration"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("input.mouse.pointerAcceleration", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Smart zoom")
+                settingsId: "mouseSmartZoom"
+                owner: "settingsd"
+                settingsKey: "input.mouse.smartZoom"
+                description: qsTr("Double-click with one finger to zoom the "
+                                  + "content under the pointer.")
+                controlData: Toggle {
+                    id: mouseSmartZoomToggle
+                    objectName: "mouseSmartZoom"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("input.mouse.smartZoom", checked)
                 }
             }
 
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Left-handed")
-                settingsId: "leftHanded"
+                settingsId: "mouseLeftHanded"
                 owner: "settingsd"
-                settingsKey: "input.leftHanded"
-                description: qsTr("Swap the primary and secondary buttons.")
+                settingsKey: "input.mouse.leftHanded"
+                description: qsTr("Swap the mouse's primary and secondary buttons.")
                 controlData: Toggle {
                     id: leftHandedToggle
                     text: ""
-                    onToggled: (checked) => Settings.set("input.leftHanded", checked)
+                    onToggled: (checked) =>
+                        Settings.set("input.mouse.leftHanded", checked)
                 }
             }
 
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Secondary click")
-                settingsId: "secondaryClick"
+                settingsId: "mouseSecondaryClick"
                 owner: "settingsd"
-                settingsKey: "input.secondaryClick"
+                settingsKey: "input.mouse.secondaryClick"
                 controlData: Select {
                     id: secondaryClickSelect
-                    accessibleName: qsTr("Secondary click")
+                    accessibleName: qsTr("Mouse secondary click")
                     model: root.secondaryClickOptions
                     onActivated: (index) => Settings.set(
-                                    "input.secondaryClick",
+                                    "input.mouse.secondaryClick",
                                     root.secondaryClickOptions[index].value)
                 }
             }
@@ -766,10 +1000,11 @@ Item {
                         width: parent.width
                         from: -1.0
                         to: 1.0
-                        accessibleName: qsTr("Scroll speed")
+                        accessibleName: qsTr("Mouse scroll speed")
                         minLabel: qsTr("Slow")
                         maxLabel: qsTr("Fast")
-                        onCommitted: (value) => Settings.set("input.scrollSpeed", value)
+                        onCommitted: (value) =>
+                            Settings.set("input.mouse.scrollSpeed", value)
                     }
                 }
             }
@@ -799,11 +1034,12 @@ Item {
                         width: parent.width
                         from: 0.0
                         to: 1.0
-                        accessibleName: qsTr("Double-click speed")
+                        accessibleName: qsTr("Mouse double-click speed")
                         minLabel: qsTr("Fast")
                         maxLabel: qsTr("Slow")
-                        onCommitted: (value) => Settings.set("input.doubleClickSpeed",
-                                                         Math.round(100 + value * 800))
+                        onCommitted: (value) => Settings.set(
+                                        "input.mouse.doubleClickSpeed",
+                                        Math.round(100 + value * 800))
                     }
                 }
             }
@@ -811,17 +1047,95 @@ Item {
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Scroll method")
-                settingsId: "scrollMethod"
+                settingsId: "mouseScrollMethod"
                 owner: "settingsd"
-                settingsKey: "input.scrollMethod"
-                showSeparator: false
+                settingsKey: "input.mouse.scrollMethod"
+                showSeparator: true
                 controlData: Select {
                     id: scrollMethodSelect
-                    accessibleName: qsTr("Scroll method")
+                    accessibleName: qsTr("Mouse scroll method")
                     model: root.scrollMethodOptions
                     onActivated: (index) => Settings.set(
-                                    "input.scrollMethod",
+                                    "input.mouse.scrollMethod",
                                     root.scrollMethodOptions[index].value)
+                }
+            }
+
+            // ── More gestures (the same families as the trackpad) ────────
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Swipe between pages")
+                settingsId: "mouseGesturePages"
+                owner: "settingsd"
+                settingsKey: "gestures.pages"
+                description: qsTr("Stored-only: the compositor gesture "
+                                  + "recognizer does not read this family yet.")
+                controlData: Select {
+                    id: mouseGesturePagesSelect
+                    accessibleName: qsTr("Swipe between pages")
+                    model: root.gesturePagesOptions
+                    onActivated: (index) => Settings.set(
+                                    "gestures.pages",
+                                    root.gesturePagesOptions[index].value)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Swipe between full-screen apps")
+                settingsId: "mouseGestureFullScreen"
+                owner: "settingsd"
+                settingsKey: "gestures.fullscreen"
+                controlData: Select {
+                    id: mouseGestureFullScreenSelect
+                    accessibleName: qsTr("Swipe between full-screen apps")
+                    model: root.gestureFullScreenOptions
+                    onActivated: (index) => Settings.set(
+                                    "gestures.fullscreen",
+                                    root.gestureFullScreenOptions[index].value)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Notifications")
+                settingsId: "mouseGestureNotifications"
+                owner: "settingsd"
+                settingsKey: "gestures.notifications"
+                controlData: Toggle {
+                    id: mouseGestureNotificationsToggle
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("gestures.notifications", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("App windows")
+                settingsId: "mouseGestureAppWindows"
+                owner: "settingsd"
+                settingsKey: "gestures.appWindows"
+                controlData: Toggle {
+                    id: mouseGestureAppWindowsToggle
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("gestures.appWindows", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                label: qsTr("Show desktop")
+                settingsId: "mouseGestureShowDesktop"
+                owner: "settingsd"
+                settingsKey: "gestures.showDesktop"
+                showSeparator: false
+                controlData: Toggle {
+                    id: mouseGestureShowDesktopToggle
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("gestures.showDesktop", checked)
                 }
             }
         }
@@ -833,17 +1147,20 @@ Item {
             visible: root.trackpad
             title: qsTr("Trackpad")
 
-            // A simple original preview: an outline with a finger dot, standing
-            // in for the capture's simulated trackpad illustration.
+            // An original outline preview with a finger dot and the active
+            // gesture family's caption. It is decorative, never an input
+            // surface, and mirrors the segmented selection.
             Item {
                 width: parent.width
-                height: 72
+                height: 104
 
                 Rectangle {
-                    anchors.centerIn: parent
-                    width: 96
-                    height: 64
-                    radius: Theme.primitive.radius.sm
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.primitive.spacing.sm
+                    width: 148
+                    height: 76
+                    radius: Theme.primitive.radius.md
                     color: Theme.color.surfaceSunken
                     border.width: Theme.controls.window.borderWidth
                     border.color: Theme.color.border
@@ -851,12 +1168,34 @@ Item {
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 12
-                        width: 12
-                        height: 12
-                        radius: 6
+                        anchors.bottomMargin: 10
+                        width: 16
+                        height: 16
+                        radius: 8
                         color: Theme.color.accent
                     }
+
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: 10
+                        width: 36
+                        height: 3
+                        radius: 1.5
+                        color: Theme.color.textTertiary
+                    }
+                }
+
+                Text {
+                    id: previewCaption
+                    objectName: "trackpadPreviewCaption"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    text: root.pointClick ? qsTr("Point & Click")
+                        : (root.scrollZoom ? qsTr("Scroll & Zoom")
+                                           : qsTr("More Gestures"))
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeSm
                 }
             }
 
@@ -893,18 +1232,55 @@ Item {
                         width: parent.width
                         from: -1.0
                         to: 1.0
-                        accessibleName: qsTr("Tracking speed")
+                        accessibleName: qsTr("Trackpad tracking speed")
                         minLabel: qsTr("Slow")
                         maxLabel: qsTr("Fast")
-                        onCommitted: (value) => Settings.set("input.pointerSpeed", value)
+                        onCommitted: (value) =>
+                            Settings.set("input.trackpad.pointerSpeed", value)
                     }
                     Text {
                         width: parent.width
                         visible: text.length > 0
-                        text: String(Settings.writeErrors["input.pointerSpeed"] || "")
+                        text: String(Settings.writeErrors["input.trackpad.pointerSpeed"] || "")
                         color: Theme.color.danger
                         font.pixelSize: Theme.primitive.font.sizeSm
                         wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Item {
+                width: parent.width
+                visible: root.pointClick
+                implicitHeight: clickPressureColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.sm
+
+                Column {
+                    id: clickPressureColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.controls.settingsRow.paddingH
+                    anchors.rightMargin: Theme.controls.settingsRow.paddingH
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.primitive.spacing.xxs
+
+                    Text {
+                        text: qsTr("Click pressure (%1%)").arg(root.clickPressurePercent())
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                    }
+
+                    Slider {
+                        id: trackpadClickPressureSlider
+                        objectName: "trackpadClickPressure"
+                        width: parent.width
+                        from: 0.0
+                        to: 1.0
+                        accessibleName: qsTr("Click pressure")
+                        minLabel: qsTr("Light")
+                        maxLabel: qsTr("Firm")
+                        onCommitted: (value) =>
+                            Settings.set("input.trackpad.clickPressure", value)
                     }
                 }
             }
@@ -917,7 +1293,6 @@ Item {
                 owner: "settingsd"
                 settingsKey: "input.tapToClick"
                 description: qsTr("Tap with one finger.")
-                showSeparator: false
                 controlData: Toggle {
                     id: tapToClickToggle
                     text: ""
@@ -931,13 +1306,13 @@ Item {
                 label: qsTr("Secondary click")
                 settingsId: "trackpadSecondaryClick"
                 owner: "settingsd"
-                settingsKey: "input.secondaryClick"
+                settingsKey: "input.trackpad.secondaryClick"
                 controlData: Select {
                     id: trackpadSecondarySelect
-                    accessibleName: qsTr("Secondary click")
+                    accessibleName: qsTr("Trackpad secondary click")
                     model: root.secondaryClickOptions
                     onActivated: (index) => Settings.set(
-                                    "input.secondaryClick",
+                                    "input.trackpad.secondaryClick",
                                     root.secondaryClickOptions[index].value)
                 }
             }
@@ -949,6 +1324,7 @@ Item {
                 settingsId: "lookUp"
                 owner: "settingsd"
                 settingsKey: "input.lookUp"
+                showSeparator: false
                 controlData: Select {
                     id: lookUpSelect
                     accessibleName: qsTr("Look up")
@@ -969,29 +1345,12 @@ Item {
                 description: root.hasTouchpad
                     ? qsTr("Where the trackpad supports it.")
                     : qsTr("No trackpad is present; the preference is kept for the next one.")
+                showSeparator: false
                 controlData: Toggle {
                     id: hapticsToggle
                     text: ""
                     enabled: root.hasTouchpad
                     onToggled: (checked) => Settings.set("input.haptics", checked)
-                }
-            }
-
-            SettingsRow {
-                id: pairTrackpadRow
-                objectName: "trackpadPairRow"
-                width: parent.width
-                visible: root.moreGestures
-                label: qsTr("Set Up Bluetooth Trackpad…")
-                description: Settings.bluetoothAvailable
-                    ? qsTr("Pair a trackpad in Bluetooth.")
-                    : qsTr("Bluetooth is unavailable on this system.")
-                showSeparator: false
-                controlData: Button {
-                    objectName: "trackpadPairButton"
-                    text: qsTr("Open Bluetooth")
-                    enabled: Settings.bluetoothAvailable
-                    onClicked: root.navigateRequested("bluetooth")
                 }
             }
 
@@ -1001,30 +1360,62 @@ Item {
                 label: qsTr("Natural scrolling")
                 settingsId: "trackpadNaturalScroll"
                 owner: "settingsd"
-                settingsKey: "input.naturalScroll"
+                settingsKey: "input.trackpad.naturalScroll"
                 description: qsTr("Content moves in the same direction as your fingers.")
                 controlData: Toggle {
                     id: trackpadNaturalToggle
                     text: ""
-                    onToggled: (checked) => Settings.set("input.naturalScroll", checked)
+                    onToggled: (checked) =>
+                        Settings.set("input.trackpad.naturalScroll", checked)
                 }
             }
 
             SettingsKeyRow {
                 width: parent.width
                 visible: root.scrollZoom
-                label: qsTr("Scroll method")
-                settingsId: "trackpadScrollMethod"
+                label: qsTr("Pinch to zoom")
+                settingsId: "pinchZoom"
                 owner: "settingsd"
-                settingsKey: "input.scrollMethod"
+                settingsKey: "input.trackpad.pinchZoom"
+                controlData: Toggle {
+                    id: pinchZoomToggle
+                    objectName: "trackpadPinchZoom"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("input.trackpad.pinchZoom", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.scrollZoom
+                label: qsTr("Smart zoom")
+                settingsId: "trackpadSmartZoom"
+                owner: "settingsd"
+                settingsKey: "input.trackpad.smartZoom"
+                controlData: Toggle {
+                    id: trackpadSmartZoomToggle
+                    objectName: "trackpadSmartZoom"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("input.trackpad.smartZoom", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.scrollZoom
+                label: qsTr("Rotate")
+                settingsId: "rotate"
+                owner: "settingsd"
+                settingsKey: "input.trackpad.rotate"
                 showSeparator: false
-                controlData: Select {
-                    id: trackpadScrollMethodSelect
-                    accessibleName: qsTr("Scroll method")
-                    model: root.scrollMethodOptions
-                    onActivated: (index) => Settings.set(
-                                    "input.scrollMethod",
-                                    root.scrollMethodOptions[index].value)
+                controlData: Toggle {
+                    id: rotateToggle
+                    objectName: "trackpadRotate"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("input.trackpad.rotate", checked)
                 }
             }
 
@@ -1060,15 +1451,114 @@ Item {
             SettingsKeyRow {
                 width: parent.width
                 visible: root.moreGestures
+                label: qsTr("Swipe between pages")
+                settingsId: "gesturePages"
+                owner: "settingsd"
+                settingsKey: "gestures.pages"
+                description: qsTr("Stored-only: the compositor gesture "
+                                  + "recognizer does not read this family yet.")
+                controlData: Select {
+                    id: gesturePagesSelect
+                    accessibleName: qsTr("Swipe between pages")
+                    model: root.gesturePagesOptions
+                    onActivated: (index) => Settings.set(
+                                    "gestures.pages",
+                                    root.gesturePagesOptions[index].value)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.moreGestures
+                label: qsTr("Swipe between full-screen apps")
+                settingsId: "gestureFullScreen"
+                owner: "settingsd"
+                settingsKey: "gestures.fullscreen"
+                controlData: Select {
+                    id: gestureFullScreenSelect
+                    accessibleName: qsTr("Swipe between full-screen apps")
+                    model: root.gestureFullScreenOptions
+                    onActivated: (index) => Settings.set(
+                                    "gestures.fullscreen",
+                                    root.gestureFullScreenOptions[index].value)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.moreGestures
+                label: qsTr("Notifications")
+                settingsId: "gestureNotifications"
+                owner: "settingsd"
+                settingsKey: "gestures.notifications"
+                controlData: Toggle {
+                    id: gestureNotificationsToggle
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("gestures.notifications", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.moreGestures
                 label: qsTr("Overview")
                 settingsId: "gestureMission"
                 owner: "settingsd"
                 settingsKey: "gestures.missionControl"
-                showSeparator: false
                 controlData: Toggle {
                     id: gestureMissionToggle
                     text: ""
-                    onToggled: (checked) => Settings.set("gestures.missionControl", checked)
+                    onToggled: (checked) =>
+                        Settings.set("gestures.missionControl", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.moreGestures
+                label: qsTr("App windows")
+                settingsId: "gestureAppWindows"
+                owner: "settingsd"
+                settingsKey: "gestures.appWindows"
+                controlData: Toggle {
+                    id: gestureAppWindowsToggle
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("gestures.appWindows", checked)
+                }
+            }
+
+            SettingsKeyRow {
+                width: parent.width
+                visible: root.moreGestures
+                label: qsTr("Show desktop")
+                settingsId: "gestureShowDesktop"
+                owner: "settingsd"
+                settingsKey: "gestures.showDesktop"
+                controlData: Toggle {
+                    id: gestureShowDesktopToggle
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("gestures.showDesktop", checked)
+                }
+            }
+
+            SettingsRow {
+                id: pairTrackpadRow
+                objectName: "trackpadPairRow"
+                width: parent.width
+                visible: root.moreGestures
+                label: qsTr("Set Up Bluetooth Trackpad…")
+                description: Settings.bluetoothAvailable
+                    ? qsTr("Pair a trackpad in Bluetooth.")
+                    : qsTr("Bluetooth is unavailable on this system.")
+                showSeparator: false
+                controlData: Button {
+                    objectName: "trackpadPairButton"
+                    text: qsTr("Open Bluetooth")
+                    enabled: Settings.bluetoothAvailable
+                    onClicked: root.navigateRequested("bluetooth")
                 }
             }
         }
@@ -1116,24 +1606,109 @@ Item {
         value: Settings.values["input.dictation"] === true
     }
     Binding {
+        target: dictationAutoPunctuationToggle
+        property: "checked"
+        value: Settings.values["input.dictationAutoPunctuation"] === true
+    }
+    Binding {
         target: secondaryClickSelect
         property: "currentIndex"
-        value: root.secondaryClickIndex(root.secondaryClick)
+        value: root.secondaryClickIndex(root.mouseSecondaryClick)
     }
     Binding {
         target: trackpadSecondarySelect
         property: "currentIndex"
-        value: root.secondaryClickIndex(root.secondaryClick)
+        value: root.secondaryClickIndex(root.trackpadSecondaryClick)
     }
     Binding {
         target: scrollSpeedSlider
         property: "value"
-        value: root.scrollSpeed
+        value: root.mouseScrollSpeed
     }
     Binding {
         target: doubleClickSlider
         property: "value"
-        value: root.doubleClickFraction()
+        value: root.mouseDoubleClickFraction()
+    }
+    Binding {
+        target: mouseSmartZoomToggle
+        property: "checked"
+        value: root.mouseSmartZoom
+    }
+    Binding {
+        target: pointerAccelerationToggle
+        property: "checked"
+        value: root.mousePointerAcceleration
+    }
+    Binding {
+        target: mouseGesturePagesSelect
+        property: "currentIndex"
+        value: root.gesturePagesIndex()
+    }
+    Binding {
+        target: mouseGestureFullScreenSelect
+        property: "currentIndex"
+        value: root.gestureFullScreenIndex()
+    }
+    Binding {
+        target: mouseGestureNotificationsToggle
+        property: "checked"
+        value: root.gestureNotifications
+    }
+    Binding {
+        target: mouseGestureAppWindowsToggle
+        property: "checked"
+        value: root.gestureAppWindows
+    }
+    Binding {
+        target: mouseGestureShowDesktopToggle
+        property: "checked"
+        value: root.gestureShowDesktop
+    }
+    Binding {
+        target: trackpadClickPressureSlider
+        property: "value"
+        value: root.trackpadClickPressure
+    }
+    Binding {
+        target: pinchZoomToggle
+        property: "checked"
+        value: root.trackpadPinchZoom
+    }
+    Binding {
+        target: trackpadSmartZoomToggle
+        property: "checked"
+        value: root.trackpadSmartZoom
+    }
+    Binding {
+        target: rotateToggle
+        property: "checked"
+        value: root.trackpadRotate
+    }
+    Binding {
+        target: gesturePagesSelect
+        property: "currentIndex"
+        value: root.gesturePagesIndex()
+    }
+    Binding {
+        target: gestureFullScreenSelect
+        property: "currentIndex"
+        value: root.gestureFullScreenIndex()
+    }
+    Binding {
+        target: gestureNotificationsToggle
+        property: "checked"
+        value: root.gestureNotifications
+    }
+    Binding {
+        target: gestureAppWindowsToggle
+        property: "checked"
+        value: root.gestureAppWindows
+    }
+    Binding {
+        target: gestureShowDesktopToggle
+        property: "checked"
+        value: root.gestureShowDesktop
     }
     Binding {
         target: hapticsToggle
@@ -1148,27 +1723,27 @@ Item {
     Binding {
         target: pointerSpeedSlider
         property: "value"
-        value: root.pointerSpeed
+        value: root.mousePointerSpeed
     }
     Binding {
         target: naturalScrollToggle
         property: "checked"
-        value: root.naturalScroll
+        value: root.mouseNaturalScroll
     }
     Binding {
         target: leftHandedToggle
         property: "checked"
-        value: root.leftHanded
+        value: root.mouseLeftHanded
     }
     Binding {
         target: scrollMethodSelect
         property: "currentIndex"
-        value: root.scrollMethodIndex()
+        value: root.scrollMethodIndexFor(root.mouseScrollMethod)
     }
     Binding {
         target: trackpadSpeedSlider
         property: "value"
-        value: root.pointerSpeed
+        value: root.trackpadPointerSpeed
     }
     Binding {
         target: tapToClickToggle
@@ -1178,12 +1753,7 @@ Item {
     Binding {
         target: trackpadNaturalToggle
         property: "checked"
-        value: root.naturalScroll
-    }
-    Binding {
-        target: trackpadScrollMethodSelect
-        property: "currentIndex"
-        value: root.scrollMethodIndex()
+        value: root.trackpadNaturalScroll
     }
     Binding {
         target: gesturesEnabledToggle
@@ -1238,14 +1808,32 @@ Item {
                     spacing: Theme.primitive.spacing.sm
 
                     Text {
-                        width: parent.width - 80
-                        text: modelData
+                        width: parent.width - 180
+                        text: index === 0
+                            ? qsTr("%1 (active)").arg(modelData) : modelData
                         color: Theme.color.textPrimary
                         font.pixelSize: Theme.controls.button.fontSize
                         elide: Text.ElideRight
                     }
 
                     Button {
+                        objectName: "inputSourceUp"
+                        text: qsTr("Up")
+                        variant: "ghost"
+                        enabled: index > 0
+                        onClicked: root.moveSource(modelData, -1)
+                    }
+
+                    Button {
+                        objectName: "inputSourceDown"
+                        text: qsTr("Down")
+                        variant: "ghost"
+                        enabled: index < root.inputSources.length - 1
+                        onClicked: root.moveSource(modelData, 1)
+                    }
+
+                    Button {
+                        objectName: "inputSourceRemove"
                         text: qsTr("Remove")
                         variant: "ghost"
                         onClicked: root.removeSource(modelData)
@@ -1347,4 +1935,137 @@ Item {
             }
         }
     }
+
+    // ── Keyboard shortcuts inspector (T280) ───────────────────────────────
+    Dialog {
+        id: shortcutsDialog
+        objectName: "inputShortcutsDialog"
+        title: qsTr("Keyboard Shortcuts")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                width: parent.width
+                text: qsTr("These accelerators come from the shell's one "
+                           + "shortcut table. Editing is delegated to the "
+                           + "shortcut engine.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: shortcutsRepeater
+                model: root.shortcutRows
+                delegate: SettingsRow {
+                    required property var modelData
+                    width: parent.width
+                    label: String(modelData.action)
+                    controlData: Text {
+                        text: String(modelData.keys)
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.controls.button.fontSize
+                    }
+                }
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                text: qsTr("Close")
+                variant: "primary"
+                onClicked: shortcutsDialog.accept()
+            }
+        }
+    }
+
+    // ── Dictation options (T280) ──────────────────────────────────────────
+    Dialog {
+        id: dictationOptionsDialog
+        objectName: "inputDictationOptionsDialog"
+        title: qsTr("Dictation Options")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.sm
+
+            Text {
+                text: qsTr("Language (BCP-47; empty follows the locale)")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            TextInput {
+                id: dictationLanguageInput
+                objectName: "inputDictationLanguage"
+                width: parent.width
+                height: 28
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                verticalAlignment: TextInput.AlignVCenter
+                text: Settings.values["input.dictationLanguage"] || ""
+                onEditingFinished: Settings.set("input.dictationLanguage", text)
+            }
+
+            Text {
+                text: qsTr("Microphone (empty uses the default source)")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            TextInput {
+                id: dictationMicrophoneInput
+                objectName: "inputDictationMicrophone"
+                width: parent.width
+                height: 28
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                verticalAlignment: TextInput.AlignVCenter
+                text: Settings.values["input.dictationMicrophone"] || ""
+                onEditingFinished: Settings.set("input.dictationMicrophone", text)
+            }
+
+            Text {
+                text: qsTr("Shortcut (empty uses the delegate default)")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+            }
+            TextInput {
+                id: dictationShortcutInput
+                objectName: "inputDictationShortcut"
+                width: parent.width
+                height: 28
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                verticalAlignment: TextInput.AlignVCenter
+                text: Settings.values["input.dictationShortcut"] || ""
+                onEditingFinished: Settings.set("input.dictationShortcut", text)
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Automatic punctuation")
+                controlData: Toggle {
+                    id: dictationAutoPunctuationToggle
+                    objectName: "inputDictationAutoPunctuation"
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("input.dictationAutoPunctuation", checked)
+                }
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                text: qsTr("Close")
+                variant: "primary"
+                onClicked: dictationOptionsDialog.accept()
+            }
+        }
+    }
+
 }

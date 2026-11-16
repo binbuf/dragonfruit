@@ -105,6 +105,26 @@ impl<S: PrintSource> PrintersHost<S> {
         printers_report(self.adapter.set_printer_option(name, key, value))
     }
 
+    /// Remove a queue (T280). One explicit write.
+    pub fn remove_printer(&mut self, name: &str) -> Value {
+        printers_report(self.adapter.remove_printer(name))
+    }
+
+    /// Print a test page (T280). One explicit write.
+    pub fn print_test_page(&mut self, name: &str) -> Value {
+        printers_report(self.adapter.print_test_page(name))
+    }
+
+    /// Share or unshare a queue (T280). One explicit write.
+    pub fn set_printer_shared(&mut self, name: &str, shared: bool) -> Value {
+        printers_report(self.adapter.set_printer_shared(name, shared))
+    }
+
+    /// Hand a SANE device to the host scanner application (T280).
+    pub fn open_scanner(&mut self, device: &str) -> Value {
+        printers_report(self.adapter.open_scanner(device))
+    }
+
     /// The adapter (read-only), for tests and introspection.
     pub fn adapter(&self) -> &PrinterAdapter<S> {
         &self.adapter
@@ -205,6 +225,7 @@ fn printer_json(printer: &dragonfruit_printer_adapter::Printer) -> Value {
         "stateLabel": printer.state_label(),
         "stateMessage": printer.state_message,
         "acceptingJobs": printer.accepting_jobs,
+        "shared": printer.shared,
         "enabled": printer.enabled,
         "isDefault": printer.is_default(),
         "jobCount": printer.job_count(),
@@ -273,6 +294,7 @@ mod tests {
                     enabled: true,
                     is_default: true,
                     jobs: vec![],
+                    ..PrinterData::default()
                 },
             ]),
             default_printer: "Canon_MF230".to_owned(),

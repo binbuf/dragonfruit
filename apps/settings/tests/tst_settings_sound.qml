@@ -27,6 +27,8 @@ Item {
         function init() {
             Settings.setSoundVolume(0.6);
             Settings.setSoundMute(false);
+            Settings.setSoundSourceVolume(0.5);
+            Settings.setSoundSourceMute(false);
             Settings.setSoundDefaultSink(7);
             Settings.setSoundDefaultSource(20);
             Settings.set("sound.alertSound", "Chime");
@@ -114,8 +116,65 @@ Item {
             Settings.setSoundMute(true);
             compare(Settings.sound.muted, true);
             compare(pane.muted, true);
+            // Mute never zeroes the displayed level: the slider is the level,
+            // the toggle is the gate.
+            compare(pane.outputVolumeSlider.value, 0.25);
             pane.muteToggle.toggle();
             compare(Settings.sound.muted, false);
+        }
+
+        function test_moving_the_output_slider_while_muted_unmutes() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setSoundMute(true);
+            compare(Settings.sound.muted, true);
+            compare(pane.outputVolumeSlider.value, 0.6);
+
+            pane.outputVolumeSlider.setValue(0.4);
+            pane.outputVolumeSlider.commit();
+            tryVerify(function() { return Settings.sound.muted === false; });
+            verify(Math.abs(Settings.sound.volume - 0.4) < 0.001);
+            compare(pane.outputVolumeSlider.value, 0.4);
+        }
+
+        function test_input_tab_has_its_own_volume_and_mute() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.tabIndex = 1;
+            waitForRendering(stage);
+            compare(pane.outputTab, false);
+            verify(Math.abs(pane.sourceVolume - 0.5) < 0.001);
+            compare(pane.inputMuteToggle.checked, false);
+
+            pane.inputVolumeSlider.setValue(0.8);
+            pane.inputVolumeSlider.commit();
+            tryVerify(function() { return Math.abs(Settings.sound.sourceVolume - 0.8) < 0.001; });
+            // The output level did not move.
+            verify(Math.abs(Settings.sound.volume - 0.6) < 0.001);
+
+            pane.inputMuteToggle.toggle();
+            compare(Settings.sound.sourceMuted, true);
+            compare(Settings.sound.muted, false);
+        }
+
+        function test_alert_preview_plays_through_the_audio_adapter() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var before = Number(Settings.sound.alertSounds || 0);
+            pane.alertPlayButton.clicked();
+            tryVerify(function() {
+                return Number(Settings.sound.alertSounds || 0) === before + 1;
+            });
+        }
+
+        function test_balance_and_per_app_rows_are_honest() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.balanceNote.visible);
+            verify(pane.balanceNote.text.indexOf("Stored-only") >= 0);
+            verify(pane.perAppRow.visible);
+            verify(pane.perAppRow.description.indexOf("not expose") >= 0
+                   || pane.perAppRow.description.indexOf("do not expose") >= 0);
         }
 
         function test_alert_sound_and_effects_rows_round_trip() {
