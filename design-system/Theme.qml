@@ -47,6 +47,13 @@ QtObject {
             readonly property color sky400: "#5b8dff"
             readonly property color sky500: "#4a7dff"
             readonly property color sky600: "#3a66e0"
+            readonly property color azure100: "#e0edff"
+            readonly property color azure300: "#4fa3ff"
+            readonly property color azure400: "#0a84ff"
+            readonly property color azure500: "#007aff"
+            readonly property color azure600: "#0062d6"
+            readonly property color azure700: "#004fa8"
+            readonly property color azure900: "#0b2a4d"
         }
         readonly property var radius: QtObject {
             readonly property int none: 0
@@ -953,9 +960,9 @@ QtObject {
             readonly property color textPrimary: "#1d1723"
             readonly property color textSecondary: "#5b4e66"
             readonly property color textTertiary: "#786a84"
-            readonly property color accent: tokens.hasAccentOverride ? tokens.accentOverrideColor : "#b32a66"
-            readonly property color accentHover: tokens.hasAccentOverride ? Qt.lighter(tokens.accentOverrideColor, 1.15) : "#cf3a7c"
-            readonly property color accentMuted: tokens.hasAccentOverride ? Qt.tint("#f8f6fa", Qt.rgba(tokens.accentOverrideColor.r, tokens.accentOverrideColor.g, tokens.accentOverrideColor.b, 0.14)) : "#fbe1ec"
+            readonly property color accent: tokens.hasAccentOverride ? tokens.accentOverrideColor : "#007aff"
+            readonly property color accentHover: tokens.hasAccentOverride ? Qt.lighter(tokens.accentOverrideColor, 1.15) : "#0a84ff"
+            readonly property color accentMuted: tokens.hasAccentOverride ? Qt.tint("#f8f6fa", Qt.rgba(tokens.accentOverrideColor.r, tokens.accentOverrideColor.g, tokens.accentOverrideColor.b, 0.14)) : "#e0edff"
             readonly property color accentContent: tokens.hasAccentOverride ? (tokens.accentOverrideColor.r * 0.299 + tokens.accentOverrideColor.g * 0.587 + tokens.accentOverrideColor.b * 0.114 > 0.5 ? "#130f17" : "#ffffff") : "#ffffff"
             readonly property color border: "#ded6e5"
             readonly property color separator: "#efeaf3"
@@ -1034,10 +1041,10 @@ QtObject {
             readonly property color textPrimary: "#f8f6fa"
             readonly property color textSecondary: "#c3b8cc"
             readonly property color textTertiary: "#9c8fa8"
-            readonly property color accent: tokens.hasAccentOverride ? tokens.accentOverrideColor : "#e15c98"
-            readonly property color accentHover: tokens.hasAccentOverride ? Qt.lighter(tokens.accentOverrideColor, 1.15) : "#ee93bc"
-            readonly property color accentMuted: tokens.hasAccentOverride ? Qt.tint("#2d2534", Qt.rgba(tokens.accentOverrideColor.r, tokens.accentOverrideColor.g, tokens.accentOverrideColor.b, 0.28)) : "#591a39"
-            readonly property color accentContent: tokens.hasAccentOverride ? (tokens.accentOverrideColor.r * 0.299 + tokens.accentOverrideColor.g * 0.587 + tokens.accentOverrideColor.b * 0.114 > 0.5 ? "#130f17" : "#ffffff") : "#130f17"
+            readonly property color accent: tokens.hasAccentOverride ? tokens.accentOverrideColor : "#0a84ff"
+            readonly property color accentHover: tokens.hasAccentOverride ? Qt.lighter(tokens.accentOverrideColor, 1.15) : "#4fa3ff"
+            readonly property color accentMuted: tokens.hasAccentOverride ? Qt.tint("#2d2534", Qt.rgba(tokens.accentOverrideColor.r, tokens.accentOverrideColor.g, tokens.accentOverrideColor.b, 0.28)) : "#0b2a4d"
+            readonly property color accentContent: tokens.hasAccentOverride ? (tokens.accentOverrideColor.r * 0.299 + tokens.accentOverrideColor.g * 0.587 + tokens.accentOverrideColor.b * 0.114 > 0.5 ? "#130f17" : "#ffffff") : "#ffffff"
             readonly property color border: "#44394d"
             readonly property color separator: "#2d2534"
             readonly property color controlFill: "#2d2534"
@@ -1130,6 +1137,15 @@ QtObject {
     // Scroll-bar policy (T227, `appearance.scrollBars`): automatic,
     // when-scrolling, or always. The ScrollView component consumes it.
     property string scrollBars: "automatic"
+    // Scroll-bar track click (T274, `appearance.scrollBarClick`):
+    // `jump-to-spot` or `jump-to-next-page`. ScrollView consumes it.
+    property string scrollBarClick: "jump-to-next-page"
+    // Folder color (T274, `appearance.folderColor`): empty keeps the
+    // shipped place artwork; `#rrggbb` tints the plain folder glyph in
+    // Files and Settings. Consumers read the colour, not the raw key.
+    property string folderColor: ""
+    readonly property bool hasFolderColor: tokens.folderColor !== ""
+    readonly property color folderColorColor: tokens.hasFolderColor ? tokens.folderColor : "transparent"
     // Wallpaper tinting (T227, `appearance.wallpaperTint`): off makes the
     // glass resolver take the neutral plate instead of sampling the
     // wallpaper's colours.

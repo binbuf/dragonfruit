@@ -469,6 +469,26 @@ public:
     // Test/capture seam (`DF_DISPLAY_FIXTURE` only): `single`, `dual`, or
     // `absent`. A no-op without the fixture environment.
     Q_INVOKABLE void setDisplayFixture(const QString &mode);
+    // T274: the icon/widget-style provider. The list is the host's installed
+    // icon themes (a directory with an `index.theme`), with `Default` first.
+    // `DF_ICON_THEME_FIXTURE=present|none` makes it deterministic for tests
+    // and captures. The pane disables the row when the provider is absent.
+    Q_PROPERTY(int iconThemesRevision READ iconThemesRevision
+                   NOTIFY iconThemesChanged)
+    Q_INVOKABLE QVariantList iconThemes() const;
+    // The four macOS style names, each mapped to an installed theme when the
+    // provider has a match. `enabled` is false with a `reason` otherwise.
+    Q_INVOKABLE QVariantList iconStyleOptions() const;
+    // The host's cursor themes (a directory with a `cursors/` subdirectory).
+    Q_INVOKABLE QVariantList cursorThemes() const;
+    // The theme the QIcon provider currently resolves to (explicit
+    // `appearance.iconTheme` wins over the `appearance.iconStyle` mapping).
+    Q_INVOKABLE QString effectiveIconTheme() const;
+    int iconThemesRevision() const { return m_iconThemesRevision; }
+    // Test/capture seams: `present` or `none`, only when the matching
+    // environment variable is set.
+    Q_INVOKABLE void setIconThemeFixture(const QString &mode);
+    Q_INVOKABLE void setCursorThemeFixture(const QString &mode);
     // Test/capture seam (`DF_SETTINGS_FIXTURE` only): make the next write of
     // `key` apply optimistically and then fail. A no-op on the live client.
     Q_INVOKABLE void failNextWrite(const QString &key, const QString &message);
@@ -857,6 +877,8 @@ signals:
     void batteryChanged();
     // The real display-output list changed (T273).
     void displayOutputsChanged();
+    // The icon/cursor theme provider inventory changed (T274).
+    void iconThemesChanged();
     // The Notifications/Focus view or availability changed (T-15.7b).
     void notificationsChanged();
     // The General/About/Updates view or availability changed (T-15.10b).
@@ -1022,6 +1044,15 @@ private:
     // T273: the Displays output fixture mode (`DF_DISPLAY_FIXTURE` only).
     QString m_displayFixtureMode;
     int m_displayOutputsRevision = 0;
+    // T274: the icon/cursor theme provider fixture modes and revision.
+    QString m_iconThemeFixtureMode;
+    QString m_cursorThemeFixtureMode;
+    int m_iconThemesRevision = 0;
+    QStringList installedIconThemes() const;
+    QStringList installedCursorThemes() const;
+    QString iconThemeForStyle(const QString &style,
+                              const QStringList &themes) const;
+    void applyIconTheme();
     // T-15.7b: the Notifications/Focus seam (`DF_NOTIFICATIONS_FIXTURE`
     // selects the mock).
     NotificationsClient *m_notifications = nullptr;

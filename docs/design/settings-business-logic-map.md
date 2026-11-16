@@ -434,13 +434,30 @@ defaults; no error banner.
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Light/Dark/Auto | Appearance | Segmented | existing: `appearance.colorScheme` | Live theme; auto follows host style |
-| Accent color | Accent color | Swatches | existing: `appearance.accent` | Live; custom color |
-| Highlight color | Highlight color | Popup | `appearance.highlight` | Selection/highlight |
+| Accent color | Accent color | Swatches + custom | existing: `appearance.accent` | Live; Multicolor (empty) or any `#rrggbb` |
+| Highlight color | Highlight color | Swatches + custom | `appearance.highlight` | Selection wash; live |
+| Icon & widget style | Icon & widget style | Segmented | `appearance.iconStyle` | Provider-gated; disabled with the reason when no installed theme matches |
+| Folder color | Folder color | Swatches + custom | `appearance.folderColor` | Files/Theme folder glyph; Automatic keeps the artwork |
 | Sidebar icon size | Sidebar icon size | Popup | `appearance.sidebarIconSize` | Small/medium/large |
 | Allow wallpaper tinting | Wallpaper tinting | Toggle | `appearance.wallpaperTint` | Materials adapt to wallpaper |
-| Liquid Glass | Transparency | Slider | existing: `appearance.transparency` | 0..1; measured 0.5255 midpoint |
-| Show scroll bars | Scroll bars | Popup | `appearance.scrollBars` | Automatic/always/when scrolling |
+| Liquid Glass | Transparency | Slider | existing: `appearance.transparency` | 0..1; measured 0.5255 midpoint; disabled under Reduce Transparency |
+| Show scroll bars | Show scroll bars | Popup | `appearance.scrollBars` | Automatic/when-scrolling/always, visually distinct |
+| Click in the scroll bar to | Click in the scroll bar to | Popup | `appearance.scrollBarClick` | Jump to spot or next page |
 | — | Motion | Link | `accessibility.reduceMotion` | Deep link to Accessibility |
+| — | Icon theme | Popup | `appearance.iconTheme` | Installed-theme provider; explicit theme wins over the style |
+| — | Cursor theme / size | Popup + slider | `appearance.cursorTheme`, `appearance.cursorSize` | Provider-gated; applied at the next session start |
+| — | Window control layout | Popup | `appearance.windowControls` | Disabled with reason; traffic lights stay left |
+| — | Material effects | Popup | `appearance.material` | Disabled with reason; Glass budget owns the tier |
+| — | Accent from wallpaper | Toggle | `appearance.accentFromWallpaper` | Disabled with reason; needs the wallpaper sampler |
+| — | Preview | Live render | Theme + `Glass.resolve` | Scheme/accent/highlight/folder/material in one place |
+
+**T274 status.** The pane is six grouped cards, not seven one-row cards. The
+default accent is the reviewed Tahoe system blue. Folder color is consumed by
+the design-system `Icon` folder glyph in Files and the Dock; scroll-bar click
+is consumed by `ScrollView`; icon/cursor rows use the real installed-theme
+inventory. Transparency is disabled and its write discarded under Reduce
+Transparency. The preview reads the same Theme/Glass resolver as the live
+surfaces.
 
 **T227 status.** The pane ships every row. Highlight, sidebar icon size,
 wallpaper tinting, and scroll bars are settingsd keys consumed live by

@@ -538,6 +538,44 @@ chroma pickup is not reproduced; T206 captures record the rendered channel
 spread separately. ADR [0225](adr/0225-first-party-app-chrome-presets.md)
 records the decision and the unresolved chroma transport.
 
+## The T274 Appearance pane (ADR 0275)
+
+T274 turns Appearance into the macOS Tahoe page instead of seven one-row
+cards. The pane has six groups: Appearance (Light/Dark/Auto), Color (accent
+and highlight, each with swatches, a custom hex picker, and the accent's
+Multicolor choice), Icon & widget style (style, folder color, sidebar icon
+size), Windows and scroll bars (wallpaper tint, the three scroll-bar modes,
+the track-click policy, transparency, and the Motion link), Desktop
+integration (the Linux-only rows), and Preview.
+
+- The reviewed default accent is the macOS system blue (`#007aff` light /
+  `#0a84ff` dark). Empty `appearance.accent` is Multicolor; a custom value
+  still overrides the whole accent family.
+- `appearance.folderColor` is a real Theme key. `Theme.folderColor` replaces
+  the generic folder place artwork with a tinted folder glyph in Files and
+  the Dock; the emblematic folder variants keep their shipped artwork.
+- `appearance.scrollBarClick` maps onto `Theme.scrollBarClick`, the default
+  for every `ScrollView`. `appearance.scrollBars` keeps the three distinct
+  modes: automatic (focus/hover/motion), when-scrolling (motion/drag only),
+  and always.
+- The icon/style row uses the host's installed icon themes as its provider.
+  `Settings.iconStyleOptions()` maps Default/Dark/Clear/Tinted to a real
+  installed theme and marks a style unavailable with a reason when no theme
+  matches; with no provider at all the row is disabled with the reason. An
+  explicit `appearance.iconTheme` wins over the style mapping. The cursor
+  rows use the same provider shape and apply at the next session start.
+- The transparency slider is disabled while `accessibility.reduceTransparency`
+  is on, the row shows the override reason, and a drag/commit/queued write is
+  discarded rather than written. Reduce Transparency remains the winner in
+  the Glass resolver.
+- The preview renders the live `Theme` colours and the same
+  `Glass.resolve("menuAttached", …)` output as the shell, so scheme, accent,
+  highlight, folder colour, and material agree with the desktop rather than
+  re-deriving a second formula.
+- `windowControls`, `material`, and `accentFromWallpaper` are visible but
+  disabled with their owners named; the schema keys are reserved for the
+  decoration/Glass/wallpaper tasks.
+
 ## Wallpaper sources (T-18 / ADR 0240)
 
 The Wallpaper pane is a flat gallery, not a card stack: a 160×100 hero with the

@@ -31,6 +31,14 @@ Item {
             Settings.set("appearance.sidebarIconSize", "medium");
             Settings.set("appearance.wallpaperTint", true);
             Settings.set("appearance.scrollBars", "automatic");
+            Settings.set("appearance.scrollBarClick", "jump-to-next-page");
+            Settings.set("appearance.folderColor", "");
+            Settings.set("appearance.iconStyle", "default");
+            Settings.set("appearance.iconTheme", "");
+            Settings.set("appearance.cursorTheme", "");
+            Settings.set("appearance.cursorSize", 24);
+            Settings.setIconThemeFixture("present");
+            Settings.setCursorThemeFixture("present");
             Settings.set("accessibility.reduceMotion", false);
             Settings.set("accessibility.reduceTransparency", false);
             Settings.set("accessibility.increaseContrast", false);
@@ -268,23 +276,288 @@ Item {
 
         // -- T227: the remaining Appearance rows --------------------------------
 
-        function test_highlight_applies_live_and_converges() {
+        function test_highlight_swatches_apply_live_and_converge() {
             var shell = make();
             var pane = paneOf(shell);
-            compare(pane.highlightSelect.currentIndex, 0); // Default
+            compare(pane.highlightRepeater.count, 6);
+            verify(pane.highlightRepeater.itemAt(0).selected); // Default
 
-            pane.highlightSelect.activateIndex(1); // Violet
+            pane.highlightRepeater.itemAt(1).choose(); // Violet
             compare(Settings.values["appearance.highlight"], "#b3a1ff");
             compare(Theme.highlightOverride, "#b3a1ff");
             verify(Qt.colorEqual(Theme.color.selection, "#b3a1ff"));
+            verify(pane.highlightRepeater.itemAt(1).selected);
 
             Settings.set("appearance.highlight", "#7fd6a4");
-            tryVerify(function() { return pane.highlightSelect.currentIndex === 3; });
+            tryVerify(function() { return pane.highlightRepeater.itemAt(3).selected; });
             verify(Qt.colorEqual(Theme.color.selection, "#7fd6a4"));
 
             Settings.set("appearance.highlight", "");
-            tryVerify(function() { return pane.highlightSelect.currentIndex === 0; });
+            tryVerify(function() { return pane.highlightRepeater.itemAt(0).selected; });
             compare(Theme.highlightOverride, "");
+        }
+
+        function test_custom_highlight_picker_applies_and_validates() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.highlightPopup.show();
+            waitForRendering(stage);
+            pane.highlightInput.text = "#123456";
+            pane.highlightInput.applyCustom();
+            compare(Settings.values["appearance.highlight"], "#123456");
+            compare(Theme.highlightOverride, "#123456");
+            verify(Qt.colorEqual(Theme.color.selection, "#123456"));
+
+            pane.highlightPopup.show();
+            pane.highlightInput.text = "#nope";
+            pane.highlightInput.applyCustom();
+            compare(Settings.values["appearance.highlight"], "#123456");
+        }
+
+        function test_folder_color_applies_and_converges() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.folderColorRepeater.count, 6);
+            compare(Theme.hasFolderColor, false);
+
+            pane.folderColorRepeater.itemAt(1).choose(); // Blue
+            compare(Settings.values["appearance.folderColor"], "#4a7dff");
+            compare(Theme.folderColor, "#4a7dff");
+            compare(Theme.hasFolderColor, true);
+            verify(Qt.colorEqual(Theme.folderColorColor, "#4a7dff"));
+            verify(pane.folderColorRepeater.itemAt(1).selected);
+
+            pane.folderColorPopup.show();
+            waitForRendering(stage);
+            pane.folderColorInput.text = "#2bb673";
+            pane.folderColorInput.applyCustom();
+            compare(Settings.values["appearance.folderColor"], "#2bb673");
+            compare(Theme.folderColor, "#2bb673");
+
+            pane.folderColorRepeater.itemAt(0).choose(); // Automatic
+            compare(Settings.values["appearance.folderColor"], "");
+            compare(Theme.hasFolderColor, false);
+        }
+
+        function test_icon_style_and_theme_use_the_host_provider() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            // The fixture provider has three real themes; Default maps to the
+            // first, Dark to the matching variant, Clear/Tinted to nothing.
+            compare(Settings.iconThemes().length, 4);
+            verify(pane.iconStyleRow.enabled);
+            compare(pane.iconStyleControl.entries.length, 4);
+            verify(pane.iconStyleControl.entries[0].enabled);
+            verify(pane.iconStyleControl.entries[1].enabled);
+            verify(!pane.iconStyleControl.entries[2].enabled);
+            verify(!pane.iconStyleControl.entries[3].enabled);
+
+            pane.iconStyleControl.activateIndex(1); // Dark
+            compare(Settings.values["appearance.iconStyle"], "dark");
+            compare(Settings.effectiveIconTheme(), "Plain Dark");
+
+            // A disabled style is rejected with its reason, not written.
+            pane.iconStyleControl.activateIndex(2); // Clear
+            compare(Settings.values["appearance.iconStyle"], "dark");
+            verify(pane.iconStyleRejectedReason.indexOf("Clear") >= 0);
+            verify(pane.iconStyleRow.description.indexOf("Clear") >= 0);
+
+            // An explicit theme wins over the style mapping.
+            pane.iconThemeSelect.activateIndex(3); // High Contrast
+            compare(Settings.values["appearance.iconTheme"], "High Contrast");
+            compare(Settings.effectiveIconTheme(), "High Contrast");
+
+            Settings.set("appearance.iconTheme", "");
+            compare(Settings.effectiveIconTheme(), "Plain Dark");
+        }
+
+        function test_icon_and_cursor_rows_disable_without_a_provider() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            Settings.setIconThemeFixture("none");
+            Settings.setCursorThemeFixture("none");
+            compare(Settings.iconThemes().length, 1);
+            compare(pane.iconProviderAvailable, false);
+            tryVerify(function() { return !pane.iconStyleRow.enabled; });
+            verify(!pane.iconThemeRow.enabled);
+            verify(!pane.cursorThemeRow.enabled);
+            verify(pane.iconStyleRow.description.indexOf("No icon theme") >= 0);
+            verify(pane.cursorThemeRow.description.indexOf("No cursor theme") >= 0);
+
+            Settings.setIconThemeFixture("present");
+            Settings.setCursorThemeFixture("present");
+            tryVerify(function() { return pane.iconStyleRow.enabled; });
+            verify(pane.iconThemeRow.enabled);
+            verify(pane.cursorThemeRow.enabled);
+        }
+
+        function test_cursor_theme_and_size_persist() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(Settings.cursorThemes().length, 3);
+
+            pane.cursorThemeSelect.activateIndex(1);
+            compare(Settings.values["appearance.cursorTheme"], "Plain Cursors");
+
+            pane.cursorSizeSlider.setValue(32);
+            pane.cursorSizeSlider.commit();
+            compare(Settings.values["appearance.cursorSize"], 32);
+            compare(pane.currentCursorSize, 32);
+
+            Settings.set("appearance.cursorSize", 20);
+            tryVerify(function() { return pane.cursorSizeSlider.value === 20; });
+        }
+
+        function test_scroll_bar_click_policy_applies_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(Theme.scrollBarClick, "jump-to-next-page");
+            compare(shell.detailScroll.scrollBarClickBehavior, "jump-to-next-page");
+
+            pane.scrollBarClickSelect.activateIndex(1); // jump to spot
+            compare(Settings.values["appearance.scrollBarClick"], "jump-to-spot");
+            compare(Theme.scrollBarClick, "jump-to-spot");
+            compare(shell.detailScroll.scrollBarClickBehavior, "jump-to-spot");
+
+            Settings.set("appearance.scrollBarClick", "jump-to-next-page");
+            tryVerify(function() { return pane.scrollBarClickSelect.currentIndex === 0; });
+            compare(shell.detailScroll.scrollBarClickBehavior, "jump-to-next-page");
+        }
+
+        function test_scroll_bar_modes_are_visually_distinct() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var scroll = shell.detailScroll;
+            // The pane is taller than the viewport at 740×820, so the bar is
+            // overflowing in every case.
+            verify(scroll.maxY > 0);
+
+            Settings.set("appearance.scrollBars", "always");
+            tryVerify(function() { return scroll.showBars === true; });
+
+            Settings.set("appearance.scrollBars", "when-scrolling");
+            tryVerify(function() { return scroll.showBars === false; });
+
+            Settings.set("appearance.scrollBars", "automatic");
+            scroll.flickable.contentY = 0;
+            scroll.forceActiveFocus();
+            tryVerify(function() { return scroll.showBars === true; });
+        }
+
+        function test_transparency_is_disabled_and_discarded_under_the_override() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var before = Settings.values["appearance.transparency"];
+
+            Settings.set("accessibility.reduceTransparency", true);
+            tryVerify(function() { return !pane.transparencyRow.enabled; });
+            verify(!pane.transparencySlider.enabled);
+            verify(pane.transparencyRow.description.indexOf("Reduce Transparency") >= 0);
+            verify(pane.previewResolved.sliderApplied === false);
+
+            // A drag, a commit, and a queued write all leave the stored value
+            // alone: the slider cannot accept a write that cannot apply.
+            pane.transparencySlider.setValue(0.9);
+            pane.transparencySlider.commit();
+            pane.queueTransparency(0.85);
+            wait(120);
+            fuzzyCompare(Settings.values["appearance.transparency"], before, 0.0001);
+            fuzzyCompare(pane.previewTransparency, before, 0.0001);
+
+            // A queued write in flight when the override turns on is dropped.
+            Settings.set("accessibility.reduceTransparency", false);
+            tryVerify(function() { return pane.transparencyRow.enabled; });
+            pane.queueTransparency(0.75);
+            Settings.set("accessibility.reduceTransparency", true);
+            wait(120);
+            fuzzyCompare(Settings.values["appearance.transparency"], before, 0.0001);
+
+            Settings.set("accessibility.reduceTransparency", false);
+        }
+
+        function test_preview_renders_scheme_accent_highlight_and_folder() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.previewRollout = "replacement";
+
+            Settings.set("appearance.colorScheme", "dark");
+            tryVerify(function() { return pane.previewScheme === "Dark"; });
+
+            Settings.set("appearance.accent", "#123456");
+            tryVerify(function() {
+                return Qt.colorEqual(pane.previewAccentChip.color, "#123456");
+            });
+
+            Settings.set("appearance.highlight", "#7fd6a4");
+            tryVerify(function() {
+                return Qt.colorEqual(pane.previewHighlightChip.color, "#7fd6a4");
+            });
+
+            Settings.set("appearance.folderColor", "#e0a43a");
+            tryVerify(function() { return pane.previewFolderIcon.tintedFolder; });
+            verify(Qt.colorEqual(Theme.folderColorColor, "#e0a43a"));
+
+            // The material plate is the same resolver the live surfaces use.
+            var expected = Glass.resolve("menuAttached", {
+                scheme: "dark",
+                rollout: "replacement",
+                slider: pane.previewTransparency,
+                reduceTransparency: false,
+                increaseContrast: false,
+                tier: Glass.tier,
+                software: Glass.software,
+                sampledBlur: Glass.sampledBlur
+            });
+            fuzzyCompare(pane.previewResolved.alpha, expected.alpha, 0.000001);
+            compare(pane.previewResolved.renderMode, expected.renderMode);
+        }
+
+        function test_long_labels_and_the_measured_window_keep_controls_inside() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 740, height: 820 });
+            waitForRendering(stage);
+            shell.selectPane("appearance");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            var pane = paneOf(shell);
+            pane.labelSuffix = " — " + qsTr("a deliberately long localized label that "
+                                           + "must elide instead of moving the control");
+
+            var rows = [pane.schemeRow, pane.accentRow, pane.highlightRow,
+                        pane.iconStyleRow, pane.folderColorRow,
+                        pane.sidebarIconSizeRow, pane.scrollBarsRow,
+                        pane.scrollBarClickRow, pane.transparencyRow,
+                        pane.iconThemeRow, pane.cursorThemeRow, pane.cursorSizeRow];
+            for (var i = 0; i < rows.length; ++i) {
+                var row = rows[i];
+                var control = row.control;
+                verify(control.x + control.width <= row.width + 0.5,
+                       "control must fit inside its row: right="
+                       + (control.x + control.width) + " row=" + row.width);
+                verify(row.x + row.width <= shell.width + 0.5,
+                       "row must fit inside the window: right="
+                       + (row.x + row.width) + " window=" + shell.width);
+                verify(row.labelText.width <= row.width,
+                       "long label must stay inside the row");
+            }
+        }
+
+        function test_a_new_row_write_failure_shows_inline() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.failNextWrite("appearance.scrollBarClick",
+                                   "The settings service rejected the change.");
+            pane.scrollBarClickSelect.activateIndex(1);
+            tryVerify(function() { return pane.scrollBarClickRow.errorText.length > 0; });
+            compare(pane.scrollBarClickRow.errorText,
+                    "The settings service rejected the change.");
+            verify(pane.scrollBarClickRow.errorLabel.visible);
+            tryVerify(function() {
+                return Settings.values["appearance.scrollBarClick"]
+                        === "jump-to-next-page";
+            });
         }
 
         function test_sidebar_icon_size_applies_live() {

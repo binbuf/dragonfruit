@@ -72,7 +72,7 @@ private slots:
         binding.apply();
 
         QCOMPARE(m_theme->property("accentOverride").toString(), QString());
-        QCOMPARE(colorAccent(), QStringLiteral("#b32a66"));
+        QCOMPARE(colorAccent(), QStringLiteral("#007aff"));
 
         client.set(QStringLiteral("appearance.accent"), QStringLiteral("#4a7dff"));
         QCOMPARE(m_theme->property("accentOverride").toString(),
@@ -80,7 +80,35 @@ private slots:
         QCOMPARE(colorAccent(), QStringLiteral("#4a7dff"));
 
         client.set(QStringLiteral("appearance.accent"), QString());
-        QCOMPARE(colorAccent(), QStringLiteral("#b32a66"));
+        QCOMPARE(colorAccent(), QStringLiteral("#007aff"));
+    }
+
+    // T274: the scroll-bar track click and the Files folder colour are Theme
+    // state, so the shell and the Files process follow the same two keys.
+    void scrollBarClickAndFolderColorFollowSettings()
+    {
+        MockSettingsClient client;
+        ThemeBinding binding(&client, &m_engine);
+        binding.apply();
+
+        QCOMPARE(m_theme->property("scrollBarClick").toString(),
+                 QStringLiteral("jump-to-next-page"));
+        QCOMPARE(m_theme->property("folderColor").toString(), QString());
+        QCOMPARE(m_theme->property("hasFolderColor").toBool(), false);
+
+        client.set(QStringLiteral("appearance.scrollBarClick"),
+                   QStringLiteral("jump-to-spot"));
+        QCOMPARE(m_theme->property("scrollBarClick").toString(),
+                 QStringLiteral("jump-to-spot"));
+
+        client.set(QStringLiteral("appearance.folderColor"),
+                   QStringLiteral("#e0a43a"));
+        QCOMPARE(m_theme->property("folderColor").toString(),
+                 QStringLiteral("#e0a43a"));
+        QCOMPARE(m_theme->property("hasFolderColor").toBool(), true);
+
+        client.set(QStringLiteral("appearance.folderColor"), QString());
+        QCOMPARE(m_theme->property("hasFolderColor").toBool(), false);
     }
 
     void reduceMotionFlipsTheme()

@@ -866,6 +866,16 @@ Item {
     }
     Binding {
         target: Theme
+        property: "scrollBarClick"
+        value: Settings.values["appearance.scrollBarClick"] || "jump-to-next-page"
+    }
+    Binding {
+        target: Theme
+        property: "folderColor"
+        value: Settings.values["appearance.folderColor"] || ""
+    }
+    Binding {
+        target: Theme
         property: "reducedMotion"
         value: Settings.values["accessibility.reduceMotion"] === true
     }

@@ -1461,6 +1461,23 @@ Item {
             compare(desktopOpenSpy.signalArguments[0][1], true, "the first tile is a folder");
         }
 
+        // T274: Files is the folder-color consumer, and the same Theme key
+        // drives the scroll-bar click policy for its views.
+        function test_folder_color_and_scroll_click_follow_settings() {
+            var shell = make();
+            Settings.set("appearance.folderColor", "#e0a43a");
+            tryCompare(Theme, "folderColor", "#e0a43a");
+            compare(Theme.hasFolderColor, true);
+            verify(Qt.colorEqual(Theme.folderColorColor, "#e0a43a"));
+
+            Settings.set("appearance.scrollBarClick", "jump-to-spot");
+            tryCompare(Theme, "scrollBarClick", "jump-to-spot");
+
+            Settings.set("appearance.folderColor", "");
+            Settings.set("appearance.scrollBarClick", "jump-to-next-page");
+            tryCompare(Theme, "hasFolderColor", false);
+        }
+
         function test_desktop_double_click_direct_handler_still_opens() {
             var surface = makeDesktop();
             desktopOpenSpy.target = surface;

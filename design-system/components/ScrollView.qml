@@ -36,9 +36,10 @@ FocusScope {
     // end before this square, so a bottom-right resize press and a scrollbar
     // thumb never share a pointer target.
     property real cornerInset: 0
-    // T266: the scroll-bar click behavior key. A track press either jumps the
-    // thumb to the clicked spot or advances one viewport page.
-    property string scrollBarClickBehavior: "jump-to-spot"
+    // T266/T274: the scroll-bar click behavior (`appearance.scrollBarClick`).
+    // A track press either jumps the thumb to the clicked spot or advances one
+    // viewport page. The Theme singleton is the one writer of the default.
+    property string scrollBarClickBehavior: Theme.scrollBarClick
 
     readonly property bool overflowsVertically: root.maxY > 0
     readonly property bool overflowsHorizontally: root.maxX > 0

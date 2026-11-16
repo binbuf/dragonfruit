@@ -11,6 +11,8 @@
 //   appearance.accent          "#rrggbb" | ""             -> Theme.accentOverride
 //   appearance.highlight       "#rrggbb" | ""             -> Theme.highlightOverride
 //   appearance.scrollBars      automatic/when-scrolling/always -> Theme.scrollBars
+//   appearance.scrollBarClick  jump-to-spot/jump-to-next-page -> Theme.scrollBarClick
+//   appearance.folderColor     "#rrggbb" | ""             -> Theme.folderColor
 //   appearance.wallpaperTint   boolean                    -> Glass.wallpaperTint
 //   appearance.transparency    double 0..1                -> Glass.slider
 //   accessibility.reduceMotion boolean                    -> Theme.reducedMotion

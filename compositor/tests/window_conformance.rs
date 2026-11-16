@@ -4456,7 +4456,7 @@ fn material_schemes_select_and_reduced_motion_stays_single_frame() {
     assert_eq!(dark.scheme, "dark");
     assert_eq!(dark.chrome, "2d2534ff");
     assert_eq!(dark.elevated, "2d2534ff");
-    assert_eq!(dark.accent, "e15c98ff");
+    assert_eq!(dark.accent, "0a84ffff");
 
     // Light selects the light token set.
     input.send("set color-scheme light");
@@ -4465,7 +4465,7 @@ fn material_schemes_select_and_reduced_motion_stays_single_frame() {
     assert_eq!(light.chrome, "ffffffff");
     assert_eq!(light.elevated, "ffffffff");
     assert_eq!(light.border, "ded6e5ff");
-    assert_eq!(light.accent, "b32a66ff");
+    assert_eq!(light.accent, "007affff");
     assert_ne!(
         light.chrome, dark.chrome,
         "light and dark chrome must not resolve to the same tone"

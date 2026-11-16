@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 30;
+pub const SCHEMA_VERSION: u32 = 31;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2108,6 +2108,128 @@ pub const KEYS: &[KeySpec] = &[
         since: 21,
         summary: "When scroll bars show: automatically, only while scrolling, or always.",
     },
+    // ── Appearance completion (T274) ─────────────────────────────────────
+    // The macOS Appearance rows that need a durable preference: the track
+    // click, the Files folder colour, and the Linux icon/cursor adapters.
+    // `iconStyle` and `iconTheme` share one provider consumer; an explicit
+    // theme wins over the style mapping.
+    KeySpec {
+        key: "appearance.scrollBarClick",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("jump-to-next-page"),
+        allowed: &["jump-to-spot", "jump-to-next-page"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system ScrollView, apps/settings ScrollView",
+        since: 31,
+        summary: "Scroll-bar track click: jump to the clicked spot or the next page.",
+    },
+    KeySpec {
+        key: "appearance.folderColor",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Theme, apps/files Theme",
+        since: 31,
+        summary: "Folder glyph colour override ('#rrggbb'); empty keeps the shipped artwork.",
+    },
+    KeySpec {
+        key: "appearance.iconStyle",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("default"),
+        allowed: &["default", "dark", "clear", "tinted"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings icon-theme provider",
+        since: 31,
+        summary: "Icon and widget style, mapped to an installed icon theme.",
+    },
+    KeySpec {
+        key: "appearance.iconTheme",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings icon-theme provider, shell/app-index icon lookup",
+        since: 31,
+        summary: "Explicit installed icon theme; empty follows the icon style mapping.",
+    },
+    KeySpec {
+        key: "appearance.cursorTheme",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/cursor theme (next session)",
+        since: 31,
+        summary: "Cursor theme name; the compositor reads it at the next session start.",
+    },
+    KeySpec {
+        key: "appearance.cursorSize",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(24),
+        allowed: &[],
+        min: Some(16.0),
+        max: Some(64.0),
+        owner: "apps/settings",
+        consumer: "compositor/cursor theme (next session)",
+        since: 31,
+        summary: "Cursor size in logical pixels, 16 to 64; applied at the next session start.",
+    },
+    KeySpec {
+        key: "appearance.windowControls",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("left"),
+        allowed: &["left", "right"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/window decoration, session GTK button-layout",
+        since: 31,
+        summary: "Window control side; the compositor keeps traffic lights on the left today.",
+    },
+    KeySpec {
+        key: "appearance.material",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("auto"),
+        allowed: &["auto", "full", "reduced", "minimal"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Glass (degrade budget owns the effective tier)",
+        since: 31,
+        summary: "Material effects preference; auto follows the GPU budget and rollout policy.",
+    },
+    KeySpec {
+        key: "appearance.accentFromWallpaper",
+        group: KeyGroup::Appearance,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/design-system Theme (wallpaper color sampler)",
+        since: 31,
+        summary: "Derive the accent from the wallpaper when no explicit accent is set.",
+    },
     // ── Quick Settings customization (T227) ──────────────────────────────
     // The ordered module ids the Control Center panel renders. An empty list
     // means the built-in order. `menuBarOnly` names modules that stay in the
@@ -3446,6 +3568,48 @@ mod tests {
         assert!(spec("desktop.showItems")
             .unwrap()
             .validate(&Value::Text("in-stage".into()))
+            .is_ok());
+    }
+
+    /// The T274 Appearance completion keys, additive in revision 31.
+    #[test]
+    fn the_t274_appearance_keys_are_declared_in_revision_thirty_one() {
+        for (key, kind) in [
+            ("appearance.scrollBarClick", KeyType::Text),
+            ("appearance.folderColor", KeyType::Text),
+            ("appearance.iconStyle", KeyType::Text),
+            ("appearance.iconTheme", KeyType::Text),
+            ("appearance.cursorTheme", KeyType::Text),
+            ("appearance.cursorSize", KeyType::Integer),
+            ("appearance.windowControls", KeyType::Text),
+            ("appearance.material", KeyType::Text),
+            ("appearance.accentFromWallpaper", KeyType::Bool),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Appearance, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.since, 31, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        assert!(spec("appearance.scrollBarClick")
+            .unwrap()
+            .validate(&Value::Text("jump-to-spot".into()))
+            .is_ok());
+        assert!(spec("appearance.scrollBarClick")
+            .unwrap()
+            .validate(&Value::Text("page".into()))
+            .is_err());
+        assert!(spec("appearance.cursorSize")
+            .unwrap()
+            .validate(&Value::Integer(15))
+            .is_err());
+        assert!(spec("appearance.cursorSize")
+            .unwrap()
+            .validate(&Value::Integer(64))
             .is_ok());
     }
 

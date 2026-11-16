@@ -35,6 +35,7 @@
 #include <cstdio>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QScreen>
 #include <QImage>
 #include <QJsonArray>
@@ -154,6 +155,11 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_client, &SettingsClient::changed, this,
             [this](const QString &key, const QVariant &value) {
                 publishValue(key, value);
+                // T274: the icon/widget-style rows change the toolkit's icon
+                // theme provider. This is the one consumer of the two keys.
+                if (key == QLatin1String("appearance.iconStyle")
+                        || key == QLatin1String("appearance.iconTheme"))
+                    applyIconTheme();
                 emit valuesChanged();
                 emit changed(key, value);
             });
@@ -209,6 +215,18 @@ SettingsBridge::SettingsBridge(QObject *parent)
                 || requested == QLatin1String("absent"))
             m_displayFixtureMode = requested;
     }
+    // T274: the icon/widget-style provider fixture. An unset environment keeps
+    // the live provider (the host's installed icon themes).
+    m_iconThemeFixtureMode = qEnvironmentVariableIsSet("DF_ICON_THEME_FIXTURE")
+        ? (qEnvironmentVariable("DF_ICON_THEME_FIXTURE") == QLatin1String("none")
+               ? QStringLiteral("none") : QStringLiteral("present"))
+        : QString();
+    m_cursorThemeFixtureMode = qEnvironmentVariableIsSet("DF_CURSOR_THEME_FIXTURE")
+        ? (qEnvironmentVariable("DF_CURSOR_THEME_FIXTURE") == QLatin1String("none")
+               ? QStringLiteral("none") : QStringLiteral("present"))
+        : QString();
+    applyIconTheme();
+
     if (qGuiApp) {
         connect(qGuiApp, &QGuiApplication::screenAdded, this,
                 [this](QScreen *screen) {
@@ -1107,6 +1125,192 @@ void SettingsBridge::setDisplayFixture(const QString &mode)
         ? mode : QStringLiteral("single");
     ++m_displayOutputsRevision;
                     emit displayOutputsChanged();
+}
+
+QStringList SettingsBridge::installedIconThemes() const
+{
+    // T274: a real icon-theme provider. A theme is an installed directory with
+    // an `index.theme`; this is the same inventory the freedesktop icon lookup
+    // uses, not a hardcoded list.
+    if (m_iconThemeFixtureMode == QLatin1String("none"))
+        return {};
+    if (m_iconThemeFixtureMode == QLatin1String("present")) {
+        return { QStringLiteral("Plain"), QStringLiteral("Plain Dark"),
+                 QStringLiteral("High Contrast") };
+    }
+    QStringList themes;
+    for (const QString &root : QIcon::themeSearchPaths()) {
+        const QDir dir(root);
+        const QFileInfoList entries =
+            dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QFileInfo &entry : entries) {
+            if (QFileInfo::exists(entry.filePath()
+                                  + QStringLiteral("/index.theme"))
+                    && !themes.contains(entry.fileName())) {
+                themes << entry.fileName();
+            }
+        }
+    }
+    themes.sort(Qt::CaseInsensitive);
+    return themes;
+}
+
+QStringList SettingsBridge::installedCursorThemes() const
+{
+    // T274: cursor themes are directories with a `cursors/` subdirectory. The
+    // compositor reads `XCURSOR_THEME`/`XCURSOR_SIZE` at session start, so
+    // these rows store a preference with a next-login consumer.
+    if (m_cursorThemeFixtureMode == QLatin1String("none"))
+        return {};
+    if (m_cursorThemeFixtureMode == QLatin1String("present"))
+        return { QStringLiteral("Plain Cursors"), QStringLiteral("Large Cursors") };
+    QStringList roots = QIcon::themeSearchPaths();
+    const QString dataHome =
+        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    if (!dataHome.isEmpty())
+        roots << dataHome + QStringLiteral("/icons");
+    roots << QDir::homePath() + QStringLiteral("/.icons");
+    QStringList themes;
+    for (const QString &root : roots) {
+        const QDir dir(root);
+        const QFileInfoList entries =
+            dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QFileInfo &entry : entries) {
+            if (QFileInfo::exists(entry.filePath() + QStringLiteral("/cursors"))
+                    && !themes.contains(entry.fileName())) {
+                themes << entry.fileName();
+            }
+        }
+    }
+    themes.sort(Qt::CaseInsensitive);
+    return themes;
+}
+
+QString SettingsBridge::iconThemeForStyle(const QString &style,
+                                          const QStringList &themes) const
+{
+    if (themes.isEmpty())
+        return QString();
+    if (style == QLatin1String("default"))
+        return themes.first();
+    const QStringList needles = style == QLatin1String("dark")
+        ? QStringList{ QStringLiteral("dark") }
+        : style == QLatin1String("clear")
+            ? QStringList{ QStringLiteral("clear"), QStringLiteral("glass"),
+                           QStringLiteral("transparent") }
+            : style == QLatin1String("tinted")
+                ? QStringList{ QStringLiteral("tint"), QStringLiteral("color") }
+                : QStringList();
+    for (const QString &theme : themes) {
+        for (const QString &needle : needles) {
+            if (theme.contains(needle, Qt::CaseInsensitive))
+                return theme;
+        }
+    }
+    return QString();
+}
+
+QVariantList SettingsBridge::iconThemes() const
+{
+    QVariantList out;
+    QVariantMap automatic;
+    automatic.insert(QStringLiteral("value"), QString());
+    automatic.insert(QStringLiteral("label"), tr("Default"));
+    out << automatic;
+    const QStringList themes = installedIconThemes();
+    for (const QString &theme : themes) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("value"), theme);
+        entry.insert(QStringLiteral("label"), theme);
+        out << entry;
+    }
+    return out;
+}
+
+QVariantList SettingsBridge::iconStyleOptions() const
+{
+    const QStringList themes = installedIconThemes();
+    struct Style { const char *value; const char *label; const char *reason; };
+    const Style styles[] = {
+        { "default", QT_TR_NOOP("Default"), QT_TR_NOOP("No icon theme is installed.") },
+        { "dark", QT_TR_NOOP("Dark"), QT_TR_NOOP("No Dark icon theme is installed.") },
+        { "clear", QT_TR_NOOP("Clear"), QT_TR_NOOP("No Clear icon theme is installed.") },
+        { "tinted", QT_TR_NOOP("Tinted"), QT_TR_NOOP("No Tinted icon theme is installed.") },
+    };
+    QVariantList out;
+    for (const Style &style : styles) {
+        const QString value = QString::fromLatin1(style.value);
+        const QString theme = iconThemeForStyle(value, themes);
+        const bool enabled = !theme.isEmpty();
+        QVariantMap entry;
+        entry.insert(QStringLiteral("value"), value);
+        entry.insert(QStringLiteral("label"), tr(style.label));
+        entry.insert(QStringLiteral("enabled"), enabled);
+        entry.insert(QStringLiteral("theme"), theme);
+        entry.insert(QStringLiteral("reason"),
+                     enabled ? QString() : tr(style.reason));
+        out << entry;
+    }
+    return out;
+}
+
+QVariantList SettingsBridge::cursorThemes() const
+{
+    QVariantList out;
+    QVariantMap automatic;
+    automatic.insert(QStringLiteral("value"), QString());
+    automatic.insert(QStringLiteral("label"), tr("Default"));
+    out << automatic;
+    const QStringList themes = installedCursorThemes();
+    for (const QString &theme : themes) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("value"), theme);
+        entry.insert(QStringLiteral("label"), theme);
+        out << entry;
+    }
+    return out;
+}
+
+QString SettingsBridge::effectiveIconTheme() const
+{
+    const QString explicitTheme =
+        m_client->value(QStringLiteral("appearance.iconTheme")).toString();
+    if (!explicitTheme.isEmpty()
+            && installedIconThemes().contains(explicitTheme)) {
+        return explicitTheme;
+    }
+    const QString style =
+        m_client->value(QStringLiteral("appearance.iconStyle")).toString();
+    return iconThemeForStyle(style.isEmpty() ? QStringLiteral("default") : style,
+                             installedIconThemes());
+}
+
+void SettingsBridge::applyIconTheme()
+{
+    const QString theme = effectiveIconTheme();
+    if (!theme.isEmpty() && QIcon::themeName() != theme)
+        QIcon::setThemeName(theme);
+}
+
+void SettingsBridge::setIconThemeFixture(const QString &mode)
+{
+    if (!qEnvironmentVariableIsSet("DF_ICON_THEME_FIXTURE"))
+        return;
+    m_iconThemeFixtureMode = mode == QLatin1String("none")
+        ? QStringLiteral("none") : QStringLiteral("present");
+    ++m_iconThemesRevision;
+    applyIconTheme();
+    emit iconThemesChanged();
+}
+
+void SettingsBridge::setCursorThemeFixture(const QString &mode)
+{
+    if (!qEnvironmentVariableIsSet("DF_CURSOR_THEME_FIXTURE"))
+        return;
+    m_cursorThemeFixtureMode = mode == QLatin1String("none")
+        ? QStringLiteral("none") : QStringLiteral("present");
+    ++m_iconThemesRevision;
+    emit iconThemesChanged();
 }
 
 void SettingsBridge::failNextWrite(const QString &key, const QString &message)

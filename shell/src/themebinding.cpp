@@ -56,6 +56,8 @@ void ThemeBinding::onSettingsChanged(const QString &key, const QVariant &)
         || key == QLatin1String("appearance.accent")
         || key == QLatin1String("appearance.highlight")
         || key == QLatin1String("appearance.scrollBars")
+        || key == QLatin1String("appearance.scrollBarClick")
+        || key == QLatin1String("appearance.folderColor")
         || key == QLatin1String("appearance.wallpaperTint")
         || key == QLatin1String("appearance.transparency")
         || key == QLatin1String("accessibility.reduceMotion")
@@ -84,6 +86,11 @@ void ThemeBinding::apply()
         m_settings->string(QStringLiteral("appearance.highlight"), QString());
     const QString scrollBars =
         m_settings->string(QStringLiteral("appearance.scrollBars"), QStringLiteral("automatic"));
+    const QString scrollBarClick =
+        m_settings->string(QStringLiteral("appearance.scrollBarClick"),
+                           QStringLiteral("jump-to-next-page"));
+    const QString folderColor =
+        m_settings->string(QStringLiteral("appearance.folderColor"), QString());
     const bool wallpaperTint =
         m_settings->boolean(QStringLiteral("appearance.wallpaperTint"), true);
 
@@ -97,6 +104,10 @@ void ThemeBinding::apply()
         m_theme->setProperty("highlightOverride", highlight);
     if (m_theme->property("scrollBars").toString() != scrollBars)
         m_theme->setProperty("scrollBars", scrollBars);
+    if (m_theme->property("scrollBarClick").toString() != scrollBarClick)
+        m_theme->setProperty("scrollBarClick", scrollBarClick);
+    if (m_theme->property("folderColor").toString() != folderColor)
+        m_theme->setProperty("folderColor", folderColor);
 
     // T196: the optical preferences are one resolver input, not a second
     // slider curve. The Glass singleton is optional in a QML-less test engine.

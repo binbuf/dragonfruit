@@ -230,6 +230,13 @@ Item {
             // legacy preview so the slider's resolver is deterministic.
             pane.previewRollout = "legacy";
 
+            // T274: the accessibility test above leaves Reduce Transparency
+            // on in the shared in-memory store; the slider is correctly
+            // disabled under it, so clear the override before proving the
+            // no-daemon write path.
+            Settings.set("accessibility.reduceTransparency", false);
+            tryVerify(function() { return pane.transparencyRow.enabled; });
+
             // T196: the glass slider stays live on the schema defaults and
             // its preview uses the same resolver with no daemon.
             pane.transparencySlider.setValue(0.8);

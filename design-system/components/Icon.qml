@@ -161,6 +161,12 @@ Item {
     }
     readonly property bool isPlaceIcon: root.placeSource.length > 0
 
+    // T274: `appearance.folderColor` replaces the plain folder place artwork
+    // with the tintable folder glyph. Other folder variants keep their
+    // emblematic artwork; only the generic `folder` tile is recoloured.
+    readonly property bool tintedFolder: root.name === "folder"
+                                         && Theme.hasFolderColor
+
     // The Tabler name for the current legacy name, or "" for an unknown one.
     readonly property string tablerName: root.aliases[root.name] !== undefined
                                          ? root.aliases[root.name] : ""
@@ -170,7 +176,7 @@ Item {
 
     Image {
         anchors.fill: parent
-        visible: root.isPlaceIcon
+        visible: root.isPlaceIcon && !root.tintedFolder
         source: root.placeSource
         sourceSize.width: Math.ceil(root.size * 2)
         sourceSize.height: Math.ceil(root.size * 2)
@@ -182,9 +188,9 @@ Item {
 
     TablerIcon {
         anchors.fill: parent
-        visible: !root.isPlaceIcon
-        name: root.tablerName
-        color: root.color
+        visible: !root.isPlaceIcon || root.tintedFolder
+        name: root.tintedFolder ? "folder" : root.tablerName
+        color: root.tintedFolder ? Theme.folderColorColor : root.color
         size: root.size
         strokeWidth: root.strokeWidth
     }

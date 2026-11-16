@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 29). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 31). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -285,6 +285,17 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("appearance.sidebarIconSize"), QStringLiteral("medium"));
     values.insert(QStringLiteral("appearance.wallpaperTint"), true);
     values.insert(QStringLiteral("appearance.scrollBars"), QStringLiteral("automatic"));
+    // Revision 31 (T274): the Appearance completion keys.
+    values.insert(QStringLiteral("appearance.scrollBarClick"),
+                  QStringLiteral("jump-to-next-page"));
+    values.insert(QStringLiteral("appearance.folderColor"), QString());
+    values.insert(QStringLiteral("appearance.iconStyle"), QStringLiteral("default"));
+    values.insert(QStringLiteral("appearance.iconTheme"), QString());
+    values.insert(QStringLiteral("appearance.cursorTheme"), QString());
+    values.insert(QStringLiteral("appearance.cursorSize"), qlonglong(24));
+    values.insert(QStringLiteral("appearance.windowControls"), QStringLiteral("left"));
+    values.insert(QStringLiteral("appearance.material"), QStringLiteral("auto"));
+    values.insert(QStringLiteral("appearance.accentFromWallpaper"), false);
     values.insert(QStringLiteral("quickSettings.modules"), QStringList({
         QStringLiteral("wifi"), QStringLiteral("bluetooth"),
         QStringLiteral("now-playing"), QStringLiteral("airdrop"),
@@ -379,6 +390,10 @@ const char *const kBackupBackend[] = { "auto", "restic", "pika", "timeshift" };
 const char *const kBackupSchedule[] = { "off", "hourly", "daily", "weekly", "monthly" };
 const char *const kSidebarIconSize[] = { "small", "medium", "large" };
 const char *const kScrollBars[] = { "automatic", "when-scrolling", "always" };
+const char *const kScrollBarClick[] = { "jump-to-spot", "jump-to-next-page" };
+const char *const kIconStyle[] = { "default", "dark", "clear", "tinted" };
+const char *const kWindowControls[] = { "left", "right" };
+const char *const kMaterial[] = { "auto", "full", "reduced", "minimal" };
 const char *const kScreenSaverStyle[] = { "clock", "none" };
 const char *const kDesktopItems[] = { "on-desktop", "in-stage" };
 
@@ -442,6 +457,11 @@ const Constraint kConstraints[] = {
     { "settings.window.y", nullptr, 0, false, 0.0, false, 0.0 },
     { "appearance.sidebarIconSize", kSidebarIconSize, 3, false, 0, false, 0 },
     { "appearance.scrollBars", kScrollBars, 3, false, 0, false, 0 },
+    { "appearance.scrollBarClick", kScrollBarClick, 2, false, 0, false, 0 },
+    { "appearance.iconStyle", kIconStyle, 4, false, 0, false, 0 },
+    { "appearance.cursorSize", nullptr, 0, true, 16.0, true, 64.0 },
+    { "appearance.windowControls", kWindowControls, 2, false, 0, false, 0 },
+    { "appearance.material", kMaterial, 4, false, 0, false, 0 },
     { "screenSaver.style", kScreenSaverStyle, 2, false, 0, false, 0 },
     { "desktop.showItems", kDesktopItems, 2, false, 0, false, 0 },
 };

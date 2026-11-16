@@ -155,6 +155,15 @@ freezes the v1 key set.
 | `appearance.sidebarIconSize` | s | `medium` | `small`/`medium`/`large` | apps/settings | apps/settings Sidebar | Sidebar icon size (T227). |
 | `appearance.wallpaperTint` | b | true | | apps/settings | shell/design-system Glass, apps/settings Glass | Let glass surfaces take their tint from the wallpaper; off uses the neutral plate (T227). |
 | `appearance.scrollBars` | s | `automatic` | `automatic`/`when-scrolling`/`always` | apps/settings | shell/design-system ScrollView, apps/settings ScrollView | When scroll bars show (T227). |
+| `appearance.scrollBarClick` | s | `jump-to-next-page` | `jump-to-spot`/`jump-to-next-page` | apps/settings | shell/design-system ScrollView, apps/settings ScrollView | Scroll-bar track click: jump to the clicked spot or the next page (T274). |
+| `appearance.folderColor` | s | `` (empty) | | apps/settings | shell/design-system Theme, apps/files Theme | Folder glyph colour override (`#rrggbb`); empty keeps the shipped artwork (T274). |
+| `appearance.iconStyle` | s | `default` | `default`/`dark`/`clear`/`tinted` | apps/settings | apps/settings icon-theme provider | Icon and widget style, mapped to an installed icon theme (T274). |
+| `appearance.iconTheme` | s | `` (empty) | | apps/settings | apps/settings icon-theme provider, shell/app-index icon lookup | Explicit installed icon theme; empty follows the icon style mapping (T274). |
+| `appearance.cursorTheme` | s | `` (empty) | | apps/settings | compositor/cursor theme (next session) | Cursor theme name; the compositor reads it at the next session start (T274). |
+| `appearance.cursorSize` | x | 24 | 16–64 | apps/settings | compositor/cursor theme (next session) | Cursor size in logical pixels, 16 to 64; applied at the next session start (T274). |
+| `appearance.windowControls` | s | `left` | `left`/`right` | apps/settings | compositor/window decoration, session GTK button-layout | Window control side; the compositor keeps traffic lights on the left today (T274). |
+| `appearance.material` | s | `auto` | `auto`/`full`/`reduced`/`minimal` | apps/settings | shell/design-system Glass (degrade budget owns the effective tier) | Material effects preference; auto follows the GPU budget and rollout policy (T274). |
+| `appearance.accentFromWallpaper` | b | false | | apps/settings | shell/design-system Theme (wallpaper color sampler) | Derive the accent from the wallpaper when no explicit accent is set (T274). |
 | `quickSettings.modules` | as | `[wifi, bluetooth, now-playing, airdrop, stage-manager, screen-mirroring, dark, capture-screen, focus, brightness, volume, airplay-audio, edit-controls]` | | apps/settings | shell/control-center | Ordered module ids on the first Control Center page; empty means the measured default inventory (T235). |
 | `quickSettings.menuBarOnly` | as | `[]` | | apps/settings | shell/control-center, shell/MenuBar | Module ids that stay in the menu bar and are hidden from the Control Center panel (T227). |
 | `quickSettings.page2` | as | `[]` | | apps/settings | shell/control-center | Ordered module ids on the second Control Center page (T235). |

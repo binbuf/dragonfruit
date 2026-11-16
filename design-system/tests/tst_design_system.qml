@@ -2064,6 +2064,30 @@ TestCase {
         }
     }
 
+    // T274: `appearance.folderColor` is a Theme consumer. Only the generic
+    // folder glyph is recoloured; the emblematic folder variants keep their
+    // shipped artwork.
+    function test_icon_folder_color_tints_the_generic_folder_glyph() {
+        var saved = Theme.folderColor;
+        Theme.folderColor = "#e0a43a";
+
+        var folder = make(legacyIconComponent, { name: "folder" });
+        compare(folder.tintedFolder, true);
+        verify(Qt.colorEqual(Theme.folderColorColor, "#e0a43a"));
+
+        var documents = make(legacyIconComponent, { name: "documents" });
+        compare(documents.tintedFolder, false);
+        compare(documents.placeSource, "qrc:/icons/whitesur/folder-documents.svg");
+
+        Theme.folderColor = "";
+        compare(folder.tintedFolder, false);
+        compare(Theme.hasFolderColor, false);
+
+        folder.destroy();
+        documents.destroy();
+        Theme.folderColor = saved;
+    }
+
     function test_icon_facade_maps_the_inherited_vocabulary() {
         // Files/Settings/shell still name the inherited vocabulary; the facade
         // must resolve each name to a vendored Tabler outline glyph or a

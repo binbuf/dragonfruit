@@ -896,21 +896,35 @@ the host-absent state in light/dark; the live Wayland walk is T284's.
 
 Owner: settingsd + compositor/design system. Absence: live on defaults.
 
+T274 consolidates the pane into six cards (Appearance, Color, Icon & widget
+style, Windows and scroll bars, Desktop integration, Preview), not one card
+per row. The accent default is the reviewed macOS-Tahoe system blue
+(`#007aff` light / `#0a84ff` dark); the empty accent value is the
+**Multicolor** choice and the custom picker still accepts any `#rrggbb`.
+
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Appearance | Appearance | Segmented | `appearance.colorScheme` | ship |
-| Color | Accent color | Swatches + custom | `appearance.accent` | ship |
-| Text highlight color | Text highlight color | Swatches + custom | `appearance.highlight` | ship |
-| Icon & widget style | Icon & widget style | Popup/sheet | `appearance.iconStyle` | adapt; icon theme provider or disabled reason |
-| Folder color | Folder color | Swatches | `appearance.folderColor` | adapt; Files consumer |
+| Color | Accent color | Swatches + multicolor + custom | `appearance.accent` | ship |
+| Text highlight color | Highlight color | Swatches + custom | `appearance.highlight` | ship |
+| Icon & widget style | Icon & widget style | Segmented (provider-gated) | `appearance.iconStyle` | adapt; real installed-theme provider, disabled-with-reason when absent |
+| Folder color | Folder color | Swatches + custom | `appearance.folderColor` | adapt; Files/Theme consumer |
 | Sidebar icon size | Sidebar icon size | Popup | `appearance.sidebarIconSize` | ship |
 | Tint window background with wallpaper color | Wallpaper tinting | Toggle | `appearance.wallpaperTint` | ship |
-| Show scroll bars | Scroll bars | Popup | `appearance.scrollBars` | ship |
-| Click in the scroll bar to | Scroll-bar click | Popup | `appearance.scrollBarClick` | ship |
-| — | Transparency | Slider | `appearance.transparency` | ship; disabled when Reduce Transparency |
+| Show scroll bars | Show scroll bars | Popup | `appearance.scrollBars` | ship; three modes distinct in `ScrollView` |
+| Click in the scroll bar to | Click in the scroll bar to | Popup | `appearance.scrollBarClick` | ship |
+| — | Transparency | Slider | `appearance.transparency` | ship; disabled with the override reason when Reduce Transparency is on |
 | — | Motion | Link | `accessibility.reduceMotion` | ship |
-| — | Icon theme / cursor theme / cursor size | Popup/slider | `appearance.iconTheme`, `appearance.cursor*` | adapt (Linux-only) |
-| — | Window control layout | Popup | `appearance.windowControls` | adapt (Linux-only) |
+| — | Icon theme | Popup | `appearance.iconTheme` | adapt (Linux-only); explicit theme wins over the style mapping |
+| — | Cursor theme / cursor size | Popup/slider | `appearance.cursorTheme`, `appearance.cursorSize` | adapt (Linux-only); applied at the next session start |
+| — | Window control layout | Popup | `appearance.windowControls` | disabled-with-reason: traffic lights stay left until the decoration policy lands |
+| — | Material effects | Popup | `appearance.material` | disabled-with-reason: the GPU degrade budget/rollout owns the tier |
+| — | Accent from wallpaper | Toggle | `appearance.accentFromWallpaper` | disabled-with-reason: needs the wallpaper colour sampler |
+| — | Preview | Live render | Theme + `Glass.resolve` | ship; the rendered resolver, not a second formula |
+
+Every settingsd-backed row is a `SettingsKeyRow`, so a rejected write reverts
+its control and shows the owner's message inline. A row with no live consumer
+is disabled with the reason rather than presented as a working toggle.
 
 ### 4.8 Accessibility — T275
 
@@ -1527,7 +1541,7 @@ from the first live T263 run; they are part of the same release bar.
 
 | # | Finding | Evidence | Task |
 |---|---|---|---|
-| P1-1 | Appearance missing icon/widget style, folder color, scroll-bar click behavior; transparency slider stays active under Reduce Transparency; seven one-row cards | `AppearancePane.qml` | T274 |
+| P1-1 | Appearance missing icon/widget style, folder color, scroll-bar click behavior; transparency slider stays active under Reduce Transparency; seven one-row cards | `AppearancePane.qml` | T274 (landed) |
 | P1-2 | About hardcodes “Display: Not available”, duplicates details, resizes the window permanently | `AboutPage.qml`, `SettingsWindow.qml` | T269 (landed) |
 | P1-3 | Wallpaper hero is 160×100; Clock Appearance opens a pane with no clock appearance; file URLs by string concatenation | `WallpaperPane.qml` | T278 |
 | P1-4 | Screen Saver has no gallery; Start After blanks the display; None does not disable the saver | `ScreenSaverPane.qml` | T278 |
