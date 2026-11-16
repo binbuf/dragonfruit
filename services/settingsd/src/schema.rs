@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 34;
+pub const SCHEMA_VERSION: u32 = 35;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1421,6 +1421,19 @@ pub const KEYS: &[KeySpec] = &[
         since: 14,
         summary: "Show notification banners while mirroring or sharing the display.",
     },
+    KeySpec {
+        key: "notifications.appOptions",
+        group: KeyGroup::Notifications,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (stored policy)",
+        since: 35,
+        summary: "Per-app notification options the service does not own yet (JSON, keyed by app).",
+    },
     // ── Focus schedule and shortcut (T229a) ─────────────────────────────
     // The Focus *mode* and the per-app allow list stay on the notification
     // service (ADR 0058/0130). These keys are the durable schedule and
@@ -1492,6 +1505,32 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell shortcuts (registration deferred)",
         since: 23,
         summary: "Global shortcut that toggles Focus; empty disables it.",
+    },
+    KeySpec {
+        key: "focus.customProfiles",
+        group: KeyGroup::Focus,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Focus pane",
+        since: 35,
+        summary: "User-added Focus names layered over the service's custom profile.",
+    },
+    KeySpec {
+        key: "focus.customProfile",
+        group: KeyGroup::Focus,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings Focus pane",
+        since: 35,
+        summary: "The active user-added Focus name; empty means the built-in Custom profile.",
     },
     // ── Lock Screen display policy (T-15.8b) ────────────────────────────
     // The idle/lock *timing* keys already live in the `Session` group
@@ -1590,6 +1629,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "display manager adapter (not exposed; row disabled)",
         since: 23,
         summary: "Login-window style: a user list or name-and-password fields.",
+    },
+    KeySpec {
+        key: "lock.requirePasswordAfter",
+        group: KeyGroup::Lock,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(300),
+        allowed: &[],
+        min: Some(-1.0),
+        max: Some(86400.0),
+        owner: "apps/settings",
+        consumer: "apps/settings Lock Screen pane (derives idle.lock)",
+        since: 35,
+        summary: "Seconds after display-off before the password is required; -1 never, 0 immediately.",
     },
     // ── Menu Bar configuration (T-15.9b) ────────────────────────────────
     // The menu bar is shell-native: the shell's `MenuBar` owns the chrome, the
@@ -3470,6 +3522,53 @@ mod tests {
             );
         }
         assert!(overflow.validate(&Value::Text("sometimes".into())).is_err());
+    }
+
+    /// T278 completes the personalization/attention panes. The per-app
+    /// notification option blob, the user-added Focus names, and the
+    /// after-display-off password delay are additive in revision 35.
+    #[test]
+    fn the_t278_personalization_keys_are_declared_in_revision_thirty_five() {
+        for (key, kind, default) in [
+            (
+                "notifications.appOptions",
+                KeyType::Text,
+                KeyDefault::Text(""),
+            ),
+            (
+                "focus.customProfiles",
+                KeyType::TextList,
+                KeyDefault::List(&[]),
+            ),
+            (
+                "focus.customProfile",
+                KeyType::Text,
+                KeyDefault::Text(""),
+            ),
+            (
+                "lock.requirePasswordAfter",
+                KeyType::Integer,
+                KeyDefault::Integer(300),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 35, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        let after = spec("lock.requirePasswordAfter").unwrap();
+        assert_eq!(after.min, Some(-1.0));
+        assert!(after.validate(&Value::Integer(-1)).is_ok());
+        assert!(after.validate(&Value::Integer(0)).is_ok());
+        assert!(after.validate(&Value::Integer(86400)).is_ok());
+        assert!(after.validate(&Value::Integer(-2)).is_err());
+        assert!(after.validate(&Value::Integer(86401)).is_err());
     }
 
     /// The glass preference and its two accessibility overrides are additive

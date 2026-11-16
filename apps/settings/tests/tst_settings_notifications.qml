@@ -34,6 +34,9 @@ Item {
             Settings.set("notifications.showWhenSleeping", false);
             Settings.set("notifications.showWhenLocked", true);
             Settings.set("notifications.showWhenMirroring", false);
+            Settings.set("notifications.appOptions", "");
+            Settings.setList("focus.customProfiles", []);
+            Settings.set("focus.customProfile", "");
             Settings.set("focus.schedule.enabled", false);
             Settings.set("focus.schedule.start", "22:00");
             Settings.set("focus.schedule.end", "07:00");
@@ -106,22 +109,93 @@ Item {
             compare(pane.lockedToggle.checked, false);
         }
 
-        function test_focus_mode_selector_round_trips_through_the_adapter() {
+        function test_focus_list_is_one_real_control_surface() {
             var shell = make("focus");
             var pane = paneOf(shell);
             compare(pane.mode, "focus");
-            compare(pane.modeSelector.currentIndex, 1);
-            verify(pane.allowList.itemAt(0).width > 0,
-                   "the allowed-app rows must have a real width");
+            // Off + Do Not Disturb, Personal, Work, Sleep, Custom.
+            compare(pane.focusList.count, 6);
+            verify(pane.focusList.itemAt(0).width > 0);
+            compare(pane.focusList.itemAt(0).active, false);
+            compare(pane.focusList.itemAt(2).active, true); // Personal
+            compare(pane.focusList.itemAt(2).Accessible.checked, true);
+            verify(pane.focusList.itemAt(2).Accessible.description.length > 0);
+            verify(pane.summary.text.indexOf("Personal") >= 0);
 
-            pane.modeSelector.activateIndex(2); // Do Not Disturb
-            compare(Settings.notifications.mode, "dnd");
-            compare(pane.mode, "dnd");
+            pane.activateFocus("dnd");
+            tryVerify(function() { return Settings.notifications.mode === "dnd"; },
+                      2000);
+            compare(pane.focusList.itemAt(1).active, true);
             verify(pane.summary.text.indexOf("Do Not Disturb") >= 0);
 
-            pane.modeSelector.activateIndex(0); // Off
-            compare(Settings.notifications.mode, "off");
+            pane.activateFocus("off");
+            tryVerify(function() { return Settings.notifications.mode === "off"; },
+                      2000);
             verify(pane.summary.text.indexOf("normally") >= 0);
+        }
+
+        function test_focus_add_and_delete_a_named_focus() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            pane.addFocusButton.clicked();
+            waitForRendering(stage);
+            compare(pane.addFocusDialog.open, true);
+            pane.addFocusInput.text = "Writing";
+            pane.addFocus();
+            tryVerify(function() {
+                return Settings.values["focus.customProfiles"].indexOf("Writing") >= 0;
+            }, 2000);
+            tryVerify(function() {
+                return Settings.notifications.profile === "custom";
+            }, 2000);
+            compare(pane.activeEntry.name, "Writing");
+            verify(pane.deleteFocusButton.enabled);
+
+            pane.deleteFocusButton.clicked();
+            waitForRendering(stage);
+            compare(pane.deleteFocusDialog.open, true);
+            pane.deleteActiveFocus();
+            tryVerify(function() {
+                return Settings.values["focus.customProfiles"].indexOf("Writing") === -1;
+            }, 2000);
+            tryVerify(function() {
+                return Settings.notifications.mode === "off";
+            }, 2000);
+        }
+
+        function test_focus_add_validates_an_empty_or_duplicate_name() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            pane.addFocusButton.clicked();
+            waitForRendering(stage);
+            pane.addFocusInput.text = "";
+            pane.addFocus();
+            compare(pane.addFocusDialog.open, true);
+            verify(pane.addError.length > 0);
+
+            pane.addFocusInput.text = "Work";
+            pane.addFocus();
+            compare(pane.addFocusDialog.open, true);
+            verify(pane.addError.indexOf("already exists") >= 0);
+            pane.addFocusDialog.reject();
+        }
+
+        function test_focus_app_and_people_filters() {
+            var shell = make("focus");
+            var pane = paneOf(shell);
+            compare(pane.allowList.count, 3);
+            pane.appFilter = "allowed";
+            compare(pane.allowList.count, 1); // Pager
+            pane.appFilter = "blocked";
+            compare(pane.allowList.count, 2); // chat, Mail
+            pane.appFilter = "all";
+
+            compare(pane.peopleList.count, 2);
+            pane.peopleFilter = "allowed";
+            compare(pane.peopleList.count, 1); // Ada
+            pane.peopleFilter = "blocked";
+            compare(pane.peopleList.count, 1); // Grace
+            pane.peopleFilter = "all";
         }
 
         function test_focus_allow_list_toggle_round_trips_through_the_adapter() {
@@ -230,6 +304,59 @@ Item {
             pane.appDialog.reject();
         }
 
+        function test_app_detail_full_sheet_round_trips_the_four_options() {
+            var shell = make("notifications");
+            var pane = paneOf(shell);
+            pane.openAppDetail(pane.appByName("Mail"));
+            waitForRendering(stage);
+
+            compare(pane.appLockScreenToggle.checked, true);
+            pane.appLockScreenToggle.toggle();
+            tryVerify(function() {
+                var options = pane.parseAppOptions();
+                return options["mail"] && options["mail"].lockScreen === false;
+            }, 2000, "the lock-screen choice is stored per app");
+
+            pane.appCenterSelect.activateIndex(1); // 1
+            pane.appPreviewsSelect.activateIndex(2); // Never
+            pane.appGroupingSelect.activateIndex(1); // By App
+            tryVerify(function() {
+                var entry = pane.parseAppOptions()["mail"];
+                return entry && entry.centerCount === "1"
+                        && entry.previews === "never"
+                        && entry.grouping === "by-app";
+            }, 2000, "the remaining per-app options round trip");
+
+            // Reopening seeds the sheet from the stored options.
+            pane.appDialog.reject();
+            waitForRendering(stage);
+            pane.openAppDetail(pane.appByName("Mail"));
+            waitForRendering(stage);
+            compare(pane.appLockScreenToggle.checked, false);
+            compare(pane.appCenterSelect.currentIndex, 1);
+            compare(pane.appPreviewsSelect.currentIndex, 2);
+            compare(pane.appGroupingSelect.currentIndex, 1);
+            pane.appDialog.reject();
+        }
+
+        function test_app_row_opens_the_sheet_from_the_whole_row() {
+            var shell = make("notifications");
+            var pane = paneOf(shell);
+            var row = pane.appList.itemAt(1);
+            mouseClick(row, row.width * 0.3, row.height / 2);
+            waitForRendering(stage);
+            compare(pane.appDialog.open, true);
+            compare(pane.appDialogTitle.text, "Mail");
+            pane.appDialog.reject();
+        }
+
+        function test_global_preferences_are_marked_stored_policy() {
+            var shell = make("notifications");
+            var pane = paneOf(shell);
+            verify(pane.storedPolicyNoteItem.visible);
+            verify(pane.storedPolicyNoteItem.text.indexOf("stored") >= 0);
+        }
+
         function test_focus_link_opens_the_focus_pane() {
             var shell = make("notifications");
             var pane = paneOf(shell);
@@ -258,38 +385,26 @@ Item {
 
         // -- T229a: the Focus modes, people, schedule, and shortcut -----------
 
-        function test_focus_modes_render_the_admission_rule_and_active_state() {
-            var shell = make("focus");
-            var pane = paneOf(shell);
-            compare(pane.modeRepeater.count, 3);
-            compare(pane.modeRepeater.itemAt(0).active, false);
-            compare(pane.modeRepeater.itemAt(1).active, true); // fixture focus
-            compare(pane.modeRepeater.itemAt(1).Accessible.checked, true);
-            verify(pane.modeRepeater.itemAt(0).Accessible.description.length > 0);
-            verify(pane.summary.text.length > 0);
-        }
-
-        function test_focus_profile_selector_round_trips_through_the_adapter() {
+        function test_focus_profiles_select_through_the_one_list() {
             var shell = make("focus");
             var pane = paneOf(shell);
             // The fixture starts on the Personal profile.
             compare(pane.profile, "personal");
-            compare(pane.profileSelector.currentIndex, 2);
             verify(pane.profileSummary.text.indexOf("Personal") >= 0);
 
-            pane.profileSelector.activateIndex(3); // Work
+            pane.activateFocus("work");
             tryVerify(function() {
                 return Settings.notifications.profile === "work";
             }, 2000, "selecting Work installs the named profile");
             compare(pane.mode, "focus");
 
-            pane.profileSelector.activateIndex(4); // Sleep
+            pane.activateFocus("sleep");
             tryVerify(function() {
                 return Settings.notifications.profile === "sleep";
             }, 2000);
             compare(pane.mode, "dnd");
 
-            pane.profileSelector.activateIndex(0); // Off
+            pane.activateFocus("off");
             tryVerify(function() {
                 return Settings.notifications.mode === "off";
             }, 2000);

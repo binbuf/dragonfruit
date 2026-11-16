@@ -3,31 +3,29 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Focus pane (T-15.7b; completed by T229a).
+// The Focus pane (T-15.7b; rebuilt by T278).
 //
 // Focus is the notification service's suppression policy: the mode and the
 // per-app allow list are the same state the Notifications pane's
 // "Application Notifications" inventory reads, projected by the T-15.7a
 // adapter and served by the bridge host. The Control Center Focus tile writes
-// the same policy, so the three surfaces stay in step with no extra plumbing.
+// the same policy, so the surfaces stay in step with no extra plumbing.
 //
-// The pane now renders the reference information architecture:
-//   * Modes — the service's three modes with their admission rule and the
-//     live active state;
-//   * Focus profile — the named Do Not Disturb/Personal/Work/Sleep/custom
-//     presentation over the one admission policy (T234);
-//   * Allowed Apps — the per-app Focus allow list;
-//   * Allowed People — the observed senders from the optional notification
-//     `sender` hint, with an explicit empty state when none have arrived;
-//   * Schedule — the durable `focus.schedule.*` keys the shell's
-//     `FocusSchedule` reads and applies at the window boundary (ADR 0239);
-//   * Shortcut — the durable `focus.shortcut` key (registration is deferred
-//     with the shell shortcut engine, like `search.shortcut`).
+// T278 replaces the three duplicate state surfaces (a profile selector, a
+// mode selector, and inert mode rows) with one Focus list and one detail:
+//   * the list is the service's profiles plus Off and any user-added Focus;
+//     every row is a real radio control, not decoration;
+//   * the detail shows the active Focus, the allowed apps/people (with a
+//     filter), and the schedule/shortcut;
+//   * Add Focus / Delete Focus are real actions over
+//     `focus.customProfiles`/`focus.customProfile`;
+//   * the schedule and shortcut stay live when the service is absent.
 //
 // Deviations from the macOS capture (ADR 0122): there is no Focus capture in
 // the reference set, so this follows the shared Settings language rather than
-// the Apple-only Focus "allowed people" sheet; the Apple Account/sidebar row
-// and the `?` help control are omitted project-wide.
+// the Apple-only "allowed people" sheet; the Apple Account/sidebar row and the
+// `?` help control are omitted project-wide. Filters are the Linux adaptation
+// of "Focus Filters" (ADR 0279).
 Item {
     id: root
 
@@ -49,6 +47,15 @@ Item {
             ? String(view.profileLabel) : qsTr("Off")
     readonly property int batched:
         view.batched !== undefined ? Number(view.batched) : 0
+
+    // ── User-added Focus names (settingsd; the pane is the consumer) ─────
+    readonly property var customProfiles: {
+        var value = Settings.values["focus.customProfiles"];
+        return value === undefined || value === null ? [] : Array.from(value);
+    }
+    readonly property string customProfile:
+        Settings.values["focus.customProfile"] !== undefined
+            ? String(Settings.values["focus.customProfile"]) : ""
 
     // ── Schedule (settingsd; shell/FocusSchedule consumes it) ────────────
     readonly property bool scheduleEnabled:
@@ -72,52 +79,92 @@ Item {
     property string scheduleError: ""
     property string shortcutDraft: root.shortcut
     property string shortcutError: ""
+    property string appFilter: "all"
+    property string peopleFilter: "all"
+    property string addError: ""
 
-    readonly property var modeOptions: [
-        { value: "off", label: qsTr("Off") },
-        { value: "focus", label: qsTr("Focus") },
-        { value: "dnd", label: qsTr("Do Not Disturb") }
+    readonly property var filterOptions: [
+        { value: "all", label: qsTr("All") },
+        { value: "allowed", label: qsTr("Allowed") },
+        { value: "blocked", label: qsTr("Not allowed") }
     ]
 
-    // T234: the named profile presentation. Each profile installs a mode and
-    // its own allowed apps/people into the one policy; `custom` is the
-    // synthetic profile a manual mode change selects.
-    readonly property var profileOptions: [
-        { value: "", label: qsTr("Off") },
-        { value: "dnd", label: qsTr("Do Not Disturb") },
-        { value: "personal", label: qsTr("Personal") },
-        { value: "work", label: qsTr("Work") },
-        { value: "sleep", label: qsTr("Sleep") },
-        { value: "custom", label: qsTr("Custom") }
-    ]
-
-    function profileIndex(value) {
-        for (var i = 0; i < root.profileOptions.length; ++i) {
-            if (root.profileOptions[i].value === value)
-                return i;
+    // One list: Off, the service's named profiles, then the user-added names.
+    readonly property var focusEntries: {
+        var out = [{ id: "off", name: qsTr("Off"), mode: "off",
+                     description: qsTr("Notifications are delivered normally."),
+                     custom: false }];
+        var hasCustomNames = root.customProfiles.length > 0;
+        for (var i = 0; i < root.profiles.length; ++i) {
+            var profile = root.profiles[i];
+            var id = String(profile.id);
+            if (id === "custom" && hasCustomNames)
+                continue;
+            out.push({
+                id: id,
+                name: String(profile.name),
+                mode: String(profile.mode),
+                description: String(profile.mode) === "dnd"
+                    ? qsTr("Only allow-listed apps banner; the rest are batched.")
+                    : qsTr("Allow-listed apps and critical alerts banner; the "
+                           + "rest are batched."),
+                custom: false
+            });
         }
-        // A profile the pane does not know (a future catalog entry) reads as
-        // custom rather than silently selecting Off.
-        return root.profileOptions.length - 1;
+        for (var j = 0; j < root.customProfiles.length; ++j) {
+            var name = String(root.customProfiles[j]);
+            out.push({
+                id: "custom:" + name,
+                name: name,
+                mode: "focus",
+                description: qsTr("A user-added Focus over the custom profile."),
+                custom: true
+            });
+        }
+        return out;
     }
 
-    function applyProfile(value) {
-        if (value === "")
-            Settings.setFocusMode("off");
-        else
-            Settings.setFocusProfile(value);
+    readonly property string focusId: {
+        if (root.mode === "off")
+            return "off";
+        if (root.profile === "custom" && root.customProfile.length > 0)
+            return "custom:" + root.customProfile;
+        return root.profile.length > 0 ? root.profile : "custom";
     }
 
-    readonly property var modeRows: [
-        { id: "off", label: qsTr("Off"),
-          description: qsTr("Notifications are delivered normally.") },
-        { id: "focus", label: qsTr("Focus"),
-          description: qsTr("Allow-listed apps and critical alerts banner; "
-                            + "the rest are batched.") },
-        { id: "dnd", label: qsTr("Do Not Disturb"),
-          description: qsTr("Only allow-listed apps banner; everything else "
-                            + "is batched.") }
-    ]
+    readonly property var activeEntry: {
+        for (var i = 0; i < root.focusEntries.length; ++i) {
+            if (root.focusEntries[i].id === root.focusId)
+                return root.focusEntries[i];
+        }
+        return root.focusEntries[0];
+    }
+
+    readonly property var filteredApps: {
+        var out = [];
+        for (var i = 0; i < root.apps.length; ++i) {
+            var allowed = root.apps[i].allowed === true;
+            if (root.appFilter === "allowed" && !allowed)
+                continue;
+            if (root.appFilter === "blocked" && allowed)
+                continue;
+            out.push(root.apps[i]);
+        }
+        return out;
+    }
+
+    readonly property var filteredPeople: {
+        var out = [];
+        for (var i = 0; i < root.people.length; ++i) {
+            var allowed = root.people[i].allowed === true;
+            if (root.peopleFilter === "allowed" && !allowed)
+                continue;
+            if (root.peopleFilter === "blocked" && allowed)
+                continue;
+            out.push(root.people[i]);
+        }
+        return out;
+    }
 
     readonly property var dayOptions: [
         { id: "mon", label: qsTr("Mon") },
@@ -130,18 +177,24 @@ Item {
     ]
 
     // Test surface (used by tst_settings_notifications.qml).
-    property alias modeSelector: modeSelector
-    property alias modeRepeater: modeRepeater
-    property alias profileSelector: profileSelector
+    property alias focusList: focusList
+    property alias focusDetail: focusDetail
+    property alias summary: summary
+    property alias profileSummary: profileSummary
+    property alias addFocusButton: addFocusButton
+    property alias deleteFocusButton: deleteFocusButton
+    property alias addFocusDialog: addFocusDialog
+    property alias addFocusInput: addFocusInput
+    property alias deleteFocusDialog: deleteFocusDialog
     property alias allowGroup: allowGroup
     property alias allowList: allowList
+    property alias appFilterSelect: appFilterSelect
     property alias absenceNote: absenceNote
     property alias noAppsNote: noAppsNote
-    property alias summary: summary
     property alias peopleGroup: peopleGroup
     property alias peopleList: peopleList
+    property alias peopleFilterSelect: peopleFilterSelect
     property alias noPeopleNote: noPeopleNote
-    property alias profileSummary: profileSummary
     property alias scheduleGroup: scheduleGroup
     property alias scheduleToggle: scheduleToggle
     property alias scheduleStartInput: scheduleStartInput
@@ -157,22 +210,73 @@ Item {
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
-
     width: parent ? parent.width : implicitWidth
 
-    function modeIndex(value) {
-        for (var i = 0; i < root.modeOptions.length; ++i) {
-            if (root.modeOptions[i].value === value)
-                return i;
+    function activateFocus(id) {
+        if (id === "off") {
+            Settings.set("focus.customProfile", "");
+            Settings.setFocusMode("off");
+            return;
         }
-        return 0;
+        if (id.indexOf("custom:") === 0) {
+            Settings.set("focus.customProfile", id.substring(7));
+            Settings.setFocusProfile("custom");
+            return;
+        }
+        Settings.set("focus.customProfile", "");
+        Settings.setFocusProfile(id);
+    }
+
+    function focusNameExists(name) {
+        var needle = String(name).trim().toLowerCase();
+        if (needle.length === 0)
+            return true;
+        for (var i = 0; i < root.focusEntries.length; ++i) {
+            if (String(root.focusEntries[i].name).trim().toLowerCase() === needle)
+                return true;
+        }
+        return false;
+    }
+
+    function addFocus() {
+        var name = String(root.addFocusInput.text).trim();
+        if (name.length === 0) {
+            root.addError = qsTr("Enter a name for the Focus.");
+            return;
+        }
+        if (root.focusNameExists(name)) {
+            root.addError = qsTr("A Focus with that name already exists.");
+            return;
+        }
+        var list = root.customProfiles.slice();
+        list.push(name);
+        Settings.setList("focus.customProfiles", list);
+        root.addError = "";
+        root.addFocusDialog.accept();
+        Settings.set("focus.customProfile", name);
+        Settings.setFocusProfile("custom");
+    }
+
+    function deleteActiveFocus() {
+        var entry = root.activeEntry;
+        if (!entry || !entry.custom)
+            return;
+        var name = entry.name;
+        var list = root.customProfiles.slice();
+        var at = list.indexOf(name);
+        if (at >= 0)
+            list.splice(at, 1);
+        Settings.setList("focus.customProfiles", list);
+        if (root.customProfile === name) {
+            Settings.set("focus.customProfile", "");
+            Settings.setFocusMode("off");
+        }
+        root.deleteFocusDialog.accept();
     }
 
     function validTime(text) {
         var trimmed = String(text).trim();
-        if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(trimmed))
-            return false;
-        return true;
+        return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(trimmed);
     }
 
     function dayEnabled(id) {
@@ -198,8 +302,6 @@ Item {
                                       + "for example 22:00.");
             return;
         }
-        // Capture both drafts before the first write re-emits values and the
-        // convergence binding reseeds the second draft.
         var start = root.scheduleStartDraft.trim();
         var end = root.scheduleEndDraft.trim();
         root.scheduleError = "";
@@ -282,29 +384,75 @@ Item {
                     ? qsTr("The notification service could not be read: %1.")
                         .arg(String(root.view.error))
                     : qsTr("The system status service or the notification "
-                           + "service is not running, so Focus is not available. "
-                           + "The schedule and shortcut preferences below are "
-                           + "still stored.")
+                           + "service is not running, so the Focus list is not "
+                           + "available. The schedule and shortcut preferences "
+                           + "below are still live.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
             }
         }
 
-        // ── Focus profile (T234) ──────────────────────────────────────────
+        // ── The one Focus list ────────────────────────────────────────────
         SettingsGroup {
-            id: profileGroup
+            id: focusDetail
             width: parent.width
-            title: qsTr("Focus profile")
+            title: qsTr("Focus")
             visible: root.ready
 
-            SegmentedControl {
-                id: profileSelector
-                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
-                x: Theme.controls.settingsRow.paddingH
-                model: root.profileOptions
-                onActivated: (index) => root.applyProfile(
-                    root.profileOptions[index].value)
+            Repeater {
+                id: focusList
+                objectName: "focusList"
+                model: root.focusEntries
+
+                delegate: Item {
+                    id: focusRow
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    height: focusRowRow.implicitHeight
+                    readonly property bool active: root.focusId === modelData.id
+                    property alias row: focusRowRow
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: focusRow.active ? Theme.color.accentMuted
+                                               : (focusHover.hovered
+                                                  ? Theme.color.controlHover
+                                                  : "transparent")
+                        opacity: focusRow.active ? 1 : 0.5
+                    }
+
+                    SettingsRow {
+                        id: focusRowRow
+                        anchors.fill: parent
+                        label: focusRow.modelData.name
+                        description: focusRow.modelData.description
+                        showSeparator: focusRow.index < focusList.count - 1
+
+                        controlData: Icon {
+                            visible: focusRow.active
+                            name: "check"
+                            size: Theme.controls.button.iconSize
+                            color: Theme.color.accent
+                        }
+                    }
+
+                    HoverHandler { id: focusHover }
+
+                    TapHandler {
+                        onTapped: root.activateFocus(focusRow.modelData.id)
+                    }
+
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: focusRow.modelData.name
+                    Accessible.description: focusRow.modelData.description
+                    Accessible.checkable: true
+                    Accessible.checked: focusRow.active
+                    Accessible.focusable: true
+                    Accessible.onPressAction:
+                        root.activateFocus(focusRow.modelData.id)
+                }
             }
 
             Text {
@@ -313,29 +461,12 @@ Item {
                 width: parent.width - 2 * Theme.controls.settingsRow.paddingH
                 x: Theme.controls.settingsRow.paddingH
                 text: root.mode === "off"
-                    ? qsTr("No profile is active.")
-                    : qsTr("%1 is active.").arg(root.profileLabel)
+                    ? qsTr("No Focus is active.")
+                    : qsTr("%1 is active.").arg(root.activeEntry.name)
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
                 topPadding: Theme.primitive.spacing.sm
-            }
-        }
-
-        // ── Focus mode ────────────────────────────────────────────────────
-        SettingsGroup {
-            id: modeGroup
-            width: parent.width
-            title: qsTr("Mode")
-            visible: root.ready
-
-            SegmentedControl {
-                id: modeSelector
-                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
-                x: Theme.controls.settingsRow.paddingH
-                model: root.modeOptions
-                onActivated: (index) => Settings.setFocusMode(
-                    root.modeOptions[index].value)
             }
 
             Text {
@@ -347,76 +478,34 @@ Item {
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
-                topPadding: Theme.primitive.spacing.sm
+                topPadding: Theme.primitive.spacing.xs
             }
 
-            Column {
-                width: parent.width
+            Row {
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                spacing: Theme.primitive.spacing.sm
                 topPadding: Theme.primitive.spacing.sm
+                bottomPadding: Theme.primitive.spacing.sm
 
-                Repeater {
-                    id: modeRepeater
-                    model: root.modeRows
-
-                    delegate: Item {
-                        required property var modelData
-                        required property int index
-                        width: parent.width
-                        height: modeLabel.implicitHeight
-                                + modeDescription.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
-                        readonly property bool active: root.mode === modelData.id
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: parent.active ? Theme.color.accentMuted
-                                                 : "transparent"
-                        }
-
-                        Column {
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.controls.settingsRow.paddingH
-                            anchors.right: activeMark.left
-                            anchors.rightMargin: Theme.primitive.spacing.sm
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.primitive.spacing.xxs
-
-                            Text {
-                                id: modeLabel
-                                width: parent.width
-                                text: modelData.label
-                                color: Theme.color.textPrimary
-                                font.pixelSize: Theme.controls.button.fontSize
-                                elide: Text.ElideRight
-                            }
-
-                            Text {
-                                id: modeDescription
-                                width: parent.width
-                                text: modelData.description
-                                color: Theme.color.textTertiary
-                                font.pixelSize: Theme.primitive.font.sizeSm
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-
-                        Icon {
-                            id: activeMark
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.controls.settingsRow.paddingH
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: parent.active
-                            name: "check"
-                            size: Theme.controls.button.iconSize
-                            color: Theme.color.accent
-                        }
-
-                        Accessible.role: Accessible.RadioButton
-                        Accessible.name: modelData.label
-                        Accessible.description: modelData.description
-                        Accessible.checkable: true
-                        Accessible.checked: active
+                Button {
+                    id: addFocusButton
+                    text: qsTr("Add Focus\u2026")
+                    accessibleName: qsTr("Add a Focus")
+                    onClicked: {
+                        root.addError = "";
+                        root.addFocusInput.text = "";
+                        root.addFocusDialog.show();
                     }
+                }
+
+                Button {
+                    id: deleteFocusButton
+                    text: qsTr("Delete Focus\u2026")
+                    variant: "ghost"
+                    enabled: root.activeEntry.custom === true
+                    accessibleName: qsTr("Delete the active Focus")
+                    onClicked: root.deleteFocusDialog.show()
                 }
             }
         }
@@ -439,12 +528,28 @@ Item {
                 bottomPadding: Theme.primitive.spacing.xs
             }
 
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show")
+                settingsId: "appFilter"
+                showSeparator: false
+                controlData: Select {
+                    id: appFilterSelect
+                    accessibleName: qsTr("Filter the allowed apps")
+                    model: root.filterOptions
+                    onActivated: (index) => root.appFilter =
+                        root.filterOptions[index].value
+                }
+            }
+
             Text {
                 id: noAppsNote
                 objectName: "focusNoApps"
                 width: parent.width
                 visible: allowList.count === 0
-                text: qsTr("No applications have sent a notification yet.")
+                text: root.appFilter === "all"
+                    ? qsTr("No applications have sent a notification yet.")
+                    : qsTr("No applications match this filter.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
@@ -453,15 +558,13 @@ Item {
             Repeater {
                 id: allowList
                 objectName: "focusAllowList"
-                model: root.apps
+                model: root.filteredApps
                 delegate: Item {
                     id: allowRow
                     required property var modelData
                     required property int index
                     width: parent.width
                     height: row.implicitHeight
-                    // The named seam a headless test toggles (the dynamic rows
-                    // have no fixed alias of their own).
                     property alias allowToggle: allowToggle
 
                     SettingsRow {
@@ -511,12 +614,28 @@ Item {
                 bottomPadding: Theme.primitive.spacing.xs
             }
 
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show")
+                settingsId: "peopleFilter"
+                showSeparator: false
+                controlData: Select {
+                    id: peopleFilterSelect
+                    accessibleName: qsTr("Filter the allowed people")
+                    model: root.filterOptions
+                    onActivated: (index) => root.peopleFilter =
+                        root.filterOptions[index].value
+                }
+            }
+
             Text {
                 id: noPeopleNote
                 objectName: "focusNoPeople"
                 width: parent.width
                 visible: peopleList.count === 0
-                text: qsTr("No people have sent a notification yet.")
+                text: root.peopleFilter === "all"
+                    ? qsTr("No people have sent a notification yet.")
+                    : qsTr("No people match this filter.")
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
@@ -525,7 +644,7 @@ Item {
             Repeater {
                 id: peopleList
                 objectName: "focusPeopleList"
-                model: root.people
+                model: root.filteredPeople
                 delegate: Item {
                     id: personRow
                     required property var modelData
@@ -785,19 +904,96 @@ Item {
         }
     }
 
-    Binding {
-        target: profileSelector
-        property: "currentIndex"
-        value: root.profileIndex(root.mode === "off"
-                                 ? ""
-                                 : (root.profile.length > 0
-                                    ? root.profile : "custom"))
+    // Add Focus (T278): a named Focus over the service's custom profile.
+    Dialog {
+        id: addFocusDialog
+        objectName: "focusAddDialog"
+        title: qsTr("Add Focus")
+        message: qsTr("Name the Focus. It is listed with the service's "
+                      + "profiles and selects the custom profile when active.")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.xs
+
+            Rectangle {
+                width: parent.width
+                height: 34
+                radius: Theme.primitive.radius.md
+                color: Theme.color.controlFill
+                border.width: Theme.controls.window.borderWidth
+                border.color: root.addError.length > 0
+                    ? Theme.color.danger : Theme.color.border
+
+                TextInput {
+                    id: addFocusInput
+                    objectName: "focusAddInput"
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.primitive.spacing.md
+                    anchors.rightMargin: Theme.primitive.spacing.md
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                    selectByMouse: true
+                    onAccepted: root.addFocus()
+                    Accessible.role: Accessible.EditableText
+                    Accessible.name: qsTr("New Focus name")
+                }
+            }
+
+            Text {
+                width: parent.width
+                visible: root.addError.length > 0
+                text: root.addError
+                color: Theme.color.danger
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: addFocusDialog.reject()
+            }
+            Button {
+                text: qsTr("Add")
+                variant: "primary"
+                onClicked: root.addFocus()
+            }
+        }
+
+        onOpened: addFocusInput.forceActiveFocus()
     }
-    Binding {
-        target: modeSelector
-        property: "currentIndex"
-        value: root.modeIndex(root.mode)
+
+    Dialog {
+        id: deleteFocusDialog
+        objectName: "focusDeleteDialog"
+        title: qsTr("Delete Focus")
+        message: qsTr("Delete %1? The service returns to Off.").arg(
+                     root.activeEntry ? root.activeEntry.name : "")
+        dismissible: true
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: deleteFocusDialog.reject()
+            }
+            Button {
+                text: qsTr("Delete")
+                variant: "danger"
+                onClicked: root.deleteActiveFocus()
+            }
+        }
     }
+
     Binding {
         target: scheduleToggle
         property: "checked"
@@ -821,8 +1017,6 @@ Item {
     Connections {
         target: Settings
         function onValuesChanged() {
-            // An external settingsd change converges into the drafts unless
-            // the user is mid-edit with an invalid value.
             if (root.scheduleError.length === 0) {
                 root.scheduleStartDraft = root.scheduleStart;
                 root.scheduleEndDraft = root.scheduleEnd;

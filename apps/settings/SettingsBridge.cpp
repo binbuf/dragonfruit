@@ -1466,6 +1466,18 @@ QString SettingsBridge::localPathFromUri(const QString &uri)
     return QString();
 }
 
+QString SettingsBridge::fileUrl(const QString &path) const
+{
+    if (path.isEmpty())
+        return QString();
+    // An already-formed URL passes through; a bare path is escaped exactly
+    // once. This is the single path -> URL seam for the panes.
+    const QUrl url(path);
+    if (url.isValid() && !url.scheme().isEmpty())
+        return QString::fromUtf8(url.toEncoded());
+    return QString::fromUtf8(QUrl::fromLocalFile(path).toEncoded());
+}
+
 void SettingsBridge::buildWallpaperPresets()
 {
     QString directory =

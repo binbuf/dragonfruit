@@ -42,17 +42,18 @@ Item {
         { value: "center", label: qsTr("Center") }
     ]
 
-    // The display order. Abstract is the special first row (the macOS
-    // "Dynamic Wallpapers" equivalent); Space is the NASA source.
+    // The display order (T278, ADR 0279): the macOS collection names, then the
+    // Linux additions Colors and Shuffle, then the always-available Built-in
+    // row and Your Photos.
     readonly property var categoryDefs: [
-        { slug: "abstract", title: qsTr("Abstract") },
-        { slug: "nature", title: qsTr("Nature") },
-        { slug: "water", title: qsTr("Water") },
+        { slug: "abstract", title: qsTr("Dynamic") },
+        { slug: "nature", title: qsTr("Landscape") },
         { slug: "cityscapes", title: qsTr("Cityscapes") },
+        { slug: "underwater", title: qsTr("Underwater") },
         { slug: "earth", title: qsTr("Earth") },
         { slug: "space", title: qsTr("Space") },
         { slug: "scenery", title: qsTr("Scenery") },
-        { slug: "underwater", title: qsTr("Underwater") }
+        { slug: "water", title: qsTr("Water") }
     ]
 
     // The provider is fetching. Empty categories show skeletons; a category
@@ -62,8 +63,26 @@ Item {
     // offline, or an error): the note explains that absence is normal.
     readonly property bool featuredEmpty:
         root.providerItems.length === 0 && !root.featuredFetching
-    readonly property string featuredMessage:
-        qsTr("Featured pictures will be available soon.")
+    // T278: an absent provider, an offline host, a provider error, and an
+    // empty-but-ready catalogue are four different states with four different
+    // reasons. "Available soon" is never used for an error.
+    readonly property string featuredMessage: {
+        switch (root.providerStatus) {
+        case "fetching":
+            return qsTr("Refreshing wallpapers\u2026");
+        case "offline":
+            return qsTr("You are offline. Built-in and Colors wallpapers stay "
+                        + "available.");
+        case "error":
+            return qsTr("The wallpaper service could not be reached. Built-in "
+                        + "and Colors wallpapers stay available.");
+        case "":
+            return qsTr("No wallpaper provider is running. Built-in and Colors "
+                        + "wallpapers stay available.");
+        default:
+            return qsTr("No featured pictures are available yet.");
+        }
+    }
 
     // The provider catalogue, each entry gaining a display `name`, stable
     // `key`, grid thumbnail, and the best preview the hero can show.
@@ -94,37 +113,60 @@ Item {
         return out;
     }
 
-    // The built-in row: the shipped default first, then the original
-    // gradients. `Default` is named literally so the out-of-box tile reads
-    // exactly as the reference and ADR 0094 describe.
+    // The Built-in row is always available (T278): the shipped default first,
+    // falling back to the first original gradient so the row is never empty.
     readonly property var builtinItems: {
-        var out = [];
-        if (root.builtinDefault.length > 0) {
-            var defaultUrl = root.fileUrl(root.builtinDefault);
-            out.push({
-                key: "s" + root.builtinDefault,
-                name: qsTr("Default"),
-                source: root.builtinDefault,
-                thumbUrl: defaultUrl,
-                previewUrl: defaultUrl,
-                builtin: true,
-                provider: ""
-            });
+        var source = root.builtinDefault;
+        var url = source.length > 0 ? root.fileUrl(source) : "";
+        if (source.length === 0 && root.presets.length > 0) {
+            source = root.presets[0].source;
+            url = root.presets[0].url;
         }
+        if (source.length === 0 && root.providerDefault.length > 0) {
+            source = root.providerDefault;
+            url = root.fileUrl(source);
+        }
+        return [{
+            key: "s" + source,
+            name: qsTr("Default"),
+            source: source,
+            thumbUrl: url,
+            previewUrl: url,
+            builtin: true,
+            provider: ""
+        }];
+    }
+
+    // Colors: the shipped original gradients (T278, ADR 0279). They are real
+    // files the compositor can decode, so they apply through the same machine
+    // as a picture.
+    readonly property var colorItems: {
+        var out = [];
         for (var i = 0; i < root.presets.length; ++i) {
             var preset = root.presets[i];
             out.push({
-                key: "s" + preset.source,
+                key: "c" + preset.source,
                 name: preset.name,
                 source: preset.source,
                 thumbUrl: preset.url,
                 previewUrl: preset.url,
                 builtin: true,
+                color: true,
                 provider: ""
             });
         }
         return out;
     }
+
+    // Shuffle: one real control that applies a random Featured picture. It is
+    // disabled with a reason when the provider has nothing to choose from.
+    readonly property var shuffleItems: ([{
+        key: "shuffle",
+        name: qsTr("Shuffle"),
+        shuffle: true,
+        enabled: root.featuredItems.length > 0,
+        provider: ""
+    }])
 
     readonly property var addPhotoItem: ({
         key: "add-photo",
@@ -154,7 +196,8 @@ Item {
     }
 
     readonly property var allItems: {
-        var out = root.featuredItems.concat(root.builtinItems);
+        var out = root.featuredItems.concat(root.builtinItems)
+                 .concat(root.colorItems);
         for (var i = 0; i < root.customItems.length; ++i) {
             if (!root.customItems[i].addPhoto)
                 out.push(root.customItems[i]);
@@ -201,6 +244,14 @@ Item {
     // The old pane's name for the hero image URL; kept for tests and callers.
     readonly property string currentUrl: root.currentPreviewUrl
 
+    // T278: the hero scales with the measured 508-px content column instead
+    // of a fixed 160x100 thumbnail. The aspect is a token so a narrow window
+    // and the capture stage stay proportional.
+    readonly property real heroWidth: Math.max(
+        0, Math.round(root.width * Theme.controls.wallpaper.heroWidthRatio))
+    readonly property real heroHeight: Math.round(
+        root.heroWidth / Theme.controls.wallpaper.heroAspect)
+
     // Attribution is shown only for a fetched (third-party) picture, never for
     // a built-in one and never for a user photo.
     readonly property bool hasAttribution:
@@ -226,6 +277,10 @@ Item {
     }
 
     // -- Apply state --------------------------------------------------------
+    // The visible state is the product (T278, ADR 0279). The first press marks
+    // the tile and starts both spinners before any fetch or write; the old
+    // wallpaper stays until the new image is ready; a second pick supersedes
+    // the first; every pending apply has a bounded outcome.
     property bool pending: false
     property string pendingKey: ""
     property string pendingName: ""
@@ -237,9 +292,17 @@ Item {
     property bool pendingImageReady: false
     property bool pendingMinElapsed: false
     property bool pendingWriteStarted: false
+    property string pendingWriteSource: ""
     property string pendingPhotoNotice: ""
     property string applyError: ""
     property string applyErrorKey: ""
+
+    // The fake-clock seam: a test sets these before a pick instead of
+    // sleeping for the production dwell/timeout. `forceMinElapsed()` and
+    // `forceTimeout()` let a test drive the transitions without a real wait.
+    property int applyMinMs: Theme.controls.wallpaper.applyMinMs
+    property int applyTimeoutMs: Theme.controls.wallpaper.applyTimeoutMs
+    property int writeTimeoutMs: Theme.controls.wallpaper.writeTimeoutMs
 
     readonly property string heroPreviewUrl:
         root.pending ? root.pendingBasePreviewUrl : root.currentPreviewUrl
@@ -251,10 +314,12 @@ Item {
     property var tileItems: []
     property var featuredTiles: []
     property var builtinTiles: []
+    property var colorTiles: []
     property var customTiles: []
     property var skeletonItems: []
     property var sections: []
     property var addPhotoTile: null
+    property var shuffleTile: null
 
     readonly property var photoButton: root.addPhotoTile
     readonly property var photoRow: root.yourPhotosSection
@@ -286,7 +351,14 @@ Item {
     property alias screenSaverButton: screenSaverButton
     property alias clockAppearanceRow: clockAppearanceRow
     property alias clockAppearanceButton: clockAppearanceButton
+    property alias clockDialog: clockDialog
+    property alias clockToggle: clockToggle
+    property alias showDateToggle: showDateToggle
+    property alias showSecondsToggle: showSecondsToggle
+    property alias colorGroup: colorsSection
+    property alias shuffleGroup: shuffleSection
     property alias retryButton: retryButton
+    property alias pendingImage: pendingImage
 
     signal navigateRequested(string paneId)
 
@@ -304,13 +376,15 @@ Item {
 
     onCurrentSourceChanged: {
         // An external change wins over an in-flight apply, unless our own write
-        // has already started (that change is the one we are committing).
-        if (root.pending && !root.pendingWriteStarted)
+        // has already started (that change is the one we are committing) or it
+        // is the value our write produced while a newer pick is in flight.
+        if (root.pending && !root.pendingWriteStarted
+                && root.currentSource !== root.pendingWriteSource)
             root.cancelPending();
     }
 
     function fileUrl(path) {
-        return path && path.length > 0 ? "file://" + path : "";
+        return path && path.length > 0 ? Settings.fileUrl(path) : "";
     }
 
     function fileName(path) {
@@ -359,6 +433,10 @@ Item {
             if (root.builtinItems[j].source === source)
                 return true;
         }
+        for (var k = 0; k < root.colorItems.length; ++k) {
+            if (root.colorItems[k].source === source)
+                return true;
+        }
         return false;
     }
 
@@ -394,6 +472,11 @@ Item {
                 Settings.chooseWallpaperPhoto();
             return;
         }
+        if (item.shuffle) {
+            if (item.enabled !== false)
+                root.shuffle();
+            return;
+        }
         if (root.pending && root.pendingKey === item.key)
             return;
         // Compare the raw user setting, not the effective source: clicking the
@@ -404,6 +487,31 @@ Item {
         root.pendingPhotoNotice = "";
         photoNotice.text = "";
         root.beginPending(item);
+    }
+
+    function randomFeaturedItem() {
+        var choices = [];
+        for (var i = 0; i < root.featuredItems.length; ++i) {
+            var item = root.featuredItems[i];
+            if (item.source && item.source !== root.selectedSource)
+                choices.push(item);
+        }
+        if (choices.length === 0) {
+            for (var j = 0; j < root.featuredItems.length; ++j) {
+                if (root.featuredItems[j].source)
+                    choices.push(root.featuredItems[j]);
+            }
+        }
+        if (choices.length === 0)
+            return null;
+        return choices[Math.floor(Math.random() * choices.length)];
+    }
+
+    function shuffle() {
+        var item = root.randomFeaturedItem();
+        if (!item)
+            return;
+        root.chooseItem(item);
     }
 
     function loadPendingImage(url) {
@@ -431,9 +539,13 @@ Item {
         root.pendingImageReady = false;
         root.pendingMinElapsed = false;
         root.pendingWriteStarted = false;
+        root.pendingWriteSource = "";
         root.applyError = "";
         root.applyErrorKey = "";
         applyMinTimer.restart();
+        // A superseding pick restarts the bounded outcome, so the previous
+        // timer can never fail the new pick.
+        applyTimeoutTimer.restart();
 
         if (root.pendingPhase === "downloading") {
             if (root.pendingPageId < 0) {
@@ -456,12 +568,25 @@ Item {
                 || root.pendingWriteStarted)
             return;
         root.pendingWriteStarted = true;
+        root.pendingWriteSource = root.pendingSource;
         if (!Settings.set("wallpaper.source", root.pendingSource)) {
             root.failPending(Settings.errorFor("wallpaper.source"));
             return;
         }
         if (root.pending)
-            pendingWriteTimer.restart();
+            writeTimeoutTimer.restart();
+    }
+
+    // The fake-clock seams (T278): a test drives the transition instead of
+    // sleeping for the production minimum dwell or timeout.
+    function forceMinElapsed() {
+        root.pendingMinElapsed = true;
+        root.maybeCommit();
+    }
+
+    function forceTimeout() {
+        if (root.pending)
+            root.failPending(qsTr("The wallpaper did not finish loading in time."));
     }
 
     function finishPending() {
@@ -472,8 +597,10 @@ Item {
         root.pendingImageReady = false;
         root.pendingMinElapsed = false;
         root.pendingWriteStarted = false;
+        root.pendingWriteSource = "";
         applyMinTimer.stop();
-        pendingWriteTimer.stop();
+        applyTimeoutTimer.stop();
+        writeTimeoutTimer.stop();
         pendingImage.source = "";
         if (root.pendingPhotoNotice.length > 0) {
             photoNotice.text = root.pendingPhotoNotice;
@@ -489,18 +616,22 @@ Item {
         root.pendingImageReady = false;
         root.pendingMinElapsed = false;
         root.pendingWriteStarted = false;
+        root.pendingWriteSource = "";
         root.pendingPhotoNotice = "";
         applyMinTimer.stop();
-        pendingWriteTimer.stop();
+        applyTimeoutTimer.stop();
+        writeTimeoutTimer.stop();
         pendingImage.source = "";
     }
 
     function failPending(detail) {
         if (detail && detail.length > 0)
             console.warn("wallpaper apply failed: " + detail);
-        root.applyError = root.pendingPhase === "downloading"
-            ? qsTr("The wallpaper could not be downloaded.")
-            : qsTr("Could not apply this wallpaper.");
+        root.applyError = detail && detail.length > 0
+            ? detail
+            : (root.pendingPhase === "downloading"
+               ? qsTr("The wallpaper could not be downloaded.")
+               : qsTr("Could not apply this wallpaper."));
         root.applyErrorKey = root.pendingKey;
         root.pending = false;
         root.pendingKey = "";
@@ -509,9 +640,11 @@ Item {
         root.pendingImageReady = false;
         root.pendingMinElapsed = false;
         root.pendingWriteStarted = false;
+        root.pendingWriteSource = "";
         root.pendingPhotoNotice = "";
         applyMinTimer.stop();
-        pendingWriteTimer.stop();
+        applyTimeoutTimer.stop();
+        writeTimeoutTimer.stop();
         pendingImage.source = "";
     }
 
@@ -519,7 +652,9 @@ Item {
         if (!root.pending || root.pendingPageId !== pageid)
             return;
         if (!ok) {
-            root.failPending(message);
+            if (message && message.length > 0)
+                console.warn("wallpaper fetch failed: " + message);
+            root.failPending(qsTr("The wallpaper could not be downloaded."));
             return;
         }
         var item = root.itemForPageId(pageid);
@@ -573,7 +708,7 @@ Item {
 
     Timer {
         id: applyMinTimer
-        interval: Theme.controls.wallpaper.applyMinMs
+        interval: root.applyMinMs
         repeat: false
         onTriggered: {
             root.pendingMinElapsed = true;
@@ -581,13 +716,26 @@ Item {
         }
     }
 
+    // The bounded outcome: no pending apply can outlive this. A provider that
+    // never answers, a decode that never finishes, and a stalled write all
+    // revert to the previous wallpaper with an inline reason.
     Timer {
-        id: pendingWriteTimer
-        interval: 2000
+        id: applyTimeoutTimer
+        interval: root.applyTimeoutMs
+        repeat: false
+        onTriggered: {
+            if (root.pending)
+                root.failPending(qsTr("The wallpaper did not finish loading in time."));
+        }
+    }
+
+    Timer {
+        id: writeTimeoutTimer
+        interval: root.writeTimeoutMs
         repeat: false
         onTriggered: {
             if (root.pending && root.pendingWriteStarted)
-                root.finishPending();
+                root.failPending(qsTr("The wallpaper setting did not save in time."));
         }
     }
 
@@ -623,8 +771,8 @@ Item {
 
             Rectangle {
                 id: preview
-                width: Theme.controls.wallpaper.heroWidth
-                height: Theme.controls.wallpaper.heroHeight
+                width: root.heroWidth
+                height: root.heroHeight
                 radius: Theme.controls.settingsGroup.radius
                 color: Theme.color.surfaceMuted
                 clip: true
@@ -849,7 +997,7 @@ Item {
                             anchors.fill: parent
                             text: qsTr("Clock Appearance…")
                             accessibleName: qsTr("Open clock appearance settings")
-                            onClicked: root.navigateRequested("screen-saver")
+                            onClicked: clockDialog.show()
                         }
                     }
                 }
@@ -897,7 +1045,8 @@ Item {
                                  statusRetry.implicitHeight)
                 visible: root.providerItems.length > 0
                          && (root.providerStatus === "fetching"
-                             || root.providerStatus === "offline")
+                             || root.providerStatus === "offline"
+                             || root.providerStatus === "error")
 
                 Spinner {
                     id: statusSpinner
@@ -922,7 +1071,10 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.providerStatus === "fetching"
                           ? qsTr("Refreshing wallpapers…")
-                          : qsTr("Showing cached wallpapers.")
+                          : (root.providerStatus === "error"
+                             ? qsTr("The wallpaper service could not be reached; "
+                                    + "showing cached wallpapers.")
+                             : qsTr("Showing cached wallpapers."))
                     color: Theme.color.textSecondary
                     elide: Text.ElideRight
                     font.pixelSize: Theme.primitive.font.sizeSm
@@ -933,6 +1085,7 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     visible: root.providerStatus === "offline"
+                             || root.providerStatus === "error"
                     text: qsTr("Try Again")
                     onClicked: Settings.refreshWallpapers()
                 }
@@ -951,7 +1104,27 @@ Item {
             }
         }
 
-        // -- Built-in (the shipped original default + original gradients) ----
+        // -- Colors (the shipped original gradients) -------------------------
+        WallpaperSection {
+            id: colorsSection
+            width: parent.width
+            title: qsTr("Colors")
+            settingsId: "colors"
+            items: root.colorItems
+            expanded: true
+        }
+
+        // -- Shuffle (one real control over the Featured catalogue) ----------
+        WallpaperSection {
+            id: shuffleSection
+            width: parent.width
+            title: qsTr("Shuffle")
+            settingsId: "shuffle"
+            items: root.shuffleItems
+            expanded: true
+        }
+
+        // -- Built-in default (always available, T278) -----------------------
         WallpaperSection {
             id: builtinSection
             width: parent.width
@@ -991,6 +1164,68 @@ Item {
         }
     }
 
+    // T278: Clock Appearance… opens real clock controls (the same
+    // `screenSaver.*` keys the lock scene consumes). The Screen Saver… row
+    // still navigates to the pane that owns the rest of the saver options.
+    Dialog {
+        id: clockDialog
+        objectName: "wallpaperClockDialog"
+        title: qsTr("Clock Appearance")
+        message: qsTr("Choose what the lock scene clock shows.")
+        dismissible: true
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.xs
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show clock")
+                showSeparator: false
+                controlData: Toggle {
+                    id: clockToggle
+                    accessibleName: qsTr("Show the lock scene clock")
+                    onToggled: (checked) => Settings.set("screenSaver.clock",
+                                                        checked)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show date")
+                showSeparator: false
+                controlData: Toggle {
+                    id: showDateToggle
+                    accessibleName: qsTr("Show the date under the clock")
+                    onToggled: (checked) => Settings.set("screenSaver.showDate",
+                                                        checked)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show seconds")
+                showSeparator: false
+                controlData: Toggle {
+                    id: showSecondsToggle
+                    accessibleName: qsTr("Show seconds in the clock")
+                    onToggled: (checked) => Settings.set(
+                        "screenSaver.showSeconds", checked)
+                }
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+
+            Button {
+                text: qsTr("Done")
+                variant: "primary"
+                onClicked: clockDialog.accept()
+            }
+        }
+    }
+
     // Two-way bindings: the controls write on interaction; these keep them in
     // step with `Settings.values` (a user edit and an external settingsd change
     // converge).
@@ -1003,6 +1238,21 @@ Item {
         target: fitControl
         property: "currentIndex"
         value: root.fitIndex()
+    }
+    Binding {
+        target: clockToggle
+        property: "checked"
+        value: Settings.values["screenSaver.clock"] !== false
+    }
+    Binding {
+        target: showDateToggle
+        property: "checked"
+        value: Settings.values["screenSaver.showDate"] !== false
+    }
+    Binding {
+        target: showSecondsToggle
+        property: "checked"
+        value: Settings.values["screenSaver.showSeconds"] === true
     }
 
     Connections {
@@ -1168,8 +1418,10 @@ Item {
         property int sectionColumns: Theme.controls.wallpaper.columns
 
         readonly property bool isAddPhoto: tile.modelData.addPhoto === true
+        readonly property bool isShuffle: tile.modelData.shuffle === true
         readonly property bool selected:
-            !tile.isAddPhoto && tile.modelData.source !== undefined
+            !tile.isAddPhoto && !tile.isShuffle
+            && tile.modelData.source !== undefined
             && tile.modelData.source.length > 0
             && tile.modelData.source === root.selectedSource
         readonly property bool pending:
@@ -1178,12 +1430,17 @@ Item {
             tile.pending ? root.pendingPhase : ""
         readonly property bool highlighted:
             root.pending ? tile.pending : tile.selected
+        // T278: the optimistic selection is visible in the same frame as the
+        // press, before any fetch or write. `marked` is the ring/check state.
+        readonly property bool marked: tile.selected || tile.pending
         readonly property string errorText:
             root.applyErrorKey === tile.modelData.key ? root.applyError : ""
         readonly property bool hovered: hoverHandler.hovered
         readonly property string accessibleLabel: {
             if (tile.isAddPhoto)
                 return qsTr("Add Photo…");
+            if (tile.isShuffle)
+                return qsTr("Shuffle featured pictures");
             var parts = [];
             if (tile.modelData.fetched && tile.modelData.category)
                 parts.push(root.categoryTitle(tile.modelData.category));
@@ -1203,12 +1460,15 @@ Item {
                     ? qsTr("Downloading") : qsTr("Applying");
             if (tile.isAddPhoto && tile.modelData.enabled === false)
                 return qsTr("No file chooser is available.");
+            if (tile.isShuffle && tile.modelData.enabled === false)
+                return qsTr("No featured pictures are available to shuffle.");
             return "";
         }
 
         width: 0 // the section sets the responsive width
         height: thumb.height + Theme.primitive.spacing.xs + caption.height
-        enabled: !tile.isAddPhoto || tile.modelData.enabled !== false
+        enabled: (!tile.isAddPhoto && !tile.isShuffle)
+                 || tile.modelData.enabled !== false
         activeFocusOnTab: true
         opacity: enabled ? 1 : 0.45
 
@@ -1227,8 +1487,12 @@ Item {
             if (tile.isAddPhoto) {
                 root.customTiles = root.customTiles.concat([tile]);
                 root.addPhotoTile = tile;
+            } else if (tile.isShuffle) {
+                root.shuffleTile = tile;
             } else if (tile.modelData.fetched) {
                 root.featuredTiles = root.featuredTiles.concat([tile]);
+            } else if (tile.modelData.color) {
+                root.colorTiles = root.colorTiles.concat([tile]);
             } else if (tile.modelData.builtin) {
                 root.builtinTiles = root.builtinTiles.concat([tile]);
             } else if (tile.modelData.custom) {
@@ -1245,11 +1509,16 @@ Item {
             root.builtinTiles = root.builtinTiles.filter(function(item) {
                 return item !== tile;
             });
+            root.colorTiles = root.colorTiles.filter(function(item) {
+                return item !== tile;
+            });
             root.customTiles = root.customTiles.filter(function(item) {
                 return item !== tile;
             });
             if (root.addPhotoTile === tile)
                 root.addPhotoTile = null;
+            if (root.shuffleTile === tile)
+                root.shuffleTile = null;
         }
 
         Rectangle {
@@ -1258,25 +1527,26 @@ Item {
             height: Math.round(width / Theme.controls.wallpaper.tileAspect)
             radius: Theme.controls.button.radius
             color: Theme.color.surfaceMuted
-            border.width: tile.highlighted ? Theme.controls.focusRing.width
-                                           : Theme.controls.window.borderWidth
-            border.color: tile.highlighted ? Theme.color.accent : Theme.color.border
+            border.width: tile.marked ? Theme.controls.focusRing.width
+                                      : Theme.controls.window.borderWidth
+            border.color: tile.marked ? Theme.color.accent : Theme.color.border
             clip: true
             antialiasing: true
 
             Image {
                 anchors.fill: parent
                 anchors.margins: 2
-                source: tile.isAddPhoto ? "" : (tile.modelData.thumbUrl || "")
+                source: (tile.isAddPhoto || tile.isShuffle)
+                        ? "" : (tile.modelData.thumbUrl || "")
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                visible: !tile.isAddPhoto
+                visible: !tile.isAddPhoto && !tile.isShuffle
             }
 
             Icon {
-                visible: tile.isAddPhoto
+                visible: tile.isAddPhoto || tile.isShuffle
                 anchors.centerIn: parent
-                name: "wallpaper"
+                name: tile.isShuffle ? "software-update" : "wallpaper"
                 size: Theme.primitive.spacing.xxl
                 color: Theme.color.textTertiary
             }
@@ -1306,7 +1576,7 @@ Item {
             }
 
             Rectangle {
-                visible: tile.selected && !tile.pending
+                visible: tile.marked && !tile.pending
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.margins: Theme.primitive.spacing.xs
@@ -1359,7 +1629,10 @@ Item {
             font.pixelSize: Theme.primitive.font.sizeSm
         }
 
-        HoverHandler { id: hoverHandler }
+        HoverHandler {
+            id: hoverHandler
+            cursorShape: Qt.PointingHandCursor
+        }
 
         TapHandler {
             enabled: tile.enabled
@@ -1399,7 +1672,7 @@ Item {
         Accessible.name: tile.accessibleLabel
         Accessible.description: tile.accessibleDescription
         Accessible.checkable: !tile.isAddPhoto
-        Accessible.checked: tile.selected
+        Accessible.checked: tile.marked
         Accessible.focusable: true
         Accessible.onPressAction: tile.choose()
     }

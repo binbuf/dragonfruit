@@ -27,6 +27,7 @@ Item {
         function init() {
             Settings.set("idle.blank", 300);
             Settings.set("idle.lock", 600);
+            Settings.set("lock.requirePasswordAfter", 300);
             Settings.set("lock.showUserNameAndPhoto", true);
             Settings.set("lock.showPasswordHints", false);
             Settings.set("lock.showMessageWhenLocked", false);
@@ -60,8 +61,9 @@ Item {
             var pane = paneOf(shell);
             compare(pane.displayOffSeconds, 300);
             compare(pane.displayOffSelect.currentIndex, 2); // For 5 minutes
+            compare(pane.requireAfter, 300);
+            compare(pane.requirePasswordSelect.currentIndex, 4); // After 5 minutes
             compare(pane.requirePasswordSeconds, 600);
-            compare(pane.requirePasswordSelect.currentIndex, 4); // After 10 minutes
             compare(pane.userNameToggle.checked, true);
             compare(pane.passwordHintsToggle.checked, false);
             compare(pane.messageToggle.checked, false);
@@ -75,13 +77,47 @@ Item {
 
             pane.displayOffSelect.activateIndex(3); // For 10 minutes
             compare(Settings.values["idle.blank"], 600);
+            // Require-after is derived from the display-off stage.
+            compare(Settings.values["idle.lock"], 900);
 
-            pane.requirePasswordSelect.activateIndex(0); // After 5 seconds
-            compare(Settings.values["idle.lock"], 5);
+            pane.requirePasswordSelect.activateIndex(1); // After 5 seconds
+            compare(Settings.values["lock.requirePasswordAfter"], 5);
+            compare(Settings.values["idle.lock"], 605);
 
-            // `Never` disables each stage with the engine's 0 spelling.
+            // `Never` disables the lock stage with the engine's 0 spelling.
             pane.requirePasswordSelect.activateIndex(6);
+            compare(Settings.values["lock.requirePasswordAfter"], -1);
             compare(Settings.values["idle.lock"], 0);
+        }
+
+        function test_require_password_means_after_display_off() {
+            var shell = make();
+            var pane = paneOf(shell);
+            // The default display-off stage is 5 minutes and the default
+            // after-delay is 5 minutes, so the lock is at 10 minutes of
+            // inactivity, not at 10 minutes from the last keypress.
+            verify(pane.lockSummaryText.indexOf("after the display turns off") >= 0);
+            pane.requirePasswordSelect.activateIndex(0); // Immediately
+            compare(Settings.values["idle.lock"], 300);
+            pane.requirePasswordSelect.activateIndex(2); // After 30 seconds
+            compare(Settings.values["idle.lock"], 330);
+        }
+
+        function test_custom_idle_values_show_their_real_duration() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.set("idle.blank", 420);
+            compare(pane.displayOffSelect.currentLabel, "For 7 minutes");
+            Settings.set("lock.requirePasswordAfter", 45);
+            compare(pane.requirePasswordSelect.currentLabel, "After 45 seconds");
+            verify(pane.displayOffSelect.currentLabel !== "Never");
+        }
+
+        function test_power_stage_note_documents_one_stage() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.powerStageNote.visible);
+            verify(pane.powerStageNote.text.indexOf("does not vary") >= 0);
         }
 
         function test_display_toggles_round_trip() {
@@ -90,10 +126,48 @@ Item {
 
             pane.userNameToggle.toggle();
             compare(Settings.values["lock.showUserNameAndPhoto"], false);
+            compare(pane.previewName.visible, false,
+                    "the preview follows the user-name choice");
             pane.passwordHintsToggle.toggle();
             compare(Settings.values["lock.showPasswordHints"], true);
             pane.powerButtonsToggle.toggle();
             compare(Settings.values["lock.showPowerButtons"], false);
+            compare(pane.previewPowerButtons.visible, false,
+                    "the preview follows the power-button choice");
+        }
+
+        function test_preview_shows_the_message_and_hint() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.previewMessage.visible, false);
+            compare(pane.previewHint.visible, false);
+
+            pane.messageToggle.toggle();
+            Settings.set("lock.message", "Back at 3.");
+            tryVerify(function() { return pane.previewMessage.visible; });
+            compare(pane.previewMessage.text, "Back at 3.");
+
+            pane.passwordHintsToggle.toggle();
+            Settings.set("lock.passwordHint", "The one with the cat");
+            tryVerify(function() { return pane.previewHint.visible; });
+            compare(pane.previewHint.text, "The one with the cat");
+        }
+
+        function test_cancel_resets_the_editor_drafts() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.messageToggle.toggle();
+            pane.messageDialog.show();
+            waitForRendering(stage);
+            pane.messageDraft = "Unsaved";
+            pane.messageDialog.reject();
+            compare(Settings.values["lock.message"], "",
+                    "Cancel never writes the draft");
+            pane.messageDialog.show();
+            waitForRendering(stage);
+            compare(pane.messageInput.text, "",
+                    "reopening seeds the stored value");
+            pane.messageDialog.reject();
         }
 
         function test_energy_warning_tracks_a_long_display_off_delay() {
@@ -127,7 +201,7 @@ Item {
             pane.messageDialog.show();
             waitForRendering(stage);
             compare(pane.messageDialog.open, true);
-            pane.messageInput.text = "Back at 3.";
+            pane.messageDraft = "Back at 3.";
             pane.messageDialog.accept();
             compare(Settings.values["lock.message"], "Back at 3.");
 
@@ -143,9 +217,9 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
 
-            Settings.set("idle.lock", 300);
-            compare(pane.requirePasswordSeconds, 300);
-            compare(pane.requirePasswordSelect.currentIndex, 3);
+            Settings.set("lock.requirePasswordAfter", 300);
+            compare(pane.requireAfter, 300);
+            compare(pane.requirePasswordSelect.currentIndex, 4);
 
             Settings.set("idle.blank", 0);
             compare(pane.displayOffSelect.currentIndex, 8); // Never
@@ -180,7 +254,7 @@ Item {
             pane.hintDialog.show();
             waitForRendering(stage);
             compare(pane.hintDialog.open, true);
-            pane.hintInput.text = "The one with the cat";
+            pane.hintDraft = "The one with the cat";
             pane.hintDialog.accept();
             compare(Settings.values["lock.passwordHint"], "The one with the cat");
 

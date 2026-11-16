@@ -30,6 +30,9 @@ Item {
             Settings.set("wallpaper.fit", "fill");
             Settings.set("wallpaper.showOnAllSpaces", true);
             Settings.set("accessibility.reduceMotion", false);
+            Settings.set("screenSaver.clock", true);
+            Settings.set("screenSaver.showDate", true);
+            Settings.set("screenSaver.showSeconds", false);
             Settings.setWallpaperFixture("ready");
         }
 
@@ -85,10 +88,10 @@ Item {
             compare(pane.fitControl.currentIndex, 0); // fill
             compare(pane.showOnAllToggle.checked, true);
             verify(pane.photoButton, "the Add Photo tile must exist");
-            verify(pane.sections.length >= 10,
-                   "eight provider rows plus Built-in and Your Photos");
+            verify(pane.sections.length >= 12,
+                   "eight provider rows plus Colors, Shuffle, Built-in and Your Photos");
             compare(sectionSlugs(pane).join(","),
-                    "abstract,nature,water,cityscapes,earth,space,scenery,underwater");
+                    "abstract,nature,cityscapes,underwater,earth,space,scenery,water");
         }
 
         function test_default_tile_is_selected_when_no_user_choice() {
@@ -152,7 +155,7 @@ Item {
             verify(!pane.featuredMessageItem.visible);
 
             var label = pane.featuredTiles[0].Accessible.name;
-            verify(label.indexOf("Nature") >= 0,
+            verify(label.indexOf("Landscape") >= 0,
                    "the accessible name carries the category, was: " + label);
             verify(label.indexOf("Alpine Lake") >= 0,
                    "the accessible name carries the title, was: " + label);
@@ -235,7 +238,8 @@ Item {
             var pane = paneOf(shell);
             waitForRendering(stage);
 
-            compare(pane.builtinTiles.length, 1 + pane.presets.length);
+            compare(pane.builtinTiles.length, 1,
+                    "Built-in is the always-available Default row");
             var defaultTile = pane.builtinTiles[0];
             compare(defaultTile.modelData.name, "Default");
             compare(defaultTile.modelData.source, pane.builtinDefault);
@@ -254,7 +258,8 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
 
-            var tile = pane.builtinTiles[1];
+            compare(pane.colorTiles.length, pane.presets.length);
+            var tile = pane.colorTiles[0];
             var source = pane.presets[0].source;
             chooseAndWait(pane, tile);
             compare(Settings.values["wallpaper.source"], source);
@@ -262,10 +267,36 @@ Item {
             compare(pane.currentUrl, pane.presets[0].url);
             verify(tile.selected);
 
-            var other = pane.builtinTiles[3];
+            var other = pane.colorTiles[2];
             chooseAndWait(pane, other);
             verify(!tile.selected);
             verify(other.selected);
+        }
+
+        function test_colors_and_shuffle_rows_and_macos_titles() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.sectionFor("abstract").title, "Dynamic");
+            compare(pane.sectionFor("nature").title, "Landscape");
+            compare(pane.sectionFor("cityscapes").title, "Cityscapes");
+            compare(pane.sectionFor("underwater").title, "Underwater");
+            compare(pane.sectionFor("earth").title, "Earth");
+            verify(pane.colorGroup.visible);
+            verify(pane.shuffleGroup.visible);
+            compare(pane.shuffleTile.modelData.name, "Shuffle");
+        }
+
+        function test_shuffle_applies_a_featured_picture() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sources = pane.featuredItems.map(function(item) {
+                return item.source;
+            });
+            pane.shuffleTile.choose();
+            verify(pane.pending, "Shuffle starts the apply state");
+            waitForApply(pane);
+            verify(sources.indexOf(Settings.values["wallpaper.source"]) >= 0,
+                   "Shuffle applies one of the featured pictures");
         }
 
         // -- The eager Preload on pane open ------------------------------------
@@ -316,7 +347,7 @@ Item {
             compare(pane.currentUrl, "file:///tmp/dragonfruit-custom.png");
             verify(!pane.hasAttribution);
 
-            chooseAndWait(pane, pane.builtinTiles[1]);
+            chooseAndWait(pane, pane.colorTiles[0]);
             compare(pane.currentSource, pane.presets[0].source);
         }
 
@@ -354,25 +385,185 @@ Item {
                     "Add Photo plus the current custom photo");
         }
 
-        // -- T229a: screen saver / clock appearance links ----------------------
+        // -- T278: the hero, links, categories, and apply machine -------------
 
-        function test_screen_saver_and_clock_links_open_the_screen_saver() {
+        function test_hero_is_proportional_to_the_content_column() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.heroPreview.width > 160,
+                   "the hero is no longer a 160 px thumbnail");
+            compare(pane.heroPreview.width,
+                    Math.round(pane.width * Theme.controls.wallpaper.heroWidthRatio));
+            compare(pane.heroPreview.height,
+                    Math.round(pane.heroPreview.width
+                              / Theme.controls.wallpaper.heroAspect));
+        }
+
+        function test_file_urls_are_escaped_by_qurl() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.set("wallpaper.source", "/tmp/a b#c.png");
+            compare(pane.currentUrl, "file:///tmp/a%20b%23c.png");
+            compare(pane.currentName, "a b#c.png");
+        }
+
+        function test_clock_appearance_opens_real_controls() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.clockDialog.open, false);
+            pane.clockAppearanceButton.clicked();
+            waitForRendering(stage);
+            compare(pane.clockDialog.open, true);
+            compare(pane.clockToggle.checked, true);
+
+            pane.clockToggle.toggle();
+            compare(Settings.values["screenSaver.clock"], false);
+            pane.showSecondsToggle.toggle();
+            compare(Settings.values["screenSaver.showSeconds"], true);
+            pane.clockDialog.reject();
+        }
+
+        function test_screen_saver_link_opens_the_screen_saver_pane() {
             var shell = make();
             var pane = paneOf(shell);
             compare(shell.currentPaneId, "wallpaper");
             verify(pane.screenSaverRow.visible);
-            verify(pane.clockAppearanceRow.visible);
 
             pane.screenSaverButton.clicked();
             tryCompare(shell, "currentPaneId", "screen-saver");
             tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+        }
 
-            // Going back and using the clock link lands on the same pane.
-            shell.selectPane("wallpaper");
-            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
-            pane = paneOf(shell);
-            pane.clockAppearanceButton.clicked();
-            tryCompare(shell, "currentPaneId", "screen-saver");
+        function test_provider_states_have_distinct_reasons() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            Settings.setWallpaperFixture("offline");
+            waitForRendering(stage);
+            var offline = pane.featuredMessage;
+            verify(offline.indexOf("offline") >= 0, offline);
+
+            Settings.setWallpaperFixture("error");
+            waitForRendering(stage);
+            var error = pane.featuredMessage;
+            verify(error.indexOf("could not be reached") >= 0, error);
+            verify(error !== offline);
+
+            Settings.setWallpaperFixture("empty");
+            waitForRendering(stage);
+            var empty = pane.featuredMessage;
+            verify(empty.indexOf("No featured pictures") >= 0, empty);
+            verify(empty !== offline && empty !== error);
+        }
+
+        function test_stationary_click_selects_and_spins_immediately() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var tile = pane.featuredTiles[0];
+            var before = Settings.values["wallpaper.source"];
+            mouseClick(tile, tile.width / 2, tile.height / 2);
+            verify(pane.pending, "the first press starts the apply state");
+            verify(tile.pending, "the tile shows its spinner");
+            verify(tile.marked, "the tile takes the selection ring");
+            verify(pane.heroSpinner.visible, "the hero shows the spinner");
+            compare(pane.heroPreviewUrl,
+                    pane.pendingBasePreviewUrl,
+                    "the old wallpaper stays visible until the new image is ready");
+            compare(Settings.values["wallpaper.source"], before,
+                    "the click does not write before the image is ready");
+            waitForApply(pane);
+            verify(!tile.pending);
+            verify(tile.selected);
+        }
+
+        function test_a_second_pick_supersedes_the_first() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.applyMinMs = 0; // commit as soon as the image is ready
+            var first = pane.featuredTiles[0];
+            var second = pane.featuredTiles[1];
+            first.choose();
+            compare(pane.pendingKey, first.modelData.key);
+            second.choose();
+            compare(pane.pendingKey, second.modelData.key,
+                    "a second tile click is never ignored");
+            waitForApply(pane);
+            compare(Settings.values["wallpaper.source"],
+                    second.modelData.source,
+                    "the latest pick is the one that commits");
+            verify(second.selected);
+            verify(!first.selected);
+        }
+
+        function test_slow_provider_keeps_the_old_wallpaper_until_ready() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWallpaperFixture("deferred");
+            waitForRendering(stage);
+            var oldPreview = pane.heroPreviewUrl;
+            var oldSource = Settings.values["wallpaper.source"];
+            var tile = pane.sectionFor("space").tileRepeater.itemAt(0);
+            tile.choose();
+            compare(pane.pendingPhase, "downloading");
+            compare(pane.heroPreviewUrl, oldPreview,
+                    "the hero keeps the old image during the download");
+            compare(Settings.values["wallpaper.source"], oldSource);
+            waitForApply(pane);
+            verify(pane.heroPreviewUrl !== oldPreview);
+        }
+
+        function test_decode_failure_reverts_with_a_reason() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var before = Settings.values["wallpaper.source"];
+            pane.applyPhoto("/nonexistent/broken-wallpaper.png");
+            verify(pane.pending);
+            waitForApply(pane);
+            compare(Settings.values["wallpaper.source"], before);
+            verify(pane.applyError.length > 0);
+            verify(pane.applyError.indexOf("could not be loaded") >= 0,
+                   pane.applyError);
+            verify(!pane.heroSpinner.visible);
+        }
+
+        function test_timeout_reverts_with_a_reason() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setWallpaperFixture("deferred");
+            waitForRendering(stage);
+            pane.applyTimeoutMs = 40;
+            var before = Settings.values["wallpaper.source"];
+            pane.sectionFor("space").tileRepeater.itemAt(0).choose();
+            verify(pane.pending);
+            tryVerify(function() { return !pane.pending; }, 2000,
+                      "the bounded timeout always resolves the apply");
+            compare(Settings.values["wallpaper.source"], before);
+            verify(pane.applyError.indexOf("did not finish loading") >= 0,
+                   pane.applyError);
+            verify(!pane.heroSpinner.visible);
+        }
+
+        function test_scroll_under_a_stationary_pointer_hits_the_tile_now_there() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var tile = pane.featuredTiles[0];
+            var point = tile.mapToItem(shell, tile.width / 2, tile.height / 2);
+            shell.detailScroll.flickable.contentY += 180;
+            waitForRendering(stage);
+            var hit = null;
+            for (var i = 0; i < pane.tileItems.length; ++i) {
+                var candidate = pane.tileItems[i];
+                var local = candidate.mapFromItem(shell, point.x, point.y);
+                if (local.x >= 0 && local.x <= candidate.width
+                        && local.y >= 0 && local.y <= candidate.height) {
+                    hit = candidate;
+                    break;
+                }
+            }
+            verify(hit !== null, "a tile sits under the stationary pointer");
+            mouseClick(shell, point.x, point.y);
+            verify(hit.pending || hit.selected,
+                   "the click lands on the tile now under the pointer");
         }
 
         function test_long_wallpaper_names_elide_without_widening_the_row() {

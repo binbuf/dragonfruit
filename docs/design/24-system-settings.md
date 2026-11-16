@@ -1387,12 +1387,13 @@ mode switching with its OPEN reason.
 Owner: settingsd + wallpaperd + compositor. Absence: shipped default always
 available; Featured empty, never an error.
 
-Selection is a visible state machine, not a background write:
+Selection is a visible state machine, not a background write (ADR 0279):
 
 1. The first press on any part of a tile marks it selected and starts the
    tile and hero spinner in the same frame, before any provider fetch or
    settings write. The click is acknowledged locally even when the image is
-   not cached.
+   not cached. The whole tile — thumbnail, caption, and padding — is the hit
+   target; hover decorates only.
 2. The previous wallpaper stays on screen until the new image is decoded and
    ready. The background swaps once, at that point, not when the click or
    the settings write happens.
@@ -1403,36 +1404,55 @@ Selection is a visible state machine, not a background write:
    decode failure, or bounded timeout reverts the tile selection and the
    hero to the previous wallpaper and shows an inline reason. No spinner
    persists and no selected tile disagrees with the actual background.
+5. The minimum dwell, the apply timeout, and the write timeout are exposed
+   properties (`applyMinMs`, `applyTimeoutMs`, `writeTimeoutMs`) plus
+   `forceMinElapsed()`/`forceTimeout()` seams, so the state machine is
+   testable under a fake clock.
+
+The hero is proportional to the measured 508-px content column
+(`Theme.controls.wallpaper.heroWidthRatio`/`heroAspect`), not a fixed
+160×100 thumbnail. File URLs are built by `SettingsBridge::fileUrl` (QUrl),
+never string concatenation. The provider has four distinct empty reasons:
+absent, offline, error, and empty-but-ready.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Current wallpaper | Current wallpaper | Hero preview | `wallpaper.source` | ship; large preview |
+| Current wallpaper | Current wallpaper | Hero preview | `wallpaper.source` | ship; proportional preview |
 | Show on all Spaces | Show on all workspaces | Toggle | `wallpaper.showOnAllSpaces` | ship |
-| Clock Appearance… | Clock appearance… | Button | `lock.clock.*` | ship |
+| Clock Appearance… | Clock appearance… | Button + sheet | `screenSaver.clock*` | ship; real clock controls |
 | Screen Saver… | Screen saver… | Button | screen saver pane | ship |
 | Dynamic Wallpapers | Dynamic | Grid | wallpaperd | ship |
-| Landscape | Nature / Landscape | Grid | wallpaperd | ship |
+| Landscape | Landscape | Grid | wallpaperd | ship |
 | Cityscape | Cityscapes | Grid | wallpaperd | ship |
 | Underwater | Underwater | Grid | wallpaperd | ship |
 | Earth | Earth | Grid | wallpaperd | ship |
-| Shuffle Aerials | Shuffle | Grid | wallpaperd | adapt |
-| Colors | Colors | Grid | shipped colors | ship (Linux addition) |
+| Shuffle Aerials | Shuffle | Grid (one action tile) | wallpaperd | adapt |
+| Colors | Colors | Grid | shipped gradients | ship (Linux addition) |
 | Pictures | Your photos | Grid | FileChooser portal | ship |
 | — | Fit | Popup | `wallpaper.fit` | ship |
-| — | Per-workspace wallpaper | Toggle | `wallpaper.perWorkspace` | adapt (Linux-only) |
-| — | Slideshow | Popup | `wallpaper.slideshow` | adapt (Linux-only) |
+| — | Per-workspace wallpaper | Toggle | `wallpaper.perWorkspace` | adapt (Linux-only, not shipped) |
+| — | Slideshow | Popup | `wallpaper.slideshow` | adapt (Linux-only, not shipped) |
 
 ### 4.24 Screen Saver — T278
 
 Owner: shell/compositor + settingsd. Absence: live on defaults.
 
+The style gallery is two real previews of the first-party lock scene: the
+clock style renders the live clock/date/seconds choices, and None renders an
+off plate. Selecting None disables Start After and the clock options with a
+reason instead of silently changing the display policy. Start After is the
+session idle engine's one display-off stage (`idle.blank`) and now offers
+2 h/5 h/never; a custom idle value shows its real duration. The shipped
+saver is the lock scene; there is no separate animated saver engine. Hot
+Corners opens the actual Overview controls.
+
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Screen Saver | Screen saver | Gallery | `screenSaver.style` | ship; real preview |
-| Start after | Start after | Popup | `idle.blank` / `screenSaver.idle` | ship; 2 h/5 h/never |
+| Start after | Start after | Popup | `idle.blank` | ship; 2 h/5 h/never |
 | Show with clock | Show with clock | Toggle | `screenSaver.clock` | ship |
 | Options… | Clock options… | Sheet | `screenSaver.clock.*` | ship |
-| Hot Corners… | Hot corners… | Sheet | `overview.hotCorner*` | ship |
+| Hot Corners… | Hot corners… | Button | `overview.hotCorner*` | ship; opens Overview |
 | — | Lock scene preview | Preview | shell | ship (Linux-specific) |
 
 ### 4.25 Notifications — T278
@@ -1440,20 +1460,31 @@ Owner: shell/compositor + settingsd. Absence: live on defaults.
 Owner: notification service + settingsd. Absence: keep global preferences;
 hide only the per-app list with a note.
 
+The notification service has no display-sleep/locked/mirroring input, so the
+four global presentation preferences are a **stored policy** and the pane
+says so; the service still owns the queue, Focus admission, and the
+per-app allow/style/sound/badge. The per-app sheet now carries the whole
+macOS set. Lock screen, Notification Center count, previews, and grouping are
+stored per app in `notifications.appOptions` (a settingsd JSON blob) until
+the service grows those fields; the four service-owned choices round-trip
+through `SetAppPreference`. The status text is shown once, the whole row
+opens the sheet, and the Focus link stays available when the service is
+absent.
+
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Show previews | Show previews | Popup | `notifications.showPreviews` | ship; service consumer |
-| When display is sleeping | When display is asleep | Toggle | `notifications.showWhenSleeping` | ship; service consumer |
-| When screen is locked | When locked | Toggle | `notifications.showWhenLocked` | ship; service consumer |
-| When mirroring or sharing | When sharing | Popup | `notifications.showWhenMirroring` | ship; service consumer |
+| Show previews | Show previews | Popup | `notifications.showPreviews` | stored-only |
+| When display is sleeping | When display is asleep | Toggle | `notifications.showWhenSleeping` | stored-only |
+| When screen is locked | When locked | Toggle | `notifications.showWhenLocked` | stored-only |
+| When mirroring or sharing | When sharing | Toggle | `notifications.showWhenMirroring` | stored-only |
 | Application Notifications | App notifications | List + per-app sheet | notification service | ship |
 | — Alert style | Style | Popup | service `SetAppPreference` | ship |
-| — Show on lock screen | Lock screen | Toggle | service | ship |
-| — Show in Notification Center | Notification Center count | Popup | service | ship |
-| — Badge application icon | Badge | Toggle | service | ship |
-| — Play sound | Sound | Toggle | service | ship |
-| — Show previews | Previews | Popup | service | ship |
-| — Notification grouping | Grouping | Popup | service | ship |
+| — Show on lock screen | Lock screen | Toggle | `notifications.appOptions` | stored-only |
+| — Show in Notification Center | Notification Center count | Popup | `notifications.appOptions` | stored-only |
+| — Badge application icon | Badge | Toggle | service `SetAppPreference` | ship |
+| — Play sound | Sound | Toggle | service `SetAppPreference` | ship |
+| — Show previews | Previews | Popup | `notifications.appOptions` | stored-only |
+| — Notification grouping | Grouping | Popup | `notifications.appOptions` | stored-only |
 | — | Focus link | Link | Focus pane | ship |
 
 ### 4.26 Sound — T280
@@ -1477,39 +1508,58 @@ disable device routing with a note.
 ### 4.27 Focus — T278
 
 Owner: notification service + settingsd. Absence: keep schedule and
-shortcut; hide the profile list with a note.
+shortcut; hide the Focus list with a note.
+
+One Focus list replaces the three duplicate state surfaces (profile
+selector, mode selector, inert mode rows). Every row is a real radio
+control: Off, the service's named profiles, and user-added Focus names.
+Selecting a row installs that profile; Add Focus and Delete Focus write
+`focus.customProfiles`/`focus.customProfile`. The detail carries the active
+summary, the allowed apps and people with an All/Allowed/Not-allowed filter,
+and the schedule and shortcut. The schedule and shortcut stay live when the
+service is absent. The shortcut is validated (modifier + key).
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
 | Focus list | Focus list | List | notification service | ship |
 | Do Not Disturb | Do not disturb | Row | service | ship |
-| Add Focus | Add focus | Sheet | service | ship |
-| Delete Focus | Delete focus | Button + confirm | service | ship |
+| Add Focus | Add focus | Sheet | `focus.customProfiles` | ship |
+| Delete Focus | Delete focus | Button + confirm | `focus.customProfiles` | ship |
 | Share across devices | — | Omit | — | omit |
 | Focus status | — | Omit | — | omit: no vendor status |
-| Allowed people | Allowed people | List | service `sender` hint | ship |
-| Allowed apps | Allowed apps | List | service | ship |
+| Allowed people | Allowed people | List + filter | service `sender` hint | ship |
+| Allowed apps | Allowed apps | List + filter | service | ship |
 | Set a Schedule | Schedule | Toggle + time + days | `focus.schedule.*` | ship |
-| Focus Filters | Filters | List | delegate | adapt |
-| Shortcuts | Shortcut | Recorder | `focus.shortcut` | ship |
+| Focus Filters | Filters | Popup | apps/settings | adapt |
+| Shortcuts | Shortcut | Recorder | `focus.shortcut` | ship (registration deferred) |
 
 ### 4.28 Lock Screen — T278
 
 Owner: settingsd + compositor/lock + logind. Absence: live on defaults.
 
+Linux has one display-off stage, and the pane says so; there is no
+battery/AC pair. `Require password after` is the delay **after display-off
+or lock**, not raw inactivity: the pane writes
+`lock.requirePasswordAfter` (-1 never, 0 immediately) and derives
+`idle.lock = idle.blank + after`. A custom idle value shows its real
+duration instead of Never. The pane renders a lock-screen preview from the
+same keys, and Cancel in the message/hint editors restores the stored draft.
+Immediate lock is the zero-second `Immediately` option; a separate
+`lock.immediate` key is not needed.
+
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Turn display off on battery | Display off on battery | Popup | `idle.blankBattery` | ship/adapt |
-| Turn display off on power adapter | Display off on AC | Popup | `idle.blankAC` | ship/adapt |
+| Turn display off on battery | Display off (one stage) | Popup | `idle.blank` | ship/adapt; documented |
+| Turn display off on power adapter | — | — | — | documented one-stage adaptation |
 | Require password after | Require password after | Popup | `lock.requirePasswordAfter` | ship; correct semantics |
 | Show user name and photo | Show user name/photo | Toggle | `lock.showUserNameAndPhoto` | ship |
 | Show password hints | Show password hints | Toggle + Set | `lock.showPasswordHints`/`lock.passwordHint` | ship |
 | Show message when locked | Show message when locked | Toggle + Set | `lock.showMessageWhenLocked`/`lock.message` | ship |
-| Login window shows | Login window shows | Radio | `login.windowStyle` | ship or disabled with reason |
+| Login window shows | Login window shows | Radio | `login.windowStyle` | disabled with reason |
 | Show Sleep/Restart/Shut Down | Power buttons | Toggle | `lock.showPowerButtons` | ship |
 | Accessibility Options | Accessibility options | Button | `accessibility.*` | ship |
 | — | Lock screen preview | Preview | shell | ship |
-| — | Immediate lock | Option | `lock.immediate` | ship |
+| — | Immediate lock | Option | `lock.requirePasswordAfter = 0` | ship |
 
 ### 4.29 Game Controllers — T280
 
@@ -1573,9 +1623,9 @@ from the first live T263 run; they are part of the same release bar.
 | P0-3 | Adapter writes are fire-and-forget; failures invisible; dialogs close before the result | `*Client.cpp`, `WifiPane.qml`, `UsersGroupsPane.qml`, `BiometricsPane.qml`, `PrintersScannersPane.qml` | T282, T271, T279, T280 |
 | P0-4 | General hides About, Software Update, Storage, and Reset when one unrelated adapter is absent | `GeneralPane.qml` | T269 (landed) |
 | P0-5 | Accessibility is three settingsd rows against a five-section macOS IA; map claims rows that do not exist | `AccessibilityPane.qml`, `SettingsMap.qml` | T275 (landed: five sections, status + delegate, live magnifier/shortcut) |
-| P0-6 | Focus mode rows are inert but styled/announced as radio controls; three duplicate state surfaces | `FocusPane.qml` | T278 |
+| P0-6 | Focus mode rows are inert but styled/announced as radio controls; three duplicate state surfaces | `FocusPane.qml` | T278 (landed: one Focus list + detail, real radio rows, Add/Delete, filters) |
 | P0-7 | Search is a no-op surface; shortcut is free text; indexing rows name nonexistent keys | `SearchPane.qml`, `schema.rs` | T265, T282 |
-| P0-8 | Notification global preferences are no-ops; per-app sheet is missing half the macOS options | `NotificationsPane.qml`, `schema.rs` | T278 |
+| P0-8 | Notification global preferences are no-ops; per-app sheet is missing half the macOS options | `NotificationsPane.qml`, `schema.rs` | T278 (landed: globals marked stored-only; full per-app sheet with lock/NC/previews/grouping) |
 | P0-9 | Select popups and pane dialogs are clipped by the detail `ScrollView`; long lists are unusable | `Select.qml`, `ContextMenu.qml`, `Dialog.qml`, `SettingsShell.qml` | T266 (landed: window overlay layer, flip/clamp/scroll, dialog fit) |
 | P0-10 | `SettingsRow` has a binding loop; rows have no focus ring; toggles have no accessible names; long strings overflow | `SettingsRow.qml`, `Toggle.qml`, `Button.qml` | T266 (landed: implicit-size slot, focus ring, accessible names, elide), T267 (landed: one keyboard map, row/description/error announcements, RTL text alignment, 1×/1.5×/2× cases) |
 | P0-11 | Sidebar cannot scroll to most panes; no groups; opens Appearance instead of General; window is 800×640 | `SettingsShell.qml`, `SettingsWindow.qml`, `Sidebar.qml` | T263 (landed) |
@@ -1583,7 +1633,7 @@ from the first live T263 run; they are part of the same release bar.
 | P0-13 | settingsd accepts NaN/Infinity (persist panic), loses concurrent updates, hides persistence failure, and the client schema mirror drifts | `schema.rs`, `persist.rs`, `dbus.rs`, `settingsclient.cpp` | T282 |
 | P0-14 | Adapter clients show the startup snapshot; no live refresh; ~20 D-Bus calls at startup; slider writes fsync per tick | `*Client.cpp`, `SettingsBridge.cpp` | T268 (landed: lazy clients, per-key maps, cached schema tables, commit-on-release sliders, async provider read, cached pane loader), T282 (persistence hardening) |
 | P0-15 | Pane tests run at 900/1000 px; many panes have no dark/absence/scale capture; no golden diff; no real-host matrix | `apps/settings/tests/`, `scripts/capture-*settings*` | T283, T284 |
-| P0-16 | Wallpaper picks do not acknowledge the click reliably: a tile can look unselected, the spinner/preview state starts only after the provider round trip, a second pick during a pending apply is ignored, and the selected tile can disagree with the background | `apps/settings/WallpaperPane.qml`, `SettingsBridge.cpp`, `services/wallpaperd` | T278 |
+| P0-16 | Wallpaper picks do not acknowledge the click reliably: a tile can look unselected, the spinner/preview state starts only after the provider round trip, a second pick during a pending apply is ignored, and the selected tile can disagree with the background | `apps/settings/WallpaperPane.qml`, `SettingsBridge.cpp`, `services/wallpaperd` | T278 (landed: optimistic ring/spinner, supersede, bounded timeout/revert, fake-clock seams) |
 | P0-17 | A stationary click on a sidebar row or pane control is often dropped; moving the pointer or scrolling first makes it land. The activating press can be consumed by focus or routed through a stale cached pointer location, so the first click looks inert | `apps/settings/SettingsShell.qml`, `design-system/components/Sidebar.qml`, `compositor/src/input.rs` | T263 (live-position ray-test landed), T266 (row focus + stationary-click harness landed) |
 
 ### P1 — missing major rows or states
@@ -1592,9 +1642,9 @@ from the first live T263 run; they are part of the same release bar.
 |---|---|---|---|
 | P1-1 | Appearance missing icon/widget style, folder color, scroll-bar click behavior; transparency slider stays active under Reduce Transparency; seven one-row cards | `AppearancePane.qml` | T274 (landed) |
 | P1-2 | About hardcodes “Display: Not available”, duplicates details, resizes the window permanently | `AboutPage.qml`, `SettingsWindow.qml` | T269 (landed) |
-| P1-3 | Wallpaper hero is 160×100; Clock Appearance opens a pane with no clock appearance; file URLs by string concatenation | `WallpaperPane.qml` | T278 |
-| P1-4 | Screen Saver has no gallery; Start After blanks the display; None does not disable the saver | `ScreenSaverPane.qml` | T278 |
-| P1-5 | Lock Screen “Require password after the screen turns off” writes inactivity seconds; custom idle values display “Never” | `LockScreenPane.qml` | T278 |
+| P1-3 | Wallpaper hero is 160×100; Clock Appearance opens a pane with no clock appearance; file URLs by string concatenation | `WallpaperPane.qml` | T278 (landed: proportional hero, clock sheet, QUrl file URLs) |
+| P1-4 | Screen Saver has no gallery; Start After blanks the display; None does not disable the saver | `ScreenSaverPane.qml` | T278 (landed: gallery with live previews, None disables Start After/clock options, 2 h/5 h/never) |
+| P1-5 | Lock Screen “Require password after the screen turns off” writes inactivity seconds; custom idle values display “Never” | `LockScreenPane.qml` | T278 (landed: after-display-off key + derived idle.lock, custom duration, preview) |
 | P1-6 | Displays preview is mostly blank and hardcoded “Built-in Display”; advanced controls duplicate the main pane | `DisplaysPane.qml` | T273 |
 | P1-7 | Storage “Manage storage…” is a dead row; no chart/total/free; volume rows have no capacity | `StoragePane.qml` | T273 |
 | P1-8 | Battery renders two permanently empty charts; options are incomplete; range is duplicated | `BatteryPane.qml` | T273 |
@@ -1608,7 +1658,7 @@ from the first live T263 run; they are part of the same release bar.
 | P1-16 | Menu Bar has no third-party section, Add Controls, Reset, or per-control options | `MenuBarPane.qml` | T277 (landed: per-control options, live third-party list, Add Controls, Reset, one Clock row, Linux-only rows) |
 | P1-17 | Search results are a flat ungrouped list; “wifi”, “control center”, “mission control” return no results | `SettingsSearch.qml`, `SettingsSearchResults.qml` | T265 (landed) |
 | P1-18 | General is missing Autofill & Passwords and the Transfer or Reset structure; sub-panes hide settingsd rows with their host adapter | `GeneralPane.qml`, `DateTimePane.qml`, `LanguageRegionPane.qml` | T269, T270 |
-| P1-19 | Focus has no focus list/Add/Delete/Filters; profile/mode/rows duplicate the same state | `FocusPane.qml` | T278 |
+| P1-19 | Focus has no focus list/Add/Delete/Filters; profile/mode/rows duplicate the same state | `FocusPane.qml` | T278 (landed: one list + detail, Add/Delete, filters, validated shortcut) |
 | P1-20 | Keyboard brightness/navigation/dictation/replacements are presented as live with no consumer | `InputPane.qml`, `schema.rs` | T280, T282 |
 
 ### P2 — polish

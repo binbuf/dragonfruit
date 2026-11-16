@@ -800,32 +800,31 @@ always available; Featured empty, never an error.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Current wallpaper | Current wallpaper | Preview | existing: `wallpaper.source` | Live; effective source selects Default when empty |
+| Current wallpaper | Current wallpaper | Preview | existing: `wallpaper.source` | Optimistic apply; old preview until ready |
 | Show on all Spaces | Show on all workspaces | Toggle | existing: `wallpaper.showOnAllSpaces` | Live |
 | — | Fit | Popup | existing: `wallpaper.fit` | Fill/fit/stretch/center; live |
 | Screen Saver… | Screen saver… | Button | `settingsd` | Deep link |
-| Clock Appearance… | Clock appearance… | Button | `settingsd` | Deep link |
-| Dynamic Wallpapers | Abstract | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
-| Landscape | Nature | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Clock Appearance… | Clock appearance… | Button | existing: `screenSaver.clock*` | Real clock controls |
+| Dynamic Wallpapers | Dynamic | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Landscape | Landscape | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
 | — | Water | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
 | Cityscape | Cityscapes | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
 | Earth | Earth | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
 | — | Space | Grid | `wallpaperd` (NASA Image and Video Library) | Thumbnail first; full image on demand |
 | — | Scenery | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
 | Underwater | Underwater | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
+| Shuffle Aerials | Shuffle | Grid | `wallpaperd` | Random Featured picture |
+| — | Colors | Grid | shipped assets | Original gradients |
 | Your Photos | Your photos | Grid | FileChooser portal | Add Photo tile first; current custom photo |
-| — | Built-in | Grid | shipped assets | Default plus gradients; offline |
+| — | Built-in | Grid | shipped assets | Always available; shipped default |
 
-**T229a / ADR 0240 status.** The pane ships the flat hero, effective-source
-preview, Show on all Workspaces, Fit, the eight online category rows, the
-Built-in default plus presets, and the portal Your Photos row. The two
-reference links are live: **Screen Saver…** and **Clock Appearance…** navigate
-to the Screen Saver pane, which owns `screenSaver.style`/`screenSaver.clock`
-and the lock scene's clock options. Clicking a tile enters an explicit apply
-state (old preview retained, tile/hero progress ring, deferred full download
-when needed); a failure keeps the previous wallpaper. A provider that is
-offline, empty, or fetching shows the available-soon note with **Try Again** or
-skeleton rows; the Built-in row is never empty (T-18).
+**T278 status.** The hero is proportional to the content column; file URLs go
+through `SettingsBridge::fileUrl` (QUrl); the provider has distinct
+absent/offline/error/empty reasons; Colors and Shuffle are shipped rows. A
+stationary click anywhere on a tile marks it and starts both spinners in the
+same frame; a second pick supersedes; a provider/decode/timeout failure
+reverts to the old wallpaper with an inline reason. **Screen Saver…**
+navigates; **Clock Appearance…** opens the `screenSaver.clock*` controls.
 
 <a id="pane-screen-saver"></a>
 ### 5.15 Screen Saver
@@ -834,16 +833,17 @@ Owner: shell/compositor + `settingsd`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Screen Saver | Screen saver | Grid | `settingsd`/shell | Style preview |
-| Start after | Start after | Popup | `idle.blank`/`screensaver.idle` | Idle policy |
-| Show with clock | Show with clock | Toggle | `screensaver.clock` | Lock screen |
-| Options… | Options… | Sheet | `settingsd` | Style-specific |
-| Hot Corners… | Hot corners… | Sheet | existing: `overview.hotCorner*` | Same policy |
+| Screen Saver | Screen saver | Gallery | `settingsd`/shell | Real clock/off previews |
+| Start after | Start after | Popup | `idle.blank` | 2 h/5 h/never; None disables |
+| Show with clock | Show with clock | Toggle | `screenSaver.clock` | Lock scene |
+| Options… | Clock options… | Sheet | `settingsd` | Style-specific; disabled when None |
+| Hot Corners… | Hot corners… | Button | existing: `overview.hotCorner*` | Opens Overview |
 
-**T227 status.** The pane ships style, Start After (`idle.blank`), and the
-clock/date/seconds options the shell pushes to the first-party lock scene.
-Animated savers are not advertised; Hot Corners opens the existing Overview
-pane.
+**T278 status.** The gallery has two real previews of the first-party lock
+scene; the clock preview renders the live clock/date/seconds choices. None
+disables Start After and the clock options with a reason. Start After offers
+2 h/5 h/never and shows a custom idle value's real duration. Hot Corners
+opens the actual Overview controls.
 
 <a id="pane-notifications"></a>
 ### 5.16 Notifications
@@ -852,26 +852,30 @@ Owner: notification service + `settingsd`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Show previews | Show previews | Popup | existing: `notifications.showPreviews` | Always/when unlocked/never |
-| When display is sleeping | When display is asleep | Toggle | existing: `notifications.showWhenSleeping` | Live |
-| When screen is locked | When locked | Toggle | existing: `notifications.showWhenLocked` | Live |
-| When mirroring/sharing | When sharing | Popup | existing: `notifications.showWhenMirroring` | Live |
+| Show previews | Show previews | Popup | existing: `notifications.showPreviews` | Stored policy |
+| When display is sleeping | When display is asleep | Toggle | existing: `notifications.showWhenSleeping` | Stored policy |
+| When screen is locked | When locked | Toggle | existing: `notifications.showWhenLocked` | Stored policy |
+| When mirroring/sharing | When sharing | Toggle | existing: `notifications.showWhenMirroring` | Stored policy |
 | Application Notifications | App notifications | List | notification service | Per-app; absent → note |
 | Allow notifications | Allow | Toggle | notification service | Per-app |
 | Banners | Style | Popup | notification service | Banner/alert/none |
+| Show on lock screen | Lock screen | Toggle | `notifications.appOptions` | Stored per app |
+| Notification Center count | Notification Center | Popup | `notifications.appOptions` | Off/1/5/10 |
+| Show previews | Previews | Popup | `notifications.appOptions` | Always/when unlocked/never |
+| Notification grouping | Grouping | Popup | `notifications.appOptions` | Automatic/by app/off |
 | Sounds | Sound | Toggle | notification service | Per-app |
 | Badges | Badge | Toggle | notification service | Dock badge |
-| Focus | Focus | Link | Focus pane | Deep link |
+| Focus | Focus | Link | Focus pane | Deep link; stays when absent |
 
-**T229a status.** The four global preferences are settingsd keys and apply
-live. The **Application Notifications** list is the notification service's
-observed app inventory; each row opens one live sheet with **Allow
-notifications**, **Style** (Banners/Alerts/None), **Play sound**, and **Show
-in Dock badge**, all stored by the service (`SetAppPreference`) and reflected
-back through the adapter. Apps on the Focus allow list read **Allowed**; a
-muted app reads **Off**. The **Focus** link opens the Focus pane. A service
-that is absent or unreadable shows the note and hides only the app list; the
-settingsd preferences stay live.
+**T278 status.** The four global presentation preferences are a stored
+policy: the notification service has no display-sleep/locked/mirroring
+input, so the pane says so instead of claiming they apply live. The
+**Application Notifications** list is the service's observed inventory; the
+whole row opens one sheet with the four service-owned choices (Allow, Style,
+Sound, Badge) and the four extra options (Lock screen, Notification Center
+count, Previews, Grouping), stored per app in `notifications.appOptions`.
+The status text appears once. The **Focus** link stays available when the
+service is absent.
 
 <a id="pane-sound"></a>
 ### 5.17 Sound
@@ -903,27 +907,25 @@ Owner: notification service + `settingsd`.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Do Not Disturb | Do Not Disturb | Segmented + list | notification service | Off/Focus/DND; active state |
-| Personal/Work/Sleep/Custom | Focus profile | Segmented + list | notification service | Named profiles install a mode and their own lists over the one admission rule |
-| Allowed people | Allowed people | List | notification service | Observed `sender` hint; allowed people are admitted like allowed apps |
-| Allowed apps | Allowed apps | List | notification service | Per-app Focus allow list |
+| Focus list | Focus list | List | notification service | One real radio list; Off + named + user-added |
+| Add Focus | Add focus | Sheet | `settingsd`: `focus.customProfiles` | Validated name; selects custom |
+| Delete Focus | Delete focus | Button + confirm | `settingsd`: `focus.customProfiles` | Only user-added Focus |
+| Allowed people | Allowed people | List + filter | notification service | Observed `sender` hint; All/Allowed/Not allowed |
+| Allowed apps | Allowed apps | List + filter | notification service | Per-app Focus allow list; All/Allowed/Not allowed |
 | Time | Schedule | Toggle + time fields + days | `settingsd`: `focus.schedule.*` | Shell `FocusSchedule` applies the mode at the window boundary |
 | Shortcuts | Shortcut | Recorder | `settingsd`: `focus.shortcut` | Validated; global registration deferred |
 
-**T229a/T234 status.** The pane renders the named profile selector
-(Do Not Disturb/Personal/Work/Sleep/custom) over the service's three-mode
-admission rule, the live active state, the per-app Focus allow list, and the
-**Allowed People** list (observed from the optional notification `sender`
-hint; an explicit empty state shows when none have arrived). Selecting a
-profile installs its mode and its own lists; a manual mode change selects
-`custom`. **Schedule**
-writes `focus.schedule.enabled/start/end/days`; the shell's `FocusSchedule`
-reads them and applies Focus at the window boundary, respecting a manual
-override. **Shortcut** writes `focus.shortcut` with a modifier+key validator;
-global registration is deferred with the shell shortcut engine (the same
-stored-policy contract as `search.shortcut`). The mode and allow list are the
-notification service's state; schedule and shortcut stay live on schema
-defaults when it is absent.
+**T278 status.** One Focus list replaces the profile selector, mode
+selector, and inert mode rows. Every row is a real radio control; selecting
+one installs the service profile (or the custom profile for a user-added
+name). Add/Delete Focus write `focus.customProfiles`/`focus.customProfile`.
+The allowed apps and people lists carry an All/Allowed/Not-allowed filter.
+**Schedule** writes `focus.schedule.enabled/start/end/days`; the shell's
+`FocusSchedule` reads them and applies Focus at the window boundary,
+respecting a manual override. **Shortcut** writes `focus.shortcut` with a
+modifier+key validator; global registration is deferred with the shell
+shortcut engine. Schedule and shortcut stay live on schema defaults when the
+service is absent.
 
 <a id="pane-lock-screen"></a>
 ### 5.19 Lock Screen
@@ -932,26 +934,25 @@ Owner: `settingsd` + compositor/lock + logind.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Turn display off on battery | Display off on battery | Popup | existing: `idle.blank` | logind/compositor |
-| Turn display off on power | Display off on AC | Popup | existing: `idle.blank` | logind/compositor |
-| Require password after… | Require password | Popup | `lock.requirePasswordAfter` | PAM |
+| Turn display off on battery | Display off (one stage) | Popup | existing: `idle.blank` | One stage, documented |
+| Turn display off on power | — | — | — | One-stage Linux adaptation |
+| Require password after… | Require password | Popup | `lock.requirePasswordAfter` | After display-off/lock; derives `idle.lock` |
 | Show user name and photo | Show user name/photo | Toggle | existing: `lock.showUserNameAndPhoto` | Lock UI |
 | Show password hints | Show password hints | Toggle + Set… | existing: `lock.showPasswordHints`/`lock.passwordHint` | Lock UI |
 | Show message when locked | Lock message | Toggle + Set… | existing: `lock.showMessageWhenLocked`/`lock.message` | Lock UI |
-| Login window shows | Login window | Radio | `login.windowStyle` | List/name+password |
+| Login window shows | Login window | Radio | `login.windowStyle` | Disabled with reason |
 | Show Sleep/Restart/Shut Down | Power buttons | Toggle | existing: `lock.showPowerButtons` | Lock UI |
 | Accessibility Options… | Accessibility options… | Button | `settingsd` | Lock UI |
+| — | Lock screen preview | Preview | shell | Renders the live lock keys |
 
-**T229a status.** The two timing rows reuse `idle.blank`/`idle.lock`; the
-display rows write `lock.showUserNameAndPhoto`, `lock.showPasswordHints` plus
-`lock.passwordHint`, `lock.showMessageWhenLocked`/`lock.message`, and
-`lock.showPowerButtons`. The shell pushes all of them onto the first-party
-lock scene, which hides the identity, shows the hint and message, and renders
-the power row; the power actions go to logind (`Suspend`/`Reboot`/`PowerOff`).
-**Login window shows** is visible but disabled with its reason: the display
-manager does not expose a login-window style on the host. **Accessibility
-options…** opens the Accessibility pane. The pane never enforces the lock;
-the compositor owns the fail-secure state.
+**T278 status.** Linux has one display-off stage and the pane says so.
+`Require password after` is the delay after display-off/lock, not raw
+inactivity: the pane writes `lock.requirePasswordAfter` (-1 never, 0
+immediately) and derives `idle.lock = idle.blank + after`; a custom idle
+value shows its real duration. The preview renders the live identity,
+message, hint, and power choices. Cancel in the message/hint editors
+restores the stored draft. The shell pushes `lock.*` onto the first-party
+lock scene; the compositor owns the fail-secure state.
 
 <a id="pane-biometrics"></a>
 ### 5.20 Biometrics & Password

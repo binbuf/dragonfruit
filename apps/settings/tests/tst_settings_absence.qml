@@ -266,13 +266,14 @@ Item {
             verify(pane.featuredMessageItem.visible,
                    "an absent provider shows the available-soon note, never an error");
             compare(pane.featuredTiles.length, 0);
-            compare(pane.builtinTiles.length, 1 + pane.presets.length);
+            compare(pane.builtinTiles.length, 1);
             compare(pane.builtinTiles[0].modelData.name, "Default");
             compare(pane.builtinTiles[0].modelData.source, pane.builtinDefault);
+            compare(pane.colorTiles.length, pane.presets.length);
 
             // The settingsd-backed controls still write in memory. Applying a
             // built-in tile goes through the async apply state.
-            pane.builtinTiles[1].choose();
+            pane.colorTiles[0].choose();
             tryVerify(function() { return pane.pending === false; }, 5000);
             compare(Settings.values["wallpaper.source"], pane.presets[0].source);
             pane.showOnAllToggle.toggle();
@@ -620,8 +621,8 @@ Item {
             // rows write the revision-15 `lock.*` keys through to the
             // in-memory store on the schema defaults.
             compare(pane.requirePasswordSeconds, 600);
-            pane.requirePasswordSelect.activateIndex(0); // After 5 seconds
-            compare(Settings.values["idle.lock"], 5);
+            pane.requirePasswordSelect.activateIndex(1); // After 5 seconds
+            compare(Settings.values["idle.lock"], 305);
             pane.messageToggle.toggle();
             compare(Settings.values["lock.showMessageWhenLocked"], true);
             pane.powerButtonsToggle.toggle();

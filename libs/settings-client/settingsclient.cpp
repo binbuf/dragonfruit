@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 34). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 35). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -250,6 +250,7 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("notifications.showWhenSleeping"), false);
     values.insert(QStringLiteral("notifications.showWhenLocked"), true);
     values.insert(QStringLiteral("notifications.showWhenMirroring"), false);
+    values.insert(QStringLiteral("notifications.appOptions"), QString());
     values.insert(QStringLiteral("focus.schedule.enabled"), false);
     values.insert(QStringLiteral("focus.schedule.start"), QStringLiteral("22:00"));
     values.insert(QStringLiteral("focus.schedule.end"), QStringLiteral("07:00"));
@@ -259,6 +260,8 @@ QVariantMap buildSchemaDefaults()
         QStringLiteral("sun")
     }));
     values.insert(QStringLiteral("focus.shortcut"), QString());
+    values.insert(QStringLiteral("focus.customProfiles"), QStringList());
+    values.insert(QStringLiteral("focus.customProfile"), QString());
     values.insert(QStringLiteral("lock.showUserNameAndPhoto"), true);
     values.insert(QStringLiteral("lock.showPasswordHints"), false);
     values.insert(QStringLiteral("lock.showMessageWhenLocked"), false);
@@ -266,6 +269,7 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("lock.showPowerButtons"), true);
     values.insert(QStringLiteral("lock.passwordHint"), QString());
     values.insert(QStringLiteral("login.windowStyle"), QStringLiteral("list"));
+    values.insert(QStringLiteral("lock.requirePasswordAfter"), qlonglong(300));
     // Revision-7/17 keys the Settings app also writes. Keep this table the
     // complete schema mirror; a missing key would make a valid write look
     // unknown to the client-side validator (T224).
@@ -468,6 +472,7 @@ const Constraint kConstraints[] = {
     { "overview.hotCornerBottomLeftModifier", kHotCornerModifier, 5, false, 0, false, 0 },
     { "overview.hotCornerBottomRightModifier", kHotCornerModifier, 5, false, 0, false, 0 },
     { "notifications.showPreviews", kPreviews, 3, false, 0, false, 0 },
+    { "lock.requirePasswordAfter", nullptr, 0, true, -1.0, true, 86400.0 },
     { "login.windowStyle", kLoginWindowStyle, 2, false, 0, false, 0 },
     { "menu.autoHide", kMenuAutoHide, 3, false, 0, false, 0 },
     { "menu.osGlyph", kMenuOsGlyph, 2, false, 0, false, 0 },

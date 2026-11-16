@@ -1622,8 +1622,14 @@ QtObject {
             readonly property int tileGap: 10
             readonly property real tileAspect: 1.5
             readonly property int applyMinMs: 450
-            readonly property int heroWidth: 160
-            readonly property int heroHeight: 100
+            // T278: the hero is proportional to the 508-px content column
+            // (ADR 0279), not a fixed 160x100 thumbnail.
+            readonly property real heroWidthRatio: 0.46
+            readonly property real heroAspect: 1.6
+            // A pending apply always resolves: the provider/decode timeout and
+            // the settings-write timeout are bounded.
+            readonly property int applyTimeoutMs: 20000
+            readonly property int writeTimeoutMs: 5000
         }
         readonly property var settingsCategory: QtObject {
             readonly property int size: 32

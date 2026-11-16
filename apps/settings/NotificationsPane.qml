@@ -49,6 +49,35 @@ Item {
     readonly property bool showWhenMirroring:
         Settings.values["notifications.showWhenMirroring"] === true
 
+    // T278: the four global preferences above are a stored policy: the
+    // notification service has no display-sleep/locked/mirroring input, so it
+    // cannot consume them yet. The pane says so instead of implying they are
+    // live (ADR 0279).
+    readonly property string storedPolicyNote:
+        qsTr("These four preferences are stored by the settings daemon. The "
+             + "notification service does not apply them yet.")
+
+    // T278: the per-app options the service does not own yet, kept as one
+    // JSON blob keyed by the app name. The service still owns allow/style/
+    // sound/badge; these four are the rest of the macOS sheet.
+    readonly property var appOptions: root.parseAppOptions()
+    readonly property var appCenterOptions: [
+        { value: "off", label: qsTr("Off") },
+        { value: "1", label: qsTr("1") },
+        { value: "5", label: qsTr("5") },
+        { value: "10", label: qsTr("10") }
+    ]
+    readonly property var appPreviewOptions: [
+        { value: "always", label: qsTr("Always") },
+        { value: "when-unlocked", label: qsTr("When Unlocked") },
+        { value: "never", label: qsTr("Never") }
+    ]
+    readonly property var appGroupingOptions: [
+        { value: "automatic", label: qsTr("Automatically") },
+        { value: "by-app", label: qsTr("By App") },
+        { value: "off", label: qsTr("Off") }
+    ]
+
     readonly property var previewOptions: [
         { value: "always", label: qsTr("Always") },
         { value: "when-unlocked", label: qsTr("When Unlocked") },
@@ -74,6 +103,11 @@ Item {
     property alias appStyleSelect: appStyleSelect
     property alias appSoundToggle: appSoundToggle
     property alias appBadgeToggle: appBadgeToggle
+    property alias appLockScreenToggle: appLockScreenToggle
+    property alias appCenterSelect: appCenterSelect
+    property alias appPreviewsSelect: appPreviewsSelect
+    property alias appGroupingSelect: appGroupingSelect
+    property alias storedPolicyNoteItem: storedPolicyNoteItem
 
     // The app whose detail sheet is open ("" when closed).
     property string selectedAppName: ""
@@ -83,6 +117,63 @@ Item {
     property string draftStyle: "banner"
     property bool draftSound: true
     property bool draftBadge: true
+    // T278: the four options the service does not own yet.
+    property bool draftLockScreen: true
+    property string draftCenterCount: "5"
+    property string draftPreviews: "when-unlocked"
+    property string draftGrouping: "automatic"
+
+    function parseAppOptions() {
+        var raw = Settings.values["notifications.appOptions"];
+        if (raw === undefined || raw === null || String(raw).length === 0)
+            return ({});
+        try {
+            var parsed = JSON.parse(String(raw));
+            return parsed && typeof parsed === "object" ? parsed : ({});
+        } catch (error) {
+            return ({});
+        }
+    }
+
+    function appOption(name, key, fallback) {
+        var entry = root.appOptions[String(name).toLowerCase()];
+        if (!entry || entry[key] === undefined)
+            return fallback;
+        return entry[key];
+    }
+
+    function writeAppOption(name, key, value) {
+        var all = root.appOptions;
+        var id = String(name).toLowerCase();
+        var entry = all[id] ? all[id] : ({});
+        entry[key] = value;
+        all[id] = entry;
+        Settings.set("notifications.appOptions", JSON.stringify(all));
+    }
+
+    function centerIndex(value) {
+        for (var i = 0; i < root.appCenterOptions.length; ++i) {
+            if (root.appCenterOptions[i].value === value)
+                return i;
+        }
+        return 2;
+    }
+
+    function appPreviewIndex(value) {
+        for (var i = 0; i < root.appPreviewOptions.length; ++i) {
+            if (root.appPreviewOptions[i].value === value)
+                return i;
+        }
+        return 1;
+    }
+
+    function groupingIndex(value) {
+        for (var i = 0; i < root.appGroupingOptions.length; ++i) {
+            if (root.appGroupingOptions[i].value === value)
+                return i;
+        }
+        return 0;
+    }
 
     readonly property var appStyleOptions: [
         { value: "banner", label: qsTr("Banners") },
@@ -136,10 +227,7 @@ Item {
         if (!app)
             return;
         root.selectedAppName = String(app.name);
-        root.draftAllowed = app.notificationsAllowed !== false;
-        root.draftStyle = String(app.style || "banner");
-        root.draftSound = app.sound !== false;
-        root.draftBadge = app.badge !== false;
+        root.seedDraft();
         appDialog.show();
     }
 
@@ -151,6 +239,15 @@ Item {
         root.draftStyle = String(app.style || "banner");
         root.draftSound = app.sound !== false;
         root.draftBadge = app.badge !== false;
+        root.draftLockScreen =
+            root.appOption(root.selectedAppName, "lockScreen", true) !== false;
+        root.draftCenterCount =
+            String(root.appOption(root.selectedAppName, "centerCount", "5"));
+        root.draftPreviews =
+            String(root.appOption(root.selectedAppName, "previews",
+                                  "when-unlocked"));
+        root.draftGrouping =
+            String(root.appOption(root.selectedAppName, "grouping", "automatic"));
     }
 
     function applyAppPreference() {
@@ -208,6 +305,17 @@ Item {
                            + "screen. You can show and hide them by clicking the "
                            + "clock in the menu bar.")
                 color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                bottomPadding: Theme.primitive.spacing.xs
+            }
+
+            Text {
+                id: storedPolicyNoteItem
+                objectName: "notificationsStoredPolicyNote"
+                width: parent.width
+                text: root.storedPolicyNote
+                color: Theme.color.textTertiary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
                 bottomPadding: Theme.primitive.spacing.xs
@@ -320,16 +428,6 @@ Item {
                         return parts.join(" \u00b7 ");
                     }
                     onDisclosureClicked: root.openAppDetail(appRow.modelData)
-
-                    controlData: Text {
-                        objectName: "notificationsAppBadge"
-                        text: appRow.modelData.status === "Allowed" ? qsTr("Allowed")
-                              : (appRow.modelData.status === "Off" ? qsTr("Off")
-                                                                   : qsTr("Default"))
-                        color: appRow.modelData.status === "Allowed"
-                            ? Theme.color.accent : Theme.color.textSecondary
-                        font.pixelSize: Theme.primitive.font.sizeSm
-                    }
                 }
             }
 
@@ -351,15 +449,16 @@ Item {
             id: focusGroup
             width: parent.width
             title: qsTr("Focus")
-            visible: root.ready
 
             SettingsRow {
                 id: focusRow
                 width: parent.width
                 label: qsTr("Focus")
-                description: qsTr("Current mode: %1. Allowed apps and the "
-                                  + "schedule are managed in the Focus pane.")
-                    .arg(root.focusLabel)
+                description: root.ready
+                    ? qsTr("Current mode: %1. Allowed apps and the schedule "
+                           + "are managed in the Focus pane.").arg(root.focusLabel)
+                    : qsTr("The notification service is not running; the Focus "
+                           + "pane's schedule and shortcut stay available.")
                 settingsId: "focus"
                 owner: "settingsd"
                 settingsKey: "notifications.focus"
@@ -446,7 +545,6 @@ Item {
             SettingsRow {
                 width: parent.width
                 label: qsTr("Show in Dock badge")
-                showSeparator: false
                 controlData: Toggle {
                     id: appBadgeToggle
                     accessibleName: qsTr("Show a Dock badge for %1")
@@ -454,6 +552,73 @@ Item {
                     onToggled: (checked) => {
                         root.draftBadge = checked;
                         root.applyAppPreference();
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show on lock screen")
+                controlData: Toggle {
+                    id: appLockScreenToggle
+                    accessibleName: qsTr("Show %1 on the lock screen")
+                                    .arg(root.selectedAppName)
+                    onToggled: (checked) => {
+                        root.draftLockScreen = checked;
+                        root.writeAppOption(root.selectedAppName, "lockScreen",
+                                            checked);
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show in Notifications")
+                controlData: Select {
+                    id: appCenterSelect
+                    accessibleName: qsTr("Notifications count for %1")
+                                    .arg(root.selectedAppName)
+                    model: root.appCenterOptions
+                    onActivated: (index) => {
+                        root.draftCenterCount =
+                            root.appCenterOptions[index].value;
+                        root.writeAppOption(root.selectedAppName, "centerCount",
+                                            root.draftCenterCount);
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show previews")
+                controlData: Select {
+                    id: appPreviewsSelect
+                    accessibleName: qsTr("Notification previews for %1")
+                                    .arg(root.selectedAppName)
+                    model: root.appPreviewOptions
+                    onActivated: (index) => {
+                        root.draftPreviews =
+                            root.appPreviewOptions[index].value;
+                        root.writeAppOption(root.selectedAppName, "previews",
+                                            root.draftPreviews);
+                    }
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Notification grouping")
+                showSeparator: false
+                controlData: Select {
+                    id: appGroupingSelect
+                    accessibleName: qsTr("Notification grouping for %1")
+                                    .arg(root.selectedAppName)
+                    model: root.appGroupingOptions
+                    onActivated: (index) => {
+                        root.draftGrouping =
+                            root.appGroupingOptions[index].value;
+                        root.writeAppOption(root.selectedAppName, "grouping",
+                                            root.draftGrouping);
                     }
                 }
             }
@@ -491,6 +656,26 @@ Item {
         target: appBadgeToggle
         property: "checked"
         value: root.draftBadge
+    }
+    Binding {
+        target: appLockScreenToggle
+        property: "checked"
+        value: root.draftLockScreen
+    }
+    Binding {
+        target: appCenterSelect
+        property: "currentIndex"
+        value: root.centerIndex(root.draftCenterCount)
+    }
+    Binding {
+        target: appPreviewsSelect
+        property: "currentIndex"
+        value: root.appPreviewIndex(root.draftPreviews)
+    }
+    Binding {
+        target: appGroupingSelect
+        property: "currentIndex"
+        value: root.groupingIndex(root.draftGrouping)
     }
 
     // Keep the popup in step with an external settingsd change.

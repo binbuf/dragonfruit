@@ -889,6 +889,10 @@ public:
     // `file:///path/to/a.png` / `file://host/path` -> a local path. Pure, so
     // the URI contract is unit-testable.
     static QString localPathFromUri(const QString &uri);
+    // A local path -> a properly escaped `file://` URL (T278). The Wallpaper
+    // pane used to concatenate `"file://" + path`, which broke on spaces and
+    // `#`; every pane URL now goes through QUrl.
+    Q_INVOKABLE QString fileUrl(const QString &path) const;
     // Strip tags and decode the handful of HTML entities Wikimedia's
     // `extmetadata` uses, so an `Artist` value is never rendered as markup.
     static QString sanitizeHtmlText(const QString &value);

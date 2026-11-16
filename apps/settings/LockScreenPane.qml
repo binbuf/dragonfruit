@@ -3,7 +3,7 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Lock Screen pane (T-15.8b).
+// The Lock Screen pane (T-15.8b; completed by T278).
 //
 // The pane and the Control Center Lock Screen tile are one functional unit.
 // Lock policy has no external daemon: the session idle/lock engine
@@ -13,22 +13,19 @@ import Dragonfruit.Settings
 // pane (T-15.5b), this pane is the *configuration* half and writes only
 // settingsd keys, so every control applies live and persists:
 //
-//   * the two timing rows reuse the revision-5 `idle.blank` / `idle.lock`
-//     keys the session idle engine already reads (`IdlePolicy::from_keys`);
-//   * the four display rows write the revision-15 `lock.*` keys
-//     (`dragonfruit-lock-adapter`'s `LockDisplayOption::id()` suffixes).
+//   * `idle.blank` is the one display-off stage (ADR 0279 explains why the
+//     Linux adaptation keeps one stage instead of a battery/AC pair);
+//   * `lock.requirePasswordAfter` is the delay *after* display-off, and the
+//     pane derives `idle.lock` from it so the lock never fires from raw
+//     inactivity;
+//   * the four `lock.*` display rows (`dragonfruit-lock-adapter`'s
+//     `LockDisplayOption::id()` suffixes) feed the shell's lock scene.
 //
-// The compositor lock hot path is never touched; the durable preference is
-// the single source of truth the shell summarizes in the Control Center tile.
-// Wiring the `lock.*` keys into the lock-screen renderer is a follow-up, as
-// the Mission Control corner-apply request was (ADR 0127/0133).
-//
-// Deviations from the macOS capture reference (ADR 0122), recorded so later
-// tasks do not re-litigate them:
+// Deviations from the macOS capture reference (ADR 0122/0279):
 //   * the battery/adapter pair collapses to one `Turn display off when
-//     inactive` row, the Linux adaptation ADR 0132 fixed (one blank stage);
-//   * the warning row is shown for any long display-off delay, not only on
-//     battery;
+//     inactive` row with an explicit one-stage reason;
+//   * `Require password after` means after display-off/lock, not inactivity;
+//     `Immediately` is the zero-second option and `Never` disables the stage;
 //   * `Login window shows` is present but disabled with the reason: the
 //     display manager does not expose a style setting on the host;
 //   * `Accessibility Options...` opens the Accessibility pane instead of
@@ -46,6 +43,11 @@ Item {
     readonly property int requirePasswordSeconds:
         Settings.values["idle.lock"] !== undefined
             ? Number(Settings.values["idle.lock"]) : 600
+    // T278: the durable "after display-off" preference. -1 never, 0
+    // immediately, otherwise seconds after the display turns off.
+    readonly property int requireAfter:
+        Settings.values["lock.requirePasswordAfter"] !== undefined
+            ? Number(Settings.values["lock.requirePasswordAfter"]) : 300
 
     // ── The lock-screen display keys (revision 15, ADR 0133) ─────────────
     readonly property bool showUserNameAndPhoto:
@@ -79,16 +81,24 @@ Item {
         { value: 0, label: qsTr("Never") }
     ]
 
-    // The require-password popup choices; `Never` (0) disables the lock stage.
-    readonly property var requirePasswordOptions: [
+    // The require-password choices. The value is the delay *after* display-off.
+    readonly property var requireAfterOptions: [
+        { value: 0, label: qsTr("Immediately") },
         { value: 5, label: qsTr("After 5 seconds") },
         { value: 30, label: qsTr("After 30 seconds") },
         { value: 60, label: qsTr("After 1 minute") },
         { value: 300, label: qsTr("After 5 minutes") },
         { value: 600, label: qsTr("After 10 minutes") },
-        { value: 900, label: qsTr("After 15 minutes") },
-        { value: 0, label: qsTr("Never") }
+        { value: -1, label: qsTr("Never") }
     ]
+
+    // A custom idle value shows its real duration, never `Never` (T278).
+    readonly property var displayOffModel:
+        root.withCustomOption(root.displayOffOptions, root.displayOffSeconds,
+                              qsTr("For %1"))
+    readonly property var requireAfterModel:
+        root.withCustomOption(root.requireAfterOptions, root.requireAfter,
+                              qsTr("After %1"))
 
     // The capture's energy note appears once the display-off delay is long.
     readonly property bool longDisplayOffDelay: root.displayOffSeconds >= 1200
@@ -98,6 +108,7 @@ Item {
     property alias displayOffSelect: displayOffSelect
     property alias requirePasswordSelect: requirePasswordSelect
     property alias energyWarning: energyWarning
+    property alias powerStageNote: powerStageNote
     property alias userNameToggle: userNameToggle
     property alias passwordHintsToggle: passwordHintsToggle
     property alias messageToggle: messageToggle
@@ -111,6 +122,13 @@ Item {
     property alias hintInput: hintInput
     property alias loginWindowSelect: loginWindowSelect
     property alias accessibilityButton: accessibilityButton
+    property alias preview: preview
+    property alias previewName: previewName
+    property alias previewMessage: previewMessage
+    property alias previewHint: previewHint
+    property alias previewPowerButtons: previewPowerButtons
+    property alias previewTime: previewTime
+    property alias lockSummary: lockSummary
 
     signal navigateRequested(string paneId)
 
@@ -118,6 +136,43 @@ Item {
         { value: "list", label: qsTr("List of users") },
         { value: "name-and-password", label: qsTr("Name and password") }
     ]
+
+    // The editors' drafts (T278): Cancel restores the stored value instead of
+    // leaving an unsaved edit in the field.
+    property string messageDraft: root.lockMessage
+    property string hintDraft: root.passwordHint
+
+    implicitWidth: 480
+    implicitHeight: content.implicitHeight
+    width: parent ? parent.width : implicitWidth
+
+    function formatDuration(seconds) {
+        if (seconds <= 0)
+            return qsTr("Never");
+        if (seconds < 60) {
+            return seconds === 1 ? qsTr("1 second")
+                                 : qsTr("%1 seconds").arg(seconds);
+        }
+        if (seconds % 3600 === 0) {
+            var hours = seconds / 3600;
+            return hours === 1 ? qsTr("1 hour") : qsTr("%1 hours").arg(hours);
+        }
+        var minutes = Math.round(seconds / 60);
+        return minutes === 1 ? qsTr("1 minute") : qsTr("%1 minutes").arg(minutes);
+    }
+
+    function withCustomOption(options, value, pattern) {
+        for (var i = 0; i < options.length; ++i) {
+            if (Number(options[i].value) === Number(value))
+                return options;
+        }
+        var list = options.slice();
+        list.splice(list.length - 1, 0, {
+            value: value,
+            label: String(pattern).arg(root.formatDuration(value))
+        });
+        return list;
+    }
 
     function loginWindowIndex(value) {
         for (var i = 0; i < root.loginWindowOptions.length; ++i) {
@@ -127,17 +182,45 @@ Item {
         return 0;
     }
 
-    implicitWidth: 480
-    implicitHeight: content.implicitHeight
-
-    width: parent ? parent.width : implicitWidth
-
     function indexFor(options, value) {
         for (var i = 0; i < options.length; ++i) {
             if (Number(options[i].value) === Number(value))
                 return i;
         }
         return options.length - 1;
+    }
+
+    // The lock stage is display-off + the after delay. `Never` (-1) and a
+    // display that never turns off both disable the lock stage.
+    function syncLockStage(after, blank) {
+        if (after < 0 || blank <= 0) {
+            Settings.set("idle.lock", 0);
+            return;
+        }
+        Settings.set("idle.lock", blank + after);
+    }
+
+    function applyDisplayOff(value) {
+        Settings.set("idle.blank", value);
+        root.syncLockStage(root.requireAfter, value);
+    }
+
+    function applyRequireAfter(value) {
+        Settings.set("lock.requirePasswordAfter", value);
+        root.syncLockStage(value, root.displayOffSeconds);
+    }
+
+    readonly property string lockSummaryText: {
+        if (root.requireAfter < 0)
+            return qsTr("The session stays unlocked when the display turns off.");
+        if (root.displayOffSeconds <= 0)
+            return qsTr("The display never turns off, so the password is "
+                        + "never required automatically.");
+        if (root.requireAfter === 0)
+            return qsTr("The session locks immediately when the display turns "
+                        + "off.");
+        return qsTr("The session locks %1 after the display turns off.")
+            .arg(root.formatDuration(root.requireAfter));
     }
 
     Column {
@@ -161,6 +244,123 @@ Item {
             }
         }
 
+        // ── Preview ───────────────────────────────────────────────────────
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Preview")
+
+            Rectangle {
+                id: preview
+                objectName: "lockScreenPreview"
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                height: 188
+                radius: Theme.controls.button.radius
+                color: "#141419"
+                clip: true
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: Theme.primitive.spacing.xs
+
+                    Rectangle {
+                        id: previewAvatar
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: root.showUserNameAndPhoto
+                        width: Theme.primitive.spacing.xxl
+                        height: width
+                        radius: width / 2
+                        color: "#3a3a44"
+
+                        Icon {
+                            anchors.centerIn: parent
+                            name: "home"
+                            size: Theme.primitive.spacing.lg
+                            color: "#d0d0d6"
+                        }
+                    }
+
+                    Text {
+                        id: previewName
+                        objectName: "lockScreenPreviewName"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: root.showUserNameAndPhoto
+                        text: qsTr("User")
+                        color: "#ffffff"
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+
+                    Text {
+                        id: previewTime
+                        objectName: "lockScreenPreviewTime"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "9:41"
+                        color: "#ffffff"
+                        font.pixelSize: Theme.primitive.font.sizeXl
+                        font.weight: Theme.primitive.font.weightRegular
+                    }
+
+                    Text {
+                        id: previewMessage
+                        objectName: "lockScreenPreviewMessage"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: root.showMessageWhenLocked
+                                 && root.lockMessage.length > 0
+                        text: root.lockMessage
+                        color: "#d0d0d6"
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        elide: Text.ElideRight
+                        width: preview.width - 24
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    Text {
+                        id: previewHint
+                        objectName: "lockScreenPreviewHint"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: root.showPasswordHints
+                                 && root.passwordHint.length > 0
+                        text: root.passwordHint
+                        color: "#a0a0a8"
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        elide: Text.ElideRight
+                        width: preview.width - 24
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    Row {
+                        id: previewPowerButtons
+                        objectName: "lockScreenPreviewPowerButtons"
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: root.showPowerButtons
+                        spacing: Theme.primitive.spacing.xs
+
+                        Repeater {
+                            model: [qsTr("Sleep"), qsTr("Restart"),
+                                    qsTr("Shut Down")]
+
+                            delegate: Rectangle {
+                                required property string modelData
+                                width: powerLabel.implicitWidth
+                                       + 2 * Theme.primitive.spacing.sm
+                                height: 24
+                                radius: 12
+                                color: "#2a2a32"
+
+                                Text {
+                                    id: powerLabel
+                                    anchors.centerIn: parent
+                                    text: parent.modelData
+                                    color: "#e0e0e6"
+                                    font.pixelSize: Theme.primitive.font.sizeSm
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Display and password timing ───────────────────────────────────
         SettingsGroup {
             id: timingGroup
@@ -174,10 +374,25 @@ Item {
                 controlData: Select {
                     id: displayOffSelect
                     accessibleName: qsTr("Turn display off when inactive")
-                    model: root.displayOffOptions
-                    onActivated: (index) => Settings.set(
-                        "idle.blank", root.displayOffOptions[index].value)
+                    model: root.displayOffModel
+                    onActivated: (index) => root.applyDisplayOff(
+                        root.displayOffModel[index].value)
                 }
+            }
+
+            // ADR 0279: Linux has one display-off stage, not a battery/AC
+            // pair. The row is the whole story; this note says so.
+            Text {
+                id: powerStageNote
+                objectName: "lockScreenPowerStageNote"
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                text: qsTr("One display-off stage: this session does not vary "
+                           + "the timeout by power source.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                bottomPadding: Theme.primitive.spacing.xs
             }
 
             // The capture's yellow-triangle warning, adapted to Linux (one
@@ -229,18 +444,28 @@ Item {
 
             SettingsRow {
                 width: parent.width
-                label: qsTr("Require password after the screen turns off")
-                description: qsTr("The session locks after this much "
-                                  + "inactivity. Choose Never to leave the "
-                                  + "session unlocked.")
+                label: qsTr("Require password after display off or lock")
+                description: root.lockSummaryText
                 showSeparator: false
                 controlData: Select {
                     id: requirePasswordSelect
-                    accessibleName: qsTr("Require password after the screen turns off")
-                    model: root.requirePasswordOptions
-                    onActivated: (index) => Settings.set(
-                        "idle.lock", root.requirePasswordOptions[index].value)
+                    accessibleName: qsTr("Require password after display off or lock")
+                    model: root.requireAfterModel
+                    onActivated: (index) => root.applyRequireAfter(
+                        root.requireAfterModel[index].value)
                 }
+            }
+
+            Text {
+                id: lockSummary
+                objectName: "lockScreenLockSummary"
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                text: root.lockSummaryText
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                bottomPadding: Theme.primitive.spacing.xs
             }
         }
 
@@ -280,7 +505,7 @@ Item {
                     Button {
                         id: setHintButton
                         objectName: "lockScreenSetHintButton"
-                        text: qsTr("Set\u2026")
+                        text: qsTr("Set…")
                         enabled: root.showPasswordHints
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: hintDialog.show()
@@ -305,7 +530,7 @@ Item {
                     Button {
                         id: setMessageButton
                         objectName: "lockScreenSetMessageButton"
-                        text: qsTr("Set\u2026")
+                        text: qsTr("Set…")
                         enabled: root.showMessageWhenLocked
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: messageDialog.show()
@@ -354,7 +579,7 @@ Item {
 
             SettingsRow {
                 width: parent.width
-                label: qsTr("Accessibility options\u2026")
+                label: qsTr("Accessibility options…")
                 description: qsTr("Open the Accessibility pane for the lock "
                                   + "screen's keyboard and visual options.")
                 settingsId: "accessibility"
@@ -363,7 +588,7 @@ Item {
                 showSeparator: false
                 controlData: Button {
                     id: accessibilityButton
-                    text: qsTr("Open\u2026")
+                    text: qsTr("Open…")
                     accessibleName: qsTr("Open Accessibility settings")
                     onClicked: root.navigateRequested("accessibility")
                 }
@@ -393,8 +618,8 @@ Item {
         }
     }
 
-    // The message editor the trailing `Set...` button opens (the capture's
-    // sheet). `accept()` writes the text; `reject()` leaves it unchanged.
+    // The message editor the trailing `Set...` button opens. `accept()` writes
+    // the draft; `reject()` restores the stored value (T278).
     Dialog {
         id: messageDialog
         objectName: "lockScreenMessageDialog"
@@ -424,6 +649,8 @@ Item {
                 selectByMouse: true
                 clip: true
                 font.pixelSize: Theme.controls.button.fontSize
+                text: root.messageDraft
+                onTextEdited: root.messageDraft = text
                 onAccepted: messageDialog.accept()
             }
 
@@ -451,8 +678,12 @@ Item {
             }
         }
 
-        onAccepted: Settings.set("lock.message", messageInput.text)
-        onOpened: messageInput.forceActiveFocus()
+        onOpened: {
+            root.messageDraft = root.lockMessage;
+            messageInput.forceActiveFocus();
+        }
+        onAccepted: Settings.set("lock.message", root.messageDraft)
+        onRejected: root.messageDraft = root.lockMessage
     }
 
     // The password-hint editor (T229a). The hint is shown under the lock
@@ -486,6 +717,8 @@ Item {
                 selectByMouse: true
                 clip: true
                 font.pixelSize: Theme.controls.button.fontSize
+                text: root.hintDraft
+                onTextEdited: root.hintDraft = text
                 onAccepted: hintDialog.accept()
             }
 
@@ -513,21 +746,24 @@ Item {
             }
         }
 
-        onAccepted: Settings.set("lock.passwordHint", hintInput.text)
-        onOpened: hintInput.forceActiveFocus()
+        onOpened: {
+            root.hintDraft = root.passwordHint;
+            hintInput.forceActiveFocus();
+        }
+        onAccepted: Settings.set("lock.passwordHint", root.hintDraft)
+        onRejected: root.hintDraft = root.passwordHint
     }
 
     // Keep the controls in step with external changes.
     Binding {
         target: displayOffSelect
         property: "currentIndex"
-        value: root.indexFor(root.displayOffOptions, root.displayOffSeconds)
+        value: root.indexFor(root.displayOffModel, root.displayOffSeconds)
     }
     Binding {
         target: requirePasswordSelect
         property: "currentIndex"
-        value: root.indexFor(root.requirePasswordOptions,
-                             root.requirePasswordSeconds)
+        value: root.indexFor(root.requireAfterModel, root.requireAfter)
     }
     Binding {
         target: userNameToggle
@@ -550,18 +786,19 @@ Item {
         value: root.showPowerButtons
     }
     Binding {
-        target: messageInput
-        property: "text"
-        value: root.lockMessage
-    }
-    Binding {
-        target: hintInput
-        property: "text"
-        value: root.passwordHint
-    }
-    Binding {
         target: loginWindowSelect
         property: "currentIndex"
         value: root.loginWindowIndex(root.loginWindowStyle)
+    }
+    Connections {
+        target: Settings
+        function onValuesChanged() {
+            // An external change converges into the drafts unless the user is
+            // mid-edit with the dialog open.
+            if (!messageDialog.open)
+                root.messageDraft = root.lockMessage;
+            if (!hintDialog.open)
+                root.hintDraft = root.passwordHint;
+        }
     }
 }
