@@ -152,14 +152,18 @@ Item {
                 var row = pane.capabilityRows[i];
                 var live = supported.indexOf(String(row.id)) >= 0;
                 compare(row.supported, live, String(row.id));
-                if (!live)
+                if (!live) {
                     verify(String(row.reason).length > 0,
-                           String(row.id) + " must carry its OPEN reason");
+                           String(row.id) + " must carry a reason");
+                    verify(String(row.reason).indexOf("OPEN") < 0,
+                           String(row.id) + " must not leak an internal marker");
+                }
             }
 
-            // The main pane's disabled controls name their missing half.
+            // The main pane's disabled controls carry a user-facing reason.
             compare(pane.useAsSelect.enabled, false);
-            verify(pane.useAsRow.description.indexOf("OPEN") >= 0);
+            verify(pane.useAsRow.description.length > 0);
+            verify(pane.useAsRow.description.indexOf("OPEN") < 0);
             compare(pane.autoBrightnessToggle.enabled, false);
             compare(pane.nightLightToggle.enabled, false);
             compare(pane.nightLightScheduleSelect.enabled, false);
@@ -169,7 +173,8 @@ Item {
             compare(pane.arrangementButton.enabled, false);
             verify(capability(pane, "hdr").supported === false);
             verify(capability(pane, "vrr").supported === false);
-            verify(capability(pane, "refreshRate").reason.indexOf("OPEN") >= 0);
+            verify(capability(pane, "refreshRate").reason.length > 0);
+            verify(capability(pane, "refreshRate").reason.indexOf("OPEN") < 0);
         }
 
         function test_advanced_sheet_lists_only_advanced_rows() {

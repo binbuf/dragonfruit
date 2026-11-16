@@ -427,6 +427,39 @@ Schema revision 37 adds the two pointer families, the five remaining gesture
 families, and the four dictation options. Live evidence is
 `make t280-devices-capture` (`docs/captures/t280-*.png`).
 
+### The T281 Linux-specific additions
+
+T281 audits every Linux-only row in
+[24-system-settings.md](24-system-settings.md) §5 against the executable map:
+
+- `SettingsMap.linuxAdditions` is the row-level audit (area, setting, pane,
+  row, owner, key, absence, consumer, task). `validateLinuxAdditions()` fails
+  when an entry names a missing row, a row loses its owner/key/absence, or a
+  live row claims `stored-only` without being marked.
+- **Wallpaper → Slideshow** (`wallpaper.slideshow`, revision 38) is a durable
+  interval marked `stored-only`; no shell rotation timer exists, and the row
+  note says the wallpaper does not change on a schedule yet.
+- **Desktop & Dock → Windows → Application window rules…** (`windows.rules`)
+  is a visible disabled hand-off; the compositor window-rule engine is absent.
+- **Keyboard → Text Input** gains **Input method** (`input.method`) and
+  **Compose key** (`input.composeKey`), disabled rows that name IBus/Fcitx5
+  and the compositor XKB layout. Settings does not own a second IME UI.
+- **Lock Screen** gains the two missing idle stages, **Dim screen when
+  inactive** (`idle.dim`) and **Suspend when inactive** (`idle.suspend`), next
+  to display-off and the derived lock stage. Neither rewrites `idle.lock`.
+- **Search → Clipboard History** (`search.clipboardHistory`, revision 38) is
+  stored-only; the shell clipboard store still observes every selection.
+- Existing Linux rows carry consumer metadata in the map, and the Appearance
+  `windowControls`/`material`/`accentFromWallpaper` rows now expose their map
+  ids so search and deep links land on them. The Displays capability table's
+  disabled-row reasons are user-facing text, with no `OPEN` marker or
+  internal component names.
+
+The §5.3 review table records the macOS rows that stay omitted because Linux
+has no owner; the per-pane `omit` rows in §4 remain the exhaustive list.
+Evidence is `make t281-linux-specific-capture`
+(`docs/captures/t281-*.png`).
+
 Schema revision 22 adds `input.secondaryClick`, `input.scrollSpeed`,
 `input.doubleClickSpeed`, `input.haptics`, `input.lookUp`, `input.sources`,
 `input.replacements`, `input.dictation`, `power.showPercentage`, and

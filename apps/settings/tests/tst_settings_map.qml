@@ -129,8 +129,77 @@ Item {
             compare(power.storedOnly, false);
         }
 
-        function test_an_unowned_row_fails_validation() {
-            var errors = SettingsMap.validateRow({
+        // -- T281: the Linux-specific audit -----------------------------------
+
+        function test_linux_specific_additions_are_audited_and_unique() {
+            verify(SettingsMap.linuxAdditions.length >= 40,
+                   "the Linux-specific audit must cover every §5 area");
+            compare(SettingsMap.validateLinuxAdditions().join("; "), "",
+                    "the Linux-specific audit must match the executable rows");
+
+            var keys = {};
+            for (var i = 0; i < SettingsMap.linuxAdditions.length; ++i) {
+                var entry = SettingsMap.linuxAdditions[i];
+                verify(entry.setting.length > 0);
+                verify(entry.task.length > 0);
+                compare(SettingsMap.pane(entry.pane) !== null, true,
+                        entry.setting + " must name a real pane");
+                for (var r = 0; r < entry.rows.length; ++r) {
+                    var row = SettingsMap.rowFor(entry.pane, entry.rows[r]);
+                    verify(row !== null, entry.setting + " names a missing row");
+                    verify(keys[row.key] === undefined,
+                           "linux additions must not duplicate key " + row.key);
+                    keys[row.key] = true;
+                }
+            }
+        }
+
+        function test_linux_specific_live_rows_have_consumers_or_stored_only() {
+            for (var i = 0; i < SettingsMap.linuxAdditions.length; ++i) {
+                var entry = SettingsMap.linuxAdditions[i];
+                for (var r = 0; r < entry.rows.length; ++r) {
+                    var row = SettingsMap.rowFor(entry.pane, entry.rows[r]);
+                    verify(row.consumer.length > 0,
+                           entry.pane + "/" + row.id + " must record a consumer");
+                    if (row.storedOnly) {
+                        compare(row.consumer.indexOf("stored-only"), 0,
+                                row.id + " is stored-only and must say so");
+                        verify(row.absence !== "disabled-with-reason",
+                               row.id + " cannot be both stored-only and disabled");
+                    } else if (row.absence === "live-on-defaults") {
+                        verify(row.consumer.indexOf("stored-only") !== 0,
+                               row.id + " is live and must not claim stored-only");
+                    }
+                }
+            }
+        }
+
+        function test_linux_specific_rows_live_in_macos_familiar_panes() {
+            for (var i = 0; i < SettingsMap.linuxAdditions.length; ++i) {
+                var entry = SettingsMap.linuxAdditions[i];
+                var pane = SettingsMap.pane(entry.pane);
+                verify(String(pane.title).toLowerCase().indexOf("linux") < 0,
+                       "Linux rows must not create a separate Linux pane");
+                verify(String(pane.id).toLowerCase().indexOf("linux") < 0,
+                       "Linux rows must not create a separate Linux pane");
+            }
+        }
+
+        function test_linux_specific_labels_are_user_facing() {
+            var banned = ["OPEN", "T2", "stored-only", "consumer", "settingsd"];
+            for (var i = 0; i < SettingsMap.linuxAdditions.length; ++i) {
+                var entry = SettingsMap.linuxAdditions[i];
+                for (var r = 0; r < entry.rows.length; ++r) {
+                    var row = SettingsMap.rowFor(entry.pane, entry.rows[r]);
+                    for (var b = 0; b < banned.length; ++b) {
+                        verify(row.label.indexOf(banned[b]) < 0,
+                               "row label " + row.id + " leaks " + banned[b]);
+                    }
+                }
+            }
+        }
+
+        function test_an_unowned_row_fails_validation() {            var errors = SettingsMap.validateRow({
                 id: "unowned", label: "Unowned", control: "toggle",
                 owner: "", key: "", absence: "live-on-defaults", state: "shipped"
             });

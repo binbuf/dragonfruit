@@ -6,7 +6,7 @@ import Dragonfruit.Settings
 
 // T227 absence capture (not part of ctest): run with no settingsd on the
 // private bus. The panes stay live on the schema defaults; the Search
-// indexing rows and the Displays OPEN rows show their reasons.
+// indexing rows and the Displays capability rows show their reasons.
 Item {
     id: stage
     width: 1000

@@ -210,6 +210,32 @@ Item {
             verify(pane.dictationAbsenceNote.visible);
         }
 
+        // T281: the Linux input-method and compose-key rows are honest
+        // hand-offs to their owners, never fake toggles.
+        function test_keyboard_input_method_and_compose_key_are_honest() {
+            var shell = make("keyboard");
+            var pane = paneOf(shell);
+            compare(pane.inputMethodRow.settingsId, "inputMethod");
+            compare(pane.composeKeyRow.settingsId, "composeKey");
+            compare(pane.inputMethodRow.settingsKey, "input.method");
+            compare(pane.composeKeyRow.settingsKey, "input.composeKey");
+            verify(!pane.inputMethodRow.enabled);
+            verify(!pane.composeKeyRow.enabled);
+            verify(pane.inputMethodRow.description.indexOf("IBus") >= 0);
+            verify(pane.composeKeyRow.description.indexOf("keyboard layout") >= 0);
+            verify(pane.inputMethodRow.description.indexOf("T2") < 0);
+            verify(pane.composeKeyRow.description.indexOf("T2") < 0);
+            verify(!SettingsMap.rowFor("keyboard", "inputMethod").storedOnly);
+            compare(SettingsMap.rowFor("keyboard", "inputMethod").absence,
+                    "disabled-with-reason");
+
+            shell.selectPane("mouse");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            waitForRendering(stage);
+            verify(!paneOf(shell).inputMethodRow.visible,
+                   "the input-method rows belong to the Keyboard pane");
+        }
+
         // -- Mouse ------------------------------------------------------------
 
         function test_mouse_pane_round_trips_the_mouse_specific_rows() {

@@ -926,6 +926,12 @@ Every settingsd-backed row is a `SettingsKeyRow`, so a rejected write reverts
 its control and shows the owner's message inline. A row with no live consumer
 is disabled with the reason rather than presented as a working toggle.
 
+**T281 audit.** The four Linux-only rows now carry their map ids
+(`iconTheme`, `cursorTheme`, `cursorSize`, `windowControls`, `material`) so
+search and deep links land on them. There is no separate performance row:
+`appearance.material` is the one preference the Glass GPU budget/rollout
+policy reads, and the row says the tier is chosen for the user.
+
 ### 4.8 Accessibility — T275
 
 Owner: settingsd + compositor + AT-SPI + delegates. Absence: keep the
@@ -1074,6 +1080,7 @@ live; the indexing rows show the service state.
 | Results from Apps | Results from apps | Toggles | `search.categories` | ship |
 | Results from System | Results from system | Toggles | `search.categories` | ship |
 | Clipboard Search | Clipboard search | Toggle | `search.categories` | adapt |
+| — | Clipboard history | Toggle | `search.clipboardHistory` | **stored-only** (T281; the shell always observes the clipboard) |
 | Search Privacy | Search privacy | Folder list + add | `search.indexLocations` | ship |
 | Show Related Content | — | Omit | — | omit: no content partner |
 | Keyboard shortcut | Shortcut | Recorder | `search.shortcut` | ship |
@@ -1236,6 +1243,8 @@ live; hardware inventory shows a reason.
 | Keyboard navigation | Keyboard navigation | Toggle | `input.keyboardNavigation` | stored-only; no compositor consumer |
 | Keyboard Shortcuts… | Keyboard shortcuts… | Sheet | shortcut engine | ship; read-only inspector |
 | Input Sources | Input sources | List + add/remove/order | `input.sources` | ship |
+| — | Input method | Button | `input.method` | disabled: IBus/Fcitx5 own configuration (T281) |
+| — | Compose key | Select | `input.composeKey` | disabled: compositor XKB option not exposed (T281) |
 | Text Replacements… | Text replacements… | Sheet | `input.replacements` | ship; IME consumer |
 | Dictation | Dictation | Toggle + language/mic/shortcut | speech-to-text delegate | adapt/delegate; options sheet |
 | Touch Bar | — | Omit | — | omit |
@@ -1349,6 +1358,7 @@ executable map and this document.
 | Drag windows to menu bar to fill screen | Drag windows to the menu bar to fill the screen | Toggle | `tiling.dragToFill` | disabled: tiling is T242 |
 | Hold Option while dragging to tile | Hold Option while dragging to tile | Toggle | `tiling.modifier` | disabled: tiling is T242 |
 | Tiled windows have margins | Tiled windows have margins | Toggle | `tiling.margins` | disabled: tiling is T242 |
+| — | Application window rules… | Button | `windows.rules` | disabled: the compositor's window-rule engine is not present (T281) |
 
 #### Mission Control / Default browser
 
@@ -1468,8 +1478,14 @@ absent, offline, error, and empty-but-ready.
 | Colors | Colors | Grid | shipped gradients | ship (Linux addition) |
 | Pictures | Your photos | Grid | FileChooser portal | ship |
 | — | Fit | Popup | `wallpaper.fit` | ship |
-| — | Per-workspace wallpaper | Toggle | `wallpaper.perWorkspace` | adapt (Linux-only, not shipped) |
-| — | Slideshow | Popup | `wallpaper.slideshow` | adapt (Linux-only, not shipped) |
+| — | Slideshow interval | Popup | `wallpaper.slideshow` | **stored-only** (Linux-only; no rotation timer yet) |
+
+**T281 audit.** The per-workspace control is `Show on all workspaces`
+(`wallpaper.showOnAllSpaces`), the inverse of a per-Space override; the shell
+forwards it with the selection, and there is no second per-workspace key. The
+Slideshow interval is a durable stored-only preference on revision 38: the
+pane saves it and its note says the wallpaper does not change on a schedule
+yet. Shuffle remains a real action over the Featured catalogue.
 
 ### 4.24 Screen Saver — T278
 
@@ -1588,7 +1604,9 @@ Immediate lock is the zero-second `Immediately` option; a separate
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
+| — | Dim screen when inactive | Popup | `idle.dim` | ship (T281; the dim stage) |
 | Turn display off on battery | Display off (one stage) | Popup | `idle.blank` | ship/adapt; documented |
+| — | Suspend when inactive | Popup | `idle.suspend` | ship (T281; off by default) |
 | Turn display off on power adapter | — | — | — | documented one-stage adaptation |
 | Require password after | Require password after | Popup | `lock.requirePasswordAfter` | ship; correct semantics |
 | Show user name and photo | Show user name/photo | Toggle | `lock.showUserNameAndPhoto` | ship |
@@ -1632,37 +1650,130 @@ the panes say so.
 
 ## 5. Linux-specific additions
 
-These are deliberate additions macOS does not have. Each must have a real
-owner and consumer; otherwise it is `stored-only` or omitted.
+These are deliberate additions macOS does not have. Each has a real owner, a
+consumer or an explicit `stored-only` mark, an absence path, and a home in the
+macOS-familiar pane. T281 audits the table against the executable
+`SettingsMap.linuxAdditions` table; a row that drifts from the map fails
+`tst_settings_map`.
 
-| Area | Setting | Owner / key | Task |
-|---|---|---|---|
-| Wallpaper | Per-workspace wallpaper | `wallpaper.perWorkspace` | T278 |
-| Wallpaper | Slideshow / shuffle | `wallpaper.slideshow` | T278 |
-| Desktop | Tiling gaps, drag-to-tile, modifier | `tiling.*` | T276 |
-| Desktop | Window rules | `windows.rules` | T276 |
-| Desktop | Global app menu | `menu.global` | T276 |
-| Overview | Workspace count / per-display | `overview.*`, `workspaces.count` | T276 |
-| Appearance | Icon theme / cursor theme / cursor size | `appearance.iconTheme`, `appearance.cursor*` | T274 |
-| Appearance | Window control layout | `appearance.windowControls` | T274 |
-| Appearance | Material/performance/rollout | `appearance.material*` | T274 |
-| Displays | Per-output configuration | compositor | T273 |
-| Displays | Night light schedule/temperature | `display.nightLight.*` | T273 |
-| Displays | HDR / VRR / refresh | compositor | T273 |
-| Sound | Per-app volume | PipeWire | T280 |
-| Keyboard | Input method / compose key | `input.method`, `input.ime.*` | T280 |
-| Keyboard | Layout/model/options | `input.sources` | T280 |
-| Trackpad | Gesture mapping | `gestures.*` | T280 |
-| Power | Charge threshold / battery care | UPower | T273 |
-| Session | Idle stages (dim/blank/lock/suspend) | `idle.*` | T278 |
-| Network | Firewall rules / zones | firewall adapter | T272 |
-| Network | WireGuard / bridge / bond / VLAN | NM | T272 |
-| Updates | Package sources / Flatpak remotes | distro adapter | T269 |
-| Backup | Backend selection | `backup.backend` | T270 |
-| Privacy | Portal permission tables | portal | T279 |
-| Privacy | USB accessories | USBGuard | T279 |
-| Search | Clipboard history | search service | T265 |
-| Menu Bar | Tray overflow / workspace indicator | shell | T277 |
+The rules:
+
+- Add a row only when a Linux owner and consumer exist. A preference with no
+  consumer is marked `stored-only` in the schema and the map, and the pane
+  says so in the row description or its note.
+- A row with no usable owner is `disabled-with-reason`; it names the missing
+  owner and the exact tool or service. It is never a fake toggle.
+- Firewall and VPN follow the T272a capability tiers: there is no first-party
+  nftables/iptables rule editor, native WireGuard is a NetworkManager
+  connection type (never a VPN plugin), and an unreadable backend is
+  delegated with its exact command.
+- Linux-only rows live inside the existing macOS panes; there is no separate
+  “Linux” pane.
+
+### 5.1 The audited additions
+
+| Area | Setting | Pane → section | Row id | Owner | Key / API | Consumer | Absence | Task |
+|---|---|---|---|---|---|---|---|---|
+| Wallpaper | Per-workspace wallpaper | Wallpaper → Wallpaper | `showAll` | `settingsd` | `wallpaper.showOnAllSpaces` | shell/wallpaper forwarder, compositor/workspace model | live-on-defaults | T278 |
+| Wallpaper | Shuffle | Wallpaper → Shuffle | `shuffle` | `wallpaperd` | `wallpaper.provider` | wallpaperd applies the chosen Featured image | live-on-defaults | T278 |
+| Wallpaper | Slideshow interval | Wallpaper → Slideshow | `slideshow` | `settingsd` | `wallpaper.slideshow` | **stored-only**: no wallpaper-rotation timer | live-on-defaults, stored-only | T281 |
+| Desktop | Drag to tile | Desktop & Dock → Windows | `dragToTile` | compositor | `tiling.dragToTile` | compositor/window tiling (not implemented) | disabled-with-reason | T276 |
+| Desktop | Drag to fill | Desktop & Dock → Windows | `dragToFill` | compositor | `tiling.dragToFill` | compositor/window tiling (not implemented) | disabled-with-reason | T276 |
+| Desktop | Tiling modifier | Desktop & Dock → Windows | `tileModifier` | compositor | `tiling.modifier` | compositor/window tiling (not implemented) | disabled-with-reason | T276 |
+| Desktop | Tiling gaps | Desktop & Dock → Windows | `tileMargins` | compositor | `tiling.margins` | compositor/window tiling (not implemented) | disabled-with-reason | T276 |
+| Desktop | Application window rules | Desktop & Dock → Windows | `windowRules` | compositor | `windows.rules` | compositor/window-rule engine (not implemented) | disabled-with-reason | T281 |
+| Desktop | Global app menu | Menu Bar → Menu Bar | `globalMenu` | `settingsd` | `menu.global` | shell/MenuBar, services/menu-broker | live-on-defaults | T276 |
+| Overview | Workspace count | Overview → Workspaces | `workspaceCount` | `settingsd` | `workspaces.count` | compositor/workspace model, shell | live-on-defaults | T276 |
+| Overview | Workspaces per display | Overview → Overview | `perDisplay` | compositor | `overview.perDisplay` | compositor/workspace model | read-only | T276 |
+| Appearance | Icon theme | Appearance → Desktop integration | `iconTheme` | `settingsd` + icon provider | `appearance.iconTheme` | shell/app-index icon lookup, Settings icon provider | disabled-with-reason | T274 |
+| Appearance | Cursor theme | Appearance → Desktop integration | `cursorTheme` | `settingsd` + compositor | `appearance.cursorTheme` | compositor cursor, next session | disabled-with-reason | T274 |
+| Appearance | Cursor size | Appearance → Desktop integration | `cursorSize` | `settingsd` + compositor | `appearance.cursorSize` | compositor cursor, next session | disabled-with-reason | T274 |
+| Appearance | Window control layout | Appearance → Desktop integration | `windowControls` | compositor/window decoration | `appearance.windowControls` | compositor decoration (traffic lights stay left) | disabled-with-reason | T274 |
+| Appearance | Material, performance, rollout | Appearance → Desktop integration | `material` | shell/design-system Glass | `appearance.material` | Glass GPU budget / rollout policy | disabled-with-reason | T274 |
+| Displays | Per-output configuration | Displays → Displays | `perOutput` | platform outputs | `display.perOutput` | compositor/output | live-on-defaults | T273 |
+| Displays | Night light | Displays → Displays | `nightLight` | compositor | `display.nightLight` | compositor/output (pipeline absent) | disabled-with-reason | T273 |
+| Displays | Night light schedule | Displays → Displays | `nightLightSchedule` | compositor | `display.nightLight.schedule` | compositor/output (pipeline absent) | disabled-with-reason | T273 |
+| Displays | Night light temperature | Displays → Displays | `nightLightTemperature` | compositor | `display.nightLight.temperature` | compositor/output (pipeline absent) | disabled-with-reason | T273 |
+| Displays | HDR | Displays → Displays | `hdr` | compositor | `display.hdr` | compositor/output (HDR not advertised) | disabled-with-reason | T273 |
+| Displays | VRR | Displays → Displays | `vrr` | compositor | `display.vrr` | compositor/output (VRR not advertised) | disabled-with-reason | T273 |
+| Displays | Refresh rate | Displays → Displays | `refreshRate` | compositor | `display.refreshRate` | compositor/output (choice not advertised) | disabled-with-reason | T273 |
+| Sound | Per-app volume | Sound → Output & Input | `perApp` | PipeWire | `audio.streams` | none: control CLI has no stream levels | disabled-with-reason | T280 |
+| Keyboard | Input method | Keyboard → Text Input | `inputMethod` | ibus/fcitx5 | `input.method` | ibus/fcitx5 own configuration (not edited by Settings) | disabled-with-reason | T281 |
+| Keyboard | Compose key | Keyboard → Text Input | `composeKey` | compositor/input | `input.composeKey` | compositor XKB layout (option not exposed) | disabled-with-reason | T281 |
+| Keyboard | Layout, model, options | Keyboard → Text Input | `sources` | ibus/fcitx5 + `localectl` | `input.sources` | shell/compositor keymap, ibus/fcitx5 delegate | delegated | T280 |
+| Trackpad | Gesture mapping | Trackpad → More gestures | `gestures` | `settingsd` | `gestures.*` | compositor/input (enabled/spaceSwitch/missionControl live; rest stored-only) | live-on-defaults | T280 |
+| Power | Charge threshold | Battery → Power adapter | `adapter.chargeLimit` | UPower | `Battery.ChargeThreshold` | UPower read-only | read-only | T273 |
+| Session | Dim stage | Lock Screen → timing | `idleDim` | `settingsd` | `idle.dim` | session/idle engine | live-on-defaults | T281 |
+| Session | Display-off stage | Lock Screen → timing | `displayBattery` | `settingsd` | `idle.blank` | session/idle engine | live-on-defaults | T278 |
+| Session | Lock stage | Lock Screen → timing | `requirePassword` | `settingsd` | `lock.requirePasswordAfter` | session/idle engine (derives `idle.lock`) | live-on-defaults | T278 |
+| Session | Suspend stage | Lock Screen → timing | `idleSuspend` | `settingsd` | `idle.suspend` | session/idle engine, session/suspend | live-on-defaults | T281 |
+| Network | Firewall rules and zones | Network → Firewall | `firewallOptions` | firewall adapter | `firewall.rules` | firewall adapter (read-only/delegated tiers) | disabled-with-reason | T272 |
+| Network | Bridge, bond, VLAN | Network → Services | `addService` | NetworkManager | `AddConnection` | NetworkManager | disabled-with-reason | T272 |
+| Network | WireGuard | VPN → Connections | `vpn.wireguard` | NetworkManager VPN | `wireguard` | NetworkManager native connection type | read-only | T272 |
+| Updates | Package sources and Flatpak remotes | Privacy & Security → Security | `sources` | distro adapter + Flatpak | `security.sources` | package manager / Flatpak remotes (owner absent) | disabled-with-reason | T269 |
+| Backup | Backup backend | General → Backup | `backup.backend` | backup adapter | `backup.backend` | restic/Pika/Timeshift detection | disabled-with-reason | T270 |
+| Privacy | Portal permission tables | Privacy & Security → Location | `location` | portal Location/Geoclue | `privacy.location` | portal `PermissionStore`, Geoclue | delegated | T279 |
+| Privacy | USB accessories | Privacy & Security → Security | `accessories` | USBGuard | `security.accessories` | USBGuard device policy (owner absent) | disabled-with-reason | T279 |
+| Search | Clipboard history | Search → Clipboard History | `clipboard` | `settingsd` | `search.clipboardHistory` | **stored-only**: shell always observes the clipboard | live-on-defaults, stored-only | T281 |
+| Menu Bar | Tray overflow | Menu Bar → Menu Bar | `overflow` | `settingsd` | `menu.overflow` | shell/MenuBar | live-on-defaults | T277 |
+| Menu Bar | Workspace indicator | Menu Bar → Menu Bar | `workspaces` | `settingsd` | `menu.control.workspaces` | shell/MenuBar | live-on-defaults | T277 |
+
+### 5.2 What T281 added
+
+- The audit table above is executable: `SettingsMap.linuxAdditions` names each
+  row, and `SettingsMap.validateLinuxAdditions()` proves every entry resolves
+  to a shipped row with an owner, key, absence, and consumer or stored-only
+  mark. `tst_settings_map` fails if the table and the rows drift.
+- **Wallpaper → Slideshow** (`wallpaper.slideshow`, revision 38): a durable
+  interval. No rotation timer exists, so the row is explicitly stored-only
+  and its note says the wallpaper does not change on a schedule yet.
+- **Desktop & Dock → Windows → Application window rules** (`windows.rules`):
+  a visible, disabled hand-off to the compositor's window-rule engine.
+- **Keyboard → Text Input → Input method / Compose key** (`input.method`,
+  `input.composeKey`): disabled rows naming IBus/Fcitx5 and the compositor's
+  XKB layout. Settings does not own a second IME configuration.
+- **Lock Screen → timing → Dim / Suspend** (`idle.dim`, `idle.suspend`): the
+  two missing idle stages join display-off and lock, all four writing the
+  existing session keys. Neither rewrites the derived lock stage.
+- **Search → Clipboard History** (`search.clipboardHistory`, revision 38): a
+  stored-only preference; the shell clipboard store still observes every
+  selection and clears on lock.
+- Existing Linux rows gained the audit's consumer metadata, and the
+  Appearance `windowControls`/`material`/`accentFromWallpaper` rows now carry
+  their map ids so search and deep links land on them.
+
+### 5.3 macOS rows left out because Linux has no owner
+
+These are explicit decisions, not silent gaps. A row reappears only if a
+first-party owner and consumer land.
+
+| macOS row | Pane it would live in | Why it is omitted |
+|---|---|---|
+| Apple Account, iCloud | General / Accounts | Vendor account service; no Linux equivalent |
+| Screen Time | General | Vendor parental-control service |
+| Siri | Search | No first-party voice assistant |
+| Wallet, Game Center, Find My | Accounts & Devices | Vendor services |
+| AirDrop / Handoff | General → Sharing | No permissive drop-in; an optional third-party transfer service may follow |
+| Content Caching | General → Sharing | No caching service equivalent |
+| Erase All Content and Settings | General → Transfer or Reset | Reinstalling the OS is not a Settings action |
+| Device Management | General | No MDM client |
+| AppleCare & Warranty | General → About | Vendor service |
+| Use iPhone widgets | Desktop & Dock → Widgets | No vendor widget bridge |
+| Touch Bar | Keyboard | No Touch Bar hardware |
+| Beta updates | General → Software Update | No beta channel |
+| Show Related Content, Help improve Search | Search | No content partner or vendor telemetry |
+| Live Text, Translation | General → Language & Region | No desktop text-recognition or per-app language store |
+| Sensitive Content Warning, Blocked Contacts, Apple Advertising | Privacy & Security | No on-device content model, system contact store, or ad service |
+| Share across devices, Focus status | Focus | No vendor presence service |
+| Audio descriptions, RTT, Name recognition, Personal voice, Vocal shortcuts | Accessibility | No first-party speech/telephony engine; the live delegate is Orca/speech-dispatcher |
+| App intents | Privacy & Security | No vendor intent graph |
+| Fingerprint for user switching, Fingerprint purchases | Biometrics & Password | No vendor purchase flow; PAM owns authentication |
+| Use Apple Watch | Biometrics & Password | No paired-watch unlock service |
+| Usage limits, Managed devices, Nearby Transfer, Game service, Wallet, Device location panes | — | Omitted panes documented in `SettingsMap.omittedPanes` |
+
+The per-pane `omit` rows in §4 remain the exhaustive list for a pane; this
+table is the review note for the Linux-owner-less cases that §5 could
+otherwise imply are missing.
 
 ## 6. Findings register
 

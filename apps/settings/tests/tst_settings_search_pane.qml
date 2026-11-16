@@ -26,6 +26,7 @@ Item {
             Settings.setList("search.indexLocations", ["home"]);
             Settings.set("search.shortcut", "Super+Space");
             Settings.set("search.web", true);
+            Settings.set("search.clipboardHistory", true);
             Settings.set("menu.control.search", true);
         }
 
@@ -105,11 +106,30 @@ Item {
             tryVerify(function() { return pane.webToggle.checked; });
         }
 
+        // T281: the Linux-only clipboard history preference is stored-only and
+        // the pane says the shell always observes the clipboard today.
+        function test_clipboard_history_is_stored_only() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.clipboardToggle.checked);
+            compare(SettingsMap.rowFor("search", "clipboard").storedOnly, true);
+            verify(pane.clipboardNote.visible);
+            verify(pane.clipboardNote.text.indexOf("does not change") >= 0);
+            verify(pane.clipboardNote.text.indexOf("T2") < 0);
+
+            pane.clipboardToggle.toggle();
+            compare(Settings.values["search.clipboardHistory"], false);
+            Settings.set("search.clipboardHistory", true);
+            tryVerify(function() { return pane.clipboardToggle.checked === true; });
+        }
+
         function test_indexing_rows_are_disabled_with_a_reason() {
             var shell = make();
             var pane = paneOf(shell);
             compare(pane.statusRow.enabled, false);
-            verify(pane.statusRow.description.indexOf("T246") >= 0);
+            verify(pane.statusRow.description.length > 0);
+            verify(pane.statusRow.description.indexOf("T2") < 0,
+                   "an internal task id must not be user-facing");
             compare(pane.rebuildButton.enabled, false);
         }
     }

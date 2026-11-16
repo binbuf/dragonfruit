@@ -131,7 +131,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 37). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 38). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -162,6 +162,7 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("wallpaper.source"), QString());
     values.insert(QStringLiteral("wallpaper.fit"), QStringLiteral("fill"));
     values.insert(QStringLiteral("wallpaper.showOnAllSpaces"), true);
+    values.insert(QStringLiteral("wallpaper.slideshow"), qlonglong(0));
     values.insert(QStringLiteral("wallpaper.provider"), QStringLiteral("wikimedia"));
     values.insert(QStringLiteral("wallpaper.providerAutoFetch"), true);
     values.insert(QStringLiteral("wallpaper.providerLastFetch"), qlonglong(0));
@@ -374,6 +375,7 @@ QVariantMap buildSchemaDefaults()
                   QStringList({QStringLiteral("home")}));
     values.insert(QStringLiteral("search.shortcut"), QStringLiteral("Super+Space"));
     values.insert(QStringLiteral("search.web"), true);
+    values.insert(QStringLiteral("search.clipboardHistory"), true);
     values.insert(QStringLiteral("menu.control.search"), true);
     values.insert(QStringLiteral("screenSaver.style"), QStringLiteral("clock"));
     values.insert(QStringLiteral("screenSaver.clock"), true);
@@ -474,6 +476,7 @@ const Constraint kConstraints[] = {
     { "display.rotation", kRotation, 4, false, 0, false, 0 },
     { "display.brightness", nullptr, 0, true, 0.0, true, 1.0 },
     { "wallpaper.providerLastFetch", nullptr, 0, true, 0.0, false, 0.0 },
+    { "wallpaper.slideshow", nullptr, 0, true, 0.0, true, 1440.0 },
     { "input.repeatDelay", nullptr, 0, true, 0.0, true, 5000.0 },
     { "input.repeatRate", nullptr, 0, true, 0.0, true, 200.0 },
     { "input.pointerSpeed", nullptr, 0, true, -1.0, true, 1.0 },

@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 37;
+pub const SCHEMA_VERSION: u32 = 38;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -626,6 +626,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/wallpaper forwarder, compositor/workspace model",
         since: 2,
         summary: "Apply the selection to every Space, or only the active one.",
+    },
+    KeySpec {
+        key: "wallpaper.slideshow",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(1440.0),
+        owner: "apps/settings",
+        consumer: "stored-only: the shell has no wallpaper-rotation timer yet",
+        since: 38,
+        summary: "Minutes between automatic wallpaper changes; 0 keeps the selection fixed.",
     },
     KeySpec {
         key: "wallpaper.provider",
@@ -2975,6 +2988,19 @@ pub const KEYS: &[KeySpec] = &[
         summary: "Offer a web-search result for the query using the default browser.",
     },
     KeySpec {
+        key: "search.clipboardHistory",
+        group: KeyGroup::Search,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "stored-only: shell clipboard history always observes; no preference consumer yet",
+        since: 38,
+        summary: "Keep the desktop clipboard history available in Quick Settings.",
+    },
+    KeySpec {
         key: "menu.control.search",
         group: KeyGroup::Menu,
         kind: KeyType::Bool,
@@ -4532,6 +4558,45 @@ mod tests {
             KeyDefault::Bool(false),
             "analytics must default off"
         );
+    }
+
+    /// The T281 Linux-only preference keys, additive in revision 38. Both are
+    /// explicit stored-only preferences: the observable behaviour is unchanged
+    /// until a rotation timer or clipboard-policy consumer lands.
+    #[test]
+    fn the_t281_linux_addition_keys_are_declared_in_revision_thirty_eight() {
+        for (key, kind, default, group) in [
+            (
+                "wallpaper.slideshow",
+                KeyType::Integer,
+                KeyDefault::Integer(0),
+                KeyGroup::Wallpaper,
+            ),
+            (
+                "search.clipboardHistory",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+                KeyGroup::Search,
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, group, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 38, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(spec.consumer.starts_with("stored-only:"), "{key}");
+            assert!(
+                spec.validate(&default.to_value()).is_ok(),
+                "{key} default fails"
+            );
+        }
+        let slideshow = spec("wallpaper.slideshow").unwrap();
+        assert!(slideshow.validate(&Value::Integer(0)).is_ok());
+        assert!(slideshow.validate(&Value::Integer(1440)).is_ok());
+        assert!(slideshow.validate(&Value::Integer(1441)).is_err());
+        assert!(slideshow.validate(&Value::Integer(-1)).is_err());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

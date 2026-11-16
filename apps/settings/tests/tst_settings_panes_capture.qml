@@ -91,7 +91,7 @@ Item {
             grabImage(shell).save("docs/captures/t227-screen-saver.png");
 
             // Displays: the advanced sheet with the supported brightness /
-            // rotation rows and the OPEN night-light/color/HDR/VRR reasons.
+            // rotation rows and the disabled night-light/color/HDR/VRR rows.
             var displays = showPane(shell, "displays");
             displays.advancedPopup.show();
             wait(250);

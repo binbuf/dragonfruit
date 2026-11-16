@@ -460,6 +460,9 @@ Item {
                 width: parent.width
                 leadingIcon: "software-update"
                 label: qsTr("Software sources")
+                settingsId: "sources"
+                owner: "distro adapter + Flatpak"
+                settingsKey: "security.sources"
                 description: root.securityReady
                     ? qsTr("Applications can be installed from %1.").arg(root.sourceSummary())
                     : qsTr("The security host stack is unavailable.")
@@ -506,6 +509,9 @@ Item {
                 width: parent.width
                 leadingIcon: "privacy-accessories"
                 label: qsTr("USB accessories")
+                settingsId: "accessories"
+                owner: "USBGuard"
+                settingsKey: "security.accessories"
                 description: root.securityReady
                     ? (root.accessories.note !== undefined
                        ? String(root.accessories.note)

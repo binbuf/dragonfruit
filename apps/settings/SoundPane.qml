@@ -549,6 +549,9 @@ Item {
                 width: parent.width
                 visible: root.outputTab
                 label: qsTr("Per-app volume")
+                settingsId: "perApp"
+                owner: "PipeWire"
+                settingsKey: "audio.streams"
                 description: qsTr("This adapter reads the graph through pw-dump "
                                   + "and wpctl, which do not expose per-app "
                                   + "stream levels. Use the distribution's "

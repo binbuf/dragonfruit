@@ -656,8 +656,7 @@ Item {
                 settingsKey: "appearance.cursorTheme"
                 enabled: root.cursorProviderAvailable
                 description: root.cursorProviderAvailable
-                    ? qsTr("Applied the next time you sign in; the compositor reads "
-                           + "the cursor theme at session start.")
+                    ? qsTr("Applied the next time you sign in.")
                     : root.cursorProviderReason
                 controlData: Select {
                     id: cursorThemeSelect
@@ -696,8 +695,10 @@ Item {
                 width: parent.width
                 label: qsTr("Window control layout")
                 description: qsTr("Dragonfruit keeps the traffic lights on the left. "
-                                  + "Moving them needs the compositor decoration policy "
-                                  + "(window decoration owner).")
+                                  + "Moving them is not available yet.")
+                settingsId: "windowControls"
+                owner: "compositor/window decoration"
+                settingsKey: "appearance.windowControls"
                 controlData: Select {
                     model: [{ value: "left", label: qsTr("Left") }]
                     enabled: false
@@ -709,9 +710,12 @@ Item {
                 id: materialRow
                 width: parent.width
                 label: qsTr("Material effects")
-                description: qsTr("The shell selects the glass tier from the GPU budget "
-                                  + "and the rollout policy (design-system Glass owner); "
-                                  + "there is no per-pane override.")
+                description: qsTr("Dragonfruit chooses the glass detail automatically "
+                                  + "from the graphics hardware; there is no manual "
+                                  + "override.")
+                settingsId: "material"
+                owner: "shell/design-system Glass"
+                settingsKey: "appearance.material"
                 controlData: Select {
                     model: [{ value: "auto", label: qsTr("Automatic") }]
                     enabled: false
@@ -723,8 +727,11 @@ Item {
                 id: accentFromWallpaperRow
                 width: parent.width
                 label: qsTr("Accent from wallpaper")
-                description: qsTr("Needs the shell's wallpaper color sampler; use a "
-                                  + "custom accent above until it lands (wallpaper owner).")
+                description: qsTr("Needs the wallpaper color sampler; use a "
+                                  + "custom accent above until it is available.")
+                settingsId: "accentFromWallpaper"
+                owner: "shell/design-system Theme"
+                settingsKey: "appearance.accentFromWallpaper"
                 controlData: Toggle {
                     checked: false
                     enabled: false

@@ -247,15 +247,18 @@ QtObject {
     ]
 
     // The row constructor keeps the table compact and the field set uniform.
+    // T281: `consumer` records the component that reacts to the row's key for
+    // the Linux-specific audit; empty means the row predates that audit.
     function row(id, section, label, control, owner, key, absence, state,
-                 storedOnly) {
+                 storedOnly, consumer) {
         return {
             id: id, section: section, label: label, control: control,
             owner: owner, key: key, absence: absence,
             state: state !== undefined ? state : "planned",
             // T271: a durable preference with no live consumer is explicitly
             // marked, never presented as live (ADR 0262).
-            storedOnly: storedOnly === true
+            storedOnly: storedOnly === true,
+            consumer: consumer !== undefined ? consumer : ""
         };
     }
 
@@ -329,15 +332,18 @@ QtObject {
                 root.row("profiles", qsTr("Network"), qsTr("Profiles"), "popup",
                          "NetworkManager", "Settings.Connection", "disabled-with-reason"),
                 root.row("firewallOptions", qsTr("Network"), qsTr("Firewall options"), "sheet",
-                         "firewall adapter", "firewall.rules", "disabled-with-reason", "shipped"),
+                         "firewall adapter", "firewall.rules", "disabled-with-reason", "shipped",
+                         false, "firewall adapter (ufw/nftables read; writes prompt with pkexec)"),
                 root.row("addService", qsTr("Network"), qsTr("Add service..."), "sheet",
-                         "NetworkManager", "AddConnection", "disabled-with-reason", "shipped")
+                         "NetworkManager", "AddConnection", "disabled-with-reason", "shipped",
+                         false, "NetworkManager (Ethernet, Wi-Fi, bridge, bond, VLAN)")
             ],
             "vpn": [
                 root.row("vpn", qsTr("VPN"), qsTr("Connections"), "list",
                          "NetworkManager VPN", "Settings.Connection", "disabled-with-reason", "shipped"),
                 root.row("vpn.wireguard", qsTr("VPN"), qsTr("WireGuard"), "info",
-                         "NetworkManager VPN", "wireguard", "read-only", "shipped"),
+                         "NetworkManager VPN", "wireguard", "read-only", "shipped",
+                         false, "NetworkManager (native WireGuard connection type)"),
                 root.row("vpn.add", qsTr("VPN"), qsTr("Add VPN configuration..."), "sheet",
                          "NetworkManager VPN", "AddConnection", "disabled-with-reason", "shipped")
             ],
@@ -369,7 +375,8 @@ QtObject {
                 root.row("adapter.state", qsTr("Battery"), qsTr("Power adapter"), "info",
                          "UPower", "Battery.State", "read-only", "shipped"),
                 root.row("adapter.chargeLimit", qsTr("Battery"), qsTr("Charge limit"), "info",
-                         "UPower", "Battery.ChargeThreshold", "read-only", "shipped"),
+                         "UPower", "Battery.ChargeThreshold", "read-only", "shipped",
+                         false, "UPower (read-only; no charge-threshold write)"),
                 root.row("powerSettings", qsTr("Battery"), qsTr("Power settings"), "rows",
                          "settingsd", "idle.*", "live-on-defaults", "shipped")
             ],
@@ -451,7 +458,8 @@ QtObject {
                 root.row("sharing.internet", qsTr("Sharing"), qsTr("Internet sharing"), "toggle",
                          "NetworkManager", "sharing.internet", "hidden", "shipped"),
                 root.row("backup.backend", qsTr("Backup"), qsTr("Backup backend"), "popup",
-                         "backup adapter", "backup.backend", "disabled-with-reason", "shipped"),
+                         "backup adapter", "backup.backend", "disabled-with-reason", "shipped",
+                         false, "backup adapter (restic/Pika/Timeshift detection)"),
                 root.row("backup.auto", qsTr("Backup"), qsTr("Back up automatically"), "toggle",
                          "settingsd -> backup backend", "backup.auto", "disabled-with-reason", "shipped"),
                 root.row("backup.now", qsTr("Backup"), qsTr("Back up now"), "button",
@@ -519,19 +527,24 @@ QtObject {
                          "settingsd", "accessibility.reduceMotion", "live-on-defaults", "shipped"),
                 root.row("iconTheme", qsTr("Desktop integration"), qsTr("Icon theme"), "popup",
                          "settingsd + icon-theme provider", "appearance.iconTheme",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "shipped",
+                         false, "shell/app-index icon lookup, apps/settings icon provider"),
                 root.row("cursorTheme", qsTr("Desktop integration"), qsTr("Cursor theme"), "popup",
                          "settingsd + compositor", "appearance.cursorTheme",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "shipped",
+                         false, "compositor/cursor theme (next session)"),
                 root.row("cursorSize", qsTr("Desktop integration"), qsTr("Cursor size"), "slider",
                          "settingsd + compositor", "appearance.cursorSize",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "shipped",
+                         false, "compositor/cursor theme (next session)"),
                 root.row("windowControls", qsTr("Desktop integration"), qsTr("Window control layout"), "popup",
                          "compositor/window decoration", "appearance.windowControls",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "shipped",
+                         false, "compositor/window decoration (traffic lights stay left)"),
                 root.row("material", qsTr("Desktop integration"), qsTr("Material effects"), "popup",
                          "shell/design-system Glass", "appearance.material",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "shipped",
+                         false, "shell/design-system Glass (GPU budget owns the tier)"),
                 root.row("accentFromWallpaper", qsTr("Desktop integration"), qsTr("Accent from wallpaper"), "toggle",
                          "shell/design-system Theme", "appearance.accentFromWallpaper",
                          "disabled-with-reason", "shipped")
@@ -780,13 +793,13 @@ QtObject {
                          "StatusNotifier registry", "menu.tray.hidden", "delegated"),
                 root.row("overflow", qsTr("Menu Bar"), qsTr("Overflow policy"), "popup",
                          "settingsd -> shell/MenuBar", "menu.overflow",
-                         "live-on-defaults", "shipped"),
+                         "live-on-defaults", "shipped", false, "shell/MenuBar"),
                 root.row("workspaces", qsTr("Menu Bar"), qsTr("Workspace indicator"), "toggle",
                          "settingsd -> shell/MenuBar", "menu.control.workspaces",
-                         "live-on-defaults", "shipped"),
+                         "live-on-defaults", "shipped", false, "shell/MenuBar"),
                 root.row("globalMenu", qsTr("Menu Bar"), qsTr("Show application menus in the menu bar"), "toggle",
                          "settingsd -> shell/MenuBar", "menu.global",
-                         "live-on-defaults", "shipped"),
+                         "live-on-defaults", "shipped", false, "shell/MenuBar, services/menu-broker"),
                 root.row("perDisplayPanel", qsTr("Menu Bar"), qsTr("Show on every display"), "toggle",
                          "settingsd -> shell", "quickSettings.perDisplay",
                          "disabled-with-reason", "shipped"),
@@ -804,6 +817,9 @@ QtObject {
                          "settingsd", "search.shortcut", "live-on-defaults", "shipped"),
                 root.row("web", qsTr("Search"), qsTr("Web search"), "toggle",
                          "settingsd", "search.web", "live-on-defaults", "shipped"),
+                root.row("clipboard", qsTr("Clipboard History"), qsTr("Keep clipboard history"), "toggle",
+                         "settingsd", "search.clipboardHistory", "live-on-defaults", "shipped",
+                         true, "stored-only: shell clipboard history always observes; no preference consumer yet"),
                 root.row("status", qsTr("Search"), qsTr("Indexing status"), "info",
                          "search service", "search.status", "disabled-with-reason", "shipped"),
                 root.row("rebuild", qsTr("Search"), qsTr("Rebuild index"), "button",
@@ -815,7 +831,8 @@ QtObject {
                          "settingsd", "privacy.locationServices",
                          "live-on-defaults", "shipped"),
                 root.row("location", qsTr("Location Services"), qsTr("Location"), "disclosure",
-                         "portal Location/Geoclue", "privacy.location", "delegated", "shipped"),
+                         "portal Location/Geoclue", "privacy.location", "delegated", "shipped",
+                         false, "portal PermissionStore, Geoclue"),
                 root.row("contacts", qsTr("Privacy"), qsTr("Contacts"), "disclosure",
                          "portal/EDS", "privacy.contacts", "delegated", "shipped"),
                 root.row("calendars", qsTr("Privacy"), qsTr("Calendars"), "disclosure",
@@ -851,11 +868,13 @@ QtObject {
                          "settingsd", "privacy.analytics", "live-on-defaults",
                          "shipped", true),
                 root.row("sources", qsTr("Security"), qsTr("Software sources"), "popup",
-                         "distro adapter + Flatpak", "security.sources", "disabled-with-reason", "shipped"),
+                         "distro adapter + Flatpak", "security.sources", "disabled-with-reason", "shipped",
+                         false, "distro package manager / Flatpak remotes (owner absent)"),
                 root.row("encryption", qsTr("Security"), qsTr("Disk encryption"), "info+open",
                          "LUKS adapter", "security.luks", "read-only", "shipped"),
                 root.row("accessories", qsTr("Security"), qsTr("USB accessories"), "popup",
-                         "USBGuard", "security.accessories", "disabled-with-reason", "shipped"),
+                         "USBGuard", "security.accessories", "disabled-with-reason", "shipped",
+                         false, "USBGuard device policy (owner absent)"),
                 root.row("hardening", qsTr("Security"), qsTr("Hardening mode"), "info",
                          "SELinux/AppArmor + Secure Boot", "security.hardening", "read-only", "shipped"),
                 root.row("extensions", qsTr("Security"), qsTr("Extensions"), "list",
@@ -889,7 +908,8 @@ QtObject {
                 root.row("minimizeReaction", qsTr("Dock"), qsTr("Bounce app icons when windows minimize"), "toggle",
                          "settingsd", "dock.minimizeReaction", "live-on-defaults", "shipped"),
                 root.row("menuBarToggle", qsTr("Menu Bar"), qsTr("Show application menus in menu bar"), "toggle",
-                         "settingsd", "menu.global", "live-on-defaults", "shipped"),
+                         "settingsd", "menu.global", "live-on-defaults", "shipped",
+                         false, "shell/MenuBar, services/menu-broker"),
                 root.row("desktopItems", qsTr("Desktop"), qsTr("Desktop items"), "segmented",
                          "settingsd", "desktop.showItems", "live-on-defaults", "shipped"),
                 root.row("clickWallpaper", qsTr("Desktop"), qsTr("Click wallpaper to reveal desktop"), "popup",
@@ -911,13 +931,20 @@ QtObject {
                 root.row("closeOnQuit", qsTr("Windows"), qsTr("Close windows when quitting an application"), "toggle",
                          "first-party app lifecycle (T243)", "windows.closeOnQuit", "disabled-with-reason", "shipped"),
                 root.row("dragToTile", qsTr("Windows"), qsTr("Drag windows to screen edges to tile"), "toggle",
-                         "compositor (T242)", "tiling.dragToTile", "disabled-with-reason", "shipped"),
+                         "compositor (T242)", "tiling.dragToTile", "disabled-with-reason", "shipped",
+                         false, "compositor/window tiling (not implemented)"),
                 root.row("dragToFill", qsTr("Windows"), qsTr("Drag windows to the menu bar to fill the screen"), "toggle",
-                         "compositor (T242)", "tiling.dragToFill", "disabled-with-reason", "shipped"),
+                         "compositor (T242)", "tiling.dragToFill", "disabled-with-reason", "shipped",
+                         false, "compositor/window tiling (not implemented)"),
                 root.row("tileModifier", qsTr("Windows"), qsTr("Hold Option while dragging to tile"), "toggle",
-                         "compositor (T242)", "tiling.modifier", "disabled-with-reason", "shipped"),
+                         "compositor (T242)", "tiling.modifier", "disabled-with-reason", "shipped",
+                         false, "compositor/window tiling (not implemented)"),
                 root.row("tileMargins", qsTr("Windows"), qsTr("Tiled windows have margins"), "toggle",
-                         "compositor (T242)", "tiling.margins", "disabled-with-reason", "shipped"),
+                         "compositor (T242)", "tiling.margins", "disabled-with-reason", "shipped",
+                         false, "compositor/window tiling (not implemented)"),
+                root.row("windowRules", qsTr("Windows"), qsTr("Application window rules..."), "button",
+                         "compositor", "windows.rules", "disabled-with-reason", "shipped",
+                         false, "compositor/window-rule engine (not implemented)"),
                 root.row("overview", qsTr("Overview"), qsTr("Overview"), "disclosure",
                          "settingsd + compositor", "overview.*", "live-on-defaults", "shipped"),
                 root.row("hotCorners", qsTr("Overview"), qsTr("Hot Corners..."), "disclosure",
@@ -935,15 +962,19 @@ QtObject {
                 root.row("groupByApp", qsTr("Overview"), qsTr("Group windows by application"), "toggle",
                          "compositor (T240)", "overview.groupByApp", "disabled-with-reason", "shipped"),
                 root.row("perDisplay", qsTr("Overview"), qsTr("Displays have separate workspaces"), "info",
-                         "compositor", "overview.perDisplay", "read-only", "shipped"),
+                         "compositor", "overview.perDisplay", "read-only", "shipped",
+                         false, "compositor/workspace model"),
                 root.row("dragToOpen", qsTr("Overview"), qsTr("Drag windows to the top to open Overview"), "toggle",
                          "compositor (T240)", "overview.dragToOpen", "disabled-with-reason", "shipped"),
                 root.row("workspaceCount", qsTr("Workspaces"), qsTr("Workspace count"), "popup",
-                         "settingsd -> compositor", "workspaces.count", "live-on-defaults", "shipped"),
+                         "settingsd -> compositor", "workspaces.count", "live-on-defaults", "shipped",
+                         false, "compositor/workspace model, shell"),
                 root.row("swipeUp", qsTr("Workspaces"), qsTr("Swipe up to open"), "toggle",
-                         "settingsd", "gestures.missionControl", "live-on-defaults", "shipped"),
+                         "settingsd", "gestures.missionControl", "live-on-defaults", "shipped",
+                         false, "compositor/input"),
                 root.row("spaceSwitch", qsTr("Workspaces"), qsTr("Swipe between Workspaces"), "toggle",
-                         "settingsd", "gestures.spaceSwitch", "live-on-defaults", "shipped"),
+                         "settingsd", "gestures.spaceSwitch", "live-on-defaults", "shipped",
+                         false, "compositor/input"),
                 root.row("topLeft", qsTr("Hot Corners"), qsTr("Top Left"), "popup",
                          "settingsd", "overview.hotCornerTopLeft", "live-on-defaults", "shipped"),
                 root.row("topRight", qsTr("Hot Corners"), qsTr("Top Right"), "popup",
@@ -959,7 +990,8 @@ QtObject {
                 root.row("preview", qsTr("Displays"), qsTr("Display preview"), "art",
                          "compositor", "display.preview", "live-on-defaults", "shipped"),
                 root.row("perOutput", qsTr("Displays"), qsTr("Per-output selector"), "list",
-                         "platform outputs", "display.perOutput", "live-on-defaults", "shipped"),
+                         "platform outputs", "display.perOutput", "live-on-defaults", "shipped",
+                         false, "compositor/output"),
                 root.row("useAs", qsTr("Displays"), qsTr("Use as"), "popup",
                          "compositor", "display.useAs", "disabled-with-reason", "shipped"),
                 root.row("scale", qsTr("Displays"), qsTr("Scale/resolution"), "segmented",
@@ -973,21 +1005,28 @@ QtObject {
                 root.row("colorPreset", qsTr("Displays"), qsTr("Color preset"), "popup",
                          "colord", "display.colorPreset", "disabled-with-reason"),
                 root.row("refreshRate", qsTr("Displays"), qsTr("Refresh rate"), "popup",
-                         "compositor", "display.refreshRate", "disabled-with-reason", "shipped"),
+                         "compositor", "display.refreshRate", "disabled-with-reason", "shipped",
+                         false, "compositor/output (refresh choice not advertised)"),
                 root.row("tvMode", qsTr("Displays"), qsTr("TV mode"), "popup",
-                         "compositor", "display.tvMode", "disabled-with-reason", "shipped"),
+                         "compositor", "display.tvMode", "disabled-with-reason", "shipped",
+                         false, "compositor/output (TV mode not advertised)"),
                 root.row("nightLight", qsTr("Displays"), qsTr("Night light"), "disclosure",
-                         "compositor", "display.nightLight", "disabled-with-reason", "shipped"),
+                         "compositor", "display.nightLight", "disabled-with-reason", "shipped",
+                         false, "compositor/output (night-light pipeline not present)"),
                 root.row("nightLightSchedule", qsTr("Displays"), qsTr("Night light schedule"), "popup",
-                         "compositor", "display.nightLight.schedule", "disabled-with-reason", "shipped"),
+                         "compositor", "display.nightLight.schedule", "disabled-with-reason", "shipped",
+                         false, "compositor/output (night-light pipeline not present)"),
                 root.row("nightLightTemperature", qsTr("Displays"), qsTr("Night light temperature"), "slider",
-                         "compositor", "display.nightLight.temperature", "disabled-with-reason", "shipped"),
+                         "compositor", "display.nightLight.temperature", "disabled-with-reason", "shipped",
+                         false, "compositor/output (night-light pipeline not present)"),
                 root.row("colorProfile", qsTr("Displays"), qsTr("Color profile"), "popup",
                          "colord", "display.colorProfile", "disabled-with-reason", "shipped"),
                 root.row("hdr", qsTr("Displays"), qsTr("High dynamic range"), "toggle",
-                         "compositor", "display.hdr", "disabled-with-reason", "shipped"),
+                         "compositor", "display.hdr", "disabled-with-reason", "shipped",
+                         false, "compositor/output (HDR not advertised)"),
                 root.row("vrr", qsTr("Displays"), qsTr("Variable refresh rate"), "toggle",
-                         "compositor", "display.vrr", "disabled-with-reason", "shipped"),
+                         "compositor", "display.vrr", "disabled-with-reason", "shipped",
+                         false, "compositor/output (VRR not advertised)"),
                 root.row("overscan", qsTr("Displays"), qsTr("Overscan"), "slider",
                          "compositor", "display.overscan", "disabled-with-reason", "shipped"),
                 root.row("advanced", qsTr("Displays"), qsTr("Advanced..."), "sheet",
@@ -1001,7 +1040,8 @@ QtObject {
                 root.row("current", qsTr("Wallpaper"), qsTr("Current wallpaper"), "preview",
                          "settingsd", "wallpaper.source", "live-on-defaults", "shipped"),
                 root.row("showAll", qsTr("Wallpaper"), qsTr("Show on all workspaces"), "toggle",
-                         "settingsd", "wallpaper.showOnAllSpaces", "live-on-defaults", "shipped"),
+                         "settingsd", "wallpaper.showOnAllSpaces", "live-on-defaults", "shipped",
+                         false, "shell/wallpaper forwarder, compositor/workspace model"),
                 root.row("fit", qsTr("Wallpaper"), qsTr("Fit"), "popup",
                          "settingsd", "wallpaper.fit", "live-on-defaults", "shipped"),
                 root.row("screenSaver", qsTr("Wallpaper"), qsTr("Screen saver..."), "button",
@@ -1035,7 +1075,11 @@ QtObject {
                 root.row("colors", qsTr("Colors"), qsTr("Colors"), "grid",
                          "shipped assets", "wallpaper.source", "live-on-defaults", "shipped"),
                 root.row("shuffle", qsTr("Shuffle"), qsTr("Shuffle"), "grid",
-                         "wallpaperd", "wallpaper.provider", "live-on-defaults", "shipped"),
+                         "wallpaperd", "wallpaper.provider", "live-on-defaults", "shipped",
+                         false, "wallpaperd (applies the chosen Featured image)"),
+                root.row("slideshow", qsTr("Slideshow"), qsTr("Change wallpaper every"), "popup",
+                         "settingsd", "wallpaper.slideshow", "live-on-defaults", "shipped",
+                         true, "stored-only: the shell has no wallpaper-rotation timer yet"),
                 root.row("photos", qsTr("Your Photos"), qsTr("Your photos"), "grid",
                          "FileChooser portal", "wallpaper.photo", "delegated", "shipped"),
                 root.row("builtin", qsTr("Built-in"), qsTr("Built-in"), "grid",
@@ -1117,7 +1161,8 @@ QtObject {
                 root.row("balance", qsTr("Output & Input"), qsTr("Balance"), "slider",
                          "settingsd", "sound.balance", "live-on-defaults", "shipped", true),
                 root.row("perApp", qsTr("Output & Input"), qsTr("Per-app volume"), "list",
-                         "PipeWire", "audio.streams", "disabled-with-reason", "shipped")
+                         "PipeWire", "audio.streams", "disabled-with-reason", "shipped",
+                         false, "PipeWire (control CLI exposes no stream levels)")
             ],
             "focus": [
                 root.row("list", qsTr("Focus"), qsTr("Focus list"), "list",
@@ -1138,14 +1183,22 @@ QtObject {
                          "settingsd", "focus.shortcut", "live-on-defaults", "shipped", true)
             ],
             "lock-screen": [
+                root.row("idleDim", qsTr("Lock Screen"), qsTr("Dim screen when inactive"), "popup",
+                         "settingsd -> session/idle", "idle.dim", "live-on-defaults", "shipped",
+                         false, "session/idle engine"),
                 root.row("displayBattery", qsTr("Lock Screen"), qsTr("Display off on battery"), "popup",
-                         "settingsd", "idle.blank", "live-on-defaults", "shipped"),
+                         "settingsd", "idle.blank", "live-on-defaults", "shipped",
+                         false, "session/idle engine"),
                 root.row("displayAC", qsTr("Lock Screen"), qsTr("Display off on AC"), "popup",
                          "settingsd", "idle.blank", "live-on-defaults"),
                 root.row("powerStage", qsTr("Lock Screen"), qsTr("One display-off stage"), "info",
                          "apps/settings", "idle.blank", "live-on-defaults", "shipped"),
+                root.row("idleSuspend", qsTr("Lock Screen"), qsTr("Suspend when inactive"), "popup",
+                         "settingsd -> session/idle", "idle.suspend", "live-on-defaults", "shipped",
+                         false, "session/idle engine, session/suspend"),
                 root.row("requirePassword", qsTr("Lock Screen"), qsTr("Require password"), "popup",
-                         "settingsd", "lock.requirePasswordAfter", "live-on-defaults", "shipped"),
+                         "settingsd", "lock.requirePasswordAfter", "live-on-defaults", "shipped",
+                         false, "session/idle engine (derives idle.lock)"),
                 root.row("preview", qsTr("Lock Screen"), qsTr("Lock screen preview"), "preview",
                          "shell", "lock.*", "live-on-defaults", "shipped"),
                 root.row("userNamePhoto", qsTr("Lock Screen"), qsTr("Show user name/photo"), "toggle",
@@ -1259,7 +1312,14 @@ QtObject {
                 root.row("shortcuts", qsTr("Keyboard"), qsTr("Keyboard shortcuts..."), "sheet",
                          "shortcut engine", "shortcuts.*", "delegated", "shipped"),
                 root.row("sources", qsTr("Keyboard"), qsTr("Input sources"), "popup+edit",
-                         "ibus/fcitx5 + localectl", "input.sources", "delegated", "shipped"),
+                         "ibus/fcitx5 + localectl", "input.sources", "delegated", "shipped",
+                         false, "shell/compositor keymap, ibus/fcitx5 delegate"),
+                root.row("inputMethod", qsTr("Keyboard"), qsTr("Input method"), "button",
+                         "ibus/fcitx5", "input.method", "disabled-with-reason", "shipped",
+                         false, "ibus/fcitx5 own configuration (not edited by Settings)"),
+                root.row("composeKey", qsTr("Keyboard"), qsTr("Compose key"), "button",
+                         "compositor/input (XKB)", "input.composeKey", "disabled-with-reason", "shipped",
+                         false, "compositor/input keyboard layout (XKB option not exposed)"),
                 root.row("replacements", qsTr("Keyboard"), qsTr("Text replacements..."), "sheet",
                          "settingsd/IME", "input.replacements", "live-on-defaults", "shipped"),
                 root.row("dictation", qsTr("Keyboard"), qsTr("Dictation"), "toggle+options",
@@ -1310,7 +1370,8 @@ QtObject {
                          "live-on-defaults", "shipped", true),
                 root.row("gestures", qsTr("Trackpad"), qsTr("More gestures"), "tab",
                          "settingsd", "gestures.enabled/gestures.spaceSwitch/gestures.missionControl/gestures.pages/gestures.fullscreen/gestures.notifications/gestures.appWindows/gestures.showDesktop",
-                         "live-on-defaults", "shipped"),
+                         "live-on-defaults", "shipped",
+                         false, "compositor/input (live: enabled/spaceSwitch/missionControl; stored-only: the rest)"),
                 root.row("pair", qsTr("Trackpad"), qsTr("Pair trackpad..."), "button",
                          "BlueZ", "input.pairTrackpad", "disabled-with-reason", "shipped")
             ],
@@ -1325,6 +1386,165 @@ QtObject {
                          "SDL", "controllers.rumble", "disabled-with-reason", "shipped")
             ]
         });
+    }
+
+    // T281: the audited Linux-specific additions from
+    // `docs/design/24-system-settings.md` §5. Each entry names the row that
+    // gives the setting a home in a macOS-familiar pane; the row itself owns
+    // the owner/key/absence/consumer contract. The validator proves the audit
+    // and the executable map cannot drift apart.
+    readonly property var linuxAdditions: [
+        { area: qsTr("Wallpaper"), setting: qsTr("Per-workspace wallpaper"),
+          pane: "wallpaper", rows: ["showAll"], task: "T278" },
+        { area: qsTr("Wallpaper"), setting: qsTr("Slideshow / shuffle"),
+          pane: "wallpaper", rows: ["shuffle"], task: "T278" },
+        { area: qsTr("Wallpaper"), setting: qsTr("Slideshow interval"),
+          pane: "wallpaper", rows: ["slideshow"], task: "T281" },
+        { area: qsTr("Desktop"), setting: qsTr("Drag to tile"),
+          pane: "desktop-dock", rows: ["dragToTile"], task: "T276" },
+        { area: qsTr("Desktop"), setting: qsTr("Drag to fill"),
+          pane: "desktop-dock", rows: ["dragToFill"], task: "T276" },
+        { area: qsTr("Desktop"), setting: qsTr("Tiling modifier"),
+          pane: "desktop-dock", rows: ["tileModifier"], task: "T276" },
+        { area: qsTr("Desktop"), setting: qsTr("Tiling gaps"),
+          pane: "desktop-dock", rows: ["tileMargins"], task: "T276" },
+        { area: qsTr("Desktop"), setting: qsTr("Application window rules"),
+          pane: "desktop-dock", rows: ["windowRules"], task: "T281" },
+        { area: qsTr("Desktop"), setting: qsTr("Global app menu"),
+          pane: "menu-bar", rows: ["globalMenu"], task: "T276" },
+        { area: qsTr("Overview"), setting: qsTr("Workspace count"),
+          pane: "mission-control", rows: ["workspaceCount"], task: "T276" },
+        { area: qsTr("Overview"), setting: qsTr("Workspaces per display"),
+          pane: "mission-control", rows: ["perDisplay"], task: "T276" },
+        { area: qsTr("Appearance"), setting: qsTr("Icon theme"),
+          pane: "appearance", rows: ["iconTheme"], task: "T274" },
+        { area: qsTr("Appearance"), setting: qsTr("Cursor theme"),
+          pane: "appearance", rows: ["cursorTheme"], task: "T274" },
+        { area: qsTr("Appearance"), setting: qsTr("Cursor size"),
+          pane: "appearance", rows: ["cursorSize"], task: "T274" },
+        { area: qsTr("Appearance"), setting: qsTr("Window control layout"),
+          pane: "appearance", rows: ["windowControls"], task: "T274" },
+        { area: qsTr("Appearance"), setting: qsTr("Material, performance, rollout"),
+          pane: "appearance", rows: ["material"], task: "T274" },
+        { area: qsTr("Displays"), setting: qsTr("Per-output configuration"),
+          pane: "displays", rows: ["perOutput"], task: "T273" },
+        { area: qsTr("Displays"), setting: qsTr("Night light"),
+          pane: "displays", rows: ["nightLight"], task: "T273" },
+        { area: qsTr("Displays"), setting: qsTr("Night light schedule"),
+          pane: "displays", rows: ["nightLightSchedule"], task: "T273" },
+        { area: qsTr("Displays"), setting: qsTr("Night light temperature"),
+          pane: "displays", rows: ["nightLightTemperature"], task: "T273" },
+        { area: qsTr("Displays"), setting: qsTr("High dynamic range"),
+          pane: "displays", rows: ["hdr"], task: "T273" },
+        { area: qsTr("Displays"), setting: qsTr("Variable refresh rate"),
+          pane: "displays", rows: ["vrr"], task: "T273" },
+        { area: qsTr("Displays"), setting: qsTr("Refresh rate"),
+          pane: "displays", rows: ["refreshRate"], task: "T273" },
+        { area: qsTr("Sound"), setting: qsTr("Per-app volume"),
+          pane: "sound", rows: ["perApp"], task: "T280" },
+        { area: qsTr("Keyboard"), setting: qsTr("Input method"),
+          pane: "keyboard", rows: ["inputMethod"], task: "T281" },
+        { area: qsTr("Keyboard"), setting: qsTr("Compose key"),
+          pane: "keyboard", rows: ["composeKey"], task: "T281" },
+        { area: qsTr("Keyboard"), setting: qsTr("Layout, model, options"),
+          pane: "keyboard", rows: ["sources"], task: "T280" },
+        { area: qsTr("Trackpad"), setting: qsTr("Gesture mapping"),
+          pane: "trackpad", rows: ["gestures"], task: "T280" },
+        { area: qsTr("Power"), setting: qsTr("Charge threshold"),
+          pane: "battery", rows: ["adapter.chargeLimit"], task: "T273" },
+        { area: qsTr("Session"), setting: qsTr("Dim screen stage"),
+          pane: "lock-screen", rows: ["idleDim"], task: "T281" },
+        { area: qsTr("Session"), setting: qsTr("Display-off stage"),
+          pane: "lock-screen", rows: ["displayBattery"], task: "T278" },
+        { area: qsTr("Session"), setting: qsTr("Lock stage"),
+          pane: "lock-screen", rows: ["requirePassword"], task: "T278" },
+        { area: qsTr("Session"), setting: qsTr("Suspend stage"),
+          pane: "lock-screen", rows: ["idleSuspend"], task: "T281" },
+        { area: qsTr("Network"), setting: qsTr("Firewall rules and zones"),
+          pane: "network", rows: ["firewallOptions"], task: "T272" },
+        { area: qsTr("Network"), setting: qsTr("Bridge, bond, VLAN"),
+          pane: "network", rows: ["addService"], task: "T272" },
+        { area: qsTr("Network"), setting: qsTr("WireGuard"),
+          pane: "vpn", rows: ["vpn.wireguard"], task: "T272" },
+        { area: qsTr("Updates"), setting: qsTr("Package sources and Flatpak remotes"),
+          pane: "privacy", rows: ["sources"], task: "T269" },
+        { area: qsTr("Backup"), setting: qsTr("Backup backend"),
+          pane: "general", rows: ["backup.backend"], task: "T270" },
+        { area: qsTr("Privacy"), setting: qsTr("Portal permission tables"),
+          pane: "privacy", rows: ["location"], task: "T279" },
+        { area: qsTr("Privacy"), setting: qsTr("USB accessories"),
+          pane: "privacy", rows: ["accessories"], task: "T279" },
+        { area: qsTr("Search"), setting: qsTr("Clipboard history"),
+          pane: "search", rows: ["clipboard"], task: "T281" },
+        { area: qsTr("Menu Bar"), setting: qsTr("Tray overflow"),
+          pane: "menu-bar", rows: ["overflow"], task: "T277" },
+        { area: qsTr("Menu Bar"), setting: qsTr("Workspace indicator"),
+          pane: "menu-bar", rows: ["workspaces"], task: "T277" }
+    ]
+
+    // Validate the Linux-specific audit against the executable rows. Every
+    // entry must resolve to a pane and to shipped rows with an owner, key,
+    // absence path, and a consumer (or an explicit stored-only mark).
+    function validateLinuxAdditions() {
+        var errors = [];
+        var seenSettings = {};
+        for (var i = 0; i < root.linuxAdditions.length; ++i) {
+            var entry = root.linuxAdditions[i];
+            var name = entry !== null && entry.setting !== undefined
+                    ? String(entry.setting) : ("#" + i);
+            if (!entry || !entry.area || !entry.setting || !entry.task)
+                errors.push("linux addition " + name + " is missing area/setting/task");
+            if (seenSettings[name] === true)
+                errors.push("duplicate linux setting " + name);
+            seenSettings[name] = true;
+            if (root.pane(entry.pane) === null)
+                errors.push("linux addition " + name + " names unknown pane " + entry.pane);
+            if (!entry.rows || entry.rows.length === 0) {
+                errors.push("linux addition " + name + " has no row home");
+                continue;
+            }
+            for (var r = 0; r < entry.rows.length; ++r) {
+                var rowId = entry.rows[r];
+                var mapped = root.rowFor(entry.pane, rowId);
+                if (mapped === null) {
+                    errors.push("linux addition " + name + " names missing row "
+                                + entry.pane + "/" + rowId);
+                    continue;
+                }
+                if (mapped.state !== "shipped" && mapped.state !== "omitted")
+                    errors.push("linux row " + entry.pane + "/" + rowId
+                                + " is not a live or explicit omission");
+                if (!mapped.owner || mapped.owner === "omit")
+                    errors.push("linux row " + entry.pane + "/" + rowId + " has no owner");
+                if (!mapped.key || mapped.key === "omit")
+                    errors.push("linux row " + entry.pane + "/" + rowId + " has no key");
+                if (root.absenceKinds.indexOf(mapped.absence) < 0)
+                    errors.push("linux row " + entry.pane + "/" + rowId
+                                + " has an unknown absence");
+                if (!mapped.consumer || String(mapped.consumer).length === 0) {
+                    errors.push("linux row " + entry.pane + "/" + rowId
+                                + " records no consumer");
+                } else if (mapped.storedOnly
+                           && String(mapped.consumer).indexOf("stored-only") !== 0) {
+                    errors.push("stored-only linux row " + entry.pane + "/" + rowId
+                                + " does not say stored-only");
+                } else if (!mapped.storedOnly
+                           && mapped.absence === "live-on-defaults"
+                           && String(mapped.consumer).indexOf("stored-only") === 0) {
+                    errors.push("live linux row " + entry.pane + "/" + rowId
+                                + " is described as stored-only");
+                }
+            }
+        }
+        return errors;
+    }
+
+    function linuxAdditionFor(setting) {
+        for (var i = 0; i < root.linuxAdditions.length; ++i) {
+            if (root.linuxAdditions[i].setting === setting)
+                return root.linuxAdditions[i];
+        }
+        return null;
     }
 
     function pane(id) {

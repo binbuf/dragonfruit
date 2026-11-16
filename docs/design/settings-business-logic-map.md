@@ -640,6 +640,7 @@ Owner: search service + `app-index` + `settingsd`. Siri is omitted.
 | Search privacy | Search privacy | Disclosure | `search.indexLocations` | Include/exclude folders |
 | Keyboard shortcut | Shortcut | Shortcut recorder | `search.shortcut` | Global shortcut |
 | Web search | Web search | Toggle | `search.web` | Uses default browser |
+| — | Clipboard history | Toggle | `search.clipboardHistory` | **stored-only**: the shell always observes the clipboard (T281) |
 | — | Indexing status | Info | search service | Progress/error/absent |
 | — | Rebuild index | Button | search service | Progress |
 
@@ -736,6 +737,7 @@ adds the default-browser delegate.
 | Drag to fill | Drag windows to the menu bar to fill the screen | Toggle | `tiling.dragToFill` | Disabled: tiling is T242 |
 | Hold modifier to tile | Hold Option while dragging to tile | Toggle | `tiling.modifier` | Disabled: tiling is T242 |
 | Tiled windows have margins | Tiled windows have margins | Toggle | `tiling.margins` | Disabled: tiling is T242 |
+| — | Application window rules… | Button | `windows.rules` | Disabled: the compositor window-rule engine is not present (T281) |
 | Mission Control | Overview | Disclosure | `overview.*` | Opens the Overview pane |
 | Hot Corners… | Hot Corners… | Disclosure | `overview.hotCorner*` | Opens the Overview pane |
 | Shortcuts… | Shortcuts… | Sheet | `shortcuts.*` | Disabled: shortcut editor not implemented |
@@ -814,6 +816,7 @@ always available; Featured empty, never an error.
 | — | Scenery | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
 | Underwater | Underwater | Grid | `wallpaperd` (Wikimedia Commons) | Featured/offline; Show All |
 | Shuffle Aerials | Shuffle | Grid | `wallpaperd` | Random Featured picture |
+| — | Slideshow interval | Popup | `wallpaper.slideshow` | **stored-only**: no wallpaper-rotation timer yet (T281) |
 | — | Colors | Grid | shipped assets | Original gradients |
 | Your Photos | Your photos | Grid | FileChooser portal | Add Photo tile first; current custom photo |
 | — | Built-in | Grid | shipped assets | Always available; shipped default |
@@ -941,6 +944,8 @@ Owner: `settingsd` + compositor/lock + logind.
 |---|---|---|---|---|
 | Turn display off on battery | Display off (one stage) | Popup | existing: `idle.blank` | One stage, documented |
 | Turn display off on power | — | — | — | One-stage Linux adaptation |
+| — | Dim screen when inactive | Popup | existing: `idle.dim` | The dim stage; live (T281) |
+| — | Suspend when inactive | Popup | existing: `idle.suspend` | Off by default; live (T281) |
 | Require password after… | Require password | Popup | `lock.requirePasswordAfter` | After display-off/lock; derives `idle.lock` |
 | Show user name and photo | Show user name/photo | Toggle | existing: `lock.showUserNameAndPhoto` | Lock UI |
 | Show password hints | Show password hints | Toggle + Set… | existing: `lock.showPasswordHints`/`lock.passwordHint` | Lock UI |
@@ -1097,6 +1102,8 @@ Owner: `settingsd` + compositor input + ibus/fcitx5.
 | Keyboard navigation | Keyboard navigation | Toggle | existing: `input.keyboardNavigation` | Stored-only; no consumer |
 | Keyboard Shortcuts… | Keyboard shortcuts… | Sheet | shortcut engine | Read-only inspector |
 | Input Sources | Input sources | Popup + Edit | ibus/fcitx5 + `localectl` | Add/remove/order; absent → note |
+| — | Input method | Button | `input.method` | Disabled: IBus/Fcitx5 own the engine (T281) |
+| — | Compose key | Select | `input.composeKey` | Disabled: compositor XKB option not exposed (T281) |
 | Text Replacements… | Text replacements… | Sheet | `settingsd`/IME | Add/remove |
 | Dictation | Dictation | Toggle + options | speech-to-text delegate | Optional; absent → note |
 

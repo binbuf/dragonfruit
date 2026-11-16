@@ -27,6 +27,8 @@ Item {
         function init() {
             Settings.set("idle.blank", 300);
             Settings.set("idle.lock", 600);
+            Settings.set("idle.dim", 150);
+            Settings.set("idle.suspend", 0);
             Settings.set("lock.requirePasswordAfter", 300);
             Settings.set("lock.showUserNameAndPhoto", true);
             Settings.set("lock.showPasswordHints", false);
@@ -71,8 +73,31 @@ Item {
             compare(pane.energyWarning.visible, false);
         }
 
-        function test_timing_rows_round_trip() {
+        // T281: dim and suspend are separate idle stages with their own keys;
+        // neither changes the derived lock stage.
+        function test_dim_and_suspend_stages_round_trip_live() {
             var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.dimSeconds, 150);
+            compare(pane.dimSelect.currentIndex, 1); // After 2.5 minutes
+            compare(pane.suspendSeconds, 0);
+            compare(pane.suspendSelect.currentIndex, 4); // Never
+            var lockBefore = Settings.values["idle.lock"];
+
+            pane.dimSelect.activateIndex(2); // After 5 minutes
+            compare(Settings.values["idle.dim"], 300);
+            pane.suspendSelect.activateIndex(0); // After 5 minutes
+            compare(Settings.values["idle.suspend"], 300);
+            compare(Settings.values["idle.lock"], lockBefore,
+                    "dim and suspend never rewrite the lock stage");
+
+            Settings.set("idle.dim", 600);
+            Settings.set("idle.suspend", 0);
+            tryVerify(function() { return pane.dimSelect.currentIndex === 3; });
+            tryVerify(function() { return pane.suspendSelect.currentIndex === 4; });
+        }
+
+        function test_timing_rows_round_trip() {            var shell = make();
             var pane = paneOf(shell);
 
             pane.displayOffSelect.activateIndex(3); // For 10 minutes

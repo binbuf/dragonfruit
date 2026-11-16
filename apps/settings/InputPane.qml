@@ -258,6 +258,8 @@ Item {
     property alias gestureSpaceToggle: gestureSpaceToggle
     property alias gestureMissionToggle: gestureMissionToggle
     property alias sourcesRow: sourcesRow
+    property alias inputMethodRow: inputMethodRow
+    property alias composeKeyRow: composeKeyRow
     property alias sourcesDialog: sourcesDialog
     property alias sourcesRepeater: sourcesRepeater
     property alias newSourceInput: newSourceInput
@@ -783,6 +785,46 @@ Item {
                     objectName: "inputSourcesEdit"
                     text: qsTr("Edit…")
                     onClicked: root.sourcesDialog.show()
+                }
+            }
+
+            // T281: the input-method engine and the XKB compose key stay with
+            // their Linux owners. The rows are honest hand-offs, not fake
+            // toggles; Settings does not own either configuration.
+            SettingsRow {
+                id: inputMethodRow
+                objectName: "inputMethodRow"
+                width: parent.width
+                label: qsTr("Input method")
+                description: qsTr("Engines and key bindings are configured in IBus "
+                                  + "or Fcitx5; Settings does not edit the "
+                                  + "input-method framework.")
+                settingsId: "inputMethod"
+                owner: "ibus/fcitx5"
+                settingsKey: "input.method"
+                enabled: false
+
+                controlData: Button {
+                    text: qsTr("Open…")
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: composeKeyRow
+                objectName: "inputComposeKeyRow"
+                width: parent.width
+                label: qsTr("Compose key")
+                description: qsTr("The compose key is a keyboard layout option; "
+                                  + "Dragonfruit does not edit it yet.")
+                settingsId: "composeKey"
+                owner: "compositor/input"
+                settingsKey: "input.composeKey"
+                enabled: false
+
+                controlData: Select {
+                    model: [qsTr("Off")]
+                    enabled: false
                 }
             }
 

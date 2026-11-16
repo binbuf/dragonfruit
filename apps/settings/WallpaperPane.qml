@@ -168,6 +168,28 @@ Item {
         provider: ""
     }])
 
+    // T281: the Linux-only slideshow interval. It is a durable preference
+    // (stored-only) until the shell owns a rotation timer, and the row says so.
+    readonly property var slideshowOptions: [
+        { value: 0, label: qsTr("Never") },
+        { value: 5, label: qsTr("Every 5 minutes") },
+        { value: 30, label: qsTr("Every 30 minutes") },
+        { value: 60, label: qsTr("Every hour") },
+        { value: 1440, label: qsTr("Every day") }
+    ]
+
+    readonly property int slideshowInterval:
+        Settings.values["wallpaper.slideshow"] !== undefined
+            ? Number(Settings.values["wallpaper.slideshow"]) : 0
+
+    function slideshowIndex() {
+        for (var i = 0; i < root.slideshowOptions.length; ++i) {
+            if (Number(root.slideshowOptions[i].value) === root.slideshowInterval)
+                return i;
+        }
+        return 0;
+    }
+
     readonly property var addPhotoItem: ({
         key: "add-photo",
         name: qsTr("Add Photo…"),
@@ -357,6 +379,10 @@ Item {
     property alias showSecondsToggle: showSecondsToggle
     property alias colorGroup: colorsSection
     property alias shuffleGroup: shuffleSection
+    property alias slideshowGroup: slideshowGroup
+    property alias slideshowRow: slideshowRow
+    property alias slideshowSelect: slideshowSelect
+    property alias slideshowNote: slideshowNote
     property alias retryButton: retryButton
     property alias pendingImage: pendingImage
 
@@ -1124,6 +1150,47 @@ Item {
             expanded: true
         }
 
+        // -- Slideshow (Linux-only; stored until a rotation timer lands) -----
+        SettingsGroup {
+            id: slideshowGroup
+            width: parent.width
+            title: qsTr("Slideshow")
+
+            SettingsKeyRow {
+                id: slideshowRow
+                width: parent.width
+                label: qsTr("Change wallpaper every")
+                settingsId: "slideshow"
+                owner: "settingsd"
+                settingsKey: "wallpaper.slideshow"
+                description: qsTr("Choose how often the wallpaper changes.")
+                showSeparator: false
+
+                controlData: Select {
+                    id: slideshowSelect
+                    accessibleName: qsTr("Change wallpaper every")
+                    model: root.slideshowOptions
+                    onActivated: (index) => Settings.set(
+                        "wallpaper.slideshow",
+                        root.slideshowOptions[index].value)
+                }
+            }
+
+            Text {
+                id: slideshowNote
+                objectName: "wallpaperSlideshowNote"
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                text: qsTr("Saved for the wallpaper rotation. Dragonfruit does "
+                           + "not change the wallpaper on a schedule yet, so the "
+                           + "selection stays fixed for now.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                bottomPadding: Theme.primitive.spacing.xs
+            }
+        }
+
         // -- Built-in default (always available, T278) -----------------------
         WallpaperSection {
             id: builtinSection
@@ -1233,6 +1300,11 @@ Item {
         target: showOnAllToggle
         property: "checked"
         value: root.showOnAllSpaces
+    }
+    Binding {
+        target: slideshowSelect
+        property: "currentIndex"
+        value: root.slideshowIndex()
     }
     Binding {
         target: fitControl

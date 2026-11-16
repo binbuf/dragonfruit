@@ -137,7 +137,25 @@ Item {
                 settingsId: "vpn.status"
                 owner: "NetworkManager VPN"
                 settingsKey: "ActiveConnection"
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("WireGuard")
+                description: root.wireguardNative
+                    ? qsTr("Native WireGuard profiles connect through "
+                           + "NetworkManager; no plugin is required.")
+                    : qsTr("Native WireGuard is not available on this host.")
+                settingsId: "vpn.wireguard"
+                owner: "NetworkManager VPN"
+                settingsKey: "wireguard"
                 showSeparator: false
+                controlData: Text {
+                    text: root.wireguardNative ? qsTr("Built in")
+                                               : qsTr("Unavailable")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
             }
         }
 

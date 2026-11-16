@@ -29,6 +29,7 @@ Item {
             Settings.set("wallpaper.source", "");
             Settings.set("wallpaper.fit", "fill");
             Settings.set("wallpaper.showOnAllSpaces", true);
+            Settings.set("wallpaper.slideshow", 0);
             Settings.set("accessibility.reduceMotion", false);
             Settings.set("screenSaver.clock", true);
             Settings.set("screenSaver.showDate", true);
@@ -311,8 +312,30 @@ Item {
 
         // -- Existing behavior: fit and all-Spaces -----------------------------
 
-        function test_show_on_all_spaces_applies_live() {
+        // T281: the Linux-only slideshow interval is a durable stored-only
+        // preference; the row says the shell does not rotate yet.
+        function test_slideshow_interval_is_stored_only_and_not_live() {
             var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.slideshowRow.settingsId, "slideshow");
+            compare(pane.slideshowSelect.currentIndex, 0); // Never
+            compare(SettingsMap.rowFor("wallpaper", "slideshow").storedOnly, true);
+
+            pane.slideshowSelect.activateIndex(2); // Every 30 minutes
+            compare(Settings.values["wallpaper.slideshow"], 30);
+            compare(pane.slideshowInterval, 30);
+
+            verify(pane.slideshowNote.visible);
+            verify(pane.slideshowNote.text.indexOf("does not") >= 0,
+                   "the stored-only note must say the shell does not rotate yet");
+            verify(pane.slideshowNote.text.indexOf("T2") < 0,
+                   "the note must not leak a task id");
+
+            Settings.set("wallpaper.slideshow", 60);
+            tryVerify(function() { return pane.slideshowSelect.currentIndex === 3; });
+        }
+
+        function test_show_on_all_spaces_applies_live() {            var shell = make();
             var pane = paneOf(shell);
 
             pane.showOnAllToggle.toggle();

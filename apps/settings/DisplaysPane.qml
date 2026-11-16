@@ -280,7 +280,7 @@ Item {
                 objectName: "displaysAbsenceNote"
                 visible: !root.hasOutput
                 kind: "disabled-with-reason"
-                reason: qsTr("The compositor reports no output. Display "
+                reason: qsTr("No display is connected. Display "
                              + "preferences stay live and apply when one appears.")
             }
         }
@@ -362,8 +362,8 @@ Item {
                 settingsId: "brightness"
                 owner: "settingsd -> compositor"
                 settingsKey: "display.brightness"
-                description: qsTr("The compositor owns the output level and reports "
-                                  + "the applied value back.")
+                description: qsTr("The brightness level applies to the display "
+                                  + "and is reported back.")
                 showSeparator: true
 
                 controlData: Slider {
@@ -430,8 +430,8 @@ Item {
                 id: footer
                 width: parent.width
                 text: qsTr("Using a scaled resolution may affect performance. "
-                          + "The compositor applies this selection to every "
-                          + "output; per-output overrides are OPEN.")
+                          + "The choice applies to every display; per-display "
+                          + "overrides are not available yet.")
                 color: Theme.color.textSecondary
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.primitive.font.sizeSm
@@ -675,8 +675,7 @@ Item {
                 owner: "compositor/colord"
                 settingsKey: "display.advanced"
                 description: qsTr("Resolution list, HDR, VRR, and overscan. "
-                                  + "Unsupported rows name the OPEN "
-                                  + "compositor/colord half; brightness and "
+                                  + "Unsupported rows say why; brightness and "
                                   + "rotation stay in their own groups above.")
                 showSeparator: false
 

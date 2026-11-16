@@ -40,6 +40,14 @@ Item {
     readonly property int displayOffSeconds:
         Settings.values["idle.blank"] !== undefined
             ? Number(Settings.values["idle.blank"]) : 300
+    // T281: the dim and suspend stages are separate idle-engine keys. The
+    // Lock Screen pane shows all four stages in one macOS-familiar group.
+    readonly property int dimSeconds:
+        Settings.values["idle.dim"] !== undefined
+            ? Number(Settings.values["idle.dim"]) : 150
+    readonly property int suspendSeconds:
+        Settings.values["idle.suspend"] !== undefined
+            ? Number(Settings.values["idle.suspend"]) : 0
     readonly property int requirePasswordSeconds:
         Settings.values["idle.lock"] !== undefined
             ? Number(Settings.values["idle.lock"]) : 600
@@ -81,6 +89,25 @@ Item {
         { value: 0, label: qsTr("Never") }
     ]
 
+    // The dim stage. `Never` last, like the display-off list.
+    readonly property var dimOptions: [
+        { value: 60, label: qsTr("After 1 minute") },
+        { value: 150, label: qsTr("After 2.5 minutes") },
+        { value: 300, label: qsTr("After 5 minutes") },
+        { value: 600, label: qsTr("After 10 minutes") },
+        { value: 1200, label: qsTr("After 20 minutes") },
+        { value: 0, label: qsTr("Never") }
+    ]
+
+    // The suspend stage. Off by default; a session may never suspend.
+    readonly property var suspendOptions: [
+        { value: 300, label: qsTr("After 5 minutes") },
+        { value: 600, label: qsTr("After 10 minutes") },
+        { value: 1800, label: qsTr("After 30 minutes") },
+        { value: 3600, label: qsTr("After 1 hour") },
+        { value: 0, label: qsTr("Never") }
+    ]
+
     // The require-password choices. The value is the delay *after* display-off.
     readonly property var requireAfterOptions: [
         { value: 0, label: qsTr("Immediately") },
@@ -96,6 +123,12 @@ Item {
     readonly property var displayOffModel:
         root.withCustomOption(root.displayOffOptions, root.displayOffSeconds,
                               qsTr("For %1"))
+    readonly property var dimModel:
+        root.withCustomOption(root.dimOptions, root.dimSeconds,
+                              qsTr("After %1"))
+    readonly property var suspendModel:
+        root.withCustomOption(root.suspendOptions, root.suspendSeconds,
+                              qsTr("After %1"))
     readonly property var requireAfterModel:
         root.withCustomOption(root.requireAfterOptions, root.requireAfter,
                               qsTr("After %1"))
@@ -106,6 +139,8 @@ Item {
 
     // Test surface (used by tst_settings_lock_screen.qml).
     property alias displayOffSelect: displayOffSelect
+    property alias dimSelect: dimSelect
+    property alias suspendSelect: suspendSelect
     property alias requirePasswordSelect: requirePasswordSelect
     property alias energyWarning: energyWarning
     property alias powerStageNote: powerStageNote
@@ -203,6 +238,14 @@ Item {
     function applyDisplayOff(value) {
         Settings.set("idle.blank", value);
         root.syncLockStage(root.requireAfter, value);
+    }
+
+    function applyDim(value) {
+        Settings.set("idle.dim", value);
+    }
+
+    function applySuspend(value) {
+        Settings.set("idle.suspend", value);
     }
 
     function applyRequireAfter(value) {
@@ -367,6 +410,24 @@ Item {
             width: parent.width
 
             SettingsRow {
+                id: dimRow
+                width: parent.width
+                label: qsTr("Dim screen when inactive")
+                description: qsTr("Lower the display brightness after this much "
+                                  + "inactivity, before it turns off.")
+                settingsId: "idleDim"
+                owner: "settingsd -> session/idle"
+                settingsKey: "idle.dim"
+                controlData: Select {
+                    id: dimSelect
+                    accessibleName: qsTr("Dim screen when inactive")
+                    model: root.dimModel
+                    onActivated: (index) => root.applyDim(
+                        root.dimModel[index].value)
+                }
+            }
+
+            SettingsRow {
                 width: parent.width
                 label: qsTr("Turn display off when inactive")
                 description: qsTr("The session blanks the display after this "
@@ -439,6 +500,24 @@ Item {
                     color: Theme.color.textSecondary
                     font.pixelSize: Theme.primitive.font.sizeSm
                     wrapMode: Text.WordWrap
+                }
+            }
+
+            SettingsRow {
+                id: suspendRow
+                width: parent.width
+                label: qsTr("Suspend when inactive")
+                description: qsTr("Suspend the session after this much inactivity; "
+                                  + "Off by default.")
+                settingsId: "idleSuspend"
+                owner: "settingsd -> session/idle"
+                settingsKey: "idle.suspend"
+                controlData: Select {
+                    id: suspendSelect
+                    accessibleName: qsTr("Suspend when inactive")
+                    model: root.suspendModel
+                    onActivated: (index) => root.applySuspend(
+                        root.suspendModel[index].value)
                 }
             }
 
@@ -759,6 +838,16 @@ Item {
         target: displayOffSelect
         property: "currentIndex"
         value: root.indexFor(root.displayOffModel, root.displayOffSeconds)
+    }
+    Binding {
+        target: dimSelect
+        property: "currentIndex"
+        value: root.indexFor(root.dimModel, root.dimSeconds)
+    }
+    Binding {
+        target: suspendSelect
+        property: "currentIndex"
+        value: root.indexFor(root.suspendModel, root.suspendSeconds)
     }
     Binding {
         target: requirePasswordSelect

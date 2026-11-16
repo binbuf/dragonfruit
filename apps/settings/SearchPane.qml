@@ -91,6 +91,8 @@ Item {
     property alias shortcutInput: shortcutInput
     property alias shortcutButton: shortcutButton
     property alias webToggle: webToggle
+    property alias clipboardToggle: clipboardToggle
+    property alias clipboardNote: clipboardNote
     property alias menuBarToggle: menuBarToggle
     property alias statusRow: statusRow
     property alias rebuildButton: rebuildButton
@@ -307,6 +309,45 @@ Item {
             }
         }
 
+        // T281: the Linux-only clipboard history. The shell's clipboard store
+        // is always observed today, so the preference is explicitly
+        // stored-only and the note says what it will control.
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Clipboard History")
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Keep clipboard history")
+                description: qsTr("Show recent clipboard entries in Quick Settings.")
+                settingsId: "clipboard"
+                owner: "settingsd"
+                settingsKey: "search.clipboardHistory"
+                showSeparator: false
+
+                controlData: Toggle {
+                    id: clipboardToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set(
+                        "search.clipboardHistory", checked)
+                }
+            }
+
+            Text {
+                id: clipboardNote
+                objectName: "searchClipboardNote"
+                width: parent.width - 2 * Theme.controls.settingsRow.paddingH
+                x: Theme.controls.settingsRow.paddingH
+                text: qsTr("Saved for the clipboard store. Dragonfruit always "
+                           + "keeps clipboard history today, so this preference "
+                           + "does not change it yet.")
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                bottomPadding: Theme.primitive.spacing.xs
+            }
+        }
+
         SettingsGroup {
             width: parent.width
             title: qsTr("Indexing")
@@ -316,7 +357,7 @@ Item {
                 width: parent.width
                 label: qsTr("Indexing status")
                 description: qsTr("The desktop search service is not running; "
-                                  + "indexing lands with T246.")
+                                  + "indexing is unavailable.")
                 settingsId: "status"
                 owner: "search service"
                 settingsKey: "search.status"
@@ -358,5 +399,10 @@ Item {
         target: webToggle
         property: "checked"
         value: Settings.values["search.web"] !== false
+    }
+    Binding {
+        target: clipboardToggle
+        property: "checked"
+        value: Settings.values["search.clipboardHistory"] !== false
     }
 }

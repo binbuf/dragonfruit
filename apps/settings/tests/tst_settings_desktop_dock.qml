@@ -320,6 +320,10 @@ Item {
             verifyDisabledReason(pane.dragToFillRow, "Drag to fill");
             verifyDisabledReason(pane.holdModifierRow, "Hold modifier to tile");
             verifyDisabledReason(pane.tiledMarginsRow, "Tiled margins");
+            verifyDisabledReason(pane.windowRulesRow, "Application window rules");
+            compare(pane.windowRulesRow.settingsId, "windowRules");
+            compare(SettingsMap.rowFor("desktop-dock", "windowRules").absence,
+                    "disabled-with-reason");
         }
 
         function test_mission_control_links_to_the_overview_pane() {

@@ -100,6 +100,7 @@ Item {
     property alias dragToFillRow: dragToFillRow
     property alias holdModifierRow: holdModifierRow
     property alias tiledMarginsRow: tiledMarginsRow
+    property alias windowRulesRow: windowRulesRow
     property alias missionControlGroup: missionControlGroup
     property alias overviewRow: overviewRow
     property alias hotCornersRow: hotCornersRow
@@ -575,10 +576,27 @@ Item {
                 owner: "compositor"
                 settingsKey: "tiling.margins"
                 enabled: false
-                showSeparator: false
 
                 controlData: Toggle {
                     text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsRow {
+                id: windowRulesRow
+                width: parent.width
+                label: qsTr("Application window rules…")
+                description: qsTr("Per-window placement and size rules are not "
+                                  + "available yet.")
+                settingsId: "windowRules"
+                owner: "compositor"
+                settingsKey: "windows.rules"
+                enabled: false
+                showSeparator: false
+
+                controlData: Button {
+                    text: qsTr("Edit…")
                     enabled: false
                 }
             }
