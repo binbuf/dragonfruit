@@ -3792,10 +3792,6 @@ Rectangle {
         // multi-hop shape is the existing adaptation, not a new curve.
         var amplitude = entryAttention(entry) ? barThickness / 2
                                               : Theme.controls.dock.launchLift;
-        // T275: `accessibility.dimFlashingLights` keeps the attention cue but
-        // reduces the amplitude, so a flash does not dominate the scene.
-        if (Theme.dimFlashingLights)
-            amplitude *= 0.35;
         return amplitude * Math.sin(Math.PI * phase);
     }
 
