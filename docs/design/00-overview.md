@@ -86,7 +86,7 @@ these limits from the outset:
    permissively licensed drop-in with the same UX. Optional LocalSend/KDE
    Connect integration can be evaluated separately; it is not a core promise.
 4. **Apple account services are omitted** — iCloud, Siri, Apple Intelligence,
-   Screen Time, Wallet, Game Center, Find My, and App Store are not Linux
+   Screen Time, Wallet, Game Center, and Find My are not Linux
    services. Their settings rows are removed or replaced by a distro/package
    equivalent.
 

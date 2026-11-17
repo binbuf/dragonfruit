@@ -87,7 +87,7 @@
 | Sidecar | — | omit | Apple service |
 | iCloud | — | omit | Apple service |
 | Apple ID | Account | optional | Only if a first-party account model exists |
-| App Store | Software Center | `updates`/`software` | Distro/Flathub |
+| App Store | App Store | `updates`/`software` | Generic store name; distro/Flathub backend |
 | Siri | — | omit | Apple service |
 | Apple Intelligence | — | omit | Apple service |
 | Screen Time | — | omit | Apple service |

@@ -193,8 +193,8 @@ runtime.
 | Set | Members | Absence behaviour |
 |---|---|---|
 | **Required** | Wayland/DRM/Mesa, libinput + udev, systemd/logind, NetworkManager, BlueZ, PipeWire/WirePlumber, UPower, UDisks2, polkit, xdg-desktop-portal + backend, Qt 6, Xwayland, Rust toolchain (build) | A missing session service shows a shell banner and disables the affected feature; the rest of the desktop works. Xwayland is a compatibility layer: its absence disables X11 apps only. The Rust toolchain is build-time only. |
-| **Recommended** | CUPS, SANE, colord, fprintd, PackageKit, accountsservice, GNOME Online Accounts, ibus, fcitx5, Orca, speech-dispatcher, Flatpak | Feature-level absence: one line, no fake toggle. PackageKit falls back to the native backend; GOA and Software Center panes hide; fingerprint/IME rows hide; printing/scanning/color/a11y disable only their half. |
-| **Optional** | Tracker, Baloo, Recoll, restic, Pika Backup, Timeshift, LocalSend, snapd, firewalld, ufw, nftables, iptables, espeak-ng, GNOME Software, KDE Discover | Built-in fallback (search), feature disabled (backup, Flatpak/Snap, firewall), or pane hidden (Nearby Transfer, Software Center). No first-party feature depends on an optional service. |
+| **Recommended** | CUPS, SANE, colord, fprintd, PackageKit, accountsservice, GNOME Online Accounts, ibus, fcitx5, Orca, speech-dispatcher, Flatpak | Feature-level absence: one line, no fake toggle. PackageKit falls back to the native backend; GOA and App Store panes hide; fingerprint/IME rows hide; printing/scanning/color/a11y disable only their half. |
+| **Optional** | Tracker, Baloo, Recoll, restic, Pika Backup, Timeshift, LocalSend, snapd, firewalld, ufw, nftables, iptables, espeak-ng, GNOME Software, KDE Discover | Built-in fallback (search), feature disabled (backup, Flatpak/Snap, firewall), or pane hidden (Nearby Transfer, App Store). No first-party feature depends on an optional service. |
 
 The required desktop boots and is usable with the required set only. A missing
 optional service never blocks the session and never produces a repeated error

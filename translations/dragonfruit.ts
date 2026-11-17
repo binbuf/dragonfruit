@@ -12246,6 +12246,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>App Store</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Lock Screen</source>
         <translation type="unfinished"></translation>
     </message>
@@ -12274,10 +12278,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Settings…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Shut Down…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -12286,7 +12286,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Software Center</source>
+        <source>System Settings</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

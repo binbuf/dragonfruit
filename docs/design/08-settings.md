@@ -1047,7 +1047,7 @@ mirrors macOS System Settings **nearly verbatim** — style, information
 architecture, section order, row labels, control types, and wording —
 dropping only Apple/Mac-only concepts (Apple Account/iCloud, AppleCare,
 Continuity/AirDrop, Siri/Apple Intelligence, Screen Time, Touch ID/Apple
-Watch, App Store, Find My, FileVault). Generic terms are kept; Linux-like
+Watch, Find My, FileVault). Generic terms are kept; Linux-like
 substitutions are chosen deliberately per pane. The reference screenshots
 themselves are local-only and never ship
 ([14-risks.md](14-risks.md)).

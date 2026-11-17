@@ -186,7 +186,7 @@
       "decision": "optional delegate for app discovery/install; no hard dependency",
       "fedora": { "package": "gnome-software", "marker": "Suggests" },
       "debian": { "package": "gnome-software", "marker": "Suggests" },
-      "absence": "The Software Center row is hidden; package management still works through the host tools."
+      "absence": "The App Store row is hidden; package management still works through the host tools."
     },
     {
       "id": "software.discover",
@@ -197,7 +197,7 @@
       "decision": "optional delegate; one software center at a time",
       "fedora": { "package": "plasma-discover", "marker": "Suggests" },
       "debian": { "package": "plasma-discover", "marker": "Suggests" },
-      "absence": "The Software Center row is hidden."
+      "absence": "The App Store row is hidden."
     },
     {
       "id": "packages.packagekit",

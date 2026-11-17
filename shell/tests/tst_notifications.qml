@@ -869,7 +869,7 @@ Item {
                     categories: [
                         "Clock", "Calendar", "Weather", "Reminders", "Notes",
                         "Stocks", "Battery", "Activity", "News", "Music",
-                        "Podcasts", "Books", "Software Center", "Devices", "Home",
+                        "Podcasts", "Books", "App Store", "Devices", "Home",
                         "Photos", "Files", "Contacts", "Tips"
                     ],
                     catalog: [

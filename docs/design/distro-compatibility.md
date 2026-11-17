@@ -106,7 +106,8 @@ Rules:
 
 ### 4.2 Installation sources
 
-Dragonfruit does not ship an App Store. The "get apps" path is:
+Dragonfruit does not ship a first-party package store. The App Store surface
+front-ends the sources below; the "get apps" path is:
 
 | Source | Integration |
 |---|---|
@@ -405,8 +406,8 @@ marker table by id instead of duplicating package names or licenses.
 | Set | Members | Absence behaviour |
 |---|---|---|
 | **Required** | Wayland/DRM/Mesa, libinput + udev, systemd/logind, NetworkManager, BlueZ, PipeWire/WirePlumber, UPower, UDisks2, polkit, xdg-desktop-portal + backend, Qt 6, Xwayland, Rust toolchain at build time | A missing session service shows a shell banner and disables the affected feature; the rest of the desktop works. Xwayland absence disables X11 apps only. The Rust toolchain is build-time only. |
-| **Recommended** | CUPS, SANE, colord, fprintd, PackageKit, accountsservice, GNOME Online Accounts, ibus/fcitx5, Orca, speech-dispatcher, Flatpak | Feature-level absence: one line, no fake toggle. PackageKit falls back to the native backend; GOA/Software Center panes hide; fingerprint/IME rows hide; printing/scanning/color/a11y disable only their half. |
-| **Optional** | Tracker/Baloo/Recoll, restic/Pika/Timeshift, LocalSend, snapd, firewalld/ufw/nftables/iptables, espeak-ng, GNOME Software/Discover | Built-in fallback (search), feature disabled (backup, Flatpak/Snap, firewall), or pane hidden (Nearby Transfer, Software Center). No first-party feature depends on an optional service. |
+| **Recommended** | CUPS, SANE, colord, fprintd, PackageKit, accountsservice, GNOME Online Accounts, ibus/fcitx5, Orca, speech-dispatcher, Flatpak | Feature-level absence: one line, no fake toggle. PackageKit falls back to the native backend; GOA/App Store panes hide; fingerprint/IME rows hide; printing/scanning/color/a11y disable only their half. |
+| **Optional** | Tracker/Baloo/Recoll, restic/Pika/Timeshift, LocalSend, snapd, firewalld/ufw/nftables/iptables, espeak-ng, GNOME Software/Discover | Built-in fallback (search), feature disabled (backup, Flatpak/Snap, firewall), or pane hidden (Nearby Transfer, App Store). No first-party feature depends on an optional service. |
 
 Rules:
 

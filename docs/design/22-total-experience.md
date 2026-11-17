@@ -492,7 +492,7 @@ The target is accepted when:
 - Pixel-identical macOS screenshots, Apple assets, SF Symbols, sounds, or
   trademarks.
 - Apple account services (iCloud, Siri, Apple Intelligence, Screen Time,
-  Wallet, Game Center, Find My, App Store).
+  Wallet, Game Center, Find My).
 - A new display server, renderer, package manager, network stack, audio stack,
   or privilege-escalation scheme.
 - A second settings daemon, menu model, notification service, or window model.
@@ -527,7 +527,7 @@ inventory id:
 | Accessibility and IME | Core usability; existing gaps G-19/G-20 | T252/T253 |
 
 The following are deliberately **not** added: Apple account services (iCloud,
-Siri, Apple Intelligence, Screen Time, Wallet, Game Center, Find My, App Store),
+Siri, Apple Intelligence, Screen Time, Wallet, Game Center, Find My),
 AirDrop/Continuity/Handoff by default, a new package manager/network/audio
 stack, and a second settings/menu/notification/window model. Optional
 third-party substitutions are listed in

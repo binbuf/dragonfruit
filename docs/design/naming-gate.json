@@ -52,7 +52,6 @@
     { "term": "Sidecar", "replacement": "omit", "pattern": "\\bSidecar\\b" },
     { "term": "iCloud", "replacement": "omit", "pattern": "\\biCloud\\b" },
     { "term": "Apple ID", "replacement": "Account", "pattern": "\\bApple ID\\b" },
-    { "term": "App Store", "replacement": "Software Center", "pattern": "\\bApp Store\\b" },
     { "term": "Siri", "replacement": "omit", "pattern": "\\bSiri\\b" },
     { "term": "Apple Intelligence", "replacement": "omit", "pattern": "\\bApple Intelligence\\b" },
     { "term": "Screen Time", "replacement": "omit", "pattern": "\\bScreen Time\\b" },

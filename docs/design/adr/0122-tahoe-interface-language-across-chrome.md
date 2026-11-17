@@ -82,7 +82,7 @@ bitmap output or branding.
   glyphs become Dragonfruit's keymap labels (Super etc., [keymap.md](../../keymap.md));
   Apple-only rows and services are dropped (Apple Account/iCloud, AppleCare,
   AirDrop & Continuity, Apple Intelligence & Siri, Screen Time, Touch ID
-  payments, App Store); `About This System` replaces the Apple name;
+  payments); `About This System` replaces the Apple name;
   `Software Update` reads the distro provider; host daemons that are absent
   degrade to a normal empty/disabled state (ADR
   [0028](0028-audio-adapter-over-wireplumber-cli.md)); all artwork, sounds,

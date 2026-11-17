@@ -79,9 +79,9 @@ QVariantList systemMenu(const QString &userName, const QString &devReturn,
     menu << entry(QCoreApplication::translate("ShellMenus", "About This System"),
                   QString(), QStringLiteral("about-system"));
     menu << separator();
-    menu << entry(QCoreApplication::translate("ShellMenus", "Settings\u2026"),
+    menu << entry(QCoreApplication::translate("ShellMenus", "System Settings"),
                   QString(), QStringLiteral("settings"));
-    menu << entry(QCoreApplication::translate("ShellMenus", "Software Center"),
+    menu << entry(QCoreApplication::translate("ShellMenus", "App Store"),
                   QString(), QStringLiteral("app-store"), false);
     const QVariantList recent = recentItemsMenu(recentApps);
     if (!recent.isEmpty())

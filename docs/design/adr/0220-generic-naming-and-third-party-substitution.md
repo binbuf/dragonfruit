@@ -44,7 +44,7 @@ the MIT codebase.
 - The Settings catalog and shell strings use the generic map; a later string
   audit can find Apple terms.
 - The first release may omit AirDrop/Continuity, iCloud, Siri, Screen Time,
-  Wallet, Game Center, Find My, and App Store rather than ship a poor clone.
+  Wallet, Game Center, Find My, rather than ship a poor clone.
 - Optional integrations (LocalSend/KDE Connect, restic/Pika/Timeshift, GOA,
   Tracker/Baloo/Recoll, Orca, ibus/fcitx5) are declared and tested for absence.
 - Packaging carries the license/notice burden; the MIT codebase stays clean.

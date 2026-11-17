@@ -26,7 +26,7 @@ widens without becoming coherent.
 - Every surface has a keyboard path, an AT-SPI path, a reduced-motion path, and
   an absence path.
 - Apple account services (iCloud, Siri, Apple Intelligence, Screen Time,
-  Wallet, Game Center, Find My, App Store) are out of scope. AirDrop/Continuity
+  Wallet, Game Center, Find My) are out of scope. AirDrop/Continuity
   is omitted by default; optional local-sharing integrations are evaluated
   separately.
 - A checked task is agent-done, not human-signed-off. Human sign-off is batched
