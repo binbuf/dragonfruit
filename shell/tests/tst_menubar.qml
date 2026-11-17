@@ -693,6 +693,65 @@ Item {
             bar.closeOverflowMenu();
         }
 
+        // T233/T9: the measured width comes from a passive probe, not a
+        // second `StatusItem` tree. Every row shape must report exactly the
+        // width the visible slot takes, or the overflow decision drifts.
+        function test_status_measurement_matches_the_visible_slot() {
+            var entries = [
+                { id: "wifi", icon: "wifi", priority: 10,
+                  accessibleName: "Wi-Fi" },
+                { id: "focus", label: "Focus", priority: 20,
+                  accessibleName: "Focus" },
+                { id: "battery", icon: "battery", label: "80%", priority: 30,
+                  accessibleName: "Battery" },
+                { id: "clock", kind: "clock", menu: "clock", priority: 70,
+                  essential: true, accessibleName: "Date & Time" },
+                { id: "hidden", icon: "wifi", priority: 80, available: false,
+                  accessibleName: "Hidden" },
+                { id: "tray:one", iconSource: "file:///nonexistent-tray.png",
+                  label: "Tray", priority: 1000, thirdParty: true,
+                  accessibleName: "Tray One" }
+            ];
+            var bar = make(menuBarComponent, {
+                width: 1600, statusItems: entries, showDate: true
+            });
+            var measure = findChild(bar, "statusMeasureRepeater");
+            verify(measure !== null, "the passive measurement repeater exists");
+            compare(measure.count, bar.statusRowEntries.length);
+            for (var i = 0; i < measure.count; ++i) {
+                var slot = bar.statusItemAt(i);
+                verify(slot !== null, "visible slot " + i + " exists");
+                fuzzyCompare(measure.itemAt(i).measuredWidth, slot.implicitWidth,
+                             0.01, "measurement matches visible slot " + i);
+            }
+            compare(measure.itemAt(4).measuredWidth, 0,
+                    "an unavailable slot measures zero");
+            compare(bar.statusItemFor("hidden").implicitWidth, 0);
+        }
+
+        // T9: the visible clock and the measurement path read one shared
+        // source. No status slot owns a `MenuBarClock` or a boundary timer.
+        function test_status_row_shares_one_clock_source() {
+            var bar = make(menuBarComponent, {
+                width: 1400, statusItems: defaultStatus(), showDate: true
+            });
+            var source = findChild(bar, "menuBarClockSource");
+            verify(source !== null, "the bar owns one clock source");
+            var clock = bar.statusItemFor("clock");
+            verify(clock !== null, "the clock slot exists");
+            compare(clock.clockText, source.timeText);
+            compare(clock.clockDateText, source.dateText);
+            compare(clock.Accessible.name, source.accessibleText);
+            compare(findChild(clock, "clock"), null,
+                    "the clock slot does not embed a second clock");
+
+            var measure = findChild(bar, "statusMeasureRepeater");
+            for (var i = 0; i < measure.count; ++i) {
+                compare(findChild(measure.itemAt(i), "clock"), null,
+                        "a measurement slot has no clock child");
+            }
+        }
+
         function test_active_display_owns_the_application_menu() {
             var active = make(menuBarComponent, {
                 width: 800, activeDisplay: true,

@@ -7,6 +7,7 @@ qt_add_qml_module(dragonfruit-shell-menubar
         MenuBar.qml
         MenuBarDisplayPolicy.qml
         StatusItem.qml
+        StatusItemMeasure.qml
         StatusItemRegistry.qml
         StatusGlyph.qml
         MenuBarClock.qml
@@ -25,6 +26,7 @@ df_qml_lint(shell-menubar
     MenuBar.qml
     MenuBarDisplayPolicy.qml
     StatusItem.qml
+    StatusItemMeasure.qml
     StatusItemRegistry.qml
     StatusGlyph.qml
     MenuBarClock.qml

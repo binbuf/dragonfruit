@@ -236,9 +236,10 @@ supported. Reduced motion collapses both delays and the slide. The surface
 moves, but the top strip remains the input target, and the reservation is
 present only while the bar is on screen. The status row's budget is measured
 from the live width (minus the app menu, padding, the notch inset, and the
-overflow slot); items leave third-party first, then optional system items, then
-the lowest-priority essentials, and every removed item appears in the overflow
-menu. On multiple displays the compositor composites one bar per output from
+overflow slot) using a passive `StatusItemMeasure` probe with the same
+typography and spacing as the visible slots; items leave third-party first, then
+optional system items, then the lowest-priority essentials, and every removed
+item appears in the overflow menu. On multiple displays the compositor composites one bar per output from
 the one all-output surface; `MenuBarDisplayPolicy.qml` names the active display
 that owns the application menu and lets status items follow all displays or
 the active one. The Menu Bar pane lists every live `menu.control.*` key and the
@@ -903,7 +904,10 @@ design-system `SearchField`, and a pin/unpin row state. The list is built by
 the pure `buildAppPickerList` helper (`shell/src/apppicker.{h,cpp}`): it drops
 `noDisplay` and non-launchable records, dedupes by desktop id, sorts by
 localized name with an id tiebreak, and tags pin membership; the popover
-filters that list live over name and id. app-index absence renders an explicit
+filters that list live over name and id. Its rows render through the shared
+virtualized `ListViewport`, so delegate count follows the visible rows rather
+than the installed-application count, and a filter change keeps the same
+desktop id selected when it still matches. app-index absence renders an explicit
 "Application index unavailable" row, never a blank panel, and the shell
 subscribes to app-index's coalesced `Changed` signal (T-14.1c) so an
 install/uninstall while the picker is open stays fresh. Selecting a row toggles
@@ -919,7 +923,9 @@ alphabetically with a search field, category pills, and a fixed-size tile grid,
 launching through the same path as the Dock. The Spotlight-equivalent *search*
 pane remains deferred; the drawer's search filters its own list only. See
 [ADR 0090](adr/0090-dock-app-management-picker-and-drops.md),
-[ADR 0167](adr/0167-applications-drawer.md), and the T-14.7e/T-14.7f units.
+[ADR 0167](adr/0167-applications-drawer.md),
+[ADR 0289](adr/0289-bounded-list-delegates-and-shared-clock.md), and the
+T-14.7e/T-14.7f units.
 
 **Drop identity and feedback (T-14.7f).** An external drag is read once, at
 drag *enter* (`ShellProtocol::onDataDeviceEnter` → `beginDndRead`): the shell
@@ -961,7 +967,8 @@ onto the Dock is pinned as a stack, persisted as an ordered path list in
 missing path degrades to a dimmed entry with a notice. The folder's name is
 never drawn inside the artwork — it comes from the hover `Tooltip` and the
 popover header. See
-[ADR 0092](adr/0092-dock-folder-stacks-and-folder-pins.md) and the
+[ADR 0092](adr/0092-dock-folder-stacks-and-folder-pins.md),
+[ADR 0289](adr/0289-bounded-list-delegates-and-shared-clock.md), and the
 T-14.7h/T-14.7k units.
 
 **Implementation (T-14.7k).** `FolderStacks` (`shell/src/folderstacks.{h,cpp}`)
@@ -973,7 +980,10 @@ popover opens. A path that disappears stays in the set as a `missing` entry
 with an empty listing. The shell projects the Downloads member onto the Dock's
 `downloads*` properties and every `dock.pinnedFolders` path onto a `folderPins`
 list; both render through the same `kind: "stack"` entry, the same squircle
-geometry/inset tokens, and the one `DockStackPopover`. The Downloads stack is
+geometry/inset tokens, and the one `DockStackPopover`. The popover's rows render
+through the shared virtualized `ListViewport` (`IncrementalListModel` keyed by
+path), so a folder with thousands of entries keeps only the visible delegates
+and a live watcher update keeps the selected file selected. The Downloads stack is
 always first (the default member, not removable); user pins follow immediately
 before the Trash and are removed either by dragging the tile off the Dock or
 through the context menu's **Remove from Dock**, which writes
@@ -1146,7 +1156,10 @@ hidden but never silently dropped. An absent service renders a hidden,
 zero-width slot (keeping later indices stable); an error/attention state stays
 visible with the reason in the tooltip and accessible description. The whole
 row — including the clock and overflow — is reachable with Left/Right and
-activated with Return/Space.
+activated with Return/Space. One shared `MenuBarClock` source formats the
+clock for both the visible slot and the passive `StatusItemMeasure` width
+probe; neither the measurement row nor a slot owns a second boundary timer.
+See [ADR 0289](adr/0289-bounded-list-delegates-and-shared-clock.md).
 
 ## Control Center
 

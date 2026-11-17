@@ -66,21 +66,21 @@ Item {
                 root.labelShadowColor.b, root.labelShadowOpacity * 0.9)
 
     // T231: the clock is a first-class registry item. `StatusItem` owns its
-    // slot (hover/focus/tap/accessibility) and embeds the formatting-only
-    // `MenuBarClock`, so the clock sorts and overflows with every other item.
+    // slot (hover/focus/tap/accessibility); the bar passes the one shared
+    // `MenuBarClock` source, so a status row (visible and measured) never
+    // starts a second boundary timer.
+    property var clockSource: null
     property bool showDate: false
-    property bool showSeconds: false
-    property bool use24Hour: false
     property color foreground: Theme.color.textPrimary
     property color secondaryForeground: Theme.color.textSecondary
 
     readonly property bool isClock: root.kind === "clock"
     readonly property string clockText:
-        clockLoader.item ? clockLoader.item.timeText : ""
+        root.clockSource ? root.clockSource.timeText : ""
     readonly property string clockDateText:
-        clockLoader.item ? clockLoader.item.dateText : ""
+        root.clockSource ? root.clockSource.dateText : ""
     readonly property string clockAccessibleText:
-        clockLoader.item ? clockLoader.item.accessibleText : ""
+        root.clockSource ? root.clockSource.accessibleText : ""
 
     signal activated(string itemId)
 
@@ -88,7 +88,7 @@ Item {
     enabled: available
     implicitWidth: available
         ? (root.isClock
-           ? (clockLoader.item ? clockLoader.item.implicitWidth : 0)
+           ? clockContent.implicitWidth + 2 * Theme.controls.menuBar.statusItemPaddingH
            : slotContent.implicitWidth + 2 * Theme.controls.menuBar.statusItemPaddingH)
         : 0
     implicitHeight: Theme.controls.menuBar.height
@@ -151,6 +151,8 @@ Item {
             source: root.iconSource
             sourceSize.width: Theme.controls.menuBar.iconSize
             sourceSize.height: Theme.controls.menuBar.iconSize
+            width: Theme.controls.menuBar.iconSize
+            height: Theme.controls.menuBar.iconSize
             fillMode: Image.PreserveAspectFit
             smooth: true
             anchors.verticalCenter: parent.verticalCenter
@@ -170,22 +172,41 @@ Item {
         }
     }
 
-    Loader {
-        id: clockLoader
+    // The clock's visible content. It mirrors `MenuBarClock`'s row exactly
+    // (the same typography, tabular numerals and `clockGap`), but reads the
+    // one shared source instead of owning a timer.
+    Row {
+        id: clockContent
+        objectName: "clockContent"
+        visible: root.isClock
         anchors.centerIn: parent
-        active: root.isClock
-        sourceComponent: Component {
-            MenuBarClock {
-                objectName: "clock"
-                interactive: false
-                showDate: root.showDate
-                showSeconds: root.showSeconds
-                use24Hour: root.use24Hour
-                foreground: root.foreground
-                secondaryForeground: root.secondaryForeground
-                shadowEnabled: root.textTreatmentEnabled
-                               && !root.selected && !root.keyboardFocus
-            }
+        spacing: Theme.controls.menuBar.clockGap
+
+        WallpaperLabel {
+            objectName: "clockDate"
+            visible: root.showDate
+            text: root.clockDateText
+            color: root.secondaryForeground
+            shadowEnabled: root.textTreatmentEnabled
+                           && !root.selected && !root.keyboardFocus
+            shadowColor: root.labelShadowColor
+            shadowOpacity: root.labelShadowOpacity
+            font.pixelSize: Theme.controls.menuBar.fontSize
+            font.features: ({ "tnum": 1 })
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
+        WallpaperLabel {
+            objectName: "clockTime"
+            text: root.clockText
+            color: root.foreground
+            shadowEnabled: root.textTreatmentEnabled
+                           && !root.selected && !root.keyboardFocus
+            shadowColor: root.labelShadowColor
+            shadowOpacity: root.labelShadowOpacity
+            font.pixelSize: Theme.controls.menuBar.fontSize
+            font.features: ({ "tnum": 1 })
+            anchors.verticalCenter: parent.verticalCenter
         }
     }
 

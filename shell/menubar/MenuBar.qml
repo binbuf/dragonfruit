@@ -209,19 +209,35 @@ Rectangle {
         forceOverflow: menuBar.overflowPolicy === "always"
     }
 
-    // T233: the status-row budget is measured, not guessed. The hidden
-    // measurement row lays out one real `StatusItem` per registry entry (the
-    // same delegate the visible row uses), so a localized clock, a tray icon
-    // or a label changes the capacity exactly as it changes the row. The
-    // registry's ordered list does not depend on the budget, so there is no
-    // binding cycle.
+    // T233: the status-row budget is measured, not guessed. The passive
+    // measurement repeater reports one `StatusItemMeasure` width per registry
+    // entry, so a localized clock, a tray label, or a themed icon changes the
+    // capacity exactly as it changes the row. The registry's ordered list does
+    // not depend on the budget, so there is no binding cycle.
     readonly property var _statusSlotWidths: {
         var widths = [];
         for (var i = 0; i < statusMeasureRepeater.count; ++i) {
             var item = statusMeasureRepeater.itemAt(i);
-            widths.push(item ? item.implicitWidth : 0);
+            widths.push(item ? item.measuredWidth : 0);
         }
         return widths;
+    }
+    // The full width of every visible status slot, in registry order. This is
+    // the un-budgeted row width the bar's own implicit width uses, so an unset
+    // width resolves to "every item fits" without feeding the overflow
+    // capacity back into the bar's width.
+    readonly property real _statusMeasureWidth: {
+        var widths = _statusSlotWidths;
+        var gap = Theme.controls.menuBar.statusItemGap;
+        var total = 0;
+        var count = 0;
+        for (var i = 0; i < widths.length; ++i) {
+            if (widths[i] <= 0)
+                continue;
+            total += widths[i] + (count > 0 ? gap : 0);
+            count++;
+        }
+        return total;
     }
     readonly property real _statusAvailableWidth:
         Math.max(0, width - appMenuRow.implicitWidth
@@ -496,7 +512,7 @@ Rectangle {
     // unset width resolves to "every item fits" instead of feeding the
     // overflow capacity back into the bar's own width.
     implicitWidth: appMenuRow.implicitWidth
-                   + (showStatusItems ? statusMeasureRow.implicitWidth : 0)
+                   + (showStatusItems ? menuBar._statusMeasureWidth : 0)
                    + 2 * Theme.controls.menuBar.paddingH
     // T233: the measured slide, mirrored from the compositor's reveal
     // progress. At 1.0 this is a no-op.
@@ -1298,6 +1314,19 @@ Rectangle {
         }
     }
 
+    // One clock source for the whole bar. The visible clock slot and the
+    // passive width measurement both read its formatted text; neither owns a
+    // timer, so an idle bar has one boundary wakeup instead of two.
+    MenuBarClock {
+        id: menuClock
+        objectName: "menuBarClockSource"
+        visible: false
+        interactive: false
+        showDate: menuBar.showDate
+        showSeconds: menuBar.showSeconds
+        use24Hour: menuBar.use24Hour
+    }
+
     Row {
         id: statusRow
         objectName: "statusRow"
@@ -1331,57 +1360,33 @@ Rectangle {
                 selected: modelData.selected === true
                 level: modelData.level !== undefined ? modelData.level : 0.8
                 showDate: menuBar.showDate
-                showSeconds: menuBar.showSeconds
-                use24Hour: menuBar.use24Hour
                 tint: modelData.tint !== undefined ? modelData.tint : menuBar.foreground
                 foreground: menuBar.foreground
                 secondaryForeground: menuBar.secondaryForeground
                 backgroundColor: menuBar.color
                 textTreatmentEnabled: menuBar.textTreatmentEnabled
+                clockSource: menuClock
 
                 onActivated: (id) => menuBar.activateStatusItem(id)
             }
         }
     }
 
-    // T233: the offscreen measurement row. It uses the same `StatusItem`
-    // delegate as the visible row so the capacity reflects the real glyph,
-    // clock text and tray icon widths. It is never rendered or hit-tested.
-    Row {
-        id: statusMeasureRow
-        objectName: "statusMeasureRow"
-        visible: false
-        height: Theme.controls.menuBar.height
-        spacing: Theme.controls.menuBar.statusItemGap
+    // T233: the passive measurement path. One `StatusItemMeasure` per registry
+    // entry reports the same width the visible `StatusItem` will take, without
+    // instantiating a second status tree (or a second clock timer). The
+    // repeater is invisible and never hit-tested.
+    Repeater {
+        id: statusMeasureRepeater
+        objectName: "statusMeasureRepeater"
+        model: statusRegistry.orderedItems
 
-        Repeater {
-            id: statusMeasureRepeater
-            objectName: "statusMeasureRepeater"
-            model: statusRegistry.orderedItems
+        delegate: StatusItemMeasure {
+            required property var modelData
 
-            delegate: StatusItem {
-                required property var modelData
-
-                itemId: modelData.id !== undefined ? modelData.id : ""
-                icon: modelData.icon !== undefined ? modelData.icon : ""
-                iconSource: modelData.iconSource !== undefined ? modelData.iconSource : ""
-                label: modelData.label !== undefined ? modelData.label : ""
-                tooltip: modelData.tooltip !== undefined ? modelData.tooltip : ""
-                accessibleName: modelData.accessibleName !== undefined ? modelData.accessibleName : ""
-                kind: modelData.kind !== undefined ? modelData.kind : "status"
-                state: modelData.state !== undefined ? modelData.state : "ok"
-                available: modelData.available !== false
-                enabled: false
-                selected: false
-                level: modelData.level !== undefined ? modelData.level : 0.8
-                showDate: menuBar.showDate
-                showSeconds: menuBar.showSeconds
-                use24Hour: menuBar.use24Hour
-                tint: modelData.tint !== undefined ? modelData.tint : menuBar.foreground
-                foreground: menuBar.foreground
-                secondaryForeground: menuBar.secondaryForeground
-                backgroundColor: "transparent"
-            }
+            entry: modelData
+            showDate: menuBar.showDate
+            clockSource: menuClock
         }
     }
 

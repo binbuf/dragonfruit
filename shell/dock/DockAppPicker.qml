@@ -33,6 +33,10 @@ FocusScope {
     property string query: ""
     // The highlighted row; -1 = none.
     property int currentIndex: -1
+    // The stable desktop id behind `currentIndex`. A live pin toggle or an
+    // inventory refresh keeps the same app highlighted instead of following
+    // the numeric row.
+    property string currentKey: ""
     // Cap the visible rows; taller lists scroll.
     property int maxVisibleRows: 8
 
@@ -79,17 +83,48 @@ FocusScope {
     // seam uses this, and a normal user types into the field.
     function setQueryText(text) { searchField.text = text; }
 
-    // Keep the highlight a valid row as the filter narrows or the corpus
-    // arrives after the popover opened. Runs on every filtered change so
-    // Up/Down and Return always act on a real row.
-    onFilteredItemsChanged: {
-        if (root.filteredItems.length === 0)
-            root.currentIndex = -1;
-        else if (root.currentIndex < 0)
-            root.currentIndex = 0;
-        else if (root.currentIndex >= root.filteredItems.length)
-            root.currentIndex = root.filteredItems.length - 1;
+    function keyAt(index) {
+        if (index < 0 || index >= root.filteredItems.length)
+            return "";
+        var row = root.filteredItems[index];
+        return row !== undefined && row !== null && row.desktopId !== undefined
+               ? String(row.desktopId) : "";
     }
+
+    function indexOfKey(key) {
+        if (key === "")
+            return -1;
+        for (var i = 0; i < root.filteredItems.length; ++i) {
+            if (root.keyAt(i) === key)
+                return i;
+        }
+        return -1;
+    }
+
+    function keepSelectionVisible() {
+        if (root.currentIndex < 0 || listView === null)
+            return;
+        listView.positionViewAtIndex(root.currentIndex);
+    }
+
+    // Keep the highlight on the same app as the filter or the inventory
+    // changes. A row that no longer matches falls back to the nearest
+    // surviving row.
+    onFilteredItemsChanged: {
+        var at = root.indexOfKey(root.currentKey);
+        if (at >= 0) {
+            root.currentIndex = at;
+        } else if (root.filteredItems.length === 0) {
+            root.currentIndex = -1;
+        } else if (root.currentIndex < 0) {
+            root.currentIndex = 0;
+        } else if (root.currentIndex >= root.filteredItems.length) {
+            root.currentIndex = root.filteredItems.length - 1;
+        }
+        root.currentKey = root.keyAt(root.currentIndex);
+        Qt.callLater(function() { root.keepSelectionVisible(); });
+    }
+    onCurrentIndexChanged: root.currentKey = root.keyAt(root.currentIndex)
 
     function moveSelection(delta) {
         if (root.filteredItems.length === 0)
@@ -99,17 +134,7 @@ FocusScope {
         else
             root.currentIndex = Math.max(0, Math.min(root.filteredItems.length - 1,
                                                      root.currentIndex + delta));
-        // Keep the highlighted row inside the viewport.
-        var flickable = listView.flickable;
-        if (flickable) {
-            var top = root.currentIndex * root.rowHeight;
-            var bottom = top + root.rowHeight;
-            if (top < flickable.contentY)
-                flickable.contentY = top;
-            else if (bottom > flickable.contentY + flickable.height)
-                flickable.contentY = Math.min(bottom - flickable.height,
-                                              Math.max(0, flickable.contentHeight - flickable.height));
-        }
+        root.keepSelectionVisible();
     }
 
     function toggleRowAt(index) {
@@ -128,11 +153,13 @@ FocusScope {
             // The field keeps its text across close/open (the popover is a
             // persistent object), so clear both it and the filter or the next
             // keystroke would append to a stale query.
+            root.currentKey = "";
             searchField.text = "";
             root.query = "";
+            listView.sync();
             root.currentIndex = root.filteredItems.length > 0 ? 0 : -1;
-            if (listView.flickable)
-                listView.flickable.contentY = 0;
+            root.currentKey = root.keyAt(root.currentIndex);
+            listView.contentY = 0;
             root.opened();
             searchField.input.forceActiveFocus();
         } else {
@@ -247,8 +274,9 @@ FocusScope {
     }
 
     // The list viewport. `height` caps at `maxVisibleRows`; taller lists scroll
-    // through the design-system ScrollView's Flickable.
-    ScrollView {
+    // through the virtualized viewport, so delegate count follows the viewport
+    // instead of the application inventory.
+    ListViewport {
         id: listView
         objectName: "appPickerRows"
         x: root.padding
@@ -257,76 +285,76 @@ FocusScope {
         height: root.visibleRows > 0 ? root.visibleRows * root.rowHeight
                                      : root.rowHeight
         interactive: root.filteredItems.length > root.maxVisibleRows
+        scrollbarVisible: root.filteredItems.length > root.maxVisibleRows
+        model: root.filteredItems
+        keyRole: "desktopId"
+        roleNames: ["desktopId", "name", "iconPath", "pinned"]
+        rowHeight: root.rowHeight
+        maxVisibleRows: root.maxVisibleRows
+        currentIndex: root.currentIndex
+        // A closed picker does not build a large inventory model.
+        live: root.open
 
-        Column {
-            width: listView.width
-            // The viewport clips at the popover edge; the Flickable lives on
-            // the ScrollView, so rows just stack.
-            Repeater {
-                model: root.filteredItems
+        delegate: Item {
+            id: row
+            required property int index
+            required property var modelData
 
-                delegate: Item {
-                    id: row
-                    required property int index
-                    required property var modelData
+            readonly property bool pinned: modelData.pinned === true
+            readonly property bool active: row.index === root.currentIndex
 
-                    readonly property bool pinned: modelData.pinned === true
-                    readonly property bool active: row.index === root.currentIndex
+            width: ListView.view ? ListView.view.width : 0
+            height: root.rowHeight
 
-                    width: listView.width
-                    height: root.rowHeight
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.controls.focusRing.radius
-                        color: row.active ? Theme.color.controlActive
-                             : (rowHover.hovered ? Theme.color.controlFill : "transparent")
-                    }
-                    DockGlyph {
-                        id: rowIcon
-                        kind: "app"
-                        name: row.modelData.name !== undefined ? row.modelData.name : ""
-                        appId: row.modelData.desktopId !== undefined ? row.modelData.desktopId : ""
-                        desktopId: row.modelData.desktopId !== undefined ? row.modelData.desktopId : ""
-                        iconPath: row.modelData.iconPath !== undefined ? row.modelData.iconPath : ""
-                        size: root.iconSize
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.controls.contextMenu.padding
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        id: nameText
-                        text: row.modelData.name !== undefined ? row.modelData.name : ""
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                        elide: Text.ElideMiddle
-                        anchors.left: rowIcon.right
-                        anchors.leftMargin: Theme.primitive.spacing.sm
-                        anchors.right: pinnedText.left
-                        anchors.rightMargin: Theme.primitive.spacing.sm
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        id: pinnedText
-                        text: row.pinned ? qsTr("In Dock") : qsTr("Add")
-                        color: row.pinned ? Theme.color.accent : Theme.color.textTertiary
-                        font.pixelSize: Theme.primitive.font.sizeSm
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.controls.contextMenu.padding
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    HoverHandler { id: rowHover }
-                    TapHandler {
-                        onTapped: root.toggleRowAt(row.index)
-                    }
-                    Accessible.role: Accessible.ListItem
-                    Accessible.name: (row.modelData.name !== undefined
-                                      ? row.modelData.name : "")
-                                     + (row.pinned ? qsTr(", In Dock") : "")
-                    Accessible.selected: row.active
-                    Accessible.onPressAction: root.toggleRowAt(row.index)
-                }
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.controls.focusRing.radius
+                color: row.active ? Theme.color.controlActive
+                     : (rowHover.hovered ? Theme.color.controlFill : "transparent")
             }
+            DockGlyph {
+                id: rowIcon
+                kind: "app"
+                name: row.modelData.name !== undefined ? row.modelData.name : ""
+                appId: row.modelData.desktopId !== undefined ? row.modelData.desktopId : ""
+                desktopId: row.modelData.desktopId !== undefined ? row.modelData.desktopId : ""
+                iconPath: row.modelData.iconPath !== undefined ? row.modelData.iconPath : ""
+                size: root.iconSize
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.controls.contextMenu.padding
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                id: nameText
+                text: row.modelData.name !== undefined ? row.modelData.name : ""
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                elide: Text.ElideMiddle
+                anchors.left: rowIcon.right
+                anchors.leftMargin: Theme.primitive.spacing.sm
+                anchors.right: pinnedText.left
+                anchors.rightMargin: Theme.primitive.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                id: pinnedText
+                text: row.pinned ? qsTr("In Dock") : qsTr("Add")
+                color: row.pinned ? Theme.color.accent : Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.controls.contextMenu.padding
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            HoverHandler { id: rowHover }
+            TapHandler {
+                onTapped: root.toggleRowAt(row.index)
+            }
+            Accessible.role: Accessible.ListItem
+            Accessible.name: (row.modelData.name !== undefined
+                              ? row.modelData.name : "")
+                             + (row.pinned ? qsTr(", In Dock") : "")
+            Accessible.selected: row.active
+            Accessible.onPressAction: root.toggleRowAt(row.index)
         }
     }
 
@@ -379,6 +407,15 @@ FocusScope {
             event.accepted = true;
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.toggleCurrent();
+            event.accepted = true;
+        } else if (event.text.length > 0
+                   && !(event.modifiers & (Qt.ControlModifier
+                                           | Qt.AltModifier
+                                           | Qt.MetaModifier))) {
+            // The search field owns typed text. If the viewport has focus,
+            // forward the character there so type-ahead still filters.
+            searchField.text += event.text;
+            searchField.input.forceActiveFocus();
             event.accepted = true;
         }
     }

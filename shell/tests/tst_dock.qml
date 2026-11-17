@@ -7035,6 +7035,88 @@ Item {
             compare(findChild(longPopover, "stackRows").interactive, true);
         }
 
+        // T9: a folder's object count follows the viewport, not its length.
+        function test_stack_popover_delegates_follow_the_viewport() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: longStackItems(10000), downloadsCount: 10000,
+                entries: [ app("a", "A", true) ]
+            });
+            var popover = openStackOf(dock);
+            var rows = findChild(popover, "stackRows");
+            verify(rows !== null, "the row viewport exists");
+            compare(rows.listView.count, 10000);
+            verify(rows.liveDelegateCount > 0, "the visible rows have delegates");
+            verify(rows.liveDelegateCount <= 40,
+                   "live delegates follow the viewport, got "
+                   + rows.liveDelegateCount);
+            compare(popover.rowCount, 10000);
+            compare(popover.overflowCount, 10000 - popover.maxItems);
+        }
+
+        // T9: a live listing update keeps the selected path selected.
+        function test_stack_selection_follows_the_path_across_a_live_update() {
+            var items = longStackItems(4);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: items, downloadsCount: 4,
+                entries: [ app("a", "A", true) ]
+            });
+            var popover = openStackOf(dock);
+            popover.currentIndex = 2;
+            compare(popover.currentKey, "/tmp/item2.txt");
+
+            // A new file arrives at the front: the highlight follows item2
+            // instead of staying on numeric row 2.
+            dock.downloadsItems = [
+                { name: "new.txt", path: "/tmp/new.txt", isDir: false }
+            ].concat(items);
+            waitForRendering(stage);
+            compare(popover.currentKey, "/tmp/item2.txt");
+            compare(popover.currentIndex, 3);
+
+            downloadSpy.target = dock;
+            downloadSpy.clear();
+            popover.activateCurrent();
+            compare(downloadSpy.count, 1);
+            compare(downloadSpy.signalArguments[0][0], "/tmp/item2.txt");
+        }
+
+        // T9: type-ahead follows the shared menu rule and acts on the source
+        // rows even though only a window of delegates exists.
+        function test_stack_type_ahead_selects_a_row_by_prefix() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: [
+                    { name: "alpha.txt", path: "/tmp/alpha.txt", isDir: false },
+                    { name: "beta.txt", path: "/tmp/beta.txt", isDir: false },
+                    { name: "bravo.txt", path: "/tmp/bravo.txt", isDir: false }
+                ],
+                downloadsCount: 3,
+                entries: [ app("a", "A", true) ]
+            });
+            var popover = openStackOf(dock);
+            popover.typeAhead("b");
+            compare(popover.currentIndex, 1, "the first b row is selected");
+            popover.typeAhead("r");
+            compare(popover.currentIndex, 2, "the accumulated prefix selects bravo");
+        }
+
+        // T9: keyboard movement scrolls the virtualized viewport.
+        function test_stack_keyboard_selection_scrolls_the_viewport() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: longStackItems(20), downloadsCount: 20,
+                entries: [ app("a", "A", true) ]
+            });
+            var popover = openStackOf(dock);
+            var rows = findChild(popover, "stackRows");
+            compare(rows.contentY, 0);
+            popover.moveSelection(19);
+            compare(popover.currentIndex, 18);
+            verify(rows.contentY > 0, "the selected row is scrolled into view");
+        }
+
         function test_stack_glyph_has_no_text_in_artwork() {
             var glyph = make(glyphComponent, {
                 kind: "stack", name: "Downloads", size: 48
@@ -7687,6 +7769,76 @@ Item {
             // Accessible names are derived from the row data + pin state; the
             // delegate role is a list item.
             verify(row !== undefined, "rows exist to expose");
+        }
+
+        // T9: a large application inventory instantiates only the visible
+        // rows plus the viewport's cache.
+        function test_picker_delegates_follow_the_viewport() {
+            var apps = [];
+            for (var i = 0; i < 10000; ++i)
+                apps.push(pickerRow("org.example.App" + i + ".desktop",
+                                    "App " + i, false));
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: apps,
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            var rows = findChild(picker, "appPickerRows");
+            verify(rows !== null, "the picker viewport exists");
+            compare(rows.listView.count, 10000);
+            verify(rows.liveDelegateCount > 0, "the visible rows have delegates");
+            verify(rows.liveDelegateCount <= 40,
+                   "live delegates follow the viewport, got "
+                   + rows.liveDelegateCount);
+            compare(picker.filteredItems.length, 10000);
+        }
+
+        // T9: filtering keeps the same app selected when it still matches.
+        function test_picker_selection_follows_the_desktop_id_across_a_filter() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            var filesIndex = 0;
+            for (var i = 0; i < picker.filteredItems.length; ++i) {
+                if (picker.filteredItems[i].name === "Files")
+                    filesIndex = i;
+            }
+            picker.currentIndex = filesIndex;
+            compare(picker.currentKey, "org.example.Files.desktop");
+            picker.query = "file";
+            waitForRendering(stage);
+            compare(picker.filteredItems.length, 1);
+            compare(picker.currentIndex, 0);
+            compare(picker.currentKey, "org.example.Files.desktop");
+        }
+
+        // T9: keyboard movement scrolls the virtualized picker.
+        function test_picker_keyboard_selection_scrolls_the_viewport() {
+            var apps = [];
+            for (var i = 0; i < 40; ++i)
+                apps.push(pickerRow("org.example.App" + i + ".desktop",
+                                    "App " + i, false));
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: apps,
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            var rows = findChild(picker, "appPickerRows");
+            compare(rows.contentY, 0);
+            picker.moveSelection(39);
+            compare(picker.currentIndex, 39);
+            verify(rows.contentY > 0, "the selected app is scrolled into view");
         }
 
         function test_picker_escape_closes() {

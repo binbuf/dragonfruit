@@ -91,6 +91,25 @@ TestCase {
             Item { width: 200; height: 400 }
         }
     }
+    Component { id: incrementalModelComponent; IncrementalListModel { } }
+    Component {
+        id: listViewportComponent
+        ListViewport {
+            width: 200
+            height: 96
+            rowHeight: 24
+            maxVisibleRows: 4
+            delegate: Item {
+                required property var modelData
+                width: ListView.view ? ListView.view.width : 0
+                height: 24
+                Text {
+                    text: modelData && modelData.name !== undefined
+                          ? modelData.name : ""
+                }
+            }
+        }
+    }
 
     SignalSpy { id: closeSpy; signalName: "closeClicked" }
     SignalSpy { id: zoomSpy; signalName: "zoomRequested" }
@@ -107,6 +126,11 @@ TestCase {
     SignalSpy { id: sourceListSpy; signalName: "activated" }
     SignalSpy { id: acceptedSpy; signalName: "accepted" }
     SignalSpy { id: rejectedSpy; signalName: "rejected" }
+    SignalSpy { id: modelDataSpy; signalName: "dataChanged" }
+    SignalSpy { id: modelResetSpy; signalName: "modelReset" }
+    SignalSpy { id: rowsInsertedSpy; signalName: "rowsInserted" }
+    SignalSpy { id: rowsRemovedSpy; signalName: "rowsRemoved" }
+    SignalSpy { id: rowsMovedSpy; signalName: "rowsMoved" }
 
     function make(component, props) {
         var obj = createTemporaryObject(component, stage, props || {});
@@ -2452,6 +2476,8 @@ TestCase {
 
     // -- ScrollView (FR-1) --------------------------------------------------
 
+    // -- ScrollView (FR-1) --------------------------------------------------
+
     function test_scroll_view_keyboard_scroll() {
         var sv = make(scrollViewComponent, {});
         compare(sv.Accessible.role, Accessible.Pane);
@@ -2459,6 +2485,148 @@ TestCase {
         waitForRendering(stage);
         keyClick(Qt.Key_End);
         verify(sv.flickable.contentY > 0, "End must scroll to the bottom");
+    }
+
+    // -- IncrementalListModel / ListViewport (large lists) ------------------
+
+    function test_incremental_list_model_updates_roles_without_reset() {
+        var m = make(incrementalModelComponent, {
+            keyRole: "id",
+            roleNames: ["id", "name", "pinned"]
+        });
+        modelDataSpy.target = m;
+        modelResetSpy.target = m;
+        rowsInsertedSpy.target = m;
+        rowsRemovedSpy.target = m;
+        rowsMovedSpy.target = m;
+
+        m.source = [
+            { id: "a", name: "A", pinned: false },
+            { id: "b", name: "B", pinned: false }
+        ];
+        compare(m.count, 2);
+        verify(rowsInsertedSpy.count > 0, "the first snapshot inserts rows");
+        compare(modelResetSpy.count, 0, "the model is never reset");
+        var inserted = rowsInsertedSpy.count;
+
+        modelDataSpy.clear();
+        m.source = [
+            { id: "a", name: "A2", pinned: false },
+            { id: "b", name: "B", pinned: true }
+        ];
+        compare(m.count, 2);
+        verify(modelDataSpy.count > 0, "a role change reports dataChanged");
+        compare(rowsInsertedSpy.count, inserted, "no row was inserted");
+        compare(rowsRemovedSpy.count, 0, "no row was removed");
+        compare(modelResetSpy.count, 0, "a role change never resets the model");
+        compare(m.get(0).name, "A2");
+        compare(m.get(1).pinned, true);
+    }
+
+    function test_incremental_list_model_inserts_removes_and_moves() {
+        var m = make(incrementalModelComponent, {
+            keyRole: "id",
+            roleNames: ["id", "name"]
+        });
+        modelResetSpy.target = m;
+        rowsInsertedSpy.target = m;
+        rowsRemovedSpy.target = m;
+        rowsMovedSpy.target = m;
+
+        m.source = [
+            { id: "a", name: "A" },
+            { id: "b", name: "B" },
+            { id: "c", name: "C" }
+        ];
+        rowsInsertedSpy.clear();
+        rowsRemovedSpy.clear();
+        rowsMovedSpy.clear();
+
+        // Remove b and append d: one removal, one insert, no reset.
+        m.source = [
+            { id: "a", name: "A" },
+            { id: "c", name: "C" },
+            { id: "d", name: "D" }
+        ];
+        compare(m.count, 3);
+        compare(m.get(1).id, "c");
+        compare(m.get(2).id, "d");
+        compare(rowsRemovedSpy.count, 1);
+        compare(rowsInsertedSpy.count, 1);
+        compare(modelResetSpy.count, 0);
+
+        // Reorder the same rows: a move, not a remove plus insert.
+        rowsMovedSpy.clear();
+        rowsInsertedSpy.clear();
+        rowsRemovedSpy.clear();
+        m.source = [
+            { id: "c", name: "C" },
+            { id: "a", name: "A" },
+            { id: "d", name: "D" }
+        ];
+        compare(m.get(0).id, "c");
+        compare(m.get(1).id, "a");
+        verify(rowsMovedSpy.count > 0, "a reorder reports rowsMoved");
+        compare(rowsInsertedSpy.count, 0);
+        compare(rowsRemovedSpy.count, 0);
+        compare(modelResetSpy.count, 0);
+    }
+
+    function test_incremental_list_model_defers_until_live() {
+        var m = make(incrementalModelComponent, {
+            keyRole: "id",
+            roleNames: ["id", "name"],
+            live: false
+        });
+        m.source = [{ id: "a", name: "A" }];
+        compare(m.count, 0, "a closed viewport builds no rows");
+        m.live = true;
+        compare(m.count, 1);
+        compare(m.get(0).name, "A");
+    }
+
+    function test_list_viewport_delegate_count_follows_the_viewport() {
+        var rows = [];
+        for (var i = 0; i < 200; ++i)
+            rows.push({ id: String(i), name: "Row " + i });
+        var view = make(listViewportComponent, {
+            model: rows,
+            keyRole: "id",
+            roleNames: ["id", "name"]
+        });
+        compare(view.listView.count, 200);
+        verify(view.liveDelegateCount > 0, "the visible rows have delegates");
+        verify(view.liveDelegateCount <= 16,
+               "delegate count follows the viewport, got " + view.liveDelegateCount);
+        // Scrolling to a distant row instantiates only that window.
+        view.positionViewAtIndex(150);
+        waitForRendering(stage);
+        verify(view.contentY > 0, "positionViewAtIndex scrolls the viewport");
+        verify(view.liveDelegateCount <= 16,
+               "the scrolled window is still bounded, got " + view.liveDelegateCount);
+    }
+
+    function test_list_viewport_keeps_delegates_for_unchanged_rows() {
+        var view = make(listViewportComponent, {
+            model: [
+                { id: "a", name: "A" },
+                { id: "b", name: "B" },
+                { id: "c", name: "C" }
+            ],
+            keyRole: "id",
+            roleNames: ["id", "name"]
+        });
+        var first = view.listView.itemAtIndex(0);
+        verify(first !== null, "the first row is instantiated");
+        view.model = [
+            { id: "a", name: "A2" },
+            { id: "b", name: "B" },
+            { id: "c", name: "C" }
+        ];
+        waitForRendering(stage);
+        compare(view.listView.itemAtIndex(0), first,
+                "an unchanged row keeps its delegate");
+        compare(first.modelData.name, "A2", "the delegate sees the new role value");
     }
 }
 }

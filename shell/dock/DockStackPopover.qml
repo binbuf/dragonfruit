@@ -31,6 +31,10 @@ FocusScope {
     // The highlighted row; -1 is the header's "Open in Files" action. It makes
     // the header reachable by keyboard alongside the rows.
     property int currentIndex: -1
+    // The stable path behind `currentIndex`. A live listing update keeps the
+    // same file selected even when an earlier row is inserted or removed.
+    property string currentKey: ""
+    property string typeAheadBuffer: ""
 
     signal itemActivated(string path)
     signal openFolder()
@@ -48,16 +52,44 @@ FocusScope {
     readonly property real emptyHeight: isEmpty ? rowHeight : 0
     readonly property bool scrolls: rowCount > maxItems
 
-    // The listing can shrink while the popover is open (a file is deleted or
-    // moved). Keep the keyboard highlight on a real row.
-    onRowCountChanged: {
-        if (root.rowCount === 0)
-            root.currentIndex = -1;
-        else if (root.currentIndex >= root.rowCount)
-            root.currentIndex = root.rowCount - 1;
-        if (root.currentIndex >= 0)
-            root.keepSelectionVisible();
+    function keyAt(index) {
+        if (index < 0 || index >= root.rowCount)
+            return "";
+        var row = root.items[index];
+        return row !== undefined && row !== null && row.path !== undefined
+               ? String(row.path) : "";
     }
+
+    function indexOfKey(key) {
+        if (key === "")
+            return -1;
+        for (var i = 0; i < root.rowCount; ++i) {
+            if (root.keyAt(i) === key)
+                return i;
+        }
+        return -1;
+    }
+
+    // Follow the selected path across a live snapshot. A removed row leaves
+    // the nearest surviving row highlighted; a row that moved keeps the
+    // selection instead of silently selecting its old index.
+    function reconcileSelection() {
+        var at = root.indexOfKey(root.currentKey);
+        if (at >= 0) {
+            if (root.currentIndex !== at)
+                root.currentIndex = at;
+        } else if (root.rowCount === 0) {
+            root.currentIndex = -1;
+        } else if (root.currentIndex >= root.rowCount) {
+            root.currentIndex = root.rowCount - 1;
+        }
+        root.currentKey = root.keyAt(root.currentIndex);
+        if (root.currentIndex >= 0)
+            Qt.callLater(function() { root.keepSelectionVisible(); });
+    }
+
+    onItemsChanged: root.reconcileSelection()
+    onCurrentIndexChanged: root.currentKey = root.keyAt(root.currentIndex)
 
     readonly property real padding: Theme.controls.contextMenu.padding
     readonly property real rowHeight: Theme.controls.contextMenu.rowHeight
@@ -90,18 +122,9 @@ FocusScope {
     }
 
     function keepSelectionVisible() {
-        if (root.currentIndex < 0)
+        if (root.currentIndex < 0 || rowsView === null)
             return;
-        var flickable = rowsView.flickable;
-        if (!flickable)
-            return;
-        var top = root.currentIndex * root.rowHeight;
-        var bottom = top + root.rowHeight;
-        if (top < flickable.contentY)
-            flickable.contentY = top;
-        else if (bottom > flickable.contentY + flickable.height)
-            flickable.contentY = Math.min(bottom - flickable.height,
-                                          Math.max(0, flickable.contentHeight - flickable.height));
+        rowsView.positionViewAtIndex(root.currentIndex);
     }
 
     function activateCurrent() {
@@ -111,9 +134,52 @@ FocusScope {
             root.activateItem(root.currentIndex);
     }
 
+    function typeAheadMatch(prefix, start) {
+        for (var step = 0; step < root.rowCount; ++step) {
+            var i = (start + step) % root.rowCount;
+            var row = root.items[i];
+            var name = row !== undefined && row !== null
+                       && row.name !== undefined
+                       ? String(row.name).toLocaleLowerCase() : "";
+            if (name.indexOf(prefix) === 0)
+                return i;
+        }
+        return -1;
+    }
+
+    // Type-ahead follows the same rule as the shared menus: the buffer
+    // accumulates for 700 ms and a buffer that stops matching starts over at
+    // the newest character.
+    function typeAhead(text) {
+        if (root.rowCount === 0 || !text || text.length === 0)
+            return;
+        var lower = text.toLocaleLowerCase();
+        root.typeAheadBuffer += lower;
+        typeAheadTimer.restart();
+        var start = root.currentIndex < 0 ? 0 : root.currentIndex + 1;
+        var match = root.typeAheadMatch(root.typeAheadBuffer, start);
+        if (match < 0 && root.typeAheadBuffer.length > lower.length) {
+            root.typeAheadBuffer = lower;
+            match = root.typeAheadMatch(lower, start);
+        }
+        if (match >= 0) {
+            root.currentIndex = match;
+            root.keepSelectionVisible();
+        }
+    }
+
+    Timer {
+        id: typeAheadTimer
+        interval: 700
+        repeat: false
+        onTriggered: root.typeAheadBuffer = ""
+    }
+
     onOpenChanged: {
         if (root.open) {
             root.currentIndex = -1;
+            root.currentKey = "";
+            rowsView.sync();
             root.forceActiveFocus();
             root.opened();
         } else {
@@ -258,8 +324,9 @@ FocusScope {
         color: Theme.color.border
     }
 
-    // The row viewport. A folder longer than `maxItems` scrolls through it.
-    ScrollView {
+    // The row viewport. A folder longer than `maxItems` scrolls through it,
+    // and only the visible rows (plus a small cache) own delegates.
+    ListViewport {
         id: rowsView
         objectName: "stackRows"
         x: root.padding
@@ -267,72 +334,73 @@ FocusScope {
         width: root.width - 2 * root.padding
         height: root.listHeight
         interactive: root.scrolls
-        clip: true
+        scrollbarVisible: root.scrolls
+        model: root.items
+        keyRole: "path"
+        roleNames: ["name", "path", "isDir"]
+        rowHeight: root.rowHeight
+        maxVisibleRows: root.maxItems
+        currentIndex: root.currentIndex
+        // The listing is built when the popover opens; a closed popover does
+        // not pay for a large folder it cannot show.
+        live: root.open
 
-        Column {
-            width: rowsView.width
+        delegate: Item {
+            id: row
+            required property int index
+            required property var modelData
 
-            Repeater {
-                model: root.items
+            readonly property var entryData: row.modelData
+            readonly property bool isDir: entryData.isDir === true
+            readonly property bool active: row.index === root.currentIndex
 
-                delegate: Item {
-                    id: row
-                    required property int index
-                    required property var modelData
+            width: ListView.view ? ListView.view.width : 0
+            height: root.rowHeight
 
-                    readonly property var entryData: row.modelData
-                    readonly property bool isDir: entryData.isDir === true
-                    readonly property bool active: row.index === root.currentIndex
-
-                    width: rowsView.width
-                    height: root.rowHeight
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.controls.focusRing.radius
-                        color: row.active ? Theme.color.controlActive
-                             : (rowHover.hovered ? Theme.color.controlFill : "transparent")
-                    }
-                    Icon {
-                        id: rowIcon
-                        objectName: "stackRowIcon"
-                        name: row.isDir ? "folder" : "file"
-                        color: Theme.color.textSecondary
-                        size: root.rowIconSize
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.controls.contextMenu.padding
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        id: nameText
-                        objectName: "stackRowName"
-                        text: row.entryData.name !== undefined ? row.entryData.name : ""
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                        elide: Text.ElideMiddle
-                        anchors.left: rowIcon.right
-                        anchors.leftMargin: Theme.primitive.spacing.sm
-                        anchors.right: kindText.left
-                        anchors.rightMargin: Theme.primitive.spacing.sm
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        id: kindText
-                        text: row.isDir ? qsTr("folder") : ""
-                        color: Theme.color.textTertiary
-                        font.pixelSize: Theme.primitive.font.sizeSm
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.controls.contextMenu.padding
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    HoverHandler { id: rowHover }
-                    TapHandler { onTapped: root.activateItem(row.index) }
-                    Accessible.role: Accessible.MenuItem
-                    Accessible.name: row.entryData.name !== undefined ? row.entryData.name : ""
-                    Accessible.selected: row.active
-                    Accessible.onPressAction: root.activateItem(row.index)
-                }
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.controls.focusRing.radius
+                color: row.active ? Theme.color.controlActive
+                     : (rowHover.hovered ? Theme.color.controlFill : "transparent")
             }
+            Icon {
+                id: rowIcon
+                objectName: "stackRowIcon"
+                name: row.isDir ? "folder" : "file"
+                color: Theme.color.textSecondary
+                size: root.rowIconSize
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.controls.contextMenu.padding
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                id: nameText
+                objectName: "stackRowName"
+                text: row.entryData.name !== undefined ? row.entryData.name : ""
+                color: Theme.color.textPrimary
+                font.pixelSize: Theme.controls.button.fontSize
+                elide: Text.ElideMiddle
+                anchors.left: rowIcon.right
+                anchors.leftMargin: Theme.primitive.spacing.sm
+                anchors.right: kindText.left
+                anchors.rightMargin: Theme.primitive.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                id: kindText
+                text: row.isDir ? qsTr("folder") : ""
+                color: Theme.color.textTertiary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.controls.contextMenu.padding
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            HoverHandler { id: rowHover }
+            TapHandler { onTapped: root.activateItem(row.index) }
+            Accessible.role: Accessible.MenuItem
+            Accessible.name: row.entryData.name !== undefined ? row.entryData.name : ""
+            Accessible.selected: row.active
+            Accessible.onPressAction: root.activateItem(row.index)
         }
     }
 
@@ -386,6 +454,12 @@ FocusScope {
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                    || event.key === Qt.Key_Space) {
             root.activateCurrent();
+            event.accepted = true;
+        } else if (event.text.length > 0
+                   && !(event.modifiers & (Qt.ControlModifier
+                                           | Qt.AltModifier
+                                           | Qt.MetaModifier))) {
+            root.typeAhead(event.text);
             event.accepted = true;
         }
     }

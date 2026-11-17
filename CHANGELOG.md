@@ -8,6 +8,17 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Large lists.** Folder stacks and the Add Application picker now render
+  through one virtualized list viewport instead of a `Repeater` that built a
+  delegate for every entry. Object count follows the visible rows plus a small
+  cache margin, a live folder or inventory update changes only the affected
+  rows, and the highlighted row follows its stable path or desktop id instead
+  of its old numeric position.
+- **Menu-bar clock.** The status row now shares one clock source and measures
+  slot widths with a passive text-metric probe. A hidden sizing row no longer
+  instantiates complete status widgets or a second clock boundary timer, so an
+  idle bar has one clock wakeup and the measured overflow budget still matches
+  the visible slots.
 - **Chrome damage.** GPU chrome commits now damage only the pixels that
   changed. The Dock publishes the strip's complete painted bounds and the shell
   damages the union of the previous and current frame, so a pointer sweep, a

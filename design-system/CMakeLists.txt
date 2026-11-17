@@ -69,6 +69,8 @@ qt_add_qml_module(dragonfruit-design-system
         components/Slider.qml
         components/Select.qml
         components/SearchablePicker.qml
+        components/IncrementalListModel.qml
+        components/ListViewport.qml
         components/ContextMenu.qml
         components/MenuLevels.qml
         components/MenuLevelPanel.qml
