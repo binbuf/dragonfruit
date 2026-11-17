@@ -1946,6 +1946,58 @@ Item {
             compare(bar.dropdownWidth, 0);
         }
 
+        // A dropdown keeps its natural height on a normal output. Only a menu
+        // taller than the space below the bar is bounded and scrolls.
+        function test_dropdown_keeps_its_natural_height_until_the_output_bounds_it() {
+            var fixed = fixedMenus();
+            var shortItems = [];
+            for (var i = 0; i < 4; ++i)
+                shortItems.push({ label: "Row " + i });
+            var bar = make(menuBarComponent, {
+                width: 600,
+                outputWidth: 600,
+                outputHeight: 560,
+                appName: "Safari",
+                appMenuModel: [ { title: "File", items: shortItems } ],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var menu = bar.appMenuAt(2);
+            var scroll = findChild(menu.popup, "menuBarMenuScroll");
+            verify(scroll !== null);
+            compare(scroll.interactive, false,
+                    "a short menu must keep its natural height");
+            fuzzyCompare(menu.popup.height,
+                         4 * Theme.controls.menuBarMenu.rowHeight
+                         + 2 * Theme.controls.menuBarMenu.padding, 0.5);
+            bar.closeMenus();
+            waitForRendering(stage);
+
+            var longItems = [];
+            for (var j = 0; j < 60; ++j)
+                longItems.push({ label: "Row " + j });
+            var tallBar = make(menuBarComponent, {
+                width: 600,
+                outputWidth: 600,
+                outputHeight: 560,
+                appName: "Safari",
+                appMenuModel: [ { title: "File", items: longItems } ],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            tallBar.openMenu(2);
+            waitForRendering(stage);
+            var tallMenu = tallBar.appMenuAt(2);
+            var tallScroll = findChild(tallMenu.popup, "menuBarMenuScroll");
+            verify(tallScroll !== null);
+            compare(tallScroll.interactive, true,
+                    "only a menu taller than the output must scroll");
+            verify(tallMenu.popup.height <= 560 + 0.5,
+                   "a bounded menu must stay inside the output");
+        }
+
         function test_dropdown_geometry_includes_open_submenu() {
             var fixed = fixedMenus();
             var bar = make(menuBarComponent, {

@@ -4197,12 +4197,16 @@ void ShellController::onConfigured(int width, int height, quint32)
         return;
     }
     m_width = width;
-    m_height = height;
-    // The bar's dropdowns clamp to the output, not to the temporary scene
-    // growth used to render an open popup (T-09).
+    // The bar's dropdowns clamp to the output, not to the bar surface or the
+    // temporary scene growth used to render an open popup (T-09). The layer
+    // configure's width is the output width; its height is the bar surface
+    // (veil) height, so the output height comes from the protocol instead.
     if (m_item) {
+        const QRect outputGeometry =
+            m_protocol ? m_protocol->primaryOutputGeometry() : QRect();
         m_item->setProperty("outputWidth", m_width);
-        m_item->setProperty("outputHeight", m_height);
+        m_item->setProperty("outputHeight",
+                            outputGeometry.isValid() ? outputGeometry.height() : 0);
     }
     fprintf(stderr, "dragonfruit-shell: menu bar configured %dx%d\n", width, height);
     scheduleRender();
@@ -12303,6 +12307,19 @@ void ShellController::render()
     // first is exactly the half-populated launch frame this gate prevents.
     if (m_initialStatusPending != 0)
         return;
+    // The output's logical size bounds the bar's dropdowns. It is independent
+    // of the bar surface (veil) height and of the temporary scene growth used
+    // to render an open popup (T-09). Refresh it before applying popup
+    // geometry so a dropdown opens at its natural height instead of being
+    // clipped to the bar strip.
+    const QSize outputSize =
+        m_protocol ? m_protocol->primaryOutputGeometry().size() : QSize();
+    if (!outputSize.isEmpty()) {
+        if (qRound(m_item->property("outputWidth").toReal()) != outputSize.width())
+            m_item->setProperty("outputWidth", outputSize.width());
+        if (qRound(m_item->property("outputHeight").toReal()) != outputSize.height())
+            m_item->setProperty("outputHeight", outputSize.height());
+    }
     // A geometry request is applied inside the frame that carries it, after
     // the layout transaction that changed the menu has settled. This keeps the
     // popup rectangle and its content on one presentation instead of sending
@@ -12314,8 +12331,6 @@ void ShellController::render()
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
-    const QSize outputSize =
-        m_protocol ? m_protocol->primaryOutputGeometry().size() : QSize();
     auto *gpuProducer =
         qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_window));
     const PopupTargetMode mode = popupTargetMode();

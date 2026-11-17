@@ -1520,7 +1520,6 @@ private:
     qreal m_externalDropY = 0;
 
     int m_width = 0;
-    int m_height = 0;
     int m_barHeight = 28;
     // T200: the menu-bar surface is configured to the veil's visual extent so
     // the compositor can draw below the reserved strip. The shell still
