@@ -125,6 +125,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     widgetmodel.h
     polkitagent.cpp
     polkitsession.cpp
+    popuptarget.cpp
+    popuptarget.h
     screencastbridge.cpp
     screenshotbridge.cpp
     screenshotwriter.cpp

@@ -127,7 +127,7 @@ run_arm() {
         DRAGONFRUIT_CHROME_TRACE=1 \
         DRAGONFRUIT_CHROME_GPU=1 \
         DRAGONFRUIT_CHROME_GPU_SURFACES="$CHROME_GPU_SURFACES" \
-        DRAGONFRUIT_DOCK_STABLE_POPOVER=0 \
+        DRAGONFRUIT_POPUP_TARGETS=independent \
         DF_DOCK_POPOVER_AB="$CYCLES" \
         DF_DOCK_POPOVER_AB_INTERVAL_MS="$INTERVAL_MS"
     python3 scripts/t238-dock-popover-ab-driver.py run \

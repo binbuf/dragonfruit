@@ -217,6 +217,32 @@ void GpuChromeFrameProducer::setDmabufFormats(
     m_dmabufFormats = formats;
 }
 
+GpuChromeFrameProducer::ViewState &
+GpuChromeFrameProducer::viewState(int view)
+{
+    return m_views[view == PopupView ? PopupView : PrimaryView];
+}
+
+const GpuChromeFrameProducer::ViewState *
+GpuChromeFrameProducer::viewState(int view) const
+{
+    auto it = m_views.constFind(view == PopupView ? PopupView : PrimaryView);
+    return it == m_views.constEnd() ? nullptr : &it.value();
+}
+
+void GpuChromeFrameProducer::setViewLabel(int view, const QString &label)
+{
+    viewState(view).label = label;
+}
+
+QString GpuChromeFrameProducer::viewLabel(int view) const
+{
+    const ViewState *state = viewState(view);
+    if (state && !state->label.isEmpty())
+        return state->label;
+    return producerLabel(m_window);
+}
+
 void GpuChromeFrameProducer::resize(const QSize &bufferSize)
 {
     if (!m_window || bufferSize.isEmpty())
@@ -235,22 +261,24 @@ void GpuChromeFrameProducer::resize(const QSize &bufferSize)
     }
 }
 
-bool GpuChromeFrameProducer::configureRing(const QSize &physical)
+bool GpuChromeFrameProducer::configureRing(int view, const QSize &physical)
 {
     if (physical.isEmpty())
         return false;
-    const bool sizeRetired = m_ring.setSize(physical);
+    ViewState &state = viewState(view);
+    const bool sizeRetired = state.ring.setSize(physical);
     m_geometryDirty = false;
     if (sizeRetired)
-        collectRetiredSlots();
+        collectRetiredSlots(view);
     return true;
 }
 
-bool GpuChromeFrameProducer::ensureFramebuffer(int slot, const QSize &physical)
+bool GpuChromeFrameProducer::ensureFramebuffer(int view, int slot,
+                                               const QSize &physical)
 {
     if (!m_window || !m_context || physical.isEmpty())
         return false;
-    SlotResources &resources = m_slots[slot];
+    SlotResources &resources = viewState(view).slotResources[slot];
     if (resources.fbo && resources.fbo->size() == physical)
         return true;
 
@@ -258,12 +286,13 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int slot, const QSize &physical)
         ChromeDmabufExporter::closeFrame(&resources.frame);
         m_window->setRenderTarget(QQuickRenderTarget());
         ChromeStats::instance().recordFboFree(
-            producerLabel(m_window), fboAttachmentBytes(resources.fbo->size()));
+            viewLabel(view), fboAttachmentBytes(resources.fbo->size()));
         delete resources.fbo;
         resources.fbo = nullptr;
         resources.rendered = false;
-        if (m_lastRenderedSlot == slot)
-            m_lastRenderedSlot = -1;
+        ViewState &state = viewState(view);
+        if (state.lastRenderedSlot == slot)
+            state.lastRenderedSlot = -1;
     }
 
     QElapsedTimer createTimer;
@@ -290,7 +319,7 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int slot, const QSize &physical)
     resources.fbo->release();
     resources.rendered = false;
     ChromeStats::instance().recordFboAlloc(
-        producerLabel(m_window), physical, fboAttachmentBytes(physical),
+        viewLabel(view), physical, fboAttachmentBytes(physical),
         createTimer.nsecsElapsed() / 1000);
     return true;
 }
@@ -338,7 +367,7 @@ bool GpuChromeFrameProducer::syncGpuWork()
     return true;
 }
 
-bool GpuChromeFrameProducer::renderToFramebuffer(int slot)
+bool GpuChromeFrameProducer::renderToFramebuffer(int view, int slot)
 {
     if (!m_initialized || !m_window || !m_context || !m_surface || !m_renderContext)
         return false;
@@ -349,11 +378,11 @@ bool GpuChromeFrameProducer::renderToFramebuffer(int slot)
     }
 
     const QSize physical = physicalSize(m_window->size(), m_dpr);
-    if (!ensureFramebuffer(slot, physical)) {
+    if (!ensureFramebuffer(view, slot, physical)) {
         m_renderContext->doneCurrent();
         return false;
     }
-    SlotResources &resources = m_slots[slot];
+    SlotResources &resources = viewState(view).slotResources[slot];
 
     QQuickRenderTarget target =
         QQuickRenderTarget::fromOpenGLTexture(resources.fbo->texture(), physical);
@@ -379,7 +408,7 @@ bool GpuChromeFrameProducer::renderToFramebuffer(int slot)
     resources.rendered = true;
     // Only a fence-complete frame becomes the readback fallback; a timed-out
     // render must not be handed to the compositor or to the shm fallback.
-    m_lastRenderedSlot = slot;
+    viewState(view).lastRenderedSlot = slot;
     ChromeStats::instance().recordSceneFrame();
     ChromeStats::instance().recordRenderComplete();
     return true;
@@ -387,40 +416,49 @@ bool GpuChromeFrameProducer::renderToFramebuffer(int slot)
 
 QImage GpuChromeFrameProducer::renderFrame()
 {
+    return renderFrame(PrimaryView);
+}
+
+QImage GpuChromeFrameProducer::renderFrame(int view)
+{
     if (!m_initialized || !m_window) {
         m_exportReason = m_reason.isEmpty() ? QStringLiteral("render-failed") : m_reason;
         return QImage();
     }
     const QSize physical = physicalSize(m_window->size(), m_dpr);
-    if (!configureRing(physical)) {
+    if (!configureRing(view, physical)) {
         m_exportReason = QStringLiteral("bad-size");
         return QImage();
     }
-    const int slot = m_ring.acquire();
+    ViewState &state = viewState(view);
+    const int slot = state.ring.acquire();
     if (slot < 0) {
         m_exportReason = QStringLiteral("ring-exhausted");
-        ChromeStats::instance().recordRingExhausted(producerLabel(m_window));
+        ChromeStats::instance().recordRingExhausted(viewLabel(view));
         return QImage();
     }
-    if (!renderToFramebuffer(slot)) {
-        m_ring.abandon(slot);
-        collectRetiredSlots();
+    if (!renderToFramebuffer(view, slot)) {
+        state.ring.abandon(slot);
+        collectRetiredSlots(view);
         return QImage();
     }
 
-    QImage image = readbackSlot(slot);
-    m_ring.abandon(slot);
-    collectRetiredSlots();
+    QImage image = readbackSlot(view, slot);
+    state.ring.abandon(slot);
+    collectRetiredSlots(view);
     m_renderContext->doneCurrent();
     if (!image.isNull())
         m_lastFrame = image;
     return image;
 }
 
-QImage GpuChromeFrameProducer::readbackSlot(int slot)
+QImage GpuChromeFrameProducer::readbackSlot(int view, int slot)
 {
-    auto it = m_slots.find(slot);
-    if (it == m_slots.end() || !it.value().fbo || !m_renderContext || !m_surface)
+    const ViewState &state = viewState(view);
+    if (!m_renderContext || !m_surface)
+        return QImage();
+    auto it = state.slotResources.find(slot);
+    if (it == state.slotResources.end() || !it.value().fbo)
         return QImage();
     const bool wasCurrent = QOpenGLContext::currentContext() == m_renderContext;
     if (!wasCurrent && !m_renderContext->makeCurrent(m_surface))
@@ -438,13 +476,22 @@ QImage GpuChromeFrameProducer::readbackSlot(int slot)
 
 QImage GpuChromeFrameProducer::readbackCurrentFrame()
 {
-    return readbackSlot(m_lastRenderedSlot);
+    return readbackCurrentFrame(PrimaryView);
 }
 
-bool GpuChromeFrameProducer::ensureDmabufExport(int slot)
+QImage GpuChromeFrameProducer::readbackCurrentFrame(int view)
 {
-    auto it = m_slots.find(slot);
-    if (it == m_slots.end() || !it.value().fbo || !m_renderContext)
+    const ViewState &state = viewState(view);
+    return readbackSlot(view, state.lastRenderedSlot);
+}
+
+bool GpuChromeFrameProducer::ensureDmabufExport(int view, int slot)
+{
+    ViewState &state = viewState(view);
+    if (!m_renderContext)
+        return false;
+    auto it = state.slotResources.find(slot);
+    if (it == state.slotResources.end() || !it.value().fbo)
         return false;
     SlotResources &resources = it.value();
     if (resources.frame.valid())
@@ -491,6 +538,12 @@ bool GpuChromeFrameProducer::ensureDmabufExport(int slot)
 
 bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reason)
 {
+    return exportFrame(PrimaryView, frame, reason);
+}
+
+bool GpuChromeFrameProducer::exportFrame(int view, ChromeDmabufFrame *frame,
+                                         QString *reason)
+{
     if (!frame) {
         if (reason)
             *reason = QStringLiteral("bad-frame");
@@ -503,31 +556,32 @@ bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reas
     }
 
     const QSize physical = physicalSize(m_window->size(), m_dpr);
-    if (!configureRing(physical)) {
+    if (!configureRing(view, physical)) {
         if (reason)
             *reason = QStringLiteral("bad-size");
         return false;
     }
 
-    const int slot = m_ring.acquire();
+    ViewState &state = viewState(view);
+    const int slot = state.ring.acquire();
     if (slot < 0) {
-        ChromeStats::instance().recordRingExhausted(producerLabel(m_window));
+        ChromeStats::instance().recordRingExhausted(viewLabel(view));
         if (reason)
             *reason = QStringLiteral("ring-exhausted");
         return false;
     }
-    if (!renderToFramebuffer(slot)) {
-        m_ring.abandon(slot);
-        collectRetiredSlots();
+    if (!renderToFramebuffer(view, slot)) {
+        state.ring.abandon(slot);
+        collectRetiredSlots(view);
         if (reason)
             *reason = m_exportReason.isEmpty()
                 ? (m_reason.isEmpty() ? QStringLiteral("render-failed") : m_reason)
                 : m_exportReason;
         return false;
     }
-    if (!ensureDmabufExport(slot)) {
-        m_ring.abandon(slot);
-        collectRetiredSlots();
+    if (!ensureDmabufExport(view, slot)) {
+        state.ring.abandon(slot);
+        collectRetiredSlots(view);
         if (reason)
             *reason = m_exportReason.isEmpty() ? QStringLiteral("no-egl-export")
                                                : m_exportReason;
@@ -535,11 +589,11 @@ bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reas
         return false;
     }
 
-    SlotResources &resources = m_slots[slot];
+    SlotResources &resources = state.slotResources[slot];
     resources.frame.slot = slot;
     resources.frame.serial = ++m_dmabufSerial;
-    if (!m_ring.setSerial(slot, resources.frame.serial)) {
-        m_ring.abandon(slot);
+    if (!state.ring.setSerial(slot, resources.frame.serial)) {
+        state.ring.abandon(slot);
         if (reason)
             *reason = QStringLiteral("ring-serial");
         m_renderContext->doneCurrent();
@@ -547,8 +601,8 @@ bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reas
     }
     // The first export establishes the ring format. A later change retires
     // the old generation; the just-exported frame is still committed below.
-    if (m_ring.setFormat(resources.frame.format, resources.frame.modifier))
-        collectRetiredSlots();
+    if (state.ring.setFormat(resources.frame.format, resources.frame.modifier))
+        collectRetiredSlots(view);
 
     *frame = resources.frame;
     m_renderContext->doneCurrent();
@@ -559,56 +613,123 @@ bool GpuChromeFrameProducer::exportFrame(ChromeDmabufFrame *frame, QString *reas
 
 void GpuChromeFrameProducer::releaseDmabufFrame(int slot, uint64_t serial)
 {
-    if (!m_ring.release(serial))
+    Q_UNUSED(slot);
+    int releasedView = -1;
+    for (auto it = m_views.begin(); it != m_views.end(); ++it) {
+        if (it.value().ring.release(serial)) {
+            releasedView = it.key();
+            break;
+        }
+    }
+    if (releasedView < 0)
         return;
     QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
     const bool madeCurrent = context && m_surface
         && QOpenGLContext::currentContext() != context
         && context->makeCurrent(m_surface);
-    collectRetiredSlots();
+    collectRetiredSlots(releasedView);
     if (madeCurrent)
         context->doneCurrent();
-    Q_UNUSED(slot);
 }
 
 void GpuChromeFrameProducer::abandonDmabufFrame(int slot)
 {
-    if (!m_ring.abandon(slot))
+    abandonDmabufFrame(PrimaryView, slot);
+}
+
+void GpuChromeFrameProducer::abandonDmabufFrame(int view, int slot)
+{
+    ViewState &state = viewState(view);
+    if (!state.ring.abandon(slot))
         return;
     QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
     const bool madeCurrent = context && m_surface
         && QOpenGLContext::currentContext() != context
         && context->makeCurrent(m_surface);
-    collectRetiredSlots();
+    collectRetiredSlots(view);
+    if (madeCurrent)
+        context->doneCurrent();
+}
+
+void GpuChromeFrameProducer::discardView(int view)
+{
+    ViewState &state = viewState(view);
+    state.lastRenderedSlot = -1;
+    state.ring.retireAll();
+    QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
+    const bool madeCurrent = context && m_surface && context->isValid()
+        && QOpenGLContext::currentContext() != context
+        && context->makeCurrent(m_surface);
+    collectRetiredSlots(view);
     if (madeCurrent)
         context->doneCurrent();
 }
 
 QSize GpuChromeFrameProducer::framebufferSize() const
 {
-    auto it = m_slots.constFind(m_lastRenderedSlot);
-    return it != m_slots.constEnd() && it.value().fbo ? it.value().fbo->size()
-                                                      : QSize();
+    return framebufferSize(PrimaryView);
+}
+
+QSize GpuChromeFrameProducer::framebufferSize(int view) const
+{
+    const ViewState *state = viewState(view);
+    if (!state)
+        return QSize();
+    auto it = state->slotResources.constFind(state->lastRenderedSlot);
+    return it != state->slotResources.constEnd() && it.value().fbo ? it.value().fbo->size()
+                                                           : QSize();
 }
 
 unsigned int GpuChromeFrameProducer::framebufferTexture() const
 {
-    auto it = m_slots.constFind(m_lastRenderedSlot);
-    return it != m_slots.constEnd() && it.value().fbo ? it.value().fbo->texture()
-                                                      : 0;
+    return framebufferTexture(PrimaryView);
 }
 
-void GpuChromeFrameProducer::collectRetiredSlots()
+unsigned int GpuChromeFrameProducer::framebufferTexture(int view) const
 {
-    const QVector<int> retired = m_ring.takeRetired();
+    const ViewState *state = viewState(view);
+    if (!state)
+        return 0;
+    auto it = state->slotResources.constFind(state->lastRenderedSlot);
+    return it != state->slotResources.constEnd() && it.value().fbo ? it.value().fbo->texture()
+                                                           : 0;
+}
+
+int GpuChromeFrameProducer::dmabufRingLiveCount() const
+{
+    return dmabufRingLiveCount(PrimaryView);
+}
+
+int GpuChromeFrameProducer::dmabufRingLiveCount(int view) const
+{
+    const ViewState *state = viewState(view);
+    return state ? state->ring.liveCount() : 0;
+}
+
+quint64 GpuChromeFrameProducer::dmabufRingAllocations() const
+{
+    return dmabufRingAllocations(PrimaryView);
+}
+
+quint64 GpuChromeFrameProducer::dmabufRingAllocations(int view) const
+{
+    const ViewState *state = viewState(view);
+    return state ? state->ring.allocations() : 0;
+}
+
+void GpuChromeFrameProducer::collectRetiredSlots(int view)
+{
+    ViewState &state = viewState(view);
+    const QVector<int> retired = state.ring.takeRetired();
     for (int slot : retired)
-        destroySlotResources(slot);
+        destroySlotResources(view, slot);
 }
 
-void GpuChromeFrameProducer::destroySlotResources(int slot)
+void GpuChromeFrameProducer::destroySlotResources(int view, int slot)
 {
-    auto it = m_slots.find(slot);
-    if (it == m_slots.end())
+    ViewState &state = viewState(view);
+    auto it = state.slotResources.find(slot);
+    if (it == state.slotResources.end())
         return;
     QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
     const bool madeCurrent = context && m_surface && context->isValid()
@@ -620,13 +741,13 @@ void GpuChromeFrameProducer::destroySlotResources(int slot)
         if (m_window)
             m_window->setRenderTarget(QQuickRenderTarget());
         ChromeStats::instance().recordFboFree(
-            producerLabel(m_window), fboAttachmentBytes(resources.fbo->size()));
+            viewLabel(view), fboAttachmentBytes(resources.fbo->size()));
         delete resources.fbo;
         resources.fbo = nullptr;
     }
-    if (m_lastRenderedSlot == slot)
-        m_lastRenderedSlot = -1;
-    m_slots.erase(it);
+    if (state.lastRenderedSlot == slot)
+        state.lastRenderedSlot = -1;
+    state.slotResources.erase(it);
     if (madeCurrent)
         context->doneCurrent();
 }
@@ -642,13 +763,16 @@ void GpuChromeFrameProducer::releaseGpu()
     // target state; calling `QQuickWindow::setRenderTarget()` afterwards
     // dereferences freed state and segfaults during shell teardown (T192b's
     // full-rail Mission Control finding, reproduced by a failed start).
-    const QList<int> slotIds = m_slots.keys();
-    for (int slot : slotIds)
-        destroySlotResources(slot);
+    for (auto viewIt = m_views.begin(); viewIt != m_views.end(); ++viewIt) {
+        const QList<int> slotIds = viewIt.value().slotResources.keys();
+        for (int slot : slotIds)
+            destroySlotResources(viewIt.key(), slot);
+        viewIt.value().ring.reset();
+        viewIt.value().lastRenderedSlot = -1;
+    }
+    m_views.clear();
     if (m_renderControl)
         m_renderControl->invalidate();
-    m_ring.reset();
-    m_lastRenderedSlot = -1;
     m_exportReason.clear();
     delete m_window;
     m_window = nullptr;

@@ -45,6 +45,7 @@
 #include "notificationmodel.h"
 #include "osdmodel.h"
 #include "polkitagent.h"
+#include "popuptarget.h"
 #include "settingsclient.h"
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
@@ -633,7 +634,12 @@ private:
     };
     bool commitChromeScene(QQuickWindow *window,
                            const QList<ChromeSceneTarget> &targets,
-                           bool *deferred = nullptr);
+                           bool *deferred = nullptr, int view = 0);
+    // The independently sized popup views (T238 popup-target work). The
+    // release slots return the warm allocation after the interaction session
+    // ends; `shared` keeps the previous one-scene path.
+    void releaseDockPopupTarget();
+    void releaseMenuBarPopupTarget();
     // One dmabuf target commit, including the per-surface stats path and the
     // producer-slot release bookkeeping for a shared scene.
     ShellProtocol::DmabufCommitResult commitChromeDmabufTarget(
@@ -973,7 +979,7 @@ private:
     void onChromeDmabufReady(const QString &surface, bool ok);
     void onChromeCommitDeferred(const QString &surface);
     void onChromeFallbackTick();
-    QImage renderChromeFrame(QQuickWindow *window);
+    QImage renderChromeFrame(QQuickWindow *window, int view = 0);
 
     // T-21.2c: seed the policy from the protocol's current (possibly
     // pre-dispatched) role table, then push the two persistent roles' applied
@@ -1490,6 +1496,16 @@ private:
     // space and is released when the pointer, keyboard focus, and overlay all
     // leave, so a tooltip no longer pays the full popover placement budget.
     DockSceneBudget m_dockSceneBudget;
+    // Independent content-sized popup targets: the popup is rendered into its
+    // own view/ring instead of growing the strip scene. The target is
+    // grow-only for one interaction session and stays warm for
+    // `PopupTargetBudget::kWarmRetentionMs` after it ends.
+    PopupTargetBudget m_dockPopupBudget;
+    PopupTargetBudget m_menuBarPopupBudget;
+    QSize m_dockPopupTargetSize;
+    QSize m_menuBarPopupTargetSize;
+    QTimer *m_dockPopupReleaseTimer = nullptr;
+    QTimer *m_menuBarPopupReleaseTimer = nullptr;
     // T238: one correlation trace per Dock popover opening, from the
     // `popoverChanged` signal to the first presented frame callback.
     bool m_dockPopoverWasOpen = false;

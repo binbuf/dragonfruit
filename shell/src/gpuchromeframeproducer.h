@@ -39,6 +39,13 @@ public:
     explicit GpuChromeFrameProducer(QObject *parent = nullptr);
     ~GpuChromeFrameProducer() override;
 
+    // Two independently sized render targets share one QQuickWindow: the
+    // strip (or bar) scene and, when a popup is open, a popup-only scene. The
+    // popup target is sized by its content, so opening a narrow menu no longer
+    // enlarges every attachment in the strip ring. The controller sets the
+    // window size and the root item offset before rendering a view.
+    enum View { PrimaryView = 0, PopupView = 1 };
+
     // Create the GL context, offscreen surface, render control, and hidden
     // window. On failure returns false, sets `fallbackReason()`, and leaves
     // the object inert; the caller keeps the T185 shm producer.
@@ -73,29 +80,52 @@ public:
     // Renders once into the reusable FBO and returns a verification/readback
     // image (the non-Dock surfaces still use the T185 shm commit path).
     QImage renderFrame() override;
+    // Render one view for the shm fallback. `view` is `PrimaryView` or
+    // `PopupView`; the image comes from that view's ring.
+    QImage renderFrame(int view);
     // Renders once into a free ring slot and exports that slot as a dmabuf.
     // No CPU readback. The returned frame names its producer slot; the fd
     // stays owned by this producer and is valid until the slot is retired.
     // The slot remains busy until `releaseDmabufFrame()` (from
     // `wl_buffer.release`) or `abandonDmabufFrame()` (deferred/failed commit).
     bool exportFrame(ChromeDmabufFrame *frame, QString *reason = nullptr);
+    // Render/export one view. `view` is `PrimaryView` or `PopupView`; each has
+    // its own ring, so a popup allocation never occupies a strip slot.
+    bool exportFrame(int view, ChromeDmabufFrame *frame,
+                     QString *reason = nullptr);
+    // The stats label for a view (`dock`/`dock-popup`, `menubar`/...). The
+    // controller sets the popup label so allocation/peak accounting names the
+    // surface that owns the bytes.
+    void setViewLabel(int view, const QString &label);
+    QString viewLabel(int view) const;
     // Return a committed slot to the ring. `serial` must match the frame that
-    // was committed; stale releases are ignored.
+    // was committed; stale releases are ignored. The view is resolved by the
+    // serial, so the release path does not need to know which target it was.
     void releaseDmabufFrame(int slot, uint64_t serial);
     // Return an exported but not committed slot to the ring.
     void abandonDmabufFrame(int slot);
+    void abandonDmabufFrame(int view, int slot);
+    // Release every slot in a view's ring. Free slots are destroyed now; a
+    // slot the compositor still holds is destroyed on its release. Used when
+    // the popup interaction session ends and its warm target is returned.
+    void discardView(int view);
     // Read the FBO last rendered by exportFrame()/renderFrame() without
     // rendering again. Used for the one-frame SHM fallback after a failed
     // export/import.
     QImage readbackCurrentFrame();
+    QImage readbackCurrentFrame(int view);
     QImage readbackFrame() const { return m_lastFrame; }
     QString exportReason() const { return m_exportReason; }
 
     QSize framebufferSize() const;
+    QSize framebufferSize(int view) const;
     unsigned int framebufferTexture() const;
-    int dmabufRingCapacity() const { return m_ring.capacity(); }
-    int dmabufRingLiveCount() const { return m_ring.liveCount(); }
-    quint64 dmabufRingAllocations() const { return m_ring.allocations(); }
+    unsigned int framebufferTexture(int view) const;
+    int dmabufRingCapacity() const { return 3; }
+    int dmabufRingLiveCount() const;
+    int dmabufRingLiveCount(int view) const;
+    quint64 dmabufRingAllocations() const;
+    quint64 dmabufRingAllocations(int view) const;
 
     // GPU-first transport policy. `DRAGONFRUIT_CHROME_GPU` is an opt-out:
     // unset/"auto" (and "1"/"on"/"true") request the GPU rail, which falls
@@ -111,14 +141,24 @@ private:
         bool rendered = false;
     };
 
-    bool configureRing(const QSize &physical);
-    bool renderToFramebuffer(int slot);
-    bool ensureFramebuffer(int slot, const QSize &physical);
-    bool ensureDmabufExport(int slot);
+    struct ViewState {
+        ChromeDmabufRing ring;
+        QHash<int, SlotResources> slotResources;
+        int lastRenderedSlot = -1;
+        QString label;
+    };
+
+    ViewState &viewState(int view);
+    const ViewState *viewState(int view) const;
+
+    bool configureRing(int view, const QSize &physical);
+    bool renderToFramebuffer(int view, int slot);
+    bool ensureFramebuffer(int view, int slot, const QSize &physical);
+    bool ensureDmabufExport(int view, int slot);
     bool syncGpuWork();
-    QImage readbackSlot(int slot);
-    void collectRetiredSlots();
-    void destroySlotResources(int slot);
+    QImage readbackSlot(int view, int slot);
+    void collectRetiredSlots(int view);
+    void destroySlotResources(int view, int slot);
     void releaseGpu();
     void setFailure(const QString &reason);
 
@@ -130,9 +170,8 @@ private:
     QOffscreenSurface *m_surface = nullptr;
     QQuickRenderControl *m_renderControl = nullptr;
     QQuickWindow *m_window = nullptr;
-    ChromeDmabufRing m_ring{3};
-    QHash<int, SlotResources> m_slots;
-    int m_lastRenderedSlot = -1;
+    // One ring per view: the strip and popup targets never share a slot.
+    QHash<int, ViewState> m_views;
     ChromeDmabufExporter m_exporter;
     uint64_t m_dmabufSerial = 0;
     QVector<GpuChromeCapabilities::FormatModifier> m_dmabufFormats;

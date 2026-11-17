@@ -71,6 +71,7 @@
 #include "menubrokerpolicy.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
+#include "popuptarget.h"
 #include "shellprotocol.h"
 #include "shellmenus.h"
 #include "systemstatusclient.h"
@@ -133,7 +134,10 @@ const QString kAppIndexInterface = QStringLiteral("org.dragonfruit.AppIndex1");
 // the actual overlay rect to grow the Dock scene only as far as the content
 // needs (reliability §12). The margin is grow-only for one interaction
 // session and is released when the overlay, pointer, and keyboard focus have
-// all left, so a hover sweep does not retire the render target per tile.
+// all left, so a hover sweep does not retire the render target per tile. With
+// the GPU rail active the popup instead gets its own content-sized view
+// (ADR 0286); this budget is then only the input scene and the QML placement
+// bound.
 //
 // `DRAGONFRUIT_DOCK_STABLE_POPOVER=1` is the T238 diagnostic that keeps the
 // full budget resident for the whole session so the A/B can separate the
@@ -158,6 +162,47 @@ bool dockStablePopoverEnabled()
             && value != "false";
     }();
     return enabled;
+}
+
+// How the Dock and menu-bar popups are rendered:
+//   independent  popup content gets its own content-sized render target (the
+//                default when the GPU rail is active)
+//   shared       the popup is a sub-rect of the strip/bar scene (the previous
+//                content-sized shared scene)
+//   stable       the full popover budget stays resident (T238 diagnostic)
+// `DRAGONFRUIT_POPUP_TARGETS` selects the mode explicitly; the older
+// `DRAGONFRUIT_DOCK_STABLE_POPOVER=1` still selects `stable`.
+enum class PopupTargetMode { Independent, Shared, Stable };
+
+PopupTargetMode popupTargetMode()
+{
+    static const PopupTargetMode mode = []() {
+        const QByteArray value =
+            qgetenv("DRAGONFRUIT_POPUP_TARGETS").trimmed().toLower();
+        if (value == "shared")
+            return PopupTargetMode::Shared;
+        if (value == "stable")
+            return PopupTargetMode::Stable;
+        if (value == "independent")
+            return PopupTargetMode::Independent;
+        if (dockStablePopoverEnabled())
+            return PopupTargetMode::Stable;
+        return PopupTargetMode::Independent;
+    }();
+    return mode;
+}
+
+QString popupTargetModeName()
+{
+    switch (popupTargetMode()) {
+    case PopupTargetMode::Shared:
+        return QStringLiteral("shared");
+    case PopupTargetMode::Stable:
+        return QStringLiteral("stable");
+    case PopupTargetMode::Independent:
+        break;
+    }
+    return QStringLiteral("independent");
 }
 
 // Launch an app detached from the shell. The shell forces the offscreen QPA
@@ -833,6 +878,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // compositor's wl_surface.frame callback paces the next one.
     bindChromePacing(m_producers.value(m_window), QStringLiteral("menubar"),
                      [this]() { render(); });
+    // T238 popup targets: release the warm menu-bar popup allocation after the
+    // interaction session ends instead of holding it until the next menu.
+    m_menuBarPopupReleaseTimer = new QTimer(this);
+    m_menuBarPopupReleaseTimer->setSingleShot(true);
+    m_menuBarPopupReleaseTimer->setInterval(
+        static_cast<int>(PopupTargetBudget::kWarmRetentionMs));
+    connect(m_menuBarPopupReleaseTimer, &QTimer::timeout, this,
+            &ShellController::releaseMenuBarPopupTarget);
+    // The popup view's FBO allocation is accounted under its own surface label
+    // so `chrome stage stats` separates strip and popup memory.
+    if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_window)))
+        gpu->setViewLabel(GpuChromeFrameProducer::PopupView,
+                          QStringLiteral("menubar-popup"));
 
     connect(m_protocol, &ShellProtocol::configured, this, &ShellController::onConfigured);
     // T-21.1b: chrome renders at the output's physical scale. The output
@@ -1143,6 +1201,16 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // compositor's wl_surface.frame callback paces the next one.
     bindChromePacing(m_producers.value(m_dockWindow), QStringLiteral("dock"),
                      [this]() { renderDock(); });
+    m_dockPopupReleaseTimer = new QTimer(this);
+    m_dockPopupReleaseTimer->setSingleShot(true);
+    m_dockPopupReleaseTimer->setInterval(
+        static_cast<int>(PopupTargetBudget::kWarmRetentionMs));
+    connect(m_dockPopupReleaseTimer, &QTimer::timeout, this,
+            &ShellController::releaseDockPopupTarget);
+    if (auto *gpu =
+            qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow)))
+        gpu->setViewLabel(GpuChromeFrameProducer::PopupView,
+                          QStringLiteral("dock-popup"));
     m_dockTrackingTimer = new QChronoTimer(this);
     m_dockTrackingTimer->setTimerType(Qt::PreciseTimer);
     auto setDockTrackingInterval = [this]() {
@@ -9451,8 +9519,9 @@ void ShellController::onDockPointerLeft()
     // Leaving the Dock ends the overlay interaction session, so release the
     // content-sized scene margins instead of holding them until the next
     // unrelated render (reliability §12). A Dock that never allocated an
-    // overlay needs no extra commit here.
-    if (!m_dockSceneBudget.margins().isZero())
+    // overlay needs no extra commit here. The independent popup target has its
+    // own warm-retention timer, so its release also needs a final frame.
+    if (!m_dockSceneBudget.margins().isZero() || !m_dockPopupBudget.empty())
         scheduleDockRender();
 }
 
@@ -11032,7 +11101,12 @@ void ShellController::renderChromeProducer(ChromeFrameProducer *producer, bool f
 void ShellController::onChromeFramePresented(const QString &surface, uint32_t time)
 {
     Q_UNUSED(time);
-    if (surface == QLatin1String("dock") && m_dockPopoverTraceId != 0
+    // With independent popup targets the popup has its own commit, so the
+    // request-to-visible endpoint is that surface's callback, not the strip's.
+    const QString traceSurface = popupTargetMode() == PopupTargetMode::Independent
+        ? QStringLiteral("dock-popup")
+        : QStringLiteral("dock");
+    if (surface == traceSurface && m_dockPopoverTraceId != 0
         && m_dockPopoverTraceCommitted) {
         ChromeStats::instance().traceEvent(m_dockPopoverTraceId,
                                            QStringLiteral("frame-presented"));
@@ -11255,7 +11329,7 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
 
 bool ShellController::commitChromeScene(QQuickWindow *window,
                                         const QList<ChromeSceneTarget> &targets,
-                                        bool *deferred)
+                                        bool *deferred, int view)
 {
     if (deferred)
         *deferred = false;
@@ -11297,10 +11371,11 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
         // label; a shared popover does not add a second render.
         ChromeStats::instance().recordRender(targets.first().label);
         trace(QStringLiteral("export-begin"),
-              QStringLiteral("ring_live=%1 ring_alloc=%2")
-                  .arg(gpu->dmabufRingLiveCount())
-                  .arg(gpu->dmabufRingAllocations()));
-        const bool exported = gpu->exportFrame(&frame, &exportReason);
+              QStringLiteral("ring_live=%1 ring_alloc=%2 view=%3")
+                  .arg(gpu->dmabufRingLiveCount(view))
+                  .arg(gpu->dmabufRingAllocations(view))
+                  .arg(view));
+        const bool exported = gpu->exportFrame(view, &frame, &exportReason);
         trace(QStringLiteral("export-done"),
               QStringLiteral("ok=%1 reason=%2 slot=%3 serial=%4")
                   .arg(exported ? 1 : 0)
@@ -11356,8 +11431,8 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
             if (successCount == 0) {
                 // Nothing holds the exported frame. The FBO is safe to read
                 // once for the shm fallback of this frame.
-                gpu->abandonDmabufFrame(frame.slot);
-                const QImage image = gpu->readbackCurrentFrame();
+                gpu->abandonDmabufFrame(view, frame.slot);
+                const QImage image = gpu->readbackCurrentFrame(view);
                 if (!image.isNull()) {
                     for (const ChromeSceneTarget &target : targets) {
                         if (target.commitShm && target.commitShm(image)) {
@@ -11412,7 +11487,7 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
             noteSurfacePath(target.label, QStringLiteral("shm"), targetReason);
         }
 
-        const QImage image = renderChromeFrame(window);
+        const QImage image = renderChromeFrame(window, view);
         if (image.isNull()) {
             deferChromeProducer(producer);
         } else {
@@ -11430,9 +11505,13 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
     return anyCommitted && deferredTargets.isEmpty();
 }
 
-QImage ShellController::renderChromeFrame(QQuickWindow *window)
+QImage ShellController::renderChromeFrame(QQuickWindow *window, int view)
 {
     ChromeFrameProducer *producer = m_producers.value(window);
+    if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer)) {
+        ChromeStats::instance().recordRender(window ? window->objectName() : QString());
+        return gpu->renderFrame(view);
+    }
     if (producer) {
         ChromeStats::instance().recordRender(window ? window->objectName() : QString());
         return producer->renderFrame();
@@ -11502,6 +11581,42 @@ void ShellController::rerenderChrome()
         repaintLockSurfaces();
 }
 
+void ShellController::releaseDockPopupTarget()
+{
+    if (m_dockPopupBudget.empty())
+        return;
+    const QSize previous = m_dockPopupTargetSize;
+    m_dockPopupBudget.reset();
+    m_dockPopupTargetSize = QSize();
+    if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(
+            m_producers.value(m_dockWindow))) {
+        gpu->discardView(GpuChromeFrameProducer::PopupView);
+    }
+    if (!previous.isEmpty()) {
+        ChromeStats::instance().recordSceneResize(QStringLiteral("dock-popup"),
+                                                  previous, QSize());
+        scheduleDockRender();
+    }
+}
+
+void ShellController::releaseMenuBarPopupTarget()
+{
+    if (m_menuBarPopupBudget.empty())
+        return;
+    const QSize previous = m_menuBarPopupTargetSize;
+    m_menuBarPopupBudget.reset();
+    m_menuBarPopupTargetSize = QSize();
+    if (auto *gpu =
+            qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_window))) {
+        gpu->discardView(GpuChromeFrameProducer::PopupView);
+    }
+    if (!previous.isEmpty()) {
+        ChromeStats::instance().recordSceneResize(QStringLiteral("menubar-popup"),
+                                                  previous, QSize());
+        scheduleRender();
+    }
+}
+
 void ShellController::renderDock()
 {
     if (!m_dockItem || !m_dockWindow || m_dockWidth <= 0 || m_dockHeight <= 0)
@@ -11556,59 +11671,84 @@ void ShellController::renderDock()
     // every hover label pay for a tall menu and resize the shared scene
     // (reliability §12). The budget is grow-only for the interaction session
     // and is released once the overlay, pointer, and keyboard focus are all
-    // gone, so a sweep between tiles reuses one allocation. T238's
-    // stable-popover diagnostic still keeps the full budget resident so the
-    // A/B can isolate the open-frame resize cost.
-    DockSceneMargins sceneMargins;
-    if (dockStablePopoverEnabled()) {
-        sceneMargins.top = kDockPopoverHeadroom;
-        sceneMargins.left = kDockPopoverGutter;
-        sceneMargins.right = kDockPopoverGutter;
+    // gone, so a sweep between tiles reuses one allocation.
+    //
+    // With independent popup targets the overlay never enters the strip scene:
+    // the popup gets its own content-sized view, so the strip allocation is
+    // stable across every menu size. T238's stable-popover diagnostic still
+    // keeps the full budget resident for the A/B.
+    const QSize outputSize = outputGeometry.isValid() ? outputGeometry.size()
+                                                      : QSize();
+    auto *gpuProducer =
+        qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow));
+    const PopupTargetMode mode = popupTargetMode();
+    const bool independentPopup = mode == PopupTargetMode::Independent
+        && gpuProducer && gpuProducer->gpuActive() && m_chromeDmabufEnabled;
+    const bool popoverOpen = m_dockItem->property("popoverOpen").toBool();
+    // A held button keeps the gesture's allocation even if the pointer
+    // briefly leaves the strip; releasing it ends the session.
+    const bool interactionActive = popoverOpen
+        || m_dockButtons != Qt::NoButton
+        || m_dockPointerPosition.has_value() || m_dockKeyboardFocused;
+
+    DockSceneMargins renderMargins;
+    DockSceneMargins inputMargins;
+    if (independentPopup) {
+        m_dockSceneBudget.reset();
+        // The strip target is exactly the strip; the input scene still covers
+        // the popup so pointer coordinates stay inside the window between
+        // frames (the popup is committed from its own view).
+        inputMargins = dockSceneMargins(QSize(m_dockWidth, m_dockHeight),
+                                        popover, outputSize);
+    } else if (mode == PopupTargetMode::Stable) {
+        renderMargins.top = kDockPopoverHeadroom;
+        renderMargins.left = kDockPopoverGutter;
+        renderMargins.right = kDockPopoverGutter;
+        inputMargins = renderMargins;
     } else {
-        const bool popoverOpen = m_dockItem->property("popoverOpen").toBool();
-        // A held button keeps the gesture's allocation even if the pointer
-        // briefly leaves the strip; releasing it ends the session.
-        const bool interactionActive = popoverOpen
-            || m_dockButtons != Qt::NoButton
-            || m_dockPointerPosition.has_value() || m_dockKeyboardFocused;
-        sceneMargins = m_dockSceneBudget.update(
-            QSize(m_dockWidth, m_dockHeight), popover,
-            outputGeometry.isValid() ? outputGeometry.size() : QSize(),
+        renderMargins = m_dockSceneBudget.update(
+            QSize(m_dockWidth, m_dockHeight), popover, outputSize,
             interactionActive);
+        inputMargins = renderMargins;
     }
-    const int headroom = sceneMargins.top;
-    const int leftGutter = sceneMargins.left;
-    const bool originChanged = leftGutter != m_dockItemOffsetX || headroom != m_dockItemOffsetY;
-    m_dockItemOffsetX = leftGutter;
-    m_dockItemOffsetY = headroom;
-    const QSize sceneSize =
-        sceneMargins.sceneSize(QSize(m_dockWidth, m_dockHeight));
-    const int windowWidth = sceneSize.width();
-    const int windowHeight = sceneSize.height();
+    const int inputLeft = inputMargins.left;
+    const int inputTop = inputMargins.top;
+    const int renderLeft = independentPopup ? 0 : renderMargins.left;
+    const int renderTop = independentPopup ? 0 : renderMargins.top;
+    const bool originChanged = inputLeft != m_dockItemOffsetX
+        || inputTop != m_dockItemOffsetY;
+    m_dockItemOffsetX = inputLeft;
+    m_dockItemOffsetY = inputTop;
+    const QSize stripSceneSize = independentPopup
+        ? QSize(m_dockWidth, m_dockHeight)
+        : renderMargins.sceneSize(QSize(m_dockWidth, m_dockHeight));
+    const QSize inputSceneSize =
+        inputMargins.sceneSize(QSize(m_dockWidth, m_dockHeight));
+    const int windowWidth = stripSceneSize.width();
+    const int windowHeight = stripSceneSize.height();
     prepareChromeScene(m_dockWindow, m_dockItem, QSize(m_dockWidth, m_dockHeight),
-                       QSize(windowWidth, windowHeight), m_chromeScale);
+                       stripSceneSize, m_chromeScale);
     if (m_dockPopoverTraceId != 0) {
         ChromeStats::instance().traceEvent(
             m_dockPopoverTraceId, QStringLiteral("scene-prepared"),
-            QStringLiteral("scene=%1x%2 dock=%3x%4 popover=%5 margins=%6,%7,%8,%9")
+            QStringLiteral("scene=%1x%2 dock=%3x%4 popover=%5 margins=%6,%7,%8,%9 mode=%10")
                 .arg(windowWidth)
                 .arg(windowHeight)
                 .arg(m_dockWidth)
                 .arg(m_dockHeight)
                 .arg(hasPopover ? 1 : 0)
-                .arg(sceneMargins.top)
-                .arg(sceneMargins.right)
-                .arg(sceneMargins.bottom)
-                .arg(sceneMargins.left));
+                .arg(inputMargins.top)
+                .arg(inputMargins.right)
+                .arg(inputMargins.bottom)
+                .arg(inputMargins.left)
+                .arg(popupTargetModeName()));
     }
-    auto *gpuProducer =
-        qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow));
     // The software producer's window is the physical buffer, so the scene
     // offset is physical too. The GPU producer keeps the QQuickWindow in
     // logical units (the FBO is physical), so the same offset stays logical.
     const QPointF itemOrigin =
-        gpuProducer ? QPointF(leftGutter, headroom)
-                    : ChromeScale::logicalToBuffer(QPointF(leftGutter, headroom),
+        gpuProducer ? QPointF(renderLeft, renderTop)
+                    : ChromeScale::logicalToBuffer(QPointF(renderLeft, renderTop),
                                                    m_chromeScale);
     m_dockItem->setX(itemOrigin.x());
     m_dockItem->setY(itemOrigin.y());
@@ -11617,7 +11757,7 @@ void ShellController::renderDock()
     // Qt reevaluates hover during polish. Otherwise opening a label makes
     // the pointer appear to leave its tile and closes the label again.
     if (originChanged && m_dockPointerPosition && m_dockButtons == Qt::NoButton) {
-        const QPointF pointer = *m_dockPointerPosition + QPointF(leftGutter, headroom);
+        const QPointF pointer = *m_dockPointerPosition + QPointF(inputLeft, inputTop);
         sendChromePointer(m_dockWindow, QEvent::MouseMove, pointer,
                           Qt::NoButton, Qt::NoButton);
     }
@@ -11640,7 +11780,7 @@ void ShellController::renderDock()
     // it draws, so the declared panel and the QML fill are the same rounded
     // rect (T-14.7z). Submit the input and blur geometry with this frame.
     m_protocol->setDockFrameGeometry(dockRectProperty("panelRect"), inputRects);
-    const QRect dockRect(leftGutter, headroom, m_dockWidth, m_dockHeight);
+    const QRect dockRect(renderLeft, renderTop, m_dockWidth, m_dockHeight);
     const QRect dockSource = chromeBufferRect(dockRect);
     QList<ChromeSceneTarget> targets;
     targets.append({QStringLiteral("dock"), QSize(m_dockWidth, m_dockHeight), dockSource,
@@ -11656,6 +11796,7 @@ void ShellController::renderDock()
     // the bar (left/right margin) at the entry's scene y (T-10 section 5).
     m_dockPopoverX = px;
     m_dockPopoverY = py;
+    QSize popupTargetSize;
     if (hasPopover) {
         int top = 0;
         int right = 0;
@@ -11684,17 +11825,53 @@ void ShellController::renderDock()
             m_dockItem->property("activePopoverSurfaceRegions").toList());
         m_protocol->setDockPopupInputActive(popoverInputActive);
         m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, QRect());
-        const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
-        const QRect popupSource = chromeBufferRect(popupRect);
-        targets.append({QStringLiteral("dock-popup"), QSize(pw, ph), popupSource,
-                        [this, pw, ph, popupSource](const QImage &image) {
-                            return m_protocol->commitDockPopupImage(
-                                image, QSize(pw, ph), popupSource);
-                        }});
+        if (independentPopup) {
+            // The popup view is sized by its content (grow-only for this
+            // interaction session) instead of growing the strip scene. The
+            // surface still declares the actual popup rect; the larger warm
+            // target is cropped to that rect on commit.
+            const qint64 nowMs = monotonicNs() / 1'000'000;
+            popupTargetSize = m_dockPopupBudget.update(
+                QSize(pw, ph), outputSize, interactionActive, nowMs);
+            if (popupTargetSize.isEmpty())
+                popupTargetSize = QSize(qMax(1, pw), qMax(1, ph));
+            if (popupTargetSize != m_dockPopupTargetSize) {
+                ChromeStats::instance().recordSceneResize(
+                    QStringLiteral("dock-popup"), m_dockPopupTargetSize,
+                    popupTargetSize);
+                m_dockPopupTargetSize = popupTargetSize;
+            }
+            if (m_dockPopupReleaseTimer)
+                m_dockPopupReleaseTimer->stop();
+        } else {
+            const QRect popupRect(renderLeft + px, renderTop + py, pw, ph);
+            const QRect popupSource = chromeBufferRect(popupRect);
+            targets.append({QStringLiteral("dock-popup"), QSize(pw, ph), popupSource,
+                            [this, pw, ph, popupSource](const QImage &image) {
+                                return m_protocol->commitDockPopupImage(
+                                    image, QSize(pw, ph), popupSource);
+                            }});
+        }
     } else {
         m_protocol->clearDockPopupPanelRegions();
         m_protocol->setDockPopupInputActive(false);
         m_protocol->hideDockPopup();
+        if (independentPopup) {
+            m_dockPopupBudget.update(QSize(), outputSize, interactionActive,
+                                     monotonicNs() / 1'000'000);
+            if (m_dockPopupReleaseTimer) {
+                if (interactionActive)
+                    m_dockPopupReleaseTimer->stop();
+                else if (!m_dockPopupBudget.empty()
+                         && !m_dockPopupReleaseTimer->isActive())
+                    m_dockPopupReleaseTimer->start();
+            }
+        } else {
+            if (!m_dockPopupTargetSize.isEmpty() && gpuProducer)
+                gpuProducer->discardView(GpuChromeFrameProducer::PopupView);
+            m_dockPopupBudget.reset();
+            m_dockPopupTargetSize = QSize();
+        }
     }
 
     if (m_dockPopoverTraceId != 0)
@@ -11702,16 +11879,62 @@ void ShellController::renderDock()
                                            QStringLiteral("commit-begin"));
     bool deferred = false;
     const bool committed = commitChromeScene(m_dockWindow, targets, &deferred);
+    bool popupCommitted = committed && hasPopover && !independentPopup;
+    if (independentPopup && hasPopover && gpuProducer) {
+        // Render the popup into its own content-sized view. The root item is
+        // translated so the popup origin is the view origin; the strip is
+        // outside this view. Input mapping is unchanged because the item
+        // position is restored before the frame returns.
+        m_dockItem->setX(-px);
+        m_dockItem->setY(-py);
+        gpuProducer->resize(
+            ChromeScale::bufferSize(popupTargetSize, m_chromeScale));
+        const int contentWidth = qMin(pw, popupTargetSize.width());
+        const int contentHeight = qMin(ph, popupTargetSize.height());
+        const QRect popupSource =
+            chromeBufferRect(QRect(0, 0, contentWidth, contentHeight));
+        QList<ChromeSceneTarget> popupTargets;
+        popupTargets.append(
+            {QStringLiteral("dock-popup"), QSize(contentWidth, contentHeight),
+             popupSource,
+             [this, contentWidth, contentHeight, popupSource](const QImage &image) {
+                 return m_protocol->commitDockPopupImage(
+                     image, QSize(contentWidth, contentHeight), popupSource);
+             }});
+        bool popupDeferred = false;
+        popupCommitted = commitChromeScene(
+            m_dockWindow, popupTargets, &popupDeferred,
+            GpuChromeFrameProducer::PopupView);
+        // Restore the input scene origin/size. The next strip render resizes
+        // the window back to `stripSceneSize`; between frames the window must
+        // still cover the popup so pointer hit-testing stays inside it.
+        const QPointF inputOrigin(inputLeft, inputTop);
+        m_dockItem->setX(inputOrigin.x());
+        m_dockItem->setY(inputOrigin.y());
+        gpuProducer->resize(
+            ChromeScale::bufferSize(inputSceneSize, m_chromeScale));
+        if (m_dockPopoverTraceId != 0) {
+            ChromeStats::instance().traceEvent(
+                m_dockPopoverTraceId, QStringLiteral("popup-view"),
+                QStringLiteral("target=%1x%2 content=%3x%4 deferred=%5")
+                    .arg(popupTargetSize.width())
+                    .arg(popupTargetSize.height())
+                    .arg(contentWidth)
+                    .arg(contentHeight)
+                    .arg(popupDeferred ? 1 : 0));
+        }
+    }
     if (m_dockPopoverTraceId != 0) {
         ChromeStats::instance().traceEvent(
             m_dockPopoverTraceId, QStringLiteral("commit-done"),
-            QStringLiteral("ok=%1 targets=%2")
+            QStringLiteral("ok=%1 targets=%2 popup=%3")
                 .arg(committed ? 1 : 0)
-                .arg(targets.size()));
+                .arg(targets.size())
+                .arg(popupCommitted ? 1 : 0));
         // Only a frame that actually carried the popover target is the
         // request-to-visible endpoint. A reveal/settle frame before the
         // popover rect updates must not end the trace.
-        m_dockPopoverTraceCommitted = committed && hasPopover;
+        m_dockPopoverTraceCommitted = popupCommitted;
     }
     if (!committed && !deferred)
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
@@ -11737,10 +11960,25 @@ void ShellController::render()
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
+    const QSize outputSize =
+        m_protocol ? m_protocol->primaryOutputGeometry().size() : QSize();
+    auto *gpuProducer =
+        qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_window));
+    const PopupTargetMode mode = popupTargetMode();
+    const bool independentPopup = mode == PopupTargetMode::Independent
+        && gpuProducer && gpuProducer->gpuActive() && m_chromeDmabufEnabled;
     // T200: the scene is tall enough for the veil (and any dropdown), but the
     // menubar surface still commits only the bar strip. The compositor draws
-    // the veil from its own material region below the strip.
-    const int windowHeight = popupShown
+    // the veil from its own material region below the strip. With independent
+    // popup targets the bar scene stays at the strip/veil height and the
+    // dropdown gets its own content-sized view.
+    const int windowHeight = independentPopup
+        ? m_menuBarSurfaceHeight
+        : (popupShown ? qMax(m_menuBarSurfaceHeight, m_popupY + m_popupHeight)
+                      : m_menuBarSurfaceHeight);
+    // Between frames the window still covers the dropdown so pointer
+    // coordinates stay inside it; only the committed strip target is smaller.
+    const int inputWindowHeight = popupShown
         ? qMax(m_menuBarSurfaceHeight, m_popupY + m_popupHeight)
         : m_menuBarSurfaceHeight;
     prepareChromeScene(m_window, m_item, QSize(m_width, m_barHeight),
@@ -11767,7 +12005,22 @@ void ShellController::render()
                                                        QSize(m_width, m_barHeight),
                                                        barSource);
                     }});
-    if (popupShown) {
+    QSize popupTargetSize;
+    if (popupShown && independentPopup) {
+        const qint64 nowMs = monotonicNs() / 1'000'000;
+        popupTargetSize = m_menuBarPopupBudget.update(
+            QSize(m_popupWidth, m_popupHeight), outputSize, true, nowMs);
+        if (popupTargetSize.isEmpty())
+            popupTargetSize = QSize(m_popupWidth, m_popupHeight);
+        if (popupTargetSize != m_menuBarPopupTargetSize) {
+            ChromeStats::instance().recordSceneResize(
+                QStringLiteral("menubar-popup"), m_menuBarPopupTargetSize,
+                popupTargetSize);
+            m_menuBarPopupTargetSize = popupTargetSize;
+        }
+        if (m_menuBarPopupReleaseTimer)
+            m_menuBarPopupReleaseTimer->stop();
+    } else if (popupShown) {
         const QRect popupRect(m_popupX, m_popupY, m_popupWidth, m_popupHeight);
         const QRect popupSource = chromeBufferRect(popupRect);
         targets.append({QStringLiteral("menubar-popup"),
@@ -11776,6 +12029,49 @@ void ShellController::render()
                             return m_protocol->commitPopupImage(
                                 image, QSize(m_popupWidth, m_popupHeight), popupSource);
                         }});
+    } else if (independentPopup) {
+        m_menuBarPopupBudget.update(QSize(), outputSize, false,
+                                    monotonicNs() / 1'000'000);
+        if (!m_menuBarPopupBudget.empty() && m_menuBarPopupReleaseTimer
+            && !m_menuBarPopupReleaseTimer->isActive()) {
+            m_menuBarPopupReleaseTimer->start();
+        }
+    } else {
+        if (!m_menuBarPopupTargetSize.isEmpty() && gpuProducer)
+            gpuProducer->discardView(GpuChromeFrameProducer::PopupView);
+        m_menuBarPopupBudget.reset();
+        m_menuBarPopupTargetSize = QSize();
     }
-    commitChromeScene(m_window, targets);
+
+    bool deferred = false;
+    const bool committed = commitChromeScene(m_window, targets, &deferred);
+    bool popupCommitted = committed && popupShown && !independentPopup;
+    if (independentPopup && popupShown && gpuProducer) {
+        m_item->setX(-m_popupX);
+        m_item->setY(-m_popupY);
+        gpuProducer->resize(
+            ChromeScale::bufferSize(popupTargetSize, m_chromeScale));
+        const int contentWidth = qMin(m_popupWidth, popupTargetSize.width());
+        const int contentHeight = qMin(m_popupHeight, popupTargetSize.height());
+        const QRect popupSource =
+            chromeBufferRect(QRect(0, 0, contentWidth, contentHeight));
+        QList<ChromeSceneTarget> popupTargets;
+        popupTargets.append(
+            {QStringLiteral("menubar-popup"),
+             QSize(contentWidth, contentHeight), popupSource,
+             [this, contentWidth, contentHeight, popupSource](const QImage &image) {
+                 return m_protocol->commitPopupImage(
+                     image, QSize(contentWidth, contentHeight), popupSource);
+             }});
+        popupCommitted = commitChromeScene(
+            m_window, popupTargets, nullptr,
+            GpuChromeFrameProducer::PopupView);
+        m_item->setX(0);
+        m_item->setY(0);
+        gpuProducer->resize(
+            ChromeScale::bufferSize(QSize(m_width, inputWindowHeight),
+                                    m_chromeScale));
+    }
+    if (!committed && !deferred)
+        qWarning() << "shell: failed to commit the menu bar:" << m_protocol->lastError();
 }

@@ -22,6 +22,7 @@
 #include "menubrokerpolicy.h"
 #include "notificationclient.h"
 #include "osdmodel.h"
+#include "popuptarget.h"
 #include "settingsclient.h"
 #include "shellmenus.h"
 #include "trayclient.h"
@@ -3837,6 +3838,82 @@ private slots:
         const DockSceneMargins resized =
             budget.update(QSize(900, 200), QRect(), QSize(), true);
         QVERIFY(resized.isZero());
+    }
+
+    // -- content-sized popup targets (T238 popup-target work) ------------
+
+    void popupTargetClampsToContentAndOutput()
+    {
+        QCOMPARE(popupTargetSize(QSize(), QSize(1920, 1080)), QSize());
+        QCOMPARE(popupTargetSize(QSize(240, 180), QSize()), QSize(240, 180));
+        QCOMPARE(popupTargetSize(QSize(240, 180), QSize(1920, 1080)),
+                 QSize(240, 180));
+        // A menu larger than the output is clipped to the usable area.
+        QCOMPARE(popupTargetSize(QSize(2400, 1800), QSize(1920, 1080)),
+                 QSize(1920, 1080));
+    }
+
+    void popupTargetGrowsOnlyWithinASession()
+    {
+        PopupTargetBudget budget;
+        const QSize output(1920, 1080);
+        QCOMPARE(budget.update(QSize(240, 180), output, true, 1000),
+                 QSize(240, 180));
+
+        // A smaller tooltip later in the same session reuses the allocation.
+        QCOMPARE(budget.update(QSize(120, 30), output, true, 1100),
+                 QSize(240, 180));
+        // A larger submenu grows it; the next smaller card keeps the peak.
+        QCOMPARE(budget.update(QSize(320, 420), output, true, 1200),
+                 QSize(320, 420));
+        QCOMPARE(budget.update(QSize(120, 30), output, true, 1300),
+                 QSize(320, 420));
+        // The overlay fade ends but the pointer session continues.
+        QCOMPARE(budget.update(QSize(), output, true, 1400), QSize(320, 420));
+
+        // A new session starts from its own content, not the old peak.
+        budget.reset();
+        QCOMPARE(budget.update(QSize(120, 30), output, true, 2000),
+                 QSize(120, 30));
+    }
+
+    void popupTargetStaysWarmThenReleases()
+    {
+        PopupTargetBudget budget;
+        const QSize output(1920, 1080);
+        QCOMPARE(budget.update(QSize(320, 420), output, true, 5000),
+                 QSize(320, 420));
+
+        // Closing the popup keeps the target for the retention window so a
+        // quick reopen does not allocate again.
+        QCOMPARE(budget.update(QSize(), output, false, 5100), QSize(320, 420));
+        QVERIFY(budget.warm());
+        QCOMPARE(budget.update(QSize(), output, false, 5400), QSize(320, 420));
+        // A quick reopen reuses the warm target even when the new card is
+        // smaller, then grows if the new content needs more.
+        QCOMPARE(budget.update(QSize(200, 120), output, true, 5450),
+                 QSize(320, 420));
+        // Retargeting inside the window grows the warm target.
+        QCOMPARE(budget.update(QSize(400, 500), output, true, 5500),
+                 QSize(400, 500));
+
+        // After the window with no session it is released.
+        QCOMPARE(budget.update(QSize(), output, false,
+                               5500 + PopupTargetBudget::kWarmRetentionMs),
+                 QSize());
+        QVERIFY(budget.empty());
+        QVERIFY(!budget.warm());
+    }
+
+    void popupTargetFollowsAnOutputShrink()
+    {
+        PopupTargetBudget budget;
+        QCOMPARE(budget.update(QSize(1600, 900), QSize(1920, 1080), true, 0),
+                 QSize(1600, 900));
+        // A scale/output change shrinks the usable area; the retained target
+        // must not describe space that no longer exists.
+        QCOMPARE(budget.update(QSize(), QSize(1280, 720), true, 100),
+                 QSize(1280, 720));
     }
 
     // -- the real-session return row (T-12.6b) ---------------------------

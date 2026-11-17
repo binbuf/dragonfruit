@@ -101,9 +101,12 @@ default.
   remain the QML placement/clamp budget; they are no longer the scene size.
   `DRAGONFRUIT_DOCK_STABLE_POPOVER` still reserves the full budget for the
   A/B diagnostic.
-- **A separate popup producer remains an option, not a requirement.** The
-  measurements did not justify a second scene/producer for latency; the
-  content-sized shared scene removes the fixed memory floor while preserving
-  compositor-paced rendering, dma-buf transport, and per-card material
-  regions. Revisit a dedicated producer only if native traces show a
-  remaining allocation or pacing cost.
+- **A separate popup producer is now the default on the GPU rail (2026-11).**
+  The measurements did not justify a second QML scene/producer for latency, so
+  the content-sized shared scene remained the default at that time. The
+  popup-target work keeps one scene but gives the popup its own content-sized
+  view and dma-buf ring inside the same producer
+  ([ADR 0286](0286-content-sized-popup-render-targets.md)). The strip scene no
+  longer grows when a menu opens; the popup target is grow-only for one
+  interaction session and warm for 750 ms after it ends. `shared` and `stable`
+  remain selectable for the T238 comparison.

@@ -87,8 +87,11 @@ same commit path out to the menu bar/popup, Dock popover, Mission Control,
 switcher, banner, Control Center, OSD, chooser, screenshot, ScreenCast,
 polkit, Applications drawer, and lock surfaces. A shared scene (bar + popup,
 Dock + popover) commits one exported frame to both surfaces and holds the
-producer slot until the last release; if any surface cannot express the commit
-the whole scene uses the T185 shm path. `chrome stats` reports per-surface
+producer slot until the last release; with independent popup targets the strip
+and popup have separate rings and commit one frame each
+([ADR 0286](adr/0286-content-sized-popup-render-targets.md)). If a surface
+cannot express the commit, its view uses the T185 shm path. `chrome
+stats` reports per-surface
 `path=dmabuf|shm`, `gpu_reason`, live buffer counts, reuse, and `copy_bytes`;
 a successful dmabuf frame has zero copies
 ([ADR 0197](adr/0197-gpu-chrome-rollout-and-per-surface-stats.md)). The default
@@ -203,6 +206,14 @@ producer dirty; the pacer coalesces them against the compositor's
 unchanged produces no frame, and a pending popup rectangle is applied in the
 same paced frame that commits its content. Closing a menu still drops input
 interception immediately.
+
+An open dropdown is rendered into its own content-sized view rather than
+growing the bar scene ([ADR 0286](adr/0286-content-sized-popup-render-targets.md)).
+The bar target stays at the strip/veil height, the popup target is the
+dropdown content clamped to the output, and the two have separate dma-buf
+rings. The popup target is grow-only for one open session and warm for 750 ms
+after it closes. `DRAGONFRUIT_POPUP_TARGETS=shared` keeps the previous
+one-scene crop for comparison.
 
 `menu.autoHide` is applied per output by the compositor (T201). `never` keeps
 the bar over the desktop and fullscreen; `always` starts concealed and reveals
@@ -712,7 +723,11 @@ by the output work area (`dockSceneMargins`). The margins are grow-only for
 one pointer/keyboard interaction session (`DockSceneBudget`) and are released
 when the overlay, pointer, and keyboard focus have all left, so a sweep between
 tiles or a submenu reuses one allocation instead of recreating the render
-target. `popoverHeadroom`/`popoverGutter` remain the QML placement/clamp
+target. With the GPU rail active the popup instead gets its own content-sized
+view and ring, so the strip scene never grows when a menu opens
+([ADR 0286](adr/0286-content-sized-popup-render-targets.md)); the popup target
+is grow-only for the session and stays warm for 750 ms after it ends.
+`popoverHeadroom`/`popoverGutter` remain the QML placement/clamp
 budget, not the scene size; the `DRAGONFRUIT_DOCK_STABLE_POPOVER` diagnostic
 still reserves the full budget for the `t238-*` A/B diagnostic. `dock.size`/overflow changes
 and the drag-gap close ease with the non-overshooting `motion.dockMagnify`

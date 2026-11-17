@@ -100,7 +100,7 @@ run_tier() {
         DRAGONFRUIT_CHROME_TRACE=1 \
         DRAGONFRUIT_CHROME_GPU=1 \
         DRAGONFRUIT_CHROME_GPU_SURFACES=dock,dock-popup \
-        DRAGONFRUIT_DOCK_STABLE_POPOVER=0 \
+        DRAGONFRUIT_POPUP_TARGETS=independent \
         DF_DOCK_POPOVER_AB="$CYCLES" \
         DF_DOCK_POPOVER_AB_INTERVAL_MS="$INTERVAL_MS"
     python3 scripts/t238-dock-popover-ab-driver.py run \
@@ -111,6 +111,7 @@ run_tier() {
         --compositor-log "$dir/compositor.txt" \
         --out "$dir/report.json" \
         --label "native-$tier" \
+        --mode independent \
         --stable 0 \
         --cycles "$CYCLES" \
         --commit "$COMMIT" \

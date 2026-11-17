@@ -1,25 +1,30 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T238 Dock popover stable-size A/B (diagnostic).
+# T238 Dock popover render-target comparison (diagnostic).
 #
-# Runs the same shell revision twice in the nested 144 Hz session:
+# Runs the same shell revision three times in the nested 144 Hz session:
 #
-#   baseline  DRAGONFRUIT_DOCK_STABLE_POPOVER=0  (content-sized scene: the
-#             resting strip <-> the current overlay, reused within one
-#             interaction session)
-#   stable    DRAGONFRUIT_DOCK_STABLE_POPOVER=1  (full popover budget resident
-#             for the whole session)
+#   shared       DRAGONFRUIT_POPUP_TARGETS=shared
+#                (content-sized shared scene: the resting strip and the current
+#                overlay share one render target, reused within one session)
+#   stable       DRAGONFRUIT_POPUP_TARGETS=stable
+#                (full popover budget resident for the whole session; the
+#                original stable-size diagnostic)
+#   independent  DRAGONFRUIT_POPUP_TARGETS=independent
+#                (strip and popup have independently sized render targets; the
+#                popup target is content-sized, grow-only for one session, and
+#                warm for 750 ms after it ends)
 #
 # Each configuration opens and closes the real window-chooser popover at least
 # `CYCLES` times (default 100). The shell emits one `chrome trace id=...` per
 # opening plus a `chrome stage stats` dump; the driver parses both and writes
-# a JSON file, then prints a side-by-side markdown table.
+# a JSON file, then prints a comparison table.
 #
-# This is not a production switch. The permanent choice must also be compared
-# against a dedicated content-sized popup producer (memory, sustained
-# animation, and load resilience), and the Mission Control/app-launch stalls
-# are tracked separately.
+# This is not a production switch. The Mission Control/app-launch stalls are
+# tracked separately. Repeat at another output scale by setting
+# `DRAGONFRUIT_NESTED_SCALE` and a distinct `OUT_DIR` (for example 1.5 and 2.0);
+# the popup target is sized in logical content and scaled by the output scale.
 #
 # Requires a host Wayland session and the built tree (`make build`).
 # Overrides: CYCLES, INTERVAL_MS, SETTLE, OUT_DIR, KEEP_SCRATCH.
@@ -59,10 +64,10 @@ export DRAGONFRUIT_FRAME_TRACE=1
 export DRAGONFRUIT_REFRESH_HZ=144
 
 run_config() {
-    local name="$1" stable="$2"
+    local name="$1" mode="$2" stable="$3"
     local dir="$OUT_DIR/$name"
     mkdir -p "$dir"
-    echo "t238-dock-popover-ab: $name (stable=$stable, cycles=$CYCLES)"
+    echo "t238-dock-popover-ab: $name (mode=$mode, cycles=$CYCLES)"
     t21_start_compositor nested "$dir/compositor.txt"
     t21_start_shell "$dir/shell.txt" \
         QT_QPA_PLATFORM=wayland \
@@ -71,6 +76,7 @@ run_config() {
         DRAGONFRUIT_CHROME_TRACE=1 \
         DRAGONFRUIT_CHROME_GPU=1 \
         DRAGONFRUIT_CHROME_GPU_SURFACES="$CHROME_GPU_SURFACES" \
+        DRAGONFRUIT_POPUP_TARGETS="$mode" \
         DRAGONFRUIT_DOCK_STABLE_POPOVER="$stable" \
         DF_DOCK_POPOVER_AB="$CYCLES" \
         DF_DOCK_POPOVER_AB_INTERVAL_MS="$INTERVAL_MS"
@@ -82,6 +88,7 @@ run_config() {
         --compositor-log "$dir/compositor.txt" \
         --out "$dir/report.json" \
         --label "$name" \
+        --mode "$mode" \
         --stable "$stable" \
         --cycles "$CYCLES" \
         --commit "$COMMIT" \
@@ -90,11 +97,13 @@ run_config() {
     t21_stop_compositor
 }
 
-run_config baseline 0
-run_config stable 1
+run_config shared shared 0
+run_config stable stable 1
+run_config independent independent 0
 
-python3 scripts/t238-dock-popover-ab-driver.py compare \
-    "$OUT_DIR/baseline/report.json" \
-    "$OUT_DIR/stable/report.json" | tee "$OUT_DIR/report.md"
+python3 scripts/t238-dock-popover-ab-driver.py summary \
+    "$OUT_DIR/shared/report.json" \
+    "$OUT_DIR/stable/report.json" \
+    "$OUT_DIR/independent/report.json" | tee "$OUT_DIR/report.md"
 
 echo "t238-dock-popover-ab: wrote $OUT_DIR/report.md" >&2

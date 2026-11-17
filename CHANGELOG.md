@@ -8,6 +8,12 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Menu popups.** Dock popovers and menu-bar dropdowns now render into their
+  own content-sized render targets instead of growing the strip's shared scene.
+  Opening a narrow menu no longer enlarges the Dock or bar attachments, and the
+  popup allocation is reused within one interaction session before it is
+  released. The previous shared-scene and stable-budget paths remain available
+  through `DRAGONFRUIT_POPUP_TARGETS` for the T238 comparison.
 - **Menu-bar rendering.** Pointer movement, clock ticks, popup geometry, and
   policy updates now go through the menu bar's existing frame pacer instead of
   rendering directly. Unchanged hover state no longer produces duplicate

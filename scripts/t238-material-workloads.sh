@@ -168,7 +168,7 @@ run_pair() {
         QT_QPA_PLATFORM=wayland \
         QML_IMPORT_PATH="$T21_ROOT/build/qml" \
         DRAGONFRUIT_CHROME_STATS=1 \
-        DRAGONFRUIT_DOCK_STABLE_POPOVER=0
+        DRAGONFRUIT_POPUP_TARGETS=independent
     local display_file="$XDG_RUNTIME_DIR/$T21_SOCKET.x11-display"
     for _ in $(seq 1 100); do
         [ -s "$display_file" ] && break

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Drive and summarise the T238 Dock-popover stable-size A/B.
+"""Drive and summarise the T238 Dock-popover render-target comparison.
 
 The shell runs with ``DF_DOCK_POPOVER_AB=<cycles>`` and opens/closes the real
 window-chooser popover on a fixed cadence. Each opening carries one
@@ -12,9 +12,10 @@ Usage:
   t238-dock-popover-ab-driver.py run --synth S --socket S --shell-pid P ...
   t238-dock-popover-ab-driver.py compare A.json B.json
 
-The A/B is a diagnostic, not a production switch. It keeps the transport and
-the running revision identical between the two configurations; only
-``DRAGONFRUIT_DOCK_STABLE_POPOVER`` changes.
+The comparison is a diagnostic, not a production switch. It keeps the
+transport and the running revision identical between configurations; only
+``DRAGONFRUIT_POPUP_TARGETS`` changes (``shared``, ``stable``, or
+``independent``). ``--stable`` remains accepted for older runs.
 """
 import argparse
 import json
@@ -564,17 +565,25 @@ def read(path):
 
 
 def build_report(
-    label, stable, cycles, commit, shell_text, compositor_text, arm=""
+    label, stable, cycles, commit, shell_text, compositor_text, arm="", mode=""
 ):
     return {
         "label": label,
         "stable_popover": stable,
+        "mode": mode or ("stable" if stable else "shared"),
         "arm": arm,
         "cycles": cycles,
         "commit": commit,
         "shell": parse_shell(shell_text, compositor_text),
         "compositor": parse_compositor(compositor_text),
     }
+
+
+def report_name(report):
+    mode = report.get("mode")
+    if mode:
+        return f"{report['label']} ({mode})"
+    return f"{report['label']} (stable={int(report['stable_popover'])})"
 
 
 def write_report(report, out, cycles):
@@ -640,6 +649,7 @@ def run(args):
             shell_text,
             compositor_text,
             args.arm,
+            args.mode,
         )
         return 0 if write_report(report, args.out, args.cycles) else 1
     finally:
@@ -664,6 +674,7 @@ def parse_logs(args):
         read(args.shell_log),
         read(args.compositor_log),
         args.arm,
+        args.mode,
     )
     return 0 if write_report(report, args.out, args.cycles) else 1
 
@@ -696,8 +707,8 @@ def compare(left_path, right_path):
             value = value.get(key)
         return value
 
-    left_name = f"{left['label']} (stable={int(left['stable_popover'])})"
-    right_name = f"{right['label']} (stable={int(right['stable_popover'])})"
+    left_name = report_name(left)
+    right_name = report_name(right)
     print(f"# T238 Dock popover A/B: {left_name} vs {right_name}")
     print()
     print(f"- revision: `{left.get('commit', 'unknown')}`")
@@ -1051,7 +1062,7 @@ def summary(paths):
         (
             f"{report['label']} ({report['arm']})"
             if report.get("arm")
-            else f"{report['label']} (stable={int(report['stable_popover'])})"
+            else report_name(report)
         )
         for report in reports
     ]
@@ -1212,7 +1223,9 @@ def main():
     run_parser.add_argument("--compositor-log", required=True)
     run_parser.add_argument("--out", required=True)
     run_parser.add_argument("--label", required=True)
-    run_parser.add_argument("--stable", type=int, choices=(0, 1), required=True)
+    run_parser.add_argument("--stable", type=int, choices=(0, 1), default=0)
+    run_parser.add_argument("--mode", choices=("shared", "stable", "independent"),
+                            default="")
     run_parser.add_argument("--arm", default="")
     run_parser.add_argument("--cycles", type=int, default=100)
     run_parser.add_argument("--commit", default="")
@@ -1231,7 +1244,9 @@ def main():
     parse_parser.add_argument("--compositor-log", required=True)
     parse_parser.add_argument("--out", required=True)
     parse_parser.add_argument("--label", required=True)
-    parse_parser.add_argument("--stable", type=int, choices=(0, 1), required=True)
+    parse_parser.add_argument("--stable", type=int, choices=(0, 1), default=0)
+    parse_parser.add_argument("--mode", choices=("shared", "stable", "independent"),
+                              default="")
     parse_parser.add_argument("--arm", default="")
     parse_parser.add_argument("--cycles", type=int, default=100)
     parse_parser.add_argument("--commit", default="")
