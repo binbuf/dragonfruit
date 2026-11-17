@@ -363,6 +363,33 @@ pub fn has_menu_title(menus: &[Value], title: &str) -> bool {
     })
 }
 
+/// Find `action` in the published fixed menu and app menus. Returns its enabled
+/// state, or `None` when the current publication does not carry the action.
+fn action_enabled(application_menu_items: &[Value], menus: &[Value], action: &str) -> Option<bool> {
+    fn search(rows: &[Value], action: &str) -> Option<bool> {
+        for row in rows {
+            if row.get("action").and_then(Value::as_str) == Some(action) {
+                return Some(row.get("enabled").and_then(Value::as_bool).unwrap_or(true));
+            }
+            if let Some(submenu) = row.get("submenu").and_then(Value::as_array) {
+                if let Some(enabled) = search(submenu, action) {
+                    return Some(enabled);
+                }
+            }
+        }
+        None
+    }
+
+    if let Some(enabled) = search(application_menu_items, action) {
+        return Some(enabled);
+    }
+    menus.iter().find_map(|menu| {
+        menu.get("items")
+            .and_then(Value::as_array)
+            .and_then(|items| search(items, action))
+    })
+}
+
 /// The synthesized dynamic Window menu (T230): Minimize, the app's open
 /// windows with the focused one checked, then Bring All to Front. Rows carry
 /// `disabledReason` when there is nothing to act on.
@@ -542,6 +569,39 @@ pub fn fixed_application_menu(
     ensure_services_row(rows)
 }
 
+/// Where an application-owned action should be delivered.
+///
+/// The broker records the unique bus name that published each native model and
+/// the publication generation. An activation is accepted only while both still
+/// match, so a late click or accelerator for a replaced menu is rejected rather
+/// than delivered to a stale model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActivationTarget {
+    /// Deliver to this publisher's unique bus name.
+    Deliver(String),
+    /// No native publisher owns the app (or it published through the bridge).
+    NoPublisher,
+    /// The publisher replaced its menu after the action was resolved.
+    StaleGeneration,
+    /// The action is not present in the current menu.
+    UnknownAction,
+    /// The current menu row is disabled.
+    Disabled,
+}
+
+impl ActivationTarget {
+    /// A stable reason string for the wire reply.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            ActivationTarget::Deliver(_) => "",
+            ActivationTarget::NoPublisher => "no-publisher",
+            ActivationTarget::StaleGeneration => "stale-generation",
+            ActivationTarget::UnknownAction => "unknown-action",
+            ActivationTarget::Disabled => "disabled",
+        }
+    }
+}
+
 /// The broker's resolution state: publishers by app id, the current focus and
 /// window state, and a monotonic revision.
 #[derive(Debug, Clone)]
@@ -550,6 +610,13 @@ pub struct Broker {
     /// The tier each publisher resolved through. Native by default; the
     /// DBusMenu bridge (T-14.4) publishes through [`Broker::publish_dbusmenu`].
     tiers: BTreeMap<String, Tier>,
+    /// The unique bus name that called `Publish` for each app. Only a native
+    /// publication has one; the DBusMenu bridge is not an activation endpoint.
+    owners: BTreeMap<String, String>,
+    /// The publication generation for each app, incremented on every accepted
+    /// publish. The shell echoes the generation it rendered so a late action
+    /// cannot be applied to a menu the user never saw.
+    generations: BTreeMap<String, u64>,
     visibility: Visibility,
     accelerators: AcceleratorTable,
     revision: u64,
@@ -567,6 +634,8 @@ impl Broker {
         Broker {
             publishers: BTreeMap::new(),
             tiers: BTreeMap::new(),
+            owners: BTreeMap::new(),
+            generations: BTreeMap::new(),
             visibility: Visibility::new(),
             accelerators: AcceleratorTable::new(),
             revision: 0,
@@ -596,6 +665,12 @@ impl Broker {
         self.publish_tiered(app_id, payload, Tier::Native)
     }
 
+    /// Register or replace a natively-published model and remember the unique
+    /// bus name that owns its activation endpoint.
+    pub fn publish_from(&mut self, app_id: &str, payload: &str, owner: &str) -> bool {
+        self.publish_tiered_from(app_id, payload, Tier::Native, owner)
+    }
+
     /// Register or replace a model that arrived through the DBusMenu bridge
     /// (T-14.4). Same shape and tolerance as [`Broker::publish`], but the
     /// resolved tier is [`Tier::DbusMenu`].
@@ -606,34 +681,118 @@ impl Broker {
     /// Register or replace an app's published model with an explicit tier.
     /// Returns false (and changes nothing) when the payload does not parse.
     pub fn publish_tiered(&mut self, app_id: &str, payload: &str, tier: Tier) -> bool {
+        self.publish_tiered_from(app_id, payload, tier, "")
+    }
+
+    /// Register or replace an app's published model with an explicit tier and
+    /// publisher owner. An empty owner means no activation endpoint (the
+    /// DBusMenu bridge). A publish that changes the model, tier, or owner
+    /// advances the app's generation.
+    pub fn publish_tiered_from(
+        &mut self,
+        app_id: &str,
+        payload: &str,
+        tier: Tier,
+        owner: &str,
+    ) -> bool {
         if app_id.is_empty() {
             return false;
         }
         let Some(model) = PublishedModel::parse(payload) else {
             return false;
         };
-        let changed =
-            self.publishers.get(app_id) != Some(&model) || self.tiers.get(app_id) != Some(&tier);
+        let previous_owner = self.owners.get(app_id).map(String::as_str).unwrap_or("");
+        let changed = self.publishers.get(app_id) != Some(&model)
+            || self.tiers.get(app_id) != Some(&tier)
+            || previous_owner != owner;
         let table = accelerators::extract(&model);
         self.publishers.insert(app_id.to_owned(), model);
         self.tiers.insert(app_id.to_owned(), tier);
-        self.accelerators.register(app_id, table);
+        if owner.is_empty() {
+            self.owners.remove(app_id);
+        } else {
+            self.owners.insert(app_id.to_owned(), owner.to_owned());
+        }
         if changed {
+            *self.generations.entry(app_id.to_owned()).or_insert(0) += 1;
             self.revision += 1;
         }
+        self.accelerators.register(app_id, table);
         changed
     }
 
-    /// Remove an app's published model, its tier, and its accelerators.
-    /// Returns whether one was present.
+    /// Remove an app's published model, its tier, owner, generation, and
+    /// accelerators. Returns whether one was present.
     pub fn withdraw(&mut self, app_id: &str) -> bool {
         let removed = self.publishers.remove(app_id).is_some();
         self.tiers.remove(app_id);
+        self.owners.remove(app_id);
+        self.generations.remove(app_id);
         self.accelerators.clear(app_id);
         if removed {
             self.revision += 1;
         }
         removed
+    }
+
+    /// Remove every publisher owned by `owner` (a disconnected bus name).
+    /// Returns the app ids that were withdrawn, so the caller can emit one
+    /// change signal per app.
+    pub fn withdraw_owner(&mut self, owner: &str) -> Vec<String> {
+        if owner.is_empty() {
+            return Vec::new();
+        }
+        let removed: Vec<String> = self
+            .owners
+            .iter()
+            .filter(|(_, candidate)| candidate.as_str() == owner)
+            .map(|(app_id, _)| app_id.clone())
+            .collect();
+        for app_id in &removed {
+            self.publishers.remove(app_id);
+            self.tiers.remove(app_id);
+            self.owners.remove(app_id);
+            self.generations.remove(app_id);
+            self.accelerators.clear(app_id);
+        }
+        if !removed.is_empty() {
+            self.revision += 1;
+        }
+        removed
+    }
+
+    /// Decide where an application-owned action should go. The action must be
+    /// present in the app's current publication, enabled, and resolved against
+    /// the generation the consumer rendered.
+    pub fn activation_target(
+        &self,
+        app_id: &str,
+        action: &str,
+        generation: u64,
+    ) -> ActivationTarget {
+        let Some(publisher) = self.publishers.get(app_id) else {
+            return ActivationTarget::NoPublisher;
+        };
+        if self.generations.get(app_id).copied().unwrap_or(0) != generation {
+            return ActivationTarget::StaleGeneration;
+        }
+        let Some(owner) = self.owners.get(app_id) else {
+            return ActivationTarget::NoPublisher;
+        };
+        if action.is_empty() {
+            return ActivationTarget::UnknownAction;
+        }
+        match action_enabled(&publisher.application_menu_items, &publisher.menus, action) {
+            Some(false) => ActivationTarget::Disabled,
+            Some(true) => ActivationTarget::Deliver(owner.clone()),
+            None => ActivationTarget::UnknownAction,
+        }
+    }
+
+    /// The generation a consumer must echo to activate one of `app_id`'s
+    /// actions. Zero when the app has no native publication.
+    pub fn generation(&self, app_id: &str) -> u64 {
+        self.generations.get(app_id).copied().unwrap_or(0)
     }
 
     /// The tier an app's model resolved through, if it published one.
@@ -852,6 +1011,7 @@ impl Broker {
             "appId": app_id,
             "appName": app_name,
             "tier": tier.as_str(),
+            "generation": self.generation(app_id),
             "applicationMenuItems": application_menu_items,
             "menus": menus,
             "accelerators": accelerators,
@@ -875,6 +1035,7 @@ impl Broker {
             "appId": app_id,
             "appName": app_name,
             "tier": TIER_NONE,
+            "generation": self.generation(app_id),
             "applicationMenuItems": synthesized_application_menu(
                 &app_name,
                 self.visibility.hide_verbs()
@@ -1113,6 +1274,102 @@ mod tests {
         assert!(broker.revision() > after_publish);
         assert!(!broker.withdraw("a"));
         assert_eq!(broker.publisher_count(), 0);
+    }
+
+    #[test]
+    fn activation_targets_the_publisher_owner_and_generation() {
+        let mut broker = Broker::new();
+        assert!(broker.publish_from("a", settings_fixture(), ":1.42"));
+        let generation = broker.generation("a");
+        assert_eq!(generation, 1);
+        assert_eq!(
+            broker.resolve("a")["generation"],
+            serde_json::json!(generation)
+        );
+        assert_eq!(
+            broker.activation_target("a", "edit.undo", generation),
+            ActivationTarget::Deliver(":1.42".to_owned())
+        );
+        assert_eq!(
+            broker.activation_target("a", "no-such-action", generation),
+            ActivationTarget::UnknownAction
+        );
+        // A consumer that rendered an older publication cannot activate it.
+        assert_eq!(
+            broker.activation_target("a", "edit.undo", generation + 1),
+            ActivationTarget::StaleGeneration
+        );
+
+        // A changed owner is a new publication generation: a consumer that
+        // rendered the old owner's menu cannot activate it.
+        assert!(broker.publish_from("a", settings_fixture(), ":1.43"));
+        assert_eq!(broker.generation("a"), generation + 1);
+        assert_eq!(
+            broker.activation_target("a", "edit.undo", generation),
+            ActivationTarget::StaleGeneration
+        );
+        assert_eq!(
+            broker.activation_target("a", "edit.undo", generation + 1),
+            ActivationTarget::Deliver(":1.43".to_owned())
+        );
+
+        // Withdraw removes the owner and generation with the model.
+        assert!(broker.withdraw("a"));
+        assert_eq!(
+            broker.activation_target("a", "edit.undo", generation + 1),
+            ActivationTarget::NoPublisher
+        );
+    }
+
+    #[test]
+    fn activation_respects_enabled_rows_nested_submenus_and_owner_exit() {
+        let mut broker = Broker::new();
+        let model = r#"{ "appName": "App",
+            "applicationMenuItems": [
+                { "label": "Copy", "action": "edit.copy" },
+                { "label": "Paste", "action": "edit.paste", "enabled": false } ],
+            "menus": [ { "title": "View", "items": [
+                { "label": "Back", "action": "back", "enabled": false },
+                { "label": "Pane", "type": "submenu", "submenu": [
+                    { "label": "Wi-Fi", "action": "pane.wifi" } ] } ] } ] }"#;
+        assert!(broker.publish_from("a", model, ":1.9"));
+        let generation = broker.generation("a");
+        assert_eq!(
+            broker.activation_target("a", "edit.copy", generation),
+            ActivationTarget::Deliver(":1.9".to_owned())
+        );
+        assert_eq!(
+            broker.activation_target("a", "edit.paste", generation),
+            ActivationTarget::Disabled
+        );
+        assert_eq!(
+            broker.activation_target("a", "back", generation),
+            ActivationTarget::Disabled
+        );
+        assert_eq!(
+            broker.activation_target("a", "pane.wifi", generation),
+            ActivationTarget::Deliver(":1.9".to_owned())
+        );
+
+        // A disconnected publisher loses its model and endpoint.
+        assert_eq!(broker.withdraw_owner(":1.9"), vec!["a".to_owned()]);
+        assert_eq!(
+            broker.activation_target("a", "edit.copy", generation),
+            ActivationTarget::NoPublisher
+        );
+        assert_eq!(broker.publisher_count(), 0);
+        assert!(broker.withdraw_owner(":1.9").is_empty());
+    }
+
+    #[test]
+    fn a_dbusmenu_publication_has_no_activation_endpoint() {
+        let mut broker = Broker::new();
+        broker.publish_dbusmenu("a", settings_fixture());
+        let generation = broker.generation("a");
+        assert_eq!(
+            broker.activation_target("a", "edit.undo", generation),
+            ActivationTarget::NoPublisher
+        );
     }
 
     #[test]

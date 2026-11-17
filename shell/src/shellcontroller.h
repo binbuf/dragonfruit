@@ -585,6 +585,20 @@ private:
     // T230: route a `dbusmenu:<id>` row back to the focused window's owning
     // DBusMenu object through app-index.
     bool routeDbusMenuAction(const QString &action);
+    // T-14.2b: deliver an application-owned action (menu click or accelerator)
+    // back to the native publisher that owns the current menu generation.
+    // Returns whether a delivery was attempted; the reply is observed
+    // asynchronously and never blocks input.
+    bool activateApplicationAction(const QString &action, const QVariantMap &map);
+    // T-14.2b: the broker's model changed (publish/withdraw/window state) or
+    // its service owner changed. Re-resolve the focused menu when the change
+    // can affect it.
+private slots:
+    void onMenuBrokerChanged(const QString &reason, const QString &appId);
+
+private:
+    void connectMenuBroker();
+    void invalidateMenuGeneration();
     // The one dispatch seam for a resolved application-menu action: the popup
     // click and a compositor-delivered accelerator both route here (T-14.2b).
     void dispatchAppAction(const QString &action, int menuIndex = -1, int itemIndex = -1,
@@ -1319,6 +1333,14 @@ private:
     bool m_menuRefreshDeferred = false;
     QVariantList m_appliedApplicationMenu;
     QVariantList m_appliedAppMenu;
+    // T-14.2b: the native publisher and publication generation the bar is
+    // currently rendering. Activation echoes both so a late click cannot be
+    // applied to a menu the user never saw.
+    QString m_menuAppId;
+    quint64 m_menuGeneration = 0;
+    QString m_menuTier;
+    QDBusServiceWatcher *m_menuBrokerWatcher = nullptr;
+    bool m_menuBrokerSignalConnected = false;
     // StatusNotifier/AppIndicator tray (T-14.3). The item inventory and menu
     // reads run on two worker pools: background inventory is independent of an
     // interactive menu open, so a slow exporter can never stall the menu bar.

@@ -3284,6 +3284,7 @@ private slots:
             "appId": "org.dragonfruit.Settings",
             "appName": "Settings",
             "tier": "native",
+            "generation": 7,
             "applicationMenuItems": [
                 { "label": "Hide Settings", "action": "hide", "enabled": true },
                 { "label": "Quit Settings", "action": "quit" }
@@ -3296,6 +3297,7 @@ private slots:
         QCOMPARE(resolved.appId, QStringLiteral("org.dragonfruit.Settings"));
         QCOMPARE(resolved.appName, QStringLiteral("Settings"));
         QCOMPARE(resolved.tier, QStringLiteral("native"));
+        QCOMPARE(resolved.generation, quint64(7));
         QCOMPARE(resolved.applicationMenuItems.size(), 2);
         QCOMPARE(resolved.menus.size(), 1);
         QCOMPARE(resolved.menus[0].toMap().value(QStringLiteral("title")).toString(),
@@ -3305,6 +3307,31 @@ private slots:
         QVERIFY(!MenuBrokerClient::parseResolved(QString()).valid);
         QVERIFY(!MenuBrokerClient::parseResolved(QStringLiteral("not json")).valid);
         QVERIFY(!MenuBrokerClient::parseResolved(QStringLiteral("[1,2]")).valid);
+    }
+
+    // T-14.2b: the broker's activation reply distinguishes an accepted command
+    // from a stale generation, a rejected command, or an absent broker.
+    void activationReplyDecodesTheBrokerResult()
+    {
+        const ActivationResult accepted = MenuBrokerClient::parseActivationResult(
+            QStringLiteral(R"({"ok":true})"));
+        QVERIFY(accepted.ok);
+        QVERIFY(accepted.reason.isEmpty());
+
+        const ActivationResult stale = MenuBrokerClient::parseActivationResult(
+            QStringLiteral(R"({"ok":false,"reason":"stale-generation"})"));
+        QVERIFY(!stale.ok);
+        QCOMPARE(stale.reason, QStringLiteral("stale-generation"));
+
+        const ActivationResult rejected = MenuBrokerClient::parseActivationResult(
+            QStringLiteral(R"({"ok":false,"reason":"rejected"})"));
+        QVERIFY(!rejected.ok);
+        QCOMPARE(rejected.reason, QStringLiteral("rejected"));
+
+        // A missing/garbage reply is a failure, never a silent success.
+        QVERIFY(!MenuBrokerClient::parseActivationResult(QString()).ok);
+        QVERIFY(!MenuBrokerClient::parseActivationResult(QStringLiteral("not json")).ok);
+        QVERIFY(!MenuBrokerClient::parseActivationResult(QStringLiteral("[1,2]")).ok);
     }
 
     // -- Menu-broker accelerators (T-14.2b) ------------------------------

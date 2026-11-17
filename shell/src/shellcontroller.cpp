@@ -30,6 +30,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QPair>
 #include <QWheelEvent>
@@ -671,6 +673,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // well-known name so a later start (or a restart) re-syncs the Dock,
     // picker, and drawer instead of leaving the startup race visible.
     connectAppIndex();
+    // T-14.2b: observe the broker's publication changes and service-owner
+    // changes so a publish, a crashed publisher, or a broker restart reaches
+    // the bar without a poll. The watcher also invalidates the activation
+    // generation when the broker disappears.
+    connectMenuBroker();
 
     if (!m_protocol->connectToCompositor(socketName))
         return false;
@@ -3579,6 +3586,8 @@ void ShellController::applyFocusedApp()
         QVariantList applicationMenu;
         QVariantList appMenu;
         QString tier;
+        QString resolvedAppId;
+        quint64 resolvedGeneration = 0;
         quint32 dbusWindow = 0;
 
         // T230: focus → app identity → AppMenu.Registrar registration. A
@@ -3620,6 +3629,8 @@ void ShellController::applyFocusedApp()
                         applicationMenu = resolved.applicationMenuItems;
                         appMenu = resolved.menus;
                         tier = resolved.tier;
+                        resolvedAppId = resolved.appId;
+                        resolvedGeneration = resolved.generation;
                     }
                 }
                 // A fresh `WindowMenu` read runs `AboutToShow` first, so a dynamic
@@ -3659,6 +3670,8 @@ void ShellController::applyFocusedApp()
                 applicationMenu = resolved.applicationMenuItems;
                 appMenu = resolved.menus;
                 tier = resolved.tier;
+                resolvedAppId = resolved.appId;
+                resolvedGeneration = resolved.generation;
             }
         }
         if (applicationMenu.isEmpty() || tier != QLatin1String("native")) {
@@ -3681,7 +3694,8 @@ void ShellController::applyFocusedApp()
             }
         }
         QMetaObject::invokeMethod(this,
-            [this, generation, rawId, name, dbusWindow, applicationMenu, appMenu]() {
+            [this, generation, rawId, brokerId, name, dbusWindow, applicationMenu, appMenu,
+             resolvedAppId, resolvedGeneration, tier]() {
                 m_menuRefreshInFlight = false;
                 if (generation != m_menuRefreshGeneration) {
                     applyFocusedApp();
@@ -3694,6 +3708,12 @@ void ShellController::applyFocusedApp()
                     return;
                 }
                 m_dbusMenuWindowId = dbusWindow;
+                // T-14.2b: remember exactly which native publication this
+                // rendered menu came from. Activation echoes the owner and
+                // generation; a stale menu cannot reach a new publication.
+                m_menuAppId = resolvedAppId.isEmpty() ? brokerId : resolvedAppId;
+                m_menuGeneration = resolvedGeneration;
+                m_menuTier = tier;
                 m_item->setProperty("appName", rawId.isEmpty() ? QStringLiteral("Files") : name);
                 if (m_appliedApplicationMenu != applicationMenu) {
                     m_appliedApplicationMenu = applicationMenu;
@@ -4124,6 +4144,10 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
             rebuildDockEntries();
     }
     refreshSystemMenu();
+    // T-14.2b: the previous app's publication cannot activate the new focus.
+    // Invalidate immediately; the resolver below publishes the new owner and
+    // generation when it lands.
+    invalidateMenuGeneration();
     applyFocusedApp();
     render();
 }
@@ -6889,11 +6913,135 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
         // No app-store equivalent exists yet; the item is disabled (T-09
         // open question in design/04-shell.md).
         qInfo() << "shell: App Store requested (no equivalent yet)";
+    } else if (activateApplicationAction(action, map)) {
+        // T-14.2b: the action belongs to the focused app's native publication.
+        // The asynchronous reply is logged by the delivery callback.
     } else {
-        // T-14 dispatches the resolved action back to the owning app; until
-        // that channel exists the placeholder logs so the demo has feedback.
         qInfo() << "shell: app menu item activated:" << menuIndex << itemIndex << map;
     }
+}
+
+bool ShellController::activateApplicationAction(const QString &action, const QVariantMap &map)
+{
+    if (action.isEmpty())
+        return false;
+    // Only a native publisher has an activation endpoint. The bridge tier
+    // routes clicks through `dbusmenu:` (handled above), and the no-exporter
+    // tier has no app-owned rows.
+    if (m_menuTier != QLatin1String("native") || m_menuGeneration == 0
+        || m_menuAppId.isEmpty()) {
+        return false;
+    }
+    // A focus change invalidates the resolved generation immediately; a late
+    // accelerator for the old app must not reach the new one.
+    if (!m_appId.isEmpty() && m_menuAppId != m_appId) {
+        const DesktopEntry entry = m_index.resolve(m_appId);
+        const QString canonicalId = entry.valid && !entry.id.isEmpty() ? entry.id : m_appId;
+        if (m_menuAppId != canonicalId) {
+            qInfo() << "shell: ignoring app action" << action
+                    << "for stale menu owner" << m_menuAppId;
+            return false;
+        }
+    }
+    // Preserve the row's identity and enabled state. A disabled row is
+    // rejected by the broker even if a stale input event still carried it.
+    QJsonObject item = QJsonObject::fromVariantMap(map);
+    item.insert(QStringLiteral("action"), action);
+    if (!item.contains(QStringLiteral("enabled")))
+        item.insert(QStringLiteral("enabled"), true);
+    const QString itemJson =
+        QString::fromUtf8(QJsonDocument(item).toJson(QJsonDocument::Compact));
+    const QString appId = m_menuAppId;
+    const quint64 generation = m_menuGeneration;
+    const uint windowId = static_cast<uint>(m_focusedWindowId);
+    auto *watcher = new QDBusPendingCallWatcher(
+        MenuBrokerClient().activate(appId, action, itemJson, generation, windowId), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, appId, action, generation](QDBusPendingCallWatcher *call) {
+                const QDBusPendingReply<QString> reply = *call;
+                if (reply.isError()) {
+                    qWarning() << "shell: application action" << action
+                               << "was not delivered to" << appId << ":"
+                               << reply.error().message();
+                } else {
+                    const ActivationResult result =
+                        MenuBrokerClient::parseActivationResult(reply.value());
+                    if (result.ok) {
+                        qInfo() << "shell: application action" << action
+                                << "delivered to" << appId
+                                << "generation" << generation;
+                    } else {
+                        qInfo() << "shell: application action" << action
+                                << "rejected for" << appId << "generation"
+                                << generation << "reason" << result.reason;
+                    }
+                }
+                call->deleteLater();
+            });
+    return true;
+}
+
+void ShellController::invalidateMenuGeneration()
+{
+    m_menuAppId.clear();
+    m_menuGeneration = 0;
+    m_menuTier.clear();
+}
+
+void ShellController::connectMenuBroker()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    constexpr auto service = "org.dragonfruit.MenuBroker1";
+    constexpr auto path = "/org/dragonfruit/MenuBroker1";
+    constexpr auto interface = "org.dragonfruit.MenuBroker1";
+    if (!m_menuBrokerSignalConnected) {
+        // Publish/withdraw/window-state changes can alter the focused menu
+        // without the shell asking again. Focus changes are pushed by the
+        // shell itself and ignored here to avoid a resolve loop.
+        m_menuBrokerSignalConnected = bus.connect(
+            QString::fromLatin1(service), QString::fromLatin1(path),
+            QString::fromLatin1(interface), QStringLiteral("Changed"), this,
+            SLOT(onMenuBrokerChanged(QString,QString)));
+    }
+    if (!m_menuBrokerWatcher) {
+        // A broker restart empties its publication table. Drop the rendered
+        // generation immediately and re-resolve when the new owner appears;
+        // the publisher's own restart subscription republishes its model.
+        m_menuBrokerWatcher = new QDBusServiceWatcher(
+            QString::fromLatin1(service), bus,
+            QDBusServiceWatcher::WatchForRegistration
+                | QDBusServiceWatcher::WatchForUnregistration,
+            this);
+        connect(m_menuBrokerWatcher, &QDBusServiceWatcher::serviceRegistered, this,
+                [this](const QString &) {
+                    invalidateMenuGeneration();
+                    applyFocusedApp();
+                });
+        connect(m_menuBrokerWatcher, &QDBusServiceWatcher::serviceUnregistered, this,
+                [this](const QString &) {
+                    invalidateMenuGeneration();
+                    applyFocusedApp();
+                });
+    }
+}
+
+void ShellController::onMenuBrokerChanged(const QString &reason, const QString &appId)
+{
+    // Focus is pushed by this controller; reacting to it would re-enter the
+    // resolver. System accelerator declarations do not change a menu.
+    if (reason == QLatin1String("focus")
+        || reason == QLatin1String("system-accelerators"))
+        return;
+    if (!appId.isEmpty()) {
+        const DesktopEntry entry = m_index.resolve(m_appId);
+        const QString canonicalId =
+            entry.valid && !entry.id.isEmpty() ? entry.id : m_appId;
+        if (appId != m_appId && appId != m_menuAppId && appId != canonicalId)
+            return;
+    }
+    applyFocusedApp();
 }
 
 void ShellController::onAppAccelerator(const QString &appId, const QString &action,

@@ -379,4 +379,17 @@ Window {
             win.dispatchMenuAction(action);
         }
     }
+
+    // T-14.2b: the broker's activation endpoint delivers a published action
+    // back to the app that owns the current menu generation. The local
+    // dispatcher is the same one a local menu row uses, so a global click and
+    // an accelerator cannot diverge. `completeActivation` returns its result
+    // to the broker, which surfaces a rejection instead of claiming success.
+    Connections {
+        target: typeof MenuPublisher !== "undefined" ? MenuPublisher : null
+        function onActivationRequested(action, itemJson, generation, windowId) {
+            if (typeof MenuPublisher !== "undefined")
+                MenuPublisher.completeActivation(win.dispatchMenuAction(action));
+        }
+    }
 }

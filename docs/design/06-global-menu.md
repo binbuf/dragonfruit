@@ -198,6 +198,23 @@ are suppressed and first-party apps keep their local menus, while the fixed
 system and application menus stay. Contract frozen in ADR
 [0096](adr/0096-focus-scoped-accelerators-and-global-menu-toggle.md).
 
+### Implementation note (application action delivery)
+
+Published rows and accelerators now return to the application that owns them.
+The broker records the unique bus name that called `Publish` and assigns a
+publication generation; `Resolve` carries that generation to the shell. A menu
+click or accelerator the shell does not own calls
+`Activate(appId, action, itemJson, generation, windowId)`, which validates the
+owner, generation, action identity, and enabled state before forwarding to
+`org.dragonfruit.MenuPublisher1.Activate` on the publisher's unique name. The
+publisher emits the action to its QML dispatcher and returns its boolean
+result, so an unhandled command is rejected rather than reported as accepted.
+Shell-owned lifecycle verbs still use their compositor or app-index paths. A
+focus change invalidates the generation, a publisher exit withdraws its model,
+and a broker restart clears the generation while the publisher re-publishes its
+cached model. Contract frozen in ADR
+[0284](adr/0284-application-menu-action-delivery.md).
+
 ## Implementation note (T-14.3)
 
 StatusNotifierItem/AppIndicator tray items are live. `dragonfruit-app-index`

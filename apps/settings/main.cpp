@@ -63,14 +63,15 @@ int main(int argc, char *argv[])
     if (!deepLink.isEmpty())
         qputenv("DF_SETTINGS_START_DEEP_LINK", deepLink.toUtf8());
 
+    // T230: the app-side end of the native global-menu publication. The model
+    // stays in SettingsMenu.qml; this object only carries it to the broker.
+    // Declared before the engine so it outlives QML's `onDestruction` calls.
+    MenuPublisher menuPublisher;
     QQmlApplicationEngine engine;
     engine.setInitialProperties({{QStringLiteral("startAboutPanel"),
                                   app.arguments().contains(QStringLiteral("--about-system"))}});
     engine.rootContext()->setContextProperty(QStringLiteral("SettingsDeepLinks"),
                                              &deepLinks);
-    // T230: the app-side end of the native global-menu publication. The model
-    // stays in SettingsMenu.qml; this object only carries it to the broker.
-    MenuPublisher menuPublisher;
     engine.rootContext()->setContextProperty(QStringLiteral("MenuPublisher"),
                                              &menuPublisher);
     QObject::connect(

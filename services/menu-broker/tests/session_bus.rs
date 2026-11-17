@@ -10,9 +10,15 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use dragonfruit_menu_broker::dbus::{MenuBroker1, DBUS_NAME, DBUS_PATH, INTERFACE};
+use dragonfruit_menu_broker::dbus::{
+    spawn_owner_cleaner, MenuBroker1, DBUS_NAME, DBUS_PATH, INTERFACE, PUBLISHER_PATH,
+    PUBLISHER_TIMEOUT,
+};
 use zbus::blocking::Connection;
+use zbus::interface;
 
 /// A private session bus that lives exactly as long as the test.
 struct PrivateBus {
@@ -58,14 +64,17 @@ impl Drop for PrivateBus {
 /// Serve a fresh broker on `bus` exactly as the daemon does.
 fn serve(bus: &PrivateBus) -> Connection {
     let object = MenuBroker1::new();
-    zbus::blocking::connection::Builder::address(bus.address.as_str())
+    let connection = zbus::blocking::connection::Builder::address(bus.address.as_str())
         .expect("valid bus address")
         .name(DBUS_NAME)
         .expect("valid well-known name")
-        .serve_at(DBUS_PATH, object)
+        .method_timeout(PUBLISHER_TIMEOUT)
+        .serve_at(DBUS_PATH, object.clone())
         .expect("serve the menu broker interface")
         .build()
-        .expect("build the service connection")
+        .expect("build the service connection");
+    spawn_owner_cleaner(connection.clone(), object);
+    connection
 }
 
 fn call<T: serde::de::DeserializeOwned + zbus::zvariant::Type>(
@@ -315,4 +324,176 @@ fn a_malformed_publish_is_rejected_and_withdraw_counts() {
     assert_eq!(call::<u32>(&client, "PublisherCount", ()).unwrap(), 0);
     // The revision advanced on every accepted mutation.
     assert!(call::<u64>(&client, "Revision", ()).unwrap() >= 2);
+}
+
+/// One activation the broker forwarded to the fake publisher.
+#[derive(Debug, Clone, PartialEq)]
+struct Delivered {
+    app_id: String,
+    action: String,
+    item_json: String,
+    generation: u64,
+    window_id: u32,
+}
+
+/// The publisher-side endpoint the broker calls at the unique bus name that
+/// called `Publish`.
+#[derive(Clone, Default)]
+struct FakePublisher {
+    delivered: Arc<Mutex<Vec<Delivered>>>,
+}
+
+#[interface(name = "org.dragonfruit.MenuPublisher1")]
+impl FakePublisher {
+    fn activate(
+        &self,
+        app_id: &str,
+        action: &str,
+        item_json: &str,
+        generation: u64,
+        window_id: u32,
+    ) -> bool {
+        self.delivered.lock().unwrap().push(Delivered {
+            app_id: app_id.to_owned(),
+            action: action.to_owned(),
+            item_json: item_json.to_owned(),
+            generation,
+            window_id,
+        });
+        // `help` models an app that rejects a command it knows but cannot
+        // perform in its current state.
+        action != "help"
+    }
+}
+
+#[test]
+fn an_activation_is_delivered_to_the_publishers_registered_owner() {
+    let bus = PrivateBus::start();
+    let _service = serve(&bus);
+    let client = bus.connect();
+
+    let publisher = FakePublisher::default();
+    let publisher_connection = bus.connect();
+    publisher_connection
+        .object_server()
+        .at(PUBLISHER_PATH, publisher.clone())
+        .expect("serve the publisher activation endpoint");
+
+    let reply = publisher_connection
+        .call_method(
+            Some(DBUS_NAME),
+            DBUS_PATH,
+            Some(INTERFACE),
+            "Publish",
+            &("org.dragonfruit.Settings", SETTINGS_FIXTURE),
+        )
+        .unwrap();
+    assert!(reply.body().deserialize::<bool>().unwrap());
+
+    let resolved =
+        json(&call::<String>(&client, "Resolve", ("org.dragonfruit.Settings",)).unwrap());
+    let generation = resolved["generation"].as_u64().unwrap();
+    assert!(generation >= 1);
+
+    let result = json(
+        &call::<String>(
+            &client,
+            "Activate",
+            (
+                "org.dragonfruit.Settings",
+                "edit.undo",
+                r#"{"action":"edit.undo","enabled":true}"#,
+                generation,
+                7u32,
+            ),
+        )
+        .unwrap(),
+    );
+    assert_eq!(result["ok"], true);
+    let delivered = publisher.delivered.lock().unwrap().clone();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].app_id, "org.dragonfruit.Settings");
+    assert_eq!(delivered[0].action, "edit.undo");
+    assert_eq!(delivered[0].generation, generation);
+    assert_eq!(delivered[0].window_id, 7);
+    assert!(delivered[0].item_json.contains("edit.undo"));
+
+    // A stale generation is rejected before it reaches the app.
+    let result = json(
+        &call::<String>(
+            &client,
+            "Activate",
+            (
+                "org.dragonfruit.Settings",
+                "edit.undo",
+                r#"{"action":"edit.undo","enabled":true}"#,
+                generation + 1,
+                7u32,
+            ),
+        )
+        .unwrap(),
+    );
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["reason"], "stale-generation");
+    assert_eq!(publisher.delivered.lock().unwrap().len(), 1);
+
+    // The publisher's own rejection is surfaced, not converted to success.
+    let result = json(
+        &call::<String>(
+            &client,
+            "Activate",
+            (
+                "org.dragonfruit.Settings",
+                "help",
+                r#"{"action":"help","enabled":true}"#,
+                generation,
+                7u32,
+            ),
+        )
+        .unwrap(),
+    );
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["reason"], "rejected");
+}
+
+#[test]
+fn a_disconnected_publisher_withdraws_its_model_and_endpoint() {
+    let bus = PrivateBus::start();
+    let _service = serve(&bus);
+    let client = bus.connect();
+
+    let publisher = FakePublisher::default();
+    let publisher_connection = bus.connect();
+    publisher_connection
+        .object_server()
+        .at(PUBLISHER_PATH, publisher)
+        .expect("serve the publisher activation endpoint");
+    let reply = publisher_connection
+        .call_method(
+            Some(DBUS_NAME),
+            DBUS_PATH,
+            Some(INTERFACE),
+            "Publish",
+            &("org.dragonfruit.Settings", SETTINGS_FIXTURE),
+        )
+        .unwrap();
+    assert!(reply.body().deserialize::<bool>().unwrap());
+    assert_eq!(call::<u32>(&client, "PublisherCount", ()).unwrap(), 1);
+
+    drop(publisher_connection);
+
+    // The owner cleaner drops the crashed publisher's model without waiting
+    // for a Withdraw call.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if call::<u32>(&client, "PublisherCount", ()).unwrap() == 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(call::<u32>(&client, "PublisherCount", ()).unwrap(), 0);
+    let resolved =
+        json(&call::<String>(&client, "Resolve", ("org.dragonfruit.Settings",)).unwrap());
+    assert_eq!(resolved["tier"], "none");
+    assert_eq!(resolved["generation"], 0);
 }

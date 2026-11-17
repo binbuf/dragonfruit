@@ -708,10 +708,13 @@ set_tests_properties(tst_settings_menu PROPERTIES
 # the built `dragonfruit-settingsd` when CMake found it (else it skips).
 qt_add_executable(tst_settings_live
     tst_settings_live.cpp
+    ../MenuPublisher.cpp
+    ../MenuPublisher.h
 )
 target_compile_definitions(tst_settings_live PRIVATE
     DF_QML_IMPORT_DIR="${CMAKE_BINARY_DIR}/qml"
 )
+target_include_directories(tst_settings_live PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(tst_settings_live PRIVATE
     Qt6::QuickTest Qt6::Quick Qt6::Qml Qt6::DBus
     dragonfruit-design-systemplugin

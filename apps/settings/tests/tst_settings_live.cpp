@@ -15,6 +15,7 @@
 // The QML `Settings` singleton (apps/settings/SettingsBridge) is the plumbing
 // under test; the control is a stock design-system `Toggle`.
 #include "settingsclient.h"
+#include "MenuPublisher.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -24,6 +25,7 @@
 #include <QProcessEnvironment>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QVariantList>
@@ -188,6 +190,41 @@ Item {
 )";
 
 } // namespace
+
+// A minimal stand-in for the menu broker. `tst_settings_live` runs on a private
+// session bus with no real broker, so this object can own the well-known name
+// for the publisher-restart test and count the publications it receives.
+class FakeMenuBroker : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.dragonfruit.MenuBroker1")
+
+public:
+    int publishCount() const { return m_publishCount; }
+    QString lastAppId() const { return m_lastAppId; }
+    QString lastModel() const { return m_lastModel; }
+
+public slots:
+    bool Publish(const QString &appId, const QString &model)
+    {
+        ++m_publishCount;
+        m_lastAppId = appId;
+        m_lastModel = model;
+        return true;
+    }
+
+    bool Withdraw(const QString &appId)
+    {
+        m_withdrawn = appId;
+        return true;
+    }
+
+private:
+    int m_publishCount = 0;
+    QString m_lastAppId;
+    QString m_lastModel;
+    QString m_withdrawn;
+};
 
 class TestSettingsLive : public QObject
 {
@@ -488,6 +525,98 @@ private slots:
 
         bus.unregisterObject(statusPath);
         bus.unregisterService(statusService);
+    }
+
+    // T-14.2b: the publisher's activation endpoint is a real D-Bus object on
+    // the app's unique bus name. The broker addresses it only after validating
+    // the owner and generation; this test drives the endpoint directly and
+    // proves the synchronous QML handshake returns the app's result.
+    void menuPublisherActivationRoundTripsOverTheBus()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        MenuPublisher publisher;
+        QSignalSpy spy(&publisher, &MenuPublisher::activationRequested);
+        QVERIFY(spy.isValid());
+        QObject::connect(
+            &publisher, &MenuPublisher::activationRequested, &publisher,
+            [&publisher](const QString &action, const QString &, qulonglong, uint) {
+                publisher.completeActivation(action == QStringLiteral("edit.copy"));
+            });
+        // No broker in this test: the publish is a normal miss, but the app id
+        // and the activation endpoint are registered before the call.
+        publisher.publish(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                          QStringLiteral(R"({"appName":"Settings"})"));
+
+        auto activate = [&bus](const QString &appId, const QString &action) {
+            QDBusMessage message = QDBusMessage::createMethodCall(
+                bus.baseService(), QStringLiteral("/org/dragonfruit/MenuPublisher1"),
+                QStringLiteral("org.dragonfruit.MenuPublisher1"),
+                QStringLiteral("Activate"));
+            message << appId << action
+                    << QStringLiteral(R"({"action":"%1","enabled":true})").arg(action)
+                    << qulonglong(4) << uint(9);
+            return bus.call(message);
+        };
+
+        const QDBusMessage accepted =
+            activate(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                     QStringLiteral("edit.copy"));
+        QCOMPARE(accepted.type(), QDBusMessage::ReplyMessage);
+        QCOMPARE(accepted.arguments().value(0).toBool(), true);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.at(0).at(0).toString(), QStringLiteral("edit.copy"));
+        QCOMPARE(spy.at(0).at(2).toULongLong(), qulonglong(4));
+        QCOMPARE(spy.at(0).at(3).toUInt(), uint(9));
+
+        // A request for another app id is rejected without reaching QML.
+        const QDBusMessage wrongApp =
+            activate(QStringLiteral("org.example.Other"), QStringLiteral("edit.copy"));
+        QCOMPARE(wrongApp.arguments().value(0).toBool(), false);
+        QCOMPARE(spy.count(), 1);
+
+        // A command the app does not handle is rejected, never reported as
+        // accepted just because the endpoint exists.
+        const QDBusMessage rejected =
+            activate(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                     QStringLiteral("no-such-action"));
+        QCOMPARE(rejected.arguments().value(0).toBool(), false);
+        QCOMPARE(spy.count(), 2);
+    }
+
+    // T-14.2b: a broker restart empties its publication table. The publisher
+    // watches the well-known name and re-publishes its cached model, so the
+    // shell's next resolve sees the native tier again.
+    void menuPublisherRePublishesAfterBrokerRestart()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        FakeMenuBroker broker;
+        QVERIFY(bus.registerService(QStringLiteral("org.dragonfruit.MenuBroker1")));
+        QVERIFY(bus.registerObject(QStringLiteral("/org/dragonfruit/MenuBroker1"), &broker,
+                                   QDBusConnection::ExportAllSlots));
+
+        MenuPublisher publisher;
+        const QString model = QStringLiteral(R"({"appName":"Settings"})");
+        QVERIFY(publisher.publish(QStringLiteral("org.dragonfruit.Settings.desktop"), model));
+        QCOMPARE(broker.publishCount(), 1);
+        QCOMPARE(broker.lastAppId(), QStringLiteral("org.dragonfruit.Settings.desktop"));
+
+        // Simulate the broker exiting and a new instance taking the name.
+        bus.unregisterObject(QStringLiteral("/org/dragonfruit/MenuBroker1"));
+        bus.unregisterService(QStringLiteral("org.dragonfruit.MenuBroker1"));
+        QTest::qWait(100);
+        QVERIFY(bus.registerService(QStringLiteral("org.dragonfruit.MenuBroker1")));
+        QVERIFY(bus.registerObject(QStringLiteral("/org/dragonfruit/MenuBroker1"), &broker,
+                                   QDBusConnection::ExportAllSlots));
+        QTRY_COMPARE(broker.publishCount(), 2);
+
+        bus.unregisterObject(QStringLiteral("/org/dragonfruit/MenuBroker1"));
+        bus.unregisterService(QStringLiteral("org.dragonfruit.MenuBroker1"));
     }
 };
 

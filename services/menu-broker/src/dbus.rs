@@ -25,13 +25,16 @@
 //! the consumer never has to poll.
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use zbus::blocking::connection;
 use zbus::interface;
+use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
+use zbus::Connection;
 
 use crate::accelerators::Dispatch;
-use crate::model::Broker;
+use crate::model::{ActivationTarget, Broker};
 
 /// The well-known name on the user session bus.
 pub const DBUS_NAME: &str = "org.dragonfruit.MenuBroker1";
@@ -40,10 +43,29 @@ pub const DBUS_PATH: &str = "/org/dragonfruit/MenuBroker1";
 /// The interface name.
 pub const INTERFACE: &str = "org.dragonfruit.MenuBroker1";
 
+/// The publisher-side activation endpoint. The broker calls the unique bus
+/// name that published the model at this path, so no well-known application
+/// name is required and a second instance cannot receive another app's action.
+pub const PUBLISHER_PATH: &str = "/org/dragonfruit/MenuPublisher1";
+/// The publisher-side activation interface.
+pub const PUBLISHER_INTERFACE: &str = "org.dragonfruit.MenuPublisher1";
+/// A wedged publisher must not hold the broker's activation task forever.
+/// The bound is wider than the publisher's own synchronous `Publish` call so a
+/// command that changes the menu (and therefore republishes) can still answer.
+pub const PUBLISHER_TIMEOUT: Duration = Duration::from_millis(5000);
+
 fn lock(broker: &Arc<Mutex<Broker>>) -> std::sync::MutexGuard<'_, Broker> {
     broker
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn activation_reply(ok: bool, reason: &str) -> String {
+    if ok {
+        serde_json::json!({ "ok": true }).to_string()
+    } else {
+        serde_json::json!({ "ok": false, "reason": reason }).to_string()
+    }
 }
 
 /// The served object: one shared broker behind a mutex.
@@ -80,14 +102,18 @@ impl MenuBroker1 {
 #[interface(name = "org.dragonfruit.MenuBroker1")]
 impl MenuBroker1 {
     /// Publish or replace one app's menu model (the design-system shape).
-    /// Returns `false` for an empty id or a malformed payload.
+    /// Returns `false` for an empty id or a malformed payload. The caller's
+    /// unique bus name is remembered as the app's activation endpoint.
     async fn publish(
         &self,
         app_id: &str,
         model: &str,
+        #[zbus(header)] header: Header<'_>,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> bool {
-        let changed = lock(&self.broker).publish(app_id, model);
+        let owner = header.sender().map(|sender| sender.as_str().to_owned());
+        let changed =
+            lock(&self.broker).publish_from(app_id, model, owner.as_deref().unwrap_or_default());
         if changed {
             let _ = Self::changed(&emitter, "publish", app_id).await;
         }
@@ -206,6 +232,58 @@ impl MenuBroker1 {
         .to_string()
     }
 
+    /// Deliver an application-owned action back to the publisher that owns the
+    /// current menu generation. Returns `{"ok":true}` or
+    /// `{"ok":false,"reason":…}` as a flat JSON string. The broker validates
+    /// the generation, action identity, and enabled state before forwarding;
+    /// the publisher may still reject the command.
+    async fn activate(
+        &self,
+        app_id: &str,
+        action: &str,
+        item_json: &str,
+        generation: u64,
+        window_id: u32,
+        #[zbus(connection)] connection: &Connection,
+    ) -> String {
+        let target = lock(&self.broker).activation_target(app_id, action, generation);
+        let owner = match target {
+            ActivationTarget::Deliver(owner) => owner,
+            other => return activation_reply(false, other.reason()),
+        };
+        // A row that the shell rendered disabled must never reach the app, even
+        // if a stale input event carried it.
+        if let Ok(item) = serde_json::from_str::<serde_json::Value>(item_json) {
+            if item.get("enabled").and_then(serde_json::Value::as_bool) == Some(false) {
+                return activation_reply(false, "disabled");
+            }
+        }
+        let reply = connection
+            .call_method(
+                Some(owner.as_str()),
+                PUBLISHER_PATH,
+                Some(PUBLISHER_INTERFACE),
+                "Activate",
+                &(app_id, action, item_json, generation, window_id),
+            )
+            .await;
+        match reply {
+            Ok(message) => match message.body().deserialize::<bool>() {
+                Ok(true) => activation_reply(true, ""),
+                Ok(false) => activation_reply(false, "rejected"),
+                Err(_) => activation_reply(false, "invalid-reply"),
+            },
+            Err(error) => {
+                let reason = if matches!(error, zbus::Error::MethodError(..)) {
+                    "publisher-error"
+                } else {
+                    "publisher-unavailable"
+                };
+                activation_reply(false, reason)
+            }
+        }
+    }
+
     /// Declare the reserved system chords (`["Ctrl+Right", …]`); the broker
     /// never dispatches one. Returns `false` only when the payload is not a
     /// JSON array.
@@ -231,9 +309,51 @@ impl MenuBroker1 {
         lock(&self.broker).revision()
     }
 
-    /// A publish/withdraw/focus/window-state change landed.
+    /// A publish/withdraw/focus/window-state/owner-exit change landed.
     #[zbus(signal)]
     async fn changed(emitter: &SignalEmitter<'_>, reason: &str, app_id: &str) -> zbus::Result<()>;
+}
+
+/// Watch `NameOwnerChanged` and withdraw a publisher whose process left, so a
+/// crashed app cannot keep a stale menu or an unreachable activation endpoint
+/// alive. Emits `Changed` once per withdrawn app.
+pub fn spawn_owner_cleaner(connection: connection::Connection, object: MenuBroker1) {
+    let broker = object.broker().clone();
+    let emitter = connection.clone();
+    let _ = std::thread::Builder::new()
+        .name("dragonfruit-menu-broker-owner-cleaner".to_owned())
+        .spawn(move || {
+            let Ok(proxy) = zbus::blocking::Proxy::new(
+                &connection,
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+            ) else {
+                return;
+            };
+            let Ok(mut signals) = proxy.receive_signal("NameOwnerChanged") else {
+                return;
+            };
+            for message in signals.by_ref() {
+                let Ok((name, old_owner, new_owner)) =
+                    message.body().deserialize::<(String, String, String)>()
+                else {
+                    continue;
+                };
+                if old_owner.is_empty() || !new_owner.is_empty() {
+                    continue;
+                }
+                for app_id in lock(&broker).withdraw_owner(&name) {
+                    let _ = emitter.emit_signal(
+                        None::<&str>,
+                        DBUS_PATH,
+                        INTERFACE,
+                        "Changed",
+                        &("owner-exit", app_id.as_str()),
+                    );
+                }
+            }
+        });
 }
 
 /// Serve `org.dragonfruit.MenuBroker1` on the session bus until the process is
@@ -243,8 +363,10 @@ pub fn run() -> zbus::Result<()> {
     let object = MenuBroker1::new();
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
-        .serve_at(DBUS_PATH, object)?
+        .method_timeout(PUBLISHER_TIMEOUT)
+        .serve_at(DBUS_PATH, object.clone())?
         .build()?;
+    spawn_owner_cleaner(connection.clone(), object);
 
     // The blocking object server runs on its own executor; parking the main
     // thread keeps the process (and the name) alive without a poll loop.

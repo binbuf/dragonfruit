@@ -12,6 +12,7 @@
 // without the broker degrades to the shell's own fixed application menu.
 #pragma once
 
+#include <QDBusPendingCall>
 #include <QList>
 #include <QString>
 #include <QVariantList>
@@ -22,9 +23,18 @@ struct ResolvedMenu {
     QString appId;
     QString appName;
     QString tier; // "native" | "dbusmenu" | "none"
+    quint64 generation = 0; // the publication the menu was rendered from
     QVariantList applicationMenuItems; // the fixed application menu
     QVariantList menus;                // the app's exported top-level menus
     bool valid = false;
+};
+
+// The broker's reply to an `Activate` call. `ok` is false on a stale
+// generation, an unknown or disabled action, a publisher that exited, or a
+// command the application itself rejected; `reason` is the wire reason.
+struct ActivationResult {
+    bool ok = false;
+    QString reason;
 };
 
 class MenuBrokerClient
@@ -51,8 +61,17 @@ public:
     // so a native publisher and the focus can agree, T230).
     ResolvedMenu resolve(const QString &appId) const;
 
+    // Deliver an application-owned action back to the publisher that owns the
+    // current menu generation. Non-blocking: the caller owns the returned
+    // pending call and observes it on its own event loop. The broker validates
+    // the generation and enabled state before forwarding.
+    QDBusPendingCall activate(const QString &appId, const QString &action,
+                              const QString &itemJson, quint64 generation,
+                              uint windowId) const;
+
     // Pure decoder, exposed for headless tests.
     static ResolvedMenu parseResolved(const QString &json);
+    static ActivationResult parseActivationResult(const QString &json);
 
 private:
     QString call(const QString &method, const QList<QVariant> &arguments) const;

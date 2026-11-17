@@ -16,10 +16,14 @@
 //! * [`accelerators`] — the focus-scoped accelerator table (T-14.2b): parse
 //!   the shortcuts a published model carries, keep them per app, and resolve a
 //!   chord against the focused app only, with system chords winning.
-//! * [`dbus`] — the `org.dragonfruit.MenuBroker1` interface and its `run`.
+//! * [`dbus`] — the `org.dragonfruit.MenuBroker1` interface, its publisher
+//!   activation endpoint, and its `run`.
 //!
 //! The system menu (the dragonfruit mark) stays shell/session-owned; the
-//! broker owns the application menu and the exporting app's own menus.
+//! broker owns the application menu and the exporting app's own menus. A
+//! published action or accelerator the shell does not own is routed back to
+//! the publisher's unique bus name with the publication generation, action
+//! identity, and enabled state the consumer rendered.
 //!
 //! The native publication payload is the design-system entry shape frozen in
 //! ADR [0041](../../docs/design/adr/0041-native-menu-model-publication-shape.md).
@@ -29,10 +33,13 @@ pub mod dbus;
 pub mod model;
 
 pub use accelerators::{Accelerator, AcceleratorTable, Chord, Dispatch, Mods};
-pub use dbus::{MenuBroker1, DBUS_NAME, DBUS_PATH, INTERFACE};
+pub use dbus::{
+    MenuBroker1, DBUS_NAME, DBUS_PATH, INTERFACE, PUBLISHER_INTERFACE, PUBLISHER_PATH,
+    PUBLISHER_TIMEOUT,
+};
 pub use model::{
-    default_app_name, fixed_application_menu, synthesized_application_menu, Broker, HideVerbs,
-    PublishedModel, Tier, Visibility, WindowState, DESKTOP_APP_NAME,
+    default_app_name, fixed_application_menu, synthesized_application_menu, ActivationTarget,
+    Broker, HideVerbs, PublishedModel, Tier, Visibility, WindowState, DESKTOP_APP_NAME,
 };
 
 #[cfg(test)]
