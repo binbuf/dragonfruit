@@ -89,6 +89,13 @@ qint64 monotonicNs()
     return qint64(now.tv_sec) * 1'000'000'000 + now.tv_nsec;
 }
 
+// T-10 section 8.1: the Dock motion clocks use the same monotonic source. A
+// wall-clock adjustment must not stretch a bounce or move a launch deadline.
+qint64 monotonicMs()
+{
+    return monotonicNs() / 1'000'000;
+}
+
 // How long a launch may take to map its first window before the Dock treats
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
@@ -1213,9 +1220,20 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                           QStringLiteral("dock-popup"));
     m_dockTrackingTimer = new QChronoTimer(this);
     m_dockTrackingTimer->setTimerType(Qt::PreciseTimer);
+    // Motion recovery: one display interval. The compositor's frame callback
+    // is the normal cadence; this single-shot wake only fires when that
+    // callback does not arrive (a deduplicated commit or a lost callback), so
+    // it cannot spin the render loop.
+    m_dockMotionTimer = new QTimer(this);
+    m_dockMotionTimer->setSingleShot(true);
+    connect(m_dockMotionTimer, &QTimer::timeout, this,
+            &ShellController::onDockMotionTimer);
     auto setDockTrackingInterval = [this]() {
         const auto refresh = m_protocol->outputRefreshMilliHz();
         m_dockTrackingTimer->setInterval(std::chrono::nanoseconds(1'000'000'000'000LL / refresh));
+        if (m_dockMotionTimer)
+            m_dockMotionTimer->setInterval(
+                qMax(1, qRound(1'000'000.0 / double(refresh))));
     };
     setDockTrackingInterval();
     connect(m_protocol, &ShellProtocol::outputRefreshChanged, this, setDockTrackingInterval);
@@ -2823,18 +2841,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_launchTimer->setInterval(500);
     connect(m_launchTimer, &QTimer::timeout, this, &ShellController::onDockLaunchTick);
 
-    // Dock animation clock (T-10 section 8.1): 16 ms while a launch or
-    // attention bounce is in flight, stopped otherwise so the idle Dock
-    // contributes zero wakeups (FR-8). The tick is only a sampling wake: the
-    // phase is a pure function of the wall clock (`dockLaunchBouncePhase` /
-    // `dockAttentionBouncePhase`), so it cannot drift from the committed
-    // frames, and the tick now advances only the phase map rather than
-    // rebuilding the entry model (T-14.7c). The resulting QML change renders
-    // through the producer's frame-callback pacing (T-21.1c), not a render
-    // timer.
-    m_dockAnimTimer = new QTimer(this);
-    m_dockAnimTimer->setInterval(16);
-    connect(m_dockAnimTimer, &QTimer::timeout, this, &ShellController::onDockAnimationTick);
+    // Dock animation (T-10 section 8.1): launch, attention, and minimize
+    // reactions are sampled when the paced Dock frame is produced, so their
+    // phase advances at the display's presentation cadence and an idle Dock
+    // contributes zero wakeups (FR-8). The clocks are monotonic and the phase
+    // map is published once per frame (T-14.7c); no free-running timer exists.
 
     // The offscreen window hands active focus to the first focusable menu
     // title when it is shown, which draws that title's FocusRing as if the
@@ -3920,7 +3931,7 @@ void ShellController::quitDockApp(const QString &appId, const QString &desktopId
     // relaunch would inherit.
     if (appInProjection(m_runningEntries, appId)) {
         const quint64 generation = m_quittingApps.begin(appId);
-        publishDockBouncePhases();
+        publishDockBouncePhases(monotonicMs());
         scheduleDockRender();
         // Each request carries its own generation so an older fallback timeout
         // cannot clear a newer request for the same app.
@@ -3929,7 +3940,7 @@ void ShellController::quitDockApp(const QString &appId, const QString &desktopId
             if (m_quittingApps.clearIfCurrent(appId, generation)) {
                 // The app refused the close or is still waiting for the user.
                 // Keep the tile; only the pending state clears.
-                publishDockBouncePhases();
+                publishDockBouncePhases(monotonicMs());
                 scheduleDockRender();
             }
         });
@@ -4104,12 +4115,12 @@ void ShellController::forceQuitDockApp(const QString &appId, const QString &desk
     // exit cannot arrive before the pending state exists.
     if (appInProjection(m_runningEntries, appId)) {
         const quint64 generation = m_quittingApps.begin(appId);
-        publishDockBouncePhases();
+        publishDockBouncePhases(monotonicMs());
         scheduleDockRender();
         QTimer::singleShot(kDockQuitPendingTimeoutMs, this,
                            [this, appId, generation]() {
             if (m_quittingApps.clearIfCurrent(appId, generation)) {
-                publishDockBouncePhases();
+                publishDockBouncePhases(monotonicMs());
                 scheduleDockRender();
             }
         });
@@ -7962,8 +7973,15 @@ void ShellController::applyDockSettings(bool reconfigure)
     m_dockItem->setProperty("minimizeReaction",
                             m_dockConfig.minimizeReaction || m_minimizeReactionFixture);
     if (!m_dockConfig.minimizeReaction && !m_minimizeReactionFixture) {
-        m_minimizeReactionStart.clear();
-        publishDockBouncePhases();
+        m_dockMotion.clearMinimizeReactions();
+        publishDockBouncePhases(monotonicMs());
+    }
+    // Reduced motion stops the sampling source. The clocks stay so a visible
+    // state such as the attention badge still expires; the next produced frame
+    // publishes it and arms one wake at the deadline.
+    if (m_dockConfig.reduceMotion) {
+        publishDockBouncePhases(monotonicMs());
+        scheduleDockRender();
     }
     // The position is applied to the surface anchor (T-10 section 5); the
     // QML layout mirrors for a vertical Dock.
@@ -8746,7 +8764,7 @@ void ShellController::rebuildDockEntries()
     // A full rebuild always re-publishes the entries; the clamp only decides
     // which ones survive and at what icon size.
     applyDockOverflowResult(computeDockOverflow(), true, true);
-    publishDockBouncePhases();
+    publishDockBouncePhases(monotonicMs());
     scheduleDockRender();
 }
 
@@ -8888,21 +8906,20 @@ void ShellController::detectDockMinimizePulses()
         const QStringList pulses =
             dockMinimizedPulses(m_dockAllEntries, m_dockMinimizedCounts);
         if (!pulses.isEmpty()) {
-            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            const qint64 now = monotonicMs();
             for (const QString &id : pulses)
-                m_minimizeReactionStart.insert(id, now);
-            ensureDockAnimation();
+                m_dockMotion.startMinimizeReaction(id, now);
+            requestDockMotionFrame();
         }
     }
     m_dockMinimizedCounts = counts;
     m_dockMinimizedCountsSeeded = true;
 }
 
-void ShellController::publishDockBouncePhases()
+void ShellController::publishDockBouncePhases(qint64 nowMs)
 {
     if (!m_dockItem)
         return;
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
     QVariantMap phases;
     bool fixtureAssigned = false;
     for (const QVariant &value : m_dockAllEntries) {
@@ -8919,13 +8936,13 @@ void ShellController::publishDockBouncePhases()
         // state, so the entry model and any live delegate stay intact
         // (reliability §6).
         const bool quitting = m_quittingApps.contains(appId);
-        if (!appId.isEmpty() && now < m_attentionUntil.value(appId)) {
+        if (!appId.isEmpty() && m_dockMotion.attentionActive(appId, nowMs)) {
             // Attention bounce wins over a launch bounce for the same entry
             // and is taller/repeating (FR-4).
             attention = true;
-            phase = dockAttentionBouncePhase(now - m_attentionStart.value(appId));
-        } else if (!desktopId.isEmpty() && m_launchStart.contains(desktopId)) {
-            phase = dockLaunchBouncePhase(now - m_launchStart.value(desktopId));
+            phase = m_dockMotion.attentionPhase(appId, nowMs);
+        } else if (!desktopId.isEmpty() && m_dockMotion.launchActive(desktopId)) {
+            phase = m_dockMotion.launchPhase(desktopId, nowMs);
         }
         // The one-shot minimize reaction (T-14.7s) is its own field: it is
         // opt-in and rendered separately so a launch/attention hop and a
@@ -8937,8 +8954,9 @@ void ShellController::publishDockBouncePhases()
             && (kind == QLatin1String("pinned") || kind == QLatin1String("temporary"))) {
             minimizePhase = m_minimizeReactionFixturePhase;
             fixtureAssigned = true;
-        } else if (m_dockConfig.minimizeReaction && m_minimizeReactionStart.contains(id)) {
-            minimizePhase = dockMinimizeReactionPhase(now - m_minimizeReactionStart.value(id));
+        } else if (m_dockConfig.minimizeReaction
+                   && m_dockMotion.minimizeReactionActive(id)) {
+            minimizePhase = m_dockMotion.minimizeReactionPhase(id, nowMs);
         }
         if (phase < 0.0 && !attention && minimizePhase < 0.0 && !quitting)
             continue;
@@ -8960,20 +8978,71 @@ void ShellController::publishDockBouncePhases()
     m_dockItem->setProperty("bouncePhases", phases);
 }
 
-void ShellController::ensureDockAnimation()
+bool ShellController::dockMotionActive() const
 {
-    if (m_dockAnimTimer && !m_dockAnimTimer->isActive())
-        m_dockAnimTimer->start();
+    // The capture seam pins a constant phase and owns no clock, so it must not
+    // keep requesting frames. Reduced motion keeps the clocks (the attention
+    // badge still has to expire) but never animates them.
+    return !m_dockConfig.reduceMotion && m_dockMotion.active();
+}
+
+void ShellController::requestDockMotionFrame()
+{
+    // The animation source is a deliberate next-frame request, raised outside
+    // a render, so the normal dirty path is correct: it honours an in-flight
+    // GPU frame and the bounded fallback tick, and it never renders from
+    // inside the frame it belongs to.
+    markChromeDirty(m_producers.value(m_dockWindow));
+}
+
+void ShellController::onDockMotionTimer()
+{
+    if (m_dockConfig.reduceMotion) {
+        // No animation: this is the one wake scheduled at the earliest clock
+        // deadline. Publish the settled state and stop.
+        const qint64 now = monotonicMs();
+        m_dockMotion.prune(now);
+        publishDockBouncePhases(now);
+        scheduleDockRender();
+        return;
+    }
+    if (!dockMotionActive())
+        return;
+    requestDockMotionFrame();
+}
+
+void ShellController::armDockMotionSettle()
+{
+    if (!m_dockMotionTimer)
+        return;
+    if (m_dockConfig.reduceMotion) {
+        // The state still has to expire (the attention badge), but no frames
+        // are sampled for motion. One wake at the earliest deadline is enough.
+        const qint64 now = monotonicMs();
+        const qint64 deadline = m_dockMotion.nextDeadlineMs();
+        if (deadline >= 0)
+            m_dockMotionTimer->start(qMax(1, static_cast<int>(deadline - now)));
+        else
+            m_dockMotionTimer->stop();
+        return;
+    }
+    if (dockMotionActive())
+        m_dockMotionTimer->start();
+    else
+        m_dockMotionTimer->stop();
 }
 
 void ShellController::clearAttention(const QString &appId)
 {
-    if (appId.isEmpty() || !m_attentionUntil.contains(appId))
+    if (appId.isEmpty())
         return;
-    m_attentionUntil.remove(appId);
-    m_attentionStart.remove(appId);
+    const qint64 now = monotonicMs();
+    const bool wasActive = m_dockMotion.attentionActive(appId, now);
+    m_dockMotion.clearAttention(appId);
+    if (!wasActive)
+        return;
     // Only the phase map changes; the entry model (and its delegates) stays.
-    publishDockBouncePhases();
+    publishDockBouncePhases(now);
     scheduleDockRender();
 }
 
@@ -8985,7 +9054,7 @@ void ShellController::onDockAttention(const QString &appId)
     // pending: restore the tile's normal state immediately instead of waiting
     // for the fallback timeout (reliability §6).
     if (m_quittingApps.cancel(appId)) {
-        publishDockBouncePhases();
+        publishDockBouncePhases(monotonicMs());
         scheduleDockRender();
     }
     // FR-4: attention stops on focus. An app that already holds focus needs
@@ -8999,49 +9068,16 @@ void ShellController::onDockAttention(const QString &appId)
     // (T-10 section 15).
     if (m_dockItem)
         QMetaObject::invokeMethod(m_dockItem, "reveal");
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    m_attentionStart.insert(appId, now);
-    m_attentionUntil.insert(appId, now + kAttentionBounceMs);
-    ensureDockAnimation();
+    // An attention request is a state change, not only motion: the badge must
+    // show even under reduced motion. The clock records the deadline; reduced
+    // motion publishes the state without sampling animation frames and wakes
+    // once to clear it.
+    m_dockMotion.startAttention(appId, monotonicMs());
     // The attention state rides the phase map, so the entry model is untouched
     // and any live hover/press on the entry survives the bounce (T-14.7c).
-    publishDockBouncePhases();
+    // The first frame is produced by the pacer and samples the phase; no eager
+    // publication and no sampling timer (T-10 section 8.1).
     scheduleDockRender();
-}
-
-void ShellController::onDockAnimationTick()
-{
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    for (auto it = m_attentionUntil.begin(); it != m_attentionUntil.end();) {
-        if (it.value() <= now) {
-            m_attentionStart.remove(it.key());
-            it = m_attentionUntil.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    for (auto it = m_launchStart.begin(); it != m_launchStart.end();) {
-        if (now - it.value() >= kLaunchBounceMs)
-            it = m_launchStart.erase(it);
-        else
-            ++it;
-    }
-    for (auto it = m_minimizeReactionStart.begin(); it != m_minimizeReactionStart.end();) {
-        if (now - it.value() >= kMinimizeReactionMs)
-            it = m_minimizeReactionStart.erase(it);
-        else
-            ++it;
-    }
-    // Advance only the phase map; the Repeater model is not touched, so the
-    // delegates are not recreated and the hover/press state survives
-    // (T-14.7c). A settled clock stops the timer entirely (zero idle wakeups).
-    publishDockBouncePhases();
-    scheduleDockRender();
-    if (m_attentionUntil.isEmpty() && m_launchStart.isEmpty()
-        && m_minimizeReactionStart.isEmpty()) {
-        if (m_dockAnimTimer)
-            m_dockAnimTimer->stop();
-    }
 }
 
 void ShellController::onDockEntryActivated(const QVariant &entry)
@@ -9389,11 +9425,11 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
     if (pid > 0)
         appendDockLaunchProcess(desktopId, pid);
     m_launchStates.insert(desktopId, QStringLiteral("launching"));
-    m_launchStart.insert(desktopId, QDateTime::currentMSecsSinceEpoch());
-    m_launchDeadlines.insert(desktopId, QDateTime::currentMSecsSinceEpoch() + kLaunchTimeoutMs);
+    const qint64 now = monotonicMs();
+    m_dockMotion.startLaunch(desktopId, now);
+    m_launchDeadlines.insert(desktopId, now + kLaunchTimeoutMs);
     if (m_launchTimer && !m_launchTimer->isActive())
         m_launchTimer->start();
-    ensureDockAnimation();
     rebuildDockEntries();
 }
 
@@ -9433,7 +9469,7 @@ void ShellController::flashDuplicatePin(const QString &desktopId)
 
 void ShellController::onDockLaunchTick()
 {
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 now = monotonicMs();
     bool any = false;
     bool changed = false;
     for (auto it = m_launchDeadlines.begin(); it != m_launchDeadlines.end();) {
@@ -9456,13 +9492,11 @@ void ShellController::onDockLaunchTick()
     }
     if (!any && m_launchTimer)
         m_launchTimer->stop();
-    // Only a real launch-state change resets the entry model; a quiet tick
-    // during a bounce must not recreate the delegates (T-14.7c).
-    if (changed) {
+    // Only a real launch-state change resets the entry model; the bounce clock
+    // is sampled by the paced Dock frame, not by this timeout tick (T-10
+    // section 8.1).
+    if (changed)
         rebuildDockEntries();
-    } else {
-        publishDockBouncePhases();
-    }
 }
 
 void ShellController::onDockEntryContextMenu(const QVariant &entry, qreal, qreal)
@@ -11175,6 +11209,16 @@ void ShellController::onChromeFramePresented(const QString &surface, uint32_t ti
         m_dockPopoverTraceCommitted = false;
     }
     const QString paceLabel = chromePaceLabel(surface);
+    // T-10 section 8.1: a presented Dock frame is the display opportunity that
+    // samples the next motion phase. The phase is a monotonic function of
+    // time, so requesting the next frame here advances a bounce once per
+    // presentation instead of once per timer tick. The recovery tick is
+    // cancelled because the callback arrived.
+    if (dockMotionActive() && paceLabel == QLatin1String("dock")) {
+        if (m_dockMotionTimer)
+            m_dockMotionTimer->stop();
+        requestDockMotionFrame();
+    }
     for (auto it = m_chromePaces.begin(); it != m_chromePaces.end(); ++it) {
         ChromePace &pace = it.value();
         if (pace.primaryLabel != paceLabel || !pace.dirty || pace.scheduled)
@@ -11919,6 +11963,12 @@ void ShellController::renderDock()
 {
     if (!m_dockItem || !m_dockWindow || m_dockWidth <= 0 || m_dockHeight <= 0)
         return;
+    // T-10 section 8.1: sample the motion clocks once for this produced frame.
+    // The phase advances at the presentation cadence instead of a fixed timer,
+    // and pruning settles a finished clock before the scene is laid out.
+    const qint64 motionNowMs = monotonicMs();
+    m_dockMotion.prune(motionNowMs);
+    publishDockBouncePhases(motionNowMs);
     if (m_dockTrackingTime.isValid()) {
         const qreal elapsedMs = m_dockTrackingTime.nsecsElapsed() / 1'000'000.0;
         m_dockTrackingTime.start();
@@ -12235,6 +12285,13 @@ void ShellController::renderDock()
     }
     if (!committed && !deferred)
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
+    // While a launch, attention, or minimize-reaction clock is still running,
+    // arm the bounded recovery for the next display opportunity. The normal
+    // cadence is the compositor's frame callback, which `onChromeFramePresented`
+    // turns into the next sample; the recovery only fires when that callback
+    // never comes (a deduplicated commit or a lost callback). A settled clock
+    // asks for nothing, so an idle Dock returns to zero wakeups.
+    armDockMotionSettle();
 }
 
 void ShellController::render()

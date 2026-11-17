@@ -486,7 +486,10 @@ private slots:
     void onBannerPointerLeft();
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
-    void onDockAnimationTick();
+    // Single-shot motion wake: one display interval after a produced frame as
+    // the recovery path for a missing callback, or one wake at the earliest
+    // clock deadline under reduced motion (the state still expires).
+    void onDockMotionTimer();
     void onTrashChanged();
     // The Empty Trash worker finished (T-14.7r): forward the one-shot result to
     // the Dock's progress/result popover on the UI thread.
@@ -856,10 +859,12 @@ private:
     // flag) onto the Dock (T-14.7e). `reloadCorpus` re-enumerates first when
     // the picker opens and no live subscription is held.
     void refreshAppPicker(bool reloadCorpus);
-    // Compute the per-entry launch/attention phases from the clocks and push
-    // them into the QML `bouncePhases` map keyed by entry id. The entries
-    // themselves are untouched, so the delegates survive a bounce (T-14.7c).
-    void publishDockBouncePhases();
+    // Compute the per-entry launch/attention phases from the monotonic motion
+    // clocks and push them into the QML `bouncePhases` map keyed by entry id.
+    // Called once per produced frame, so the phase advances at the display's
+    // presentation cadence. The entries themselves are untouched, so the
+    // delegates survive a bounce (T-14.7c).
+    void publishDockBouncePhases(qint64 nowMs);
     // Compare the freshly built Dock entries against the previous per-entry
     // minimized counts and start a one-shot minimize reaction pulse for every
     // entry whose minimized count increased (T-14.7s). Gated by
@@ -867,8 +872,18 @@ private:
     // Dock that starts with minimized windows does not pulse. The pulse rides
     // `bouncePhases`, so the entry model is never rebuilt.
     void detectDockMinimizePulses();
-    // Start the 16 ms Dock animation clock if it is not already running.
-    void ensureDockAnimation();
+    // True while a launch, attention, or minimize-reaction clock can still
+    // change the Dock's pixels.
+    bool dockMotionActive() const;
+    // Ask the pacer for the next Dock frame while motion is in flight. This is
+    // the animation source: it is raised outside a render and goes through the
+    // pacer's pending-frame and bounded-recovery checks.
+    void requestDockMotionFrame();
+    // Arm the single-shot motion timer: one display interval after a produced
+    // frame as the recovery path for a missing callback, or one wake at the
+    // earliest deadline when motion is reduced (state still expires, but
+    // nothing animates).
+    void armDockMotionSettle();
     // Clear any attention bounce for `appId` (FR-4: stops on click or focus).
     void clearAttention(const QString &appId);
     // Launch a pinned app through its app-index record's `Exec`. Bounded by a
@@ -1291,7 +1306,10 @@ private:
     QHash<ChromeFrameProducer *, ChromePace> m_chromePaces;
     QTimer *m_chromeFallbackTimer = nullptr;
     QTimer *m_launchTimer = nullptr;
-    QTimer *m_dockAnimTimer = nullptr;
+    // Single-shot motion wake: one display interval after a produced frame when
+    // the compositor owes no callback (the recovery path), or one wake at the
+    // earliest clock deadline under reduced motion (state still expires).
+    QTimer *m_dockMotionTimer = nullptr;
     QChronoTimer *m_dockTrackingTimer = nullptr;
     QElapsedTimer m_dockTrackingTime;
     // The T-08 settings daemon client: the Dock's only settings source
@@ -1451,7 +1469,10 @@ private:
     // restarts the clock (coalesced into the last).
     QHash<QString, int> m_dockMinimizedCounts;
     bool m_dockMinimizedCountsSeeded = false;
-    QHash<QString, qint64> m_minimizeReactionStart;
+    // T-10 section 8.1: launch, attention, and minimize-reaction clocks. Every
+    // start and deadline is monotonic milliseconds; the phase is sampled when
+    // the paced Dock frame is produced (see DockMotionClock).
+    DockMotionClock m_dockMotion;
     // Capture-only seam (T-14.7s): `DF_DOCK_MINIMIZE_REACTION_FIXTURE=<phase>`
     // forces a constant minimize pulse on the first running entry so the live
     // visual check can capture a mid-bounce frame deterministically. Never set
@@ -1479,18 +1500,12 @@ private:
     QVariantMap m_lastMinimizeTargets;
     QRect m_lastMinimizeRegion;
     bool m_lastMinimizeIntoTile = true;
-    // Pinned desktop id -> deadline (ms since epoch) for the launch timeout.
+    // Pinned desktop id -> deadline (monotonic ms) for the launch timeout.
     QHash<QString, qint64> m_launchDeadlines;
-    // Pinned desktop id -> launch-bounce start (ms since epoch); the bounce
-    // finishes on its own even after the first window resolves the launch.
-    QHash<QString, qint64> m_launchStart;
     // Compositor app id -> the desktop id to launch if the compositor reports
     // the activation found no window (T-14.7g). Empty value = no fallback
     // launch, raise a notice instead.
     QHash<QString, QString> m_pendingActivations;
-    // Compositor app id -> attention-bounce start and deadline (T-10 FR-4).
-    QHash<QString, qint64> m_attentionStart;
-    QHash<QString, qint64> m_attentionUntil;
     // The in-flight external-drop payload (T-10 section 12). The shell holds
     // the payload and resolves the action when the Dock reports the target.
     // `payloadIsApp` is the drop-time classification (a single `.desktop` URI

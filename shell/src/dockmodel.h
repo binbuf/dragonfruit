@@ -403,3 +403,41 @@ double dockAttentionBouncePhase(qint64 elapsedMs);
 // QML owns the amplitude/easing so reduced motion can drop the translation.
 constexpr qint64 kMinimizeReactionMs = 320;
 double dockMinimizeReactionPhase(qint64 elapsedMs);
+
+// T-10 section 8.1: the Dock's launch, attention, and minimize-reaction motion
+// clocks. Every start and deadline is a monotonic millisecond value supplied
+// by the caller, never a wall clock, so a clock adjustment cannot stretch or
+// expire a bounce. The phase is sampled on demand, once per produced frame,
+// so a high-refresh display advances the motion per presentation instead of
+// repeating a fixed 16 ms sample. The sampled phases stay a separate map; the
+// entry model is never touched. Pure and unit-tested (tst_dockcore).
+class DockMotionClock
+{
+public:
+    void startLaunch(const QString &desktopId, qint64 nowMs);
+    void startAttention(const QString &appId, qint64 nowMs);
+    void startMinimizeReaction(const QString &entryId, qint64 nowMs);
+    void clearAttention(const QString &appId);
+    void clearMinimizeReactions();
+    void clear();
+    // Drop every clock whose motion has finished at `nowMs`. Returns true when
+    // any clock can still produce visible motion, i.e. another frame is due.
+    bool prune(qint64 nowMs);
+    bool launchActive(const QString &desktopId) const;
+    double launchPhase(const QString &desktopId, qint64 nowMs) const;
+    bool attentionActive(const QString &appId, qint64 nowMs) const;
+    double attentionPhase(const QString &appId, qint64 nowMs) const;
+    bool minimizeReactionActive(const QString &entryId) const;
+    double minimizeReactionPhase(const QString &entryId, qint64 nowMs) const;
+    bool active() const;
+    // The earliest monotonic time at which a clock expires, or -1 when none is
+    // running. Reduced motion uses it to publish the settled state once at the
+    // deadline without sampling frames.
+    qint64 nextDeadlineMs() const;
+
+private:
+    QHash<QString, qint64> m_launchStart;
+    QHash<QString, qint64> m_attentionStart;
+    QHash<QString, qint64> m_attentionUntil;
+    QHash<QString, qint64> m_minimizeReactionStart;
+};

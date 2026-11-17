@@ -193,6 +193,140 @@ double dockMinimizeReactionPhase(qint64 elapsedMs)
     return static_cast<double>(elapsedMs) / static_cast<double>(kMinimizeReactionMs);
 }
 
+void DockMotionClock::startLaunch(const QString &desktopId, qint64 nowMs)
+{
+    if (desktopId.isEmpty())
+        return;
+    // A new launch restarts the lift instead of inheriting a finished clock.
+    m_launchStart.insert(desktopId, nowMs);
+}
+
+void DockMotionClock::startAttention(const QString &appId, qint64 nowMs)
+{
+    if (appId.isEmpty())
+        return;
+    // A repeated request restarts the hop and extends the deadline, so the
+    // bounce always begins at phase 0.
+    m_attentionStart.insert(appId, nowMs);
+    m_attentionUntil.insert(appId, nowMs + kAttentionBounceMs);
+}
+
+void DockMotionClock::startMinimizeReaction(const QString &entryId, qint64 nowMs)
+{
+    if (entryId.isEmpty())
+        return;
+    // A rapid second minimize restarts the one-shot hop.
+    m_minimizeReactionStart.insert(entryId, nowMs);
+}
+
+void DockMotionClock::clearAttention(const QString &appId)
+{
+    m_attentionStart.remove(appId);
+    m_attentionUntil.remove(appId);
+}
+
+void DockMotionClock::clearMinimizeReactions()
+{
+    m_minimizeReactionStart.clear();
+}
+
+void DockMotionClock::clear()
+{
+    m_launchStart.clear();
+    m_attentionStart.clear();
+    m_attentionUntil.clear();
+    m_minimizeReactionStart.clear();
+}
+
+bool DockMotionClock::prune(qint64 nowMs)
+{
+    for (auto it = m_launchStart.begin(); it != m_launchStart.end();) {
+        if (nowMs - it.value() >= kLaunchBounceMs)
+            it = m_launchStart.erase(it);
+        else
+            ++it;
+    }
+    for (auto it = m_attentionUntil.begin(); it != m_attentionUntil.end();) {
+        if (it.value() <= nowMs) {
+            m_attentionStart.remove(it.key());
+            it = m_attentionUntil.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = m_minimizeReactionStart.begin();
+         it != m_minimizeReactionStart.end();) {
+        if (nowMs - it.value() >= kMinimizeReactionMs)
+            it = m_minimizeReactionStart.erase(it);
+        else
+            ++it;
+    }
+    return active();
+}
+
+bool DockMotionClock::launchActive(const QString &desktopId) const
+{
+    return m_launchStart.contains(desktopId);
+}
+
+double DockMotionClock::launchPhase(const QString &desktopId, qint64 nowMs) const
+{
+    const auto it = m_launchStart.constFind(desktopId);
+    return it == m_launchStart.constEnd() ? -1.0
+                                          : dockLaunchBouncePhase(nowMs - it.value());
+}
+
+bool DockMotionClock::attentionActive(const QString &appId, qint64 nowMs) const
+{
+    const auto it = m_attentionUntil.constFind(appId);
+    return it != m_attentionUntil.constEnd() && nowMs < it.value();
+}
+
+double DockMotionClock::attentionPhase(const QString &appId, qint64 nowMs) const
+{
+    const auto it = m_attentionStart.constFind(appId);
+    if (it == m_attentionStart.constEnd() || !attentionActive(appId, nowMs))
+        return -1.0;
+    return dockAttentionBouncePhase(nowMs - it.value());
+}
+
+bool DockMotionClock::minimizeReactionActive(const QString &entryId) const
+{
+    return m_minimizeReactionStart.contains(entryId);
+}
+
+double DockMotionClock::minimizeReactionPhase(const QString &entryId, qint64 nowMs) const
+{
+    const auto it = m_minimizeReactionStart.constFind(entryId);
+    return it == m_minimizeReactionStart.constEnd()
+        ? -1.0
+        : dockMinimizeReactionPhase(nowMs - it.value());
+}
+
+bool DockMotionClock::active() const
+{
+    return !m_launchStart.isEmpty() || !m_attentionUntil.isEmpty()
+        || !m_minimizeReactionStart.isEmpty();
+}
+
+qint64 DockMotionClock::nextDeadlineMs() const
+{
+    qint64 next = -1;
+    const auto consider = [&next](qint64 deadline) {
+        if (next < 0 || deadline < next)
+            next = deadline;
+    };
+    for (auto it = m_launchStart.constBegin(); it != m_launchStart.constEnd(); ++it)
+        consider(it.value() + kLaunchBounceMs);
+    for (auto it = m_attentionUntil.constBegin(); it != m_attentionUntil.constEnd(); ++it)
+        consider(it.value());
+    for (auto it = m_minimizeReactionStart.constBegin();
+         it != m_minimizeReactionStart.constEnd(); ++it) {
+        consider(it.value() + kMinimizeReactionMs);
+    }
+    return next;
+}
+
 DockActivationFallback dockActivationFallback(bool found, bool launchable)
 {
     if (found)

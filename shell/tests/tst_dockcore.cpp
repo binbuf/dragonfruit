@@ -2563,6 +2563,127 @@ private slots:
         QCOMPARE(dockMinimizeReactionPhase(-1), -1.0);
     }
 
+    // -- motion clock (T-10 section 8.1) ---------------------------------
+
+    void motionClockSamplesAtPresentationCadence()
+    {
+        // The phase is a function of elapsed monotonic time, so a 60, 120, or
+        // 144 Hz presentation samples a distinct phase per frame instead of
+        // repeating one fixed 16 ms timer value across display opportunities.
+        for (const int hz : {60, 120, 144}) {
+            DockMotionClock clock;
+            // An arbitrary uptime, not an epoch: only the elapsed delta counts.
+            const qint64 start = 4'000'000;
+            clock.startLaunch(QStringLiteral("app.desktop"), start);
+            QVERIFY(clock.launchActive(QStringLiteral("app.desktop")));
+            double previous = -1.0;
+            int frames = 0;
+            for (int frame = 0; frame <= hz; ++frame) {
+                const qint64 now = start + frame * 1000 / hz;
+                clock.prune(now);
+                const double phase =
+                    clock.launchPhase(QStringLiteral("app.desktop"), now);
+                if (phase < 0.0)
+                    break;
+                QVERIFY(phase > previous);
+                previous = phase;
+                ++frames;
+            }
+            // One token-duration lift at every refresh rate: every sample
+            // before the end of the lift is a distinct frame.
+            QCOMPARE(frames, static_cast<int>((kLaunchBounceMs - 1) * hz / 1000 + 1));
+            QVERIFY(!clock.prune(start + kLaunchBounceMs));
+            QVERIFY(!clock.active());
+        }
+    }
+
+    void motionClockUsesOnlyElapsedMonotonicTime()
+    {
+        // A wall-clock adjustment is invisible here: the start and the sample
+        // are both monotonic, so only their delta can affect the phase.
+        DockMotionClock early;
+        early.startLaunch(QStringLiteral("a"), 0);
+        DockMotionClock late;
+        late.startLaunch(QStringLiteral("a"), 9'000'000'000LL);
+        QCOMPARE(early.launchPhase(QStringLiteral("a"), 150),
+                 late.launchPhase(QStringLiteral("a"), 9'000'000'150LL));
+        QCOMPARE(early.launchPhase(QStringLiteral("a"), 150), 0.5);
+    }
+
+    void motionClockSettlesAttentionAndMinimizeDeadlines()
+    {
+        DockMotionClock clock;
+        clock.startAttention(QStringLiteral("org.example.App"), 10'000);
+        QVERIFY(clock.attentionActive(QStringLiteral("org.example.App"), 10'000));
+        QVERIFY(qAbs(clock.attentionPhase(QStringLiteral("org.example.App"),
+                                          10'000 + kAttentionBounceHopMs / 2)
+                     - 0.5) < 1e-9);
+        // The deadline is exclusive and prune drops both the start and it.
+        QVERIFY(!clock.attentionActive(QStringLiteral("org.example.App"),
+                                       10'000 + kAttentionBounceMs));
+        QVERIFY(!clock.prune(10'000 + kAttentionBounceMs));
+        QVERIFY(!clock.active());
+        QCOMPARE(clock.attentionPhase(QStringLiteral("org.example.App"), 12'000),
+                 -1.0);
+
+        clock.startMinimizeReaction(QStringLiteral("entry"), 20'000);
+        QVERIFY(clock.minimizeReactionActive(QStringLiteral("entry")));
+        QVERIFY(qAbs(clock.minimizeReactionPhase(QStringLiteral("entry"),
+                                                 20'000 + kMinimizeReactionMs / 2)
+                     - 0.5) < 1e-9);
+        QVERIFY(clock.prune(20'000 + kMinimizeReactionMs / 2));
+        QVERIFY(!clock.prune(20'000 + kMinimizeReactionMs));
+    }
+
+    void motionClockReportsTheEarliestDeadline()
+    {
+        DockMotionClock clock;
+        QCOMPARE(clock.nextDeadlineMs(), qint64(-1));
+        clock.startAttention(QStringLiteral("app"), 1000);
+        QCOMPARE(clock.nextDeadlineMs(), qint64(1000 + kAttentionBounceMs));
+        clock.startLaunch(QStringLiteral("desktop"), 2000);
+        QCOMPARE(clock.nextDeadlineMs(), qint64(2000 + kLaunchBounceMs));
+        clock.startMinimizeReaction(QStringLiteral("entry"), 1000);
+        QCOMPARE(clock.nextDeadlineMs(), qint64(1000 + kMinimizeReactionMs));
+        clock.prune(1000 + kMinimizeReactionMs);
+        QCOMPARE(clock.nextDeadlineMs(), qint64(2000 + kLaunchBounceMs));
+        clock.prune(2000 + kLaunchBounceMs);
+        QCOMPARE(clock.nextDeadlineMs(), qint64(1000 + kAttentionBounceMs));
+        clock.clear();
+        QCOMPARE(clock.nextDeadlineMs(), qint64(-1));
+    }
+
+    void motionClockClearsAndRestarts()
+    {
+        DockMotionClock clock;
+        clock.startLaunch(QStringLiteral("a"), 1000);
+        clock.startLaunch(QStringLiteral("a"), 1100);
+        QVERIFY(qAbs(clock.launchPhase(QStringLiteral("a"), 1250) - 0.5) < 1e-9);
+
+        clock.startAttention(QStringLiteral("b"), 1000);
+        clock.startAttention(QStringLiteral("b"), 1500);
+        QCOMPARE(clock.attentionPhase(QStringLiteral("b"), 1500), 0.0);
+        QVERIFY(clock.attentionActive(QStringLiteral("b"),
+                                      1500 + kAttentionBounceMs - 1));
+        clock.clearAttention(QStringLiteral("b"));
+        QVERIFY(!clock.attentionActive(QStringLiteral("b"), 1500));
+
+        clock.startMinimizeReaction(QStringLiteral("c"), 1000);
+        clock.clearMinimizeReactions();
+        QVERIFY(!clock.minimizeReactionActive(QStringLiteral("c")));
+
+        // The launch clock is untouched by the other clears.
+        QVERIFY(clock.active());
+        clock.clear();
+        QVERIFY(!clock.active());
+
+        // An empty identity never starts a clock.
+        clock.startLaunch(QString(), 1000);
+        clock.startAttention(QString(), 1000);
+        clock.startMinimizeReaction(QString(), 1000);
+        QVERIFY(!clock.active());
+    }
+
     void minimizedPulsesDetectOnePulsePerIncreaseAndCoalesce()
     {
         const auto entriesFor = [](int minimized) {
