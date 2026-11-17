@@ -7,6 +7,11 @@ Settings is one of the two flagship first-party applications (with Files, see
 existing GNOME/KDE programs. It is a single application with a stable internal
 settings API, backed by a settings daemon.
 
+> **2026-11-17:** The visual/IA target is
+> [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md).
+> This document remains the architecture/runtime contract; where the two
+> disagree on chrome or information architecture, 25 wins.
+
 ## Architecture
 
 ```text

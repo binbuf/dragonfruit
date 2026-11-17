@@ -10,6 +10,12 @@
 > symphony set (`docs/tasks/system-settings/`). Run them with
 > `./.symphony/symphony run --set system-settings`.
 
+> **2026-11-17:** The visual/IA pass in
+> [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md)
+> supersedes this document's window/chrome and pane inventory where the two
+> disagree. The row ownership, absence, and evidence rules in §3.4–3.7 still
+> apply. The new task set is `docs/tasks/system-settings-2/` (T285–T302).
+
 > The app is now **System Settings**. Internal paths remain `apps/settings`,
 > `org.dragonfruit.Settings1`, and the `settingsd` service name; user-facing
 > strings and docs use “System Settings”.
