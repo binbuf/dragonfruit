@@ -2787,7 +2787,7 @@ void ShellController::settleInitialState()
     // move the synthesized pointer off the bar. Real motion re-establishes
     // hover as soon as the user interacts.
     sendChromePointer(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, Qt::NoButton);
-    render();
+    scheduleRender();
 }
 
 void ShellController::applyStatusItems()
@@ -3331,6 +3331,7 @@ void ShellController::onTrayMenuTriggered(const QString &service, int id)
 void ShellController::onTrayMenuClosed()
 {
     m_menuOpen = false;
+    m_popupGeometryPending = false;
     // Closing invalidates the menu session immediately: input interception is
     // dropped now and any late menu reply is discarded by generation.
     ++m_trayMenuGeneration;
@@ -3373,6 +3374,7 @@ void ShellController::onStatusMenuOpened()
 void ShellController::onStatusMenuClosed()
 {
     m_menuOpen = false;
+    m_popupGeometryPending = false;
     // Keep the material for the measured 183 ms exit tail; only input closes
     // immediately. `updatePopupGeometry` clears the regions at 210 ms.
     if (m_protocol)
@@ -3727,7 +3729,7 @@ void ShellController::applyFocusedApp()
                     m_protocol->setAppAccelerators(rawId, acceleratorWireTable(
                         publishedAccelerators(applicationMenu, appMenu)));
                 }
-                render();
+                scheduleRender();
             }, Qt::QueuedConnection);
     });
 }
@@ -4114,10 +4116,11 @@ void ShellController::onConfigured(int width, int height, quint32)
     m_width = width;
     m_height = height;
     fprintf(stderr, "dragonfruit-shell: menu bar configured %dx%d\n", width, height);
-    render();
-    // Canvas items paint on the scene graph after the first grab; re-render
-    // once the event loop has run so the committed frame includes them.
-    QTimer::singleShot(200, this, &ShellController::render);
+    scheduleRender();
+    // Canvas items paint on the scene graph after the first grab; request one
+    // more paced frame once the event loop has run so the committed frame
+    // includes them.
+    QTimer::singleShot(200, this, &ShellController::scheduleRender);
 }
 
 void ShellController::onFocusedAppChanged(const QString &appId, const QString &title)
@@ -4149,7 +4152,7 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
     // generation when it lands.
     invalidateMenuGeneration();
     applyFocusedApp();
-    render();
+    scheduleRender();
 }
 
 // --- Notification Center (T204) --------------------------------------------
@@ -6774,7 +6777,7 @@ void ShellController::onStatusItemActivated(const QString &itemId)
 
 void ShellController::onClockTick()
 {
-    render();
+    scheduleRender();
 }
 
 void ShellController::onAppMenuOpened(int)
@@ -6788,6 +6791,7 @@ void ShellController::onAppMenuOpened(int)
 void ShellController::onAppMenuClosed()
 {
     m_menuOpen = false;
+    m_popupGeometryPending = false;
     // The logical menu and input close now; the material regions stay for the
     // measured 183 ms visual tail. `updatePopupGeometry` clears them at 210 ms,
     // so the close fade keeps the frost/rim instead of falling back to a flat
@@ -7077,21 +7081,19 @@ void ShellController::commitInitialChrome()
         m_initialStatusTimer->deleteLater();
         m_initialStatusTimer = nullptr;
     }
-    render();
+    scheduleRender();
     // Match `onConfigured`'s post-first-frame pass: any scene-graph-only
-    // content paints on the next event-loop turn, not in the first grab.
-    QTimer::singleShot(200, this, &ShellController::render);
+    // content paints on the next paced frame, not in the first grab.
+    QTimer::singleShot(200, this, &ShellController::scheduleRender);
 }
 
 void ShellController::scheduleRender()
 {
-    if (m_renderPending)
-        return;
-    m_renderPending = true;
-    QTimer::singleShot(0, this, [this]() {
-        m_renderPending = false;
-        render();
-    });
+    // The menu bar already has a producer and a frame pacer. Ordinary requests
+    // (pointer, clock, policy, geometry) mark it dirty instead of rendering
+    // directly, so they share the pacer's pending-frame check, coalescing, and
+    // presentation cadence.
+    markChromeDirty(m_producers.value(m_window));
 }
 
 
@@ -7100,16 +7102,27 @@ void ShellController::schedulePopupGeometry()
     if (!m_menuOpen || m_popupGeometryPending)
         return;
     m_popupGeometryPending = true;
-    // opened() is delivered before dependent QML region bindings settle.
-    // Read once after that transaction, including submenu/layout changes.
+    // opened() is delivered before dependent QML region bindings settle. The
+    // geometry is read in the paced frame that submits it, after that
+    // transaction (including submenu/layout changes) has completed. Defer the
+    // request one turn so a layout change raised during polish is not dropped
+    // by the pacer's render re-entrancy guard.
     QTimer::singleShot(0, this, [this]() {
-        m_popupGeometryPending = false;
-        if (m_menuOpen)
-            updatePopupGeometry();
+        if (m_popupGeometryPending)
+            scheduleRender();
     });
 }
 
 void ShellController::updatePopupGeometry()
+{
+    // This call owns the geometry: an older deferred request must not apply a
+    // stale open rectangle after the explicit close.
+    m_popupGeometryPending = false;
+    applyPopupGeometry();
+    scheduleRender();
+}
+
+void ShellController::applyPopupGeometry()
 {
     if (!m_item) {
         return;
@@ -7120,7 +7133,6 @@ void ShellController::updatePopupGeometry()
         m_protocol->setPopupInputActive(false);
         m_protocol->clearPopupPanelRegions();
         m_protocol->hidePopup();
-        render();
         return;
     }
     // The open dropdown's rectangle in window coordinates. The popup QML
@@ -7136,7 +7148,6 @@ void ShellController::updatePopupGeometry()
         m_popupWidth = 0;
         m_popupHeight = 0;
         m_protocol->hidePopup();
-        render();
         return;
     }
     m_popupX = x;
@@ -7150,7 +7161,6 @@ void ShellController::updatePopupGeometry()
     m_protocol->setPopupPanelRegions(
         m_item->property("dropdownSurfaceRegions").toList());
     m_protocol->setPopupInputActive(true);
-    render();
 }
 
 void ShellController::onPointerMoved(qreal x, qreal y)
@@ -7158,8 +7168,10 @@ void ShellController::onPointerMoved(qreal x, qreal y)
     if (!m_window)
         return;
     sendChromePointer(m_window, QEvent::MouseMove, QPointF(x, y), Qt::NoButton, m_buttons);
-    // Hover/title/row highlights changed in QML; push the new frame.
-    scheduleRender();
+    // The QML scene owns the response: a hover/title/row change raises
+    // `sceneChanged`, which the chrome pacer coalesces. Requesting a frame for
+    // every raw pointer sample would bypass the pacer's pending-frame check
+    // and redraw the bar even when the pointer moved over unchanged chrome.
 }
 
 void ShellController::onPointerButton(qreal x, qreal y, quint32 button, bool pressed)
@@ -7181,9 +7193,10 @@ void ShellController::onPointerLeft()
     if (!m_window)
         return;
     // Move the pointer off-screen so hover states clear when the compositor
-    // takes the pointer away (e.g. it moved onto a window).
+    // takes the pointer away (e.g. it moved onto a window). A hover change
+    // raises `sceneChanged`; a pointer that was not over the bar requests no
+    // frame.
     sendChromePointer(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, m_buttons);
-    scheduleRender();
 }
 
 void ShellController::onKeyboardFocused(bool focused)
@@ -7759,7 +7772,7 @@ void ShellController::applyMaterialState()
     if (dockChanged || dockPopupChanged)
         scheduleDockRender();
     if ((menuChanged || menuPopupChanged) && m_window)
-        render();
+        scheduleRender();
     if (drawerChanged && m_appsDrawerOpen)
         scheduleAppsDrawerRender();
     if (bannerChanged && m_bannerPending)
@@ -8050,7 +8063,7 @@ void ShellController::applyCompositorPolicy()
         m_item->setProperty("reduceTransparency", policy.reduceTransparency);
         m_item->setProperty("increaseContrast", policy.increaseContrast);
         if (changed && m_protocol)
-            render();
+            scheduleRender();
     }
     fprintf(stderr,
             "dragonfruit-shell: compositor motion/input policy applied "
@@ -8138,7 +8151,7 @@ void ShellController::applyMenuBarPolicy()
         // through the same Settings refresh path as the rest of the pane.
         if (m_protocol)
             m_protocol->setMenuBarAutoHide(autoHide);
-        render();
+        scheduleRender();
         fprintf(stderr,
                 "dragonfruit-shell: menu bar policy applied "
                 "(globalMenu=%d clockDate=%d clockSeconds=%d clock24h=%d background=%d "
@@ -11422,7 +11435,7 @@ void ShellController::onChromeScaleChanged(qreal scale)
 void ShellController::rerenderChrome()
 {
     if (m_item && m_width > 0)
-        render();
+        scheduleRender();
     if (m_dockItem && m_dockWidth > 0 && m_dockHeight > 0)
         scheduleDockRender();
     if (m_overviewActive)
@@ -11675,6 +11688,14 @@ void ShellController::render()
     // first is exactly the half-populated launch frame this gate prevents.
     if (m_initialStatusPending != 0)
         return;
+    // A geometry request is applied inside the frame that carries it, after
+    // the layout transaction that changed the menu has settled. This keeps the
+    // popup rectangle and its content on one presentation instead of sending
+    // geometry ahead of a separate render.
+    if (m_popupGeometryPending) {
+        m_popupGeometryPending = false;
+        applyPopupGeometry();
+    }
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;

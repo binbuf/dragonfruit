@@ -195,6 +195,15 @@ they have no trusted compositor backdrop. The Bluetooth slot now reads the
 existing bridge-host adapter and Menu Bar visibility key; it raises the same
 power/device/settings actions as the Control Center tile and hides on absence.
 
+Menu-bar rendering follows the chrome frame pacer
+([ADR 0285](adr/0285-menu-bar-rendering-follows-frame-pacer.md)). Pointer
+motion, clock ticks, policy changes, and popup geometry mark the `menubar`
+producer dirty; the pacer coalesces them against the compositor's
+`wl_surface.frame` callback. Pointer motion that leaves the hover state
+unchanged produces no frame, and a pending popup rectangle is applied in the
+same paced frame that commits its content. Closing a menu still drops input
+interception immediately.
+
 `menu.autoHide` is applied per output by the compositor (T201). `never` keeps
 the bar over the desktop and fullscreen; `always` starts concealed and reveals
 from the top edge or Control-F2; `full-screen` is normal on the desktop and

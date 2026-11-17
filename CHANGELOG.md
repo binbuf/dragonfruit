@@ -8,6 +8,11 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Menu-bar rendering.** Pointer movement, clock ticks, popup geometry, and
+  policy updates now go through the menu bar's existing frame pacer instead of
+  rendering directly. Unchanged hover state no longer produces duplicate
+  frames, and a popup's rectangle is submitted with the same paced frame that
+  draws its content.
 - **Tray responsiveness.** StatusNotifier items and their menus are now read
   and activated off the shell thread, with cached snapshots in app-index and
   change-driven updates instead of a two-second poll. A slow or unresponsive

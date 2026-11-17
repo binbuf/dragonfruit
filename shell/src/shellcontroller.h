@@ -945,8 +945,14 @@ private:
     // Read the open dropdown's rectangle from the bar and place (or hide) the
     // overlay popup surface accordingly.
     void updatePopupGeometry();
-    // Coalesce a render onto the next event-loop turn (QML visual state has
-    // changed but the compositor has not been told yet).
+    // The geometry-only half of `updatePopupGeometry()`: apply the current QML
+    // rectangle to the protocol without requesting a frame. `render()` calls
+    // this for a pending update so the rectangle and its content share one
+    // paced frame.
+    void applyPopupGeometry();
+    // Mark the menu-bar producer dirty. The producer's pacer renders on the
+    // next eligible presentation (or the next event-loop turn when no frame
+    // callback is in flight), coalescing repeated requests.
     void scheduleRender();
     // T-21.1c: one render-control producer per chrome scene, and one pacer per
     // producer. A scene change either renders immediately (no callback in
@@ -1505,7 +1511,6 @@ private:
     int m_popupHeight = 0;
     // True while a dropdown is open; the overlay popup surface is mapped then.
     bool m_menuOpen = false;
-    bool m_renderPending = false;
     Qt::MouseButtons m_buttons = Qt::NoButton;
     QString m_appId;
     QString m_appTitle;
