@@ -34,6 +34,7 @@
 #include "displayspolicy.h"
 #include "dockmodel.h"
 #include "dockprocess.h"
+#include "fileoperations.h"
 #include "focusschedule.h"
 #include "folderstacks.h"
 #include "lockauth.h"
@@ -484,6 +485,13 @@ private slots:
     // the Dock's progress/result popover on the UI thread.
     void onTrashEmptyFinished(bool ok, int removed, const QString &error,
                               quint64 requestId);
+    // The asynchronous Trash drop finished (T-14.7k): report a partial failure
+    // with the affected items and let the Dock's Trash badge refresh itself.
+    void onTrashFinished(bool ok, int trashed, int failed, const QString &error,
+                         const QVariantList &outcomes, quint64 requestId);
+    // A Dock file move finished off the shell thread (T-14.7k): report a
+    // partial failure with the affected items.
+    void onFileOperationFinished(const FileOperations::Result &result);
     // A settingsd key changed (local optimistic write echo or daemon signal):
     // re-read the Dock view and re-lay-out.
     void onSettingsChanged(const QString &key, const QVariant &value);
@@ -1264,6 +1272,10 @@ private:
     // store (T-10.6a). It replaced the interim home-trash watcher, so the shell
     // and Files share a single source of truth.
     TrashBridge *m_trash = nullptr;
+    // The shell's one asynchronous filesystem owner (T-14.7k): folder-stack
+    // listings and Dock folder moves run on bounded workers and post their
+    // results back to the shell thread.
+    FileOperations *m_fileOps = nullptr;
     // Folder-stack state for the Dock (T-14.7k): the Downloads default member
     // plus every `dock.pinnedFolders` path, all listed through files-core.
     FolderStacks *m_folderStacks = nullptr;

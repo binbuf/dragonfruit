@@ -1153,6 +1153,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_trash, &TrashBridge::changed, this, &ShellController::onTrashChanged);
     connect(m_trash, &TrashBridge::emptyFinished, this,
             &ShellController::onTrashEmptyFinished);
+    connect(m_trash, &TrashBridge::trashFinished, this,
+            &ShellController::onTrashFinished);
     m_trash->start();
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
@@ -1161,7 +1163,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // `dock.pinnedFolders` path, all listed through files-core and watched for
     // the popover listings and new-items badges. The Downloads stack stays the
     // default member; user pins are additional stacks.
-    m_folderStacks = new FolderStacks(this);
+    m_fileOps = new FileOperations(this);
+    connect(m_fileOps, &FileOperations::operationFinished, this,
+            &ShellController::onFileOperationFinished);
+    m_folderStacks = new FolderStacks(m_fileOps, this);
     connect(m_folderStacks, &FolderStacks::changed, this, &ShellController::onDownloadsChanged);
     refreshFolderStackData();
     // Apply `dock.*` before the surfaces exist (no reconfigure yet) so the
@@ -7218,17 +7223,16 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
             qWarning() << "shell: Dock drop on Trash while the backend is unavailable";
             break;
         }
-        const int trashed = m_trash->trash(m_externalPaths);
-        const int failed = m_externalPaths.size() - trashed;
-        if (failed > 0) {
-            raiseDockNotice(
-                m_notificationClient, QStringLiteral("Could not move to Trash"),
-                failed == 1
-                    ? QStringLiteral("1 item could not be moved to the Trash.")
-                    : QStringLiteral("%1 items could not be moved to the Trash.").arg(failed));
+        // The Trash store is mutated by TrashBridge's worker; the shell thread
+        // only queues the request. The one-shot result reports per-item
+        // outcomes through `onTrashFinished`.
+        if (!m_trash->trashAsync(m_externalPaths)) {
+            raiseDockNotice(m_notificationClient, QStringLiteral("Could not move to Trash"),
+                            QStringLiteral("No item could be moved to the Trash."));
+        } else {
+            qInfo() << "shell: Dock queued" << m_externalPaths.size()
+                    << "dropped items for the Trash";
         }
-        qInfo() << "shell: Dock trashed" << trashed << "of" << m_externalPaths.size()
-                << "dropped items";
         break;
     }
     case DockDropAction::MoveToFolder: {
@@ -7237,20 +7241,18 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
             qWarning() << "shell: Dock file drop on an unresolved folder stack";
             break;
         }
-        const QString name = folderDisplayName(folder);
-        QString error;
-        const int moved = moveFilesIntoFolder(folder, m_externalPaths, &error);
-        const int failed = m_externalPaths.size() - moved;
-        if (failed > 0) {
+        // The move runs on FileOperations' mutation worker, so a
+        // cross-filesystem copy never blocks Dock or menu input. The result
+        // arrives once through `onFileOperationFinished`.
+        const quint64 operation = m_fileOps->moveIntoFolder(folder, m_externalPaths);
+        if (operation == 0) {
             raiseDockNotice(
-                m_notificationClient, QStringLiteral("Could not move to %1").arg(name),
-                failed == 1
-                    ? QStringLiteral("1 item could not be moved to %1.").arg(name)
-                    : QStringLiteral("%1 items could not be moved to %2.").arg(failed).arg(name));
-            qWarning() << "shell: Dock could not move" << failed << "items into" << folder
-                       << error;
-        } else if (moved > 0) {
-            qInfo() << "shell: Dock moved" << moved << "items into" << folder;
+                m_notificationClient,
+                QStringLiteral("Could not move to %1").arg(folderDisplayName(folder)),
+                QStringLiteral("No item could be moved."));
+        } else {
+            qInfo() << "shell: Dock queued" << m_externalPaths.size()
+                    << "dropped items for" << folder << "as operation" << operation;
         }
         break;
     }
@@ -10174,6 +10176,81 @@ void ShellController::onTrashEmptyFinished(bool ok, int removed,
     if (!ok)
         qWarning() << "shell: cannot empty the Trash:" << error;
     scheduleDockRender();
+}
+
+void ShellController::onTrashFinished(bool ok, int trashed, int failed,
+                                      const QString &error,
+                                      const QVariantList &outcomes,
+                                      quint64 requestId)
+{
+    Q_UNUSED(requestId);
+    if (!ok) {
+        // Name the affected items so a partial failure is actionable. The
+        // list is capped so a very large drop keeps the notice readable.
+        QStringList affected;
+        for (const QVariant &value : outcomes) {
+            const QVariantMap outcome = value.toMap();
+            if (outcome.value(QStringLiteral("ok")).toBool())
+                continue;
+            const QString path = outcome.value(QStringLiteral("path")).toString();
+            const QString name = QFileInfo(path).fileName();
+            affected.append(name.isEmpty() ? path : name);
+        }
+        constexpr int kMaxNamedItems = 3;
+        QString detail = affected.mid(0, kMaxNamedItems).join(QStringLiteral(", "));
+        if (affected.size() > kMaxNamedItems)
+            detail += QStringLiteral("\u2026");
+        const QString base =
+            failed == 1
+                ? QStringLiteral("1 item could not be moved to the Trash")
+                : QStringLiteral("%1 items could not be moved to the Trash").arg(failed);
+        const QString message =
+            detail.isEmpty() ? base + QLatin1Char('.')
+                             : base + QStringLiteral(": ") + detail;
+        raiseDockNotice(m_notificationClient, QStringLiteral("Could not move to Trash"),
+                        message);
+        qWarning() << "shell: Dock could not trash" << failed << "items:" << error;
+    } else if (trashed > 0) {
+        qInfo() << "shell: Dock trashed" << trashed << "dropped items";
+    }
+    // The store changed on the worker; refresh the Dock icon/badge now.
+    scheduleDockRender();
+}
+
+void ShellController::onFileOperationFinished(const FileOperations::Result &result)
+{
+    if (result.kind != FileOperations::Kind::Move)
+        return;
+    if (result.failed > 0) {
+        QStringList affected;
+        for (const FileOperationItem &item : result.items) {
+            if (item.ok)
+                continue;
+            const QString name = QFileInfo(item.path).fileName();
+            affected.append(name.isEmpty() ? item.path : name);
+        }
+        constexpr int kMaxNamedItems = 3;
+        QString detail = affected.mid(0, kMaxNamedItems).join(QStringLiteral(", "));
+        if (affected.size() > kMaxNamedItems)
+            detail += QStringLiteral("\u2026");
+        const QString name = folderDisplayName(result.target);
+        const QString base =
+            result.failed == 1
+                ? QStringLiteral("1 item could not be moved to %1").arg(name)
+                : QStringLiteral("%1 items could not be moved to %2")
+                      .arg(result.failed)
+                      .arg(name);
+        const QString message =
+            detail.isEmpty() ? base + QLatin1Char('.')
+                             : base + QStringLiteral(": ") + detail;
+        raiseDockNotice(m_notificationClient,
+                        QStringLiteral("Could not move to %1").arg(name), message);
+        qWarning() << "shell: Dock could not move" << result.failed << "items into"
+                   << result.target << ":" << result.error;
+    } else if (result.succeeded > 0) {
+        qInfo() << "shell: Dock moved" << result.succeeded << "items into"
+                << result.target;
+    }
 }
 
 void ShellController::refreshFolderStackData()

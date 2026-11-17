@@ -8,6 +8,10 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Dock responsiveness.** Folder-stack listings, moves into pinned folders,
+  and file drops on the Trash now run off the shell thread, so a slow folder,
+  a large listing, or a cross-filesystem copy no longer freezes Dock hover,
+  menus, or Escape handling.
 - **Applications drawer material.** The drawer no longer follows the menu
   transparency slider into a near-opaque plate, and it keeps its sampled glass
   at a global Minimal degrade. The card is fixed at a mostly-opaque glass

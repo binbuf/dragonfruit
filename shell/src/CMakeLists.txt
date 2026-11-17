@@ -105,6 +105,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     dockprocess.cpp
     dockprocess.h
     dockprojection.cpp
+    fileoperations.cpp
     filestarget.cpp
     folderstacks.cpp
     focusstatus.cpp

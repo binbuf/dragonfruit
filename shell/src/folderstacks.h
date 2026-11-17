@@ -10,6 +10,12 @@
 // new-items badge cleared when the stack is opened. The shell never opens or
 // lists a directory itself.
 //
+// Listings run through `FileOperations` on a worker, so a slow folder never
+// blocks Dock or menu input. A watcher burst is coalesced to one follow-up
+// listing per folder, the last listing stays visible while a refresh runs, and
+// a result is applied only to the request that is still current for that
+// entry.
+//
 // A path that disappears degrades to a `missing` entry (empty listing) rather
 // than a crash; the Dock dims it and names it in the hover label.
 #pragma once
@@ -22,12 +28,7 @@
 #include <QVariantList>
 
 class QFileSystemWatcher;
-
-// Move each of `sources` into the `target` folder, de-duplicating names and
-// falling back to copy+remove across filesystems. Returns the number moved;
-// `error` receives the last failure. Refuses `target` itself and `/`.
-int moveFilesIntoFolder(const QString &target, const QStringList &sources,
-                        QString *error = nullptr);
+class FileOperations;
 
 // A folder's display name (its basename). Root/empty falls back to
 // "Downloads" so a stack always has a name.
@@ -38,12 +39,18 @@ class FolderStacks : public QObject
     Q_OBJECT
 
 public:
+    // Uses a private `FileOperations` child. Tests and callers that do not
+    // share the shell's owner use this form.
     explicit FolderStacks(QObject *parent = nullptr);
+    // Shares the shell's one filesystem owner. `operations` must outlive this
+    // object.
+    FolderStacks(FileOperations *operations, QObject *parent);
     ~FolderStacks() override;
 
     // Replace the ordered folder set with `paths` (absolute, de-duplicated,
     // cleaned). Missing paths stay in the set as `missing` entries. Emits
-    // `changed()` when the set or any listing differs.
+    // `changed()` immediately when the set differs, then again as each
+    // asynchronous listing lands.
     void setFolders(const QStringList &paths);
     QStringList folders() const;
 
@@ -65,6 +72,10 @@ signals:
 
 private slots:
     void onDirectoryChanged(const QString &path);
+    void onFolderListed(const QString &path, quint64 requestId,
+                        const QVariantList &rows);
+    void onFolderListFailed(const QString &path, quint64 requestId,
+                            const QString &error);
 
 private:
     struct Entry {
@@ -76,12 +87,27 @@ private:
         bool missing = false;
         bool seenOnce = false;
         QSet<QString> previous;
+        // The current in-flight listing. A result whose id no longer matches
+        // belongs to a removed or superseded entry and is discarded.
+        quint64 requestId = 0;
+        bool listing = false;
+        // A watcher event (or explicit refresh) arrived while `listing` was
+        // true. One follow-up listing runs when the current one finishes,
+        // coalescing a burst into at most two reads.
+        bool refreshQueued = false;
     };
 
-    // Re-list one entry from files-core and update its badge.
-    void relist(Entry &entry, bool emitSignal);
+    void init(FileOperations *operations);
+    Entry *entryForRequest(quint64 requestId, const QString &path);
+    // Apply one listing to `entry`; returns true when the model changed.
+    bool applyListing(Entry &entry, const QVariantList &items);
+    // Submit a listing unless one is already in flight; coalesce otherwise.
+    void relist(Entry &entry);
+    void relistPath(const QString &path);
     void syncWatches();
 
     QList<Entry> m_entries;
     QFileSystemWatcher *m_watcher = nullptr;
+    FileOperations *m_operations = nullptr;
+    quint64 m_nextRequestId = 1;
 };

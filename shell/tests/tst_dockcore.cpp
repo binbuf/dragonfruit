@@ -13,6 +13,7 @@
 #include "dockmodel.h"
 #include "dockprocess.h"
 #include "dockprojection.h"
+#include "fileoperations.h"
 #include "folderstacks.h"
 #include "filestarget.h"
 #include "focusstatus.h"
@@ -28,6 +29,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -1457,6 +1459,105 @@ private slots:
         QVERIFY(trash.emptyError().isEmpty());
     }
 
+    // T-14.7k: the async Trash drop runs off the UI thread and reports one
+    // outcome per item, naming exactly what failed. The completed outcomes are
+    // retained so a retry can inspect them.
+    void trashBridgeAsyncTrashReportsPerItemOutcomes()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+        const QString source = dir.path() + QStringLiteral("/note.txt");
+        const QString missing = dir.path() + QStringLiteral("/missing.txt");
+        writeFile(source, QStringLiteral("hello"));
+
+        TrashBridge trash;
+        trash.start();
+        QSignalSpy started(&trash, &TrashBridge::trashStarted);
+        QSignalSpy finished(&trash, &TrashBridge::trashFinished);
+        QVERIFY(started.isValid());
+        QVERIFY(finished.isValid());
+
+        QVERIFY(trash.trashAsync({source, missing}, 55));
+        QTRY_COMPARE(finished.count(), 1);
+        QCOMPARE(started.count(), 1);
+        QCOMPARE(started.at(0).at(0).toULongLong(), quint64(55));
+        QCOMPARE(finished.at(0).at(0).toBool(), false);
+        QCOMPARE(finished.at(0).at(1).toInt(), 1);
+        QCOMPARE(finished.at(0).at(2).toInt(), 1);
+        QCOMPARE(finished.at(0).at(5).toULongLong(), quint64(55));
+
+        const QVariantList outcomes = trash.trashOutcomes(55);
+        QCOMPARE(outcomes.size(), 2);
+        QVERIFY(outcomes.at(0).toMap().value(QStringLiteral("ok")).toBool());
+        QCOMPARE(outcomes.at(0).toMap().value(QStringLiteral("path")).toString(),
+                 source);
+        QVERIFY(!outcomes.at(1).toMap().value(QStringLiteral("ok")).toBool());
+        QCOMPARE(outcomes.at(1).toMap().value(QStringLiteral("path")).toString(),
+                 missing);
+        QVERIFY(!outcomes.at(1).toMap().value(QStringLiteral("error")).toString().isEmpty());
+
+        QVERIFY(!QFileInfo::exists(source));
+        QVERIFY(trash.isFull());
+        QVERIFY(!trash.isTrashing());
+        QCOMPARE(trash.lastTrashRequestId(), quint64(55));
+    }
+
+    // A second drop while the first is in flight queues behind it; both
+    // requests keep their own id and retained outcome.
+    void trashBridgeQueuesASecondAsyncTrash()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+        const QString firstPath = dir.path() + QStringLiteral("/first.txt");
+        const QString secondPath = dir.path() + QStringLiteral("/second.txt");
+        writeFile(firstPath, QStringLiteral("1"));
+        writeFile(secondPath, QStringLiteral("2"));
+
+        TrashBridge trash;
+        trash.start();
+        QSignalSpy finished(&trash, &TrashBridge::trashFinished);
+        QVERIFY(finished.isValid());
+
+        QVERIFY(trash.trashAsync({firstPath}, 101));
+        QVERIFY(trash.trashAsync({secondPath}, 102));
+        QTRY_COMPARE(finished.count(), 2);
+        QCOMPARE(finished.at(0).at(5).toULongLong(), quint64(101));
+        QCOMPARE(finished.at(1).at(5).toULongLong(), quint64(102));
+        QCOMPARE(finished.at(0).at(1).toInt(), 1);
+        QCOMPARE(finished.at(1).at(1).toInt(), 1);
+        QCOMPARE(trash.trashOutcomes(101).size(), 1);
+        QCOMPARE(trash.trashOutcomes(102).size(), 1);
+        QVERIFY(!QFileInfo::exists(firstPath));
+        QVERIFY(!QFileInfo::exists(secondPath));
+        QCOMPARE(trash.itemCount(), 2);
+    }
+
+    // An unreachable backend reports the whole request immediately instead of
+    // leaving the caller waiting on a worker that will never start.
+    void trashBridgeAsyncTrashOnAnAbsentBackendFailsImmediately()
+    {
+        TrashBridge trash;
+        QSignalSpy finished(&trash, &TrashBridge::trashFinished);
+        QVERIFY(finished.isValid());
+
+        QVERIFY(trash.trashAsync(QStringList{QStringLiteral("/tmp/nope")}, 9));
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished.at(0).at(0).toBool(), false);
+        QCOMPARE(finished.at(0).at(1).toInt(), 0);
+        QCOMPARE(finished.at(0).at(2).toInt(), 1);
+        QCOMPARE(finished.at(0).at(5).toULongLong(), quint64(9));
+        QCOMPARE(trash.trashOutcomes(9).size(), 1);
+        QVERIFY(!trash.isTrashing());
+    }
+
     // -- external drops --------------------------------------------------
 
     void parseUriListDecodesFileUris()
@@ -1661,6 +1762,8 @@ private slots:
         FolderStacks stacks;
         stacks.setFolders(QStringList{downloads});
         QCOMPARE(stacks.stacks().size(), 1);
+        // The set is applied immediately; the listing lands on a worker.
+        QTRY_COMPARE(stacks.stacks().first().toMap().value(QStringLiteral("count")).toInt(), 1);
         QVariantMap stack = stacks.stacks().first().toMap();
         QCOMPARE(stack.value(QStringLiteral("path")).toString(), downloads);
         QCOMPARE(stack.value(QStringLiteral("name")).toString(), QStringLiteral("Downloads"));
@@ -1695,11 +1798,156 @@ private slots:
         FolderStacks stacks;
         stacks.setFolders(QStringList{QStringLiteral("/no/such/folder/here")});
         QCOMPARE(stacks.stacks().size(), 1);
+        QTRY_VERIFY(stacks.stacks().first().toMap().value(QStringLiteral("missing")).toBool());
         const QVariantMap stack = stacks.stacks().first().toMap();
-        QVERIFY(stack.value(QStringLiteral("missing")).toBool());
         QCOMPARE(stack.value(QStringLiteral("count")).toInt(), 0);
         QVERIFY(stack.value(QStringLiteral("items")).toList().isEmpty());
         QCOMPARE(stacks.folders().size(), 1);
+    }
+
+    // A listing that lands after its folder was removed from the set must not
+    // resurrect the entry or apply to a different folder.
+    void folderStacksIgnoreAListingForARemovedFolder()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString a = dir.path() + QStringLiteral("/A");
+        const QString b = dir.path() + QStringLiteral("/B");
+        QVERIFY(QDir().mkpath(a));
+        QVERIFY(QDir().mkpath(b));
+        writeFile(a + QStringLiteral("/a.txt"), QStringLiteral("a"));
+        writeFile(b + QStringLiteral("/b.txt"), QStringLiteral("b"));
+
+        FolderStacks stacks;
+        stacks.setFolders(QStringList{a, b});
+        // Drop B while its first listing may still be in flight.
+        stacks.setFolders(QStringList{a});
+        QTRY_COMPARE(stacks.stacks().first().toMap().value(QStringLiteral("count")).toInt(), 1);
+        QTest::qWait(100);
+        QCOMPARE(stacks.stacks().size(), 1);
+        QCOMPARE(stacks.folders(), QStringList{a});
+        QVERIFY(!stacks.contains(b));
+    }
+
+    // A large folder is listed on a worker: the set is visible immediately and
+    // the shell thread is not held while the snapshot is built.
+    void folderStacksListALargeFolderOffThread()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.path() + QStringLiteral("/Large");
+        QVERIFY(QDir().mkpath(folder));
+        constexpr int kEntries = 500;
+        for (int i = 0; i < kEntries; ++i) {
+            writeFile(folder + QStringLiteral("/item-%1.txt").arg(i),
+                      QStringLiteral("x"));
+        }
+
+        FolderStacks stacks;
+        QElapsedTimer timer;
+        timer.start();
+        stacks.setFolders(QStringList{folder});
+        QVERIFY(timer.elapsed() < 1000);
+        QCOMPARE(stacks.stacks().size(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            stacks.stacks().first().toMap().value(QStringLiteral("count")).toInt(),
+            kEntries, 10000);
+    }
+
+    // A burst of watcher events is coalesced per folder; the final listing and
+    // badge count are correct and the model settles.
+    void folderStacksCoalesceAWatcherBurst()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.path() + QStringLiteral("/Burst");
+        QVERIFY(QDir().mkpath(folder));
+        // Seed one item so the first listing is observably complete before the
+        // burst starts; items present at login are the badge baseline.
+        writeFile(folder + QStringLiteral("/existing.txt"), QStringLiteral("x"));
+
+        FolderStacks stacks;
+        stacks.setFolders(QStringList{folder});
+        QTRY_COMPARE(stacks.stacks().first().toMap().value(QStringLiteral("count")).toInt(), 1);
+
+        constexpr int kEntries = 20;
+        for (int i = 0; i < kEntries; ++i) {
+            writeFile(folder + QStringLiteral("/new-%1.txt").arg(i),
+                      QStringLiteral("x"));
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(
+            stacks.stacks().first().toMap().value(QStringLiteral("count")).toInt(),
+            kEntries + 1, 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(
+            stacks.stacks().first().toMap().value(QStringLiteral("badge")).toInt(),
+            kEntries, 10000);
+    }
+
+    // The async owner reports one outcome per item and retains the completed
+    // result so a retry can inspect what failed.
+    void fileOperationsReportPerItemOutcomes()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString target = dir.path() + QStringLiteral("/Target");
+        const QString good = dir.path() + QStringLiteral("/good.txt");
+        const QString missing = dir.path() + QStringLiteral("/missing.txt");
+        QVERIFY(QDir().mkpath(target));
+        writeFile(good, QStringLiteral("good"));
+
+        FileOperations operations;
+        QSignalSpy finished(&operations, &FileOperations::operationFinished);
+        QVERIFY(finished.isValid());
+
+        const quint64 id = operations.moveIntoFolder(target, {good, missing});
+        QVERIFY(id > 0);
+        QTRY_COMPARE(finished.count(), 1);
+        QVERIFY(operations.hasCompletedOperation(id));
+
+        const FileOperations::Result result = operations.completedOperation(id);
+        QCOMPARE(result.id, id);
+        QCOMPARE(result.succeeded, 1);
+        QCOMPARE(result.failed, 1);
+        QCOMPARE(result.items.size(), 2);
+        QVERIFY(result.items.at(0).ok);
+        QCOMPARE(result.items.at(0).path, good);
+        QVERIFY(!result.items.at(1).ok);
+        QCOMPARE(result.items.at(1).path, missing);
+        QVERIFY(!result.items.at(1).error.isEmpty());
+        QVERIFY(QFileInfo::exists(target + QStringLiteral("/good.txt")));
+        QVERIFY(!QFileInfo::exists(good));
+    }
+
+    // Mutations run on one worker, so two drops into the same folder never
+    // race and their results arrive in submission order.
+    void fileOperationsSerializeMutations()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString target = dir.path() + QStringLiteral("/Target");
+        const QString a = dir.path() + QStringLiteral("/a.txt");
+        const QString b = dir.path() + QStringLiteral("/b.txt");
+        QVERIFY(QDir().mkpath(target));
+        writeFile(a, QStringLiteral("a"));
+        writeFile(b, QStringLiteral("b"));
+
+        FileOperations operations;
+        QList<quint64> order;
+        connect(&operations, &FileOperations::operationFinished, &operations,
+                [&order](const FileOperations::Result &result) {
+                    order.append(result.id);
+                });
+
+        const quint64 first = operations.moveIntoFolder(target, {a});
+        const quint64 second = operations.moveIntoFolder(target, {b});
+        QVERIFY(first > 0);
+        QVERIFY(second > first);
+        QTRY_COMPARE(order.size(), 2);
+        QCOMPARE(order, (QList<quint64>{first, second}));
+        QVERIFY(QFileInfo::exists(target + QStringLiteral("/a.txt")));
+        QVERIFY(QFileInfo::exists(target + QStringLiteral("/b.txt")));
+        QCOMPARE(operations.completedOperation(first).succeeded, 1);
+        QCOMPARE(operations.completedOperation(second).succeeded, 1);
     }
 
     void folderStacksDeduplicateTheFolderSet()
