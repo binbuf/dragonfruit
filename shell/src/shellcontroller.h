@@ -382,6 +382,10 @@ private slots:
     void onDockAppPinToggled(const QString &desktopId, bool pinned);
     // app-index's coalesced `Changed` signal (T-14.1c): reload the corpus.
     void onAppIndexChanged(const QString &interests);
+    // app-index's change-driven tray signals (T-14.3): the item set/property
+    // view changed, or one item's projected menu changed.
+    void onTrayChanged();
+    void onTrayMenuChanged(const QString &name, qulonglong generation);
     void onDockWindowActivated(const QString &windowId);
     // The window chooser's per-row actions (T-14.7m): close one window, or
     // minimize/restore it to the state the row asked for. The chooser stays
@@ -519,10 +523,25 @@ private:
     // late host registration (T-07.5a/T-07.5b).
     void refreshStatusViews();
     // Re-read the live StatusNotifier items from app-index and rebuild the
-    // status row (T-14.3). A no-op when the service is absent.
+    // status row (T-14.3). Runs on the inventory worker; coalesces bursts and
+    // ignores a reply that a newer generation superseded.
     void refreshTrayItems();
     // Ask app-index for one item's DBusMenu and open it beneath its bar slot.
+    // The cached projection opens immediately; the fresh reply updates the open
+    // menu only while its owner and generation still match.
     void openTrayMenu(const QString &name);
+    // Apply a tray inventory reply on the scene thread.
+    void applyTrayItems(quint64 generation, const QList<TrayItem> &items, bool ok);
+    // Apply one item's menu snapshot on the scene thread.
+    void applyTrayMenu(const QString &name, const QString &owner, quint64 generation,
+                       const QVariantList &rows, bool ok);
+    // Queue a single bounded recovery read after a failed tray inventory or
+    // menu read. A successful read stops it; a stable tray never polls.
+    void scheduleTrayRecovery();
+    void cancelTrayRecovery();
+    // Queue a fresh read for the currently presented tray menu, coalescing
+    // while one is already in flight.
+    void requestTrayMenuRefresh();
     // Push the model's decoded Wi-Fi/volume views onto the bar's popovers and
     // rebuild the status slots from them.
     void applyStatusMenuData();
@@ -1300,13 +1319,32 @@ private:
     bool m_menuRefreshDeferred = false;
     QVariantList m_appliedApplicationMenu;
     QVariantList m_appliedAppMenu;
-    // StatusNotifier/AppIndicator tray (T-14.3): the app-index client, the
-    // last item list, and the short refresh timer that keeps the bar live
-    // (there is no compositor-side tray event; the watcher's own signals are
-    // not routed through the private protocol).
+    // StatusNotifier/AppIndicator tray (T-14.3). The item inventory and menu
+    // reads run on two worker pools: background inventory is independent of an
+    // interactive menu open, so a slow exporter can never stall the menu bar.
+    // Refreshes are change-driven (app-index `TrayChanged`/`TrayMenuChanged`
+    // and service-owner changes); the recovery timer only runs after a failed
+    // read and stops as soon as one succeeds.
     TrayClient m_trayClient;
     QList<TrayItem> m_trayItems;
-    QTimer *m_trayTimer = nullptr;
+    QThreadPool m_trayInventoryWorker;
+    QThreadPool m_trayInteractiveWorker;
+    quint64 m_trayInventoryGeneration = 0;
+    bool m_trayRefreshInFlight = false;
+    bool m_trayRefreshPending = false;
+    QTimer *m_trayRecoveryTimer = nullptr;
+    int m_trayRecoveryBackoffMs = 0;
+    // The menu target currently presented by QML, and the exporter owner and
+    // request generation it belongs to. A late menu reply is applied only when
+    // all three still match.
+    QString m_trayMenuName;
+    QString m_trayMenuOwner;
+    quint64 m_trayMenuGeneration = 0;
+    bool m_trayMenuInFlight = false;
+    bool m_trayMenuRefreshPending = false;
+    // The last successful projection per item, so opening a menu is immediate
+    // even while its fresh reply is in flight.
+    QHash<QString, QVariantList> m_trayMenuCache;
     // The shell's running-window projection, kept so the pinned set can be
     // merged on every change.
     QVariantList m_runningEntries;

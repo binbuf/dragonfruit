@@ -524,6 +524,8 @@ ShellController::~ShellController()
 {
     // Jobs only queue results back here; finish before destroying the receiver.
     m_menuWorker.waitForDone();
+    m_trayInventoryWorker.waitForDone();
+    m_trayInteractiveWorker.waitForDone();
     // The opt-in transport counters land on the clean-exit path too; SIGUSR1
     // remains the per-scenario trigger (T-21.1a).
     ChromeStats::instance().emitStats(QStringLiteral("exit"));
@@ -993,18 +995,21 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // asynchronously and answers with its signal.
     refreshStatusViews();
 
-    // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
-    // reads its live item view and re-reads on a short timer (a tray app can
-    // appear or leave at any time and there is no private-protocol tray
-    // event). The whole path is a no-op when app-index is absent.
+    // T-14.3: StatusNotifier tray items. app-index owns the watcher and
+    // publishes `TrayChanged`/`TrayMenuChanged`; the shell refreshes on those
+    // signals and on service-owner changes, never on a timer. Inventory and
+    // interactive menu reads use separate workers so a slow exporter cannot
+    // stall a menu open or the Dock. The whole path is a no-op when app-index
+    // is absent.
     connect(m_item, SIGNAL(trayMenuTriggered(QString,int)), this,
             SLOT(onTrayMenuTriggered(QString,int)));
     connect(m_item, SIGNAL(trayMenuClosed()), this, SLOT(onTrayMenuClosed()));
+    m_trayInventoryWorker.setMaxThreadCount(1);
+    m_trayInteractiveWorker.setMaxThreadCount(2);
+    m_trayRecoveryTimer = new QTimer(this);
+    m_trayRecoveryTimer->setSingleShot(true);
+    connect(m_trayRecoveryTimer, &QTimer::timeout, this, &ShellController::refreshTrayItems);
     refreshTrayItems();
-    m_trayTimer = new QTimer(this);
-    m_trayTimer->setInterval(2000);
-    connect(m_trayTimer, &QTimer::timeout, this, &ShellController::refreshTrayItems);
-    m_trayTimer->start();
 
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
@@ -3055,26 +3060,121 @@ void ShellController::applyStatusMenuData()
 
 void ShellController::refreshTrayItems()
 {
+    cancelTrayRecovery();
     if (!m_trayClient.available()) {
-        if (!m_trayItems.isEmpty()) {
+        ++m_trayInventoryGeneration;
+        m_trayRefreshInFlight = false;
+        m_trayRefreshPending = false;
+        m_trayRecoveryBackoffMs = 0;
+        if (!m_trayMenuName.isEmpty()) {
+            ++m_trayMenuGeneration;
+            m_trayMenuName.clear();
+            m_trayMenuOwner.clear();
+            m_trayMenuInFlight = false;
+            m_trayMenuRefreshPending = false;
+            if (m_item)
+                QMetaObject::invokeMethod(m_item, "closeMenus");
+        }
+        if (!m_trayItems.isEmpty() || !m_trayMenuCache.isEmpty()) {
             m_trayItems.clear();
+            m_trayMenuCache.clear();
             if (m_item)
                 applyStatusItems();
         }
         return;
     }
-    const QList<TrayItem> items = m_trayClient.items();
+    if (m_trayRefreshInFlight) {
+        // A burst of change signals costs one read: the newest generation
+        // starts as soon as the in-flight one lands.
+        m_trayRefreshPending = true;
+        return;
+    }
+    const quint64 generation = ++m_trayInventoryGeneration;
+    m_trayRefreshInFlight = true;
+    m_trayRefreshPending = false;
+    m_trayInventoryWorker.start([this, generation]() {
+        const bool available = m_trayClient.available();
+        const QList<TrayItem> items =
+            available ? m_trayClient.items() : QList<TrayItem>();
+        QMetaObject::invokeMethod(this,
+            [this, generation, items, available]() {
+                applyTrayItems(generation, items, available);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void ShellController::applyTrayItems(quint64 generation, const QList<TrayItem> &items, bool ok)
+{
+    if (generation != m_trayInventoryGeneration) {
+        // A newer read was queued while this one ran.
+        m_trayRefreshInFlight = false;
+        if (m_trayRefreshPending) {
+            m_trayRefreshPending = false;
+            refreshTrayItems();
+        }
+        return;
+    }
+    m_trayRefreshInFlight = false;
+    if (!ok) {
+        scheduleTrayRecovery();
+        return;
+    }
+    m_trayRecoveryBackoffMs = 0;
+    if (m_trayRefreshPending) {
+        m_trayRefreshPending = false;
+        refreshTrayItems();
+        return;
+    }
+
+    QHash<QString, QString> previousOwners;
+    QHash<QString, QString> previousMenuPaths;
+    for (const TrayItem &item : std::as_const(m_trayItems)) {
+        previousOwners.insert(item.name, item.owner);
+        previousMenuPaths.insert(item.name, item.menuPath);
+    }
+    QHash<QString, QString> owners;
+    QHash<QString, QString> menuPaths;
     bool changed = items.size() != m_trayItems.size();
     if (!changed) {
         for (int i = 0; i < items.size(); ++i) {
             const TrayItem &next = items.at(i);
             const TrayItem &prev = m_trayItems.at(i);
             if (next.name != prev.name || next.title != prev.title
-                || next.iconPath != prev.iconPath || next.needsAttention != prev.needsAttention) {
+                || next.iconPath != prev.iconPath
+                || next.needsAttention != prev.needsAttention
+                || next.owner != prev.owner || next.menuPath != prev.menuPath) {
                 changed = true;
                 break;
             }
         }
+    }
+    for (const TrayItem &item : items) {
+        owners.insert(item.name, item.owner);
+        menuPaths.insert(item.name, item.menuPath);
+    }
+
+    // Drop cached projections for departed items, replaced exporters, and a
+    // menu object that moved.
+    for (auto it = m_trayMenuCache.begin(); it != m_trayMenuCache.end();) {
+        const QString owner = owners.value(it.key());
+        if (owner.isEmpty() || owner != previousOwners.value(it.key())
+            || menuPaths.value(it.key()) != previousMenuPaths.value(it.key()))
+            it = m_trayMenuCache.erase(it);
+        else
+            ++it;
+    }
+    if (!m_trayMenuName.isEmpty() && !m_trayMenuOwner.isEmpty()
+        && owners.value(m_trayMenuName) != m_trayMenuOwner) {
+        // The exporter that owned the open menu left or was replaced. Invalidate
+        // the target now; a late reply cannot reach the new owner.
+        ++m_trayMenuGeneration;
+        m_trayMenuName.clear();
+        m_trayMenuOwner.clear();
+        m_trayMenuInFlight = false;
+        m_trayMenuRefreshPending = false;
+        if (m_item)
+            QMetaObject::invokeMethod(m_item, "closeMenus");
     }
     if (!changed)
         return;
@@ -3087,26 +3187,150 @@ void ShellController::openTrayMenu(const QString &name)
 {
     if (!m_item)
         return;
-    // The menu rows come from the item's DBusMenu (fetched and projected by
-    // app-index). The QML owns the popup geometry and reports the trigger.
-    m_item->setProperty("trayMenu", m_trayClient.menu(name));
+    ++m_trayMenuGeneration;
+    m_trayMenuName = name;
+    m_trayMenuOwner.clear();
+    for (const TrayItem &item : std::as_const(m_trayItems)) {
+        if (item.name == name) {
+            m_trayMenuOwner = item.owner;
+            break;
+        }
+    }
+    m_trayMenuInFlight = false;
+    m_trayMenuRefreshPending = false;
+    // Open immediately with the last good projection, if any. The fresh rows
+    // arrive on the interactive worker and replace it in place.
+    const auto cached = m_trayMenuCache.constFind(name);
+    m_item->setProperty("trayMenu", cached != m_trayMenuCache.constEnd()
+                                        ? cached.value()
+                                        : QVariantList{});
     QMetaObject::invokeMethod(m_item, "openTrayMenu", Q_ARG(QVariant, name));
     m_menuOpen = true;
     schedulePopupGeometry();
+    requestTrayMenuRefresh();
+}
 
+void ShellController::requestTrayMenuRefresh()
+{
+    if (m_trayMenuName.isEmpty())
+        return;
+    if (m_trayMenuInFlight) {
+        m_trayMenuRefreshPending = true;
+        return;
+    }
+    m_trayMenuInFlight = true;
+    const QString name = m_trayMenuName;
+    const quint64 generation = m_trayMenuGeneration;
+    m_trayInteractiveWorker.start([this, name, generation]() {
+        const TrayMenuSnapshot snapshot = m_trayClient.menuSnapshot(name);
+        QMetaObject::invokeMethod(this,
+            [this, name, generation, snapshot]() {
+                applyTrayMenu(name, snapshot.owner, generation, snapshot.rows, snapshot.ok);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void ShellController::applyTrayMenu(const QString &name, const QString &owner,
+                                    quint64 generation, const QVariantList &rows, bool ok)
+{
+    if (name != m_trayMenuName || generation != m_trayMenuGeneration) {
+        // The menu closed or retargeted while this reply was in flight.
+        return;
+    }
+    m_trayMenuInFlight = false;
+    if (ok) {
+        if (!owner.isEmpty()) {
+            if (m_trayMenuOwner.isEmpty()) {
+                m_trayMenuOwner = owner;
+            } else if (m_trayMenuOwner != owner) {
+                // The exporter changed under the open menu; never apply its
+                // rows or route an action to the replacement.
+                ++m_trayMenuGeneration;
+                m_trayMenuName.clear();
+                m_trayMenuOwner.clear();
+                m_trayMenuRefreshPending = false;
+                m_trayMenuCache.remove(name);
+                if (m_item)
+                    QMetaObject::invokeMethod(m_item, "closeMenus");
+                return;
+            }
+        }
+        m_trayMenuCache.insert(name, rows);
+        if (m_item)
+            m_item->setProperty("trayMenu", rows);
+        if (m_menuOpen) {
+            schedulePopupGeometry();
+            scheduleRender();
+        }
+    }
+    if (m_trayMenuRefreshPending) {
+        m_trayMenuRefreshPending = false;
+        requestTrayMenuRefresh();
+    }
+}
+
+void ShellController::scheduleTrayRecovery()
+{
+    if (!m_trayRecoveryTimer)
+        return;
+    if (m_trayRecoveryBackoffMs <= 0)
+        m_trayRecoveryBackoffMs = 2000;
+    else
+        m_trayRecoveryBackoffMs = qMin(m_trayRecoveryBackoffMs * 2, 30000);
+    m_trayRecoveryTimer->start(m_trayRecoveryBackoffMs);
+}
+
+void ShellController::cancelTrayRecovery()
+{
+    if (m_trayRecoveryTimer)
+        m_trayRecoveryTimer->stop();
 }
 
 void ShellController::onTrayMenuTriggered(const QString &service, int id)
 {
-    if (id >= 0)
-        m_trayClient.menuEvent(service, id);
+    if (id < 0) {
+        m_menuOpen = false;
+        updatePopupGeometry();
+        return;
+    }
+    const QString owner = m_trayMenuOwner;
+    const quint64 generation = m_trayMenuGeneration;
     m_menuOpen = false;
     updatePopupGeometry();
+    // Deliver off the scene thread: the exporter may be slow or unresponsive,
+    // and the popup must close immediately either way.
+    m_trayInteractiveWorker.start([this, service, owner, id, generation]() {
+        const bool delivered = owner.isEmpty()
+                                   ? m_trayClient.menuEvent(service, id)
+                                   : m_trayClient.menuEventFrom(service, owner, id);
+        QMetaObject::invokeMethod(this,
+            [this, service, id, generation, delivered]() {
+                if (!delivered) {
+                    qWarning() << "shell: tray menu click was not delivered"
+                               << service << "item" << id;
+                    return;
+                }
+                // A late result for a superseded menu session is only a log;
+                // the click itself was already delivered to its owner.
+                if (generation != m_trayMenuGeneration)
+                    return;
+                refreshTrayItems();
+            },
+            Qt::QueuedConnection);
+    });
 }
 
 void ShellController::onTrayMenuClosed()
 {
     m_menuOpen = false;
+    // Closing invalidates the menu session immediately: input interception is
+    // dropped now and any late menu reply is discarded by generation.
+    ++m_trayMenuGeneration;
+    m_trayMenuName.clear();
+    m_trayMenuOwner.clear();
+    m_trayMenuInFlight = false;
+    m_trayMenuRefreshPending = false;
     // The logical menu is closed immediately: stop intercepting clicks. The
     // material regions stay until the visual exit has finished (the QML card
     // fades for 183 ms); `updatePopupGeometry` clears them at 210 ms. Clearing
@@ -3118,6 +3342,19 @@ void ShellController::onTrayMenuClosed()
         if (!m_menuOpen)
             updatePopupGeometry();
     });
+}
+
+void ShellController::onTrayChanged()
+{
+    refreshTrayItems();
+}
+
+void ShellController::onTrayMenuChanged(const QString &name, qulonglong generation)
+{
+    Q_UNUSED(generation);
+    if (!m_menuOpen || name.isEmpty() || name != m_trayMenuName)
+        return;
+    requestTrayMenuRefresh();
 }
 
 void ShellController::onStatusMenuOpened()
@@ -6651,7 +6888,7 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
     } else if (action == QLatin1String("app-store")) {
         // No app-store equivalent exists yet; the item is disabled (T-09
         // open question in design/04-shell.md).
-        qInfo() << "shell: Software Center requested (no equivalent yet)";
+        qInfo() << "shell: App Store requested (no equivalent yet)";
     } else {
         // T-14 dispatches the resolved action back to the owning app; until
         // that channel exists the placeholder logs so the demo has feedback.
@@ -7838,6 +8075,14 @@ void ShellController::connectAppIndex()
     // same pattern). It is safe to register before app-index owns the name.
     bus.connect(kAppIndexService, kAppIndexPath, kAppIndexInterface,
                 QStringLiteral("Changed"), this, SLOT(onAppIndexChanged(QString)));
+    // T-14.3: the tray set/property view and one item's projected menu are
+    // change-driven. The signals follow the well-known name across service
+    // restarts, so a stable tray contributes no recurring read.
+    bus.connect(kAppIndexService, kAppIndexPath, kAppIndexInterface,
+                QStringLiteral("TrayChanged"), this, SLOT(onTrayChanged()));
+    bus.connect(kAppIndexService, kAppIndexPath, kAppIndexInterface,
+                QStringLiteral("TrayMenuChanged"), this,
+                SLOT(onTrayMenuChanged(QString,qulonglong)));
     auto *watcher = new QDBusServiceWatcher(
         kAppIndexService, bus,
         QDBusServiceWatcher::WatchForRegistration
@@ -7879,8 +8124,9 @@ void ShellController::syncAppIndex()
         if (m_appsDrawerOpen)
             refreshAppsDrawer(false);
     }
-    if (available)
-        refreshTrayItems();
+    // A service restart or removal changes the tray owner too; the refresh
+    // clears the bar when app-index is gone and re-seeds it when it returns.
+    refreshTrayItems();
 }
 
 void ShellController::connectWallpaperProvider()

@@ -8,6 +8,11 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Tray responsiveness.** StatusNotifier items and their menus are now read
+  and activated off the shell thread, with cached snapshots in app-index and
+  change-driven updates instead of a two-second poll. A slow or unresponsive
+  tray exporter no longer stalls the menu bar, Dock animation, or menu
+  dismissal.
 - **Dock responsiveness.** Folder-stack listings, moves into pinned folders,
   and file drops on the Trash now run off the shell thread, so a slow folder,
   a large listing, or a cross-filesystem copy no longer freezes Dock hover,

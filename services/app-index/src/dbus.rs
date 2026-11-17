@@ -26,7 +26,7 @@
 //! and a coalescer thread delivers one directed `Changed` signal per burst
 //! (`subscription`). Consumers stop re-querying; no polling remains.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -42,7 +42,7 @@ use crate::index::AppIndex;
 use crate::menubridge::{self, AppMenuRegistry, MenuRegistration};
 use crate::registry::{self, LaunchRegistry};
 use crate::subscription::{ChangeKind, ChangeNotice, Interests, Subscriptions};
-use crate::tray::{self, Registration, TrayRegistry};
+use crate::tray::{self, Registration, TrayCache, TrayRegistry};
 use crate::view;
 use crate::watch;
 
@@ -90,6 +90,96 @@ pub fn wake_subscriptions(wake: &Wake) {
     }
 }
 
+/// How many tray exporters are read concurrently. A slow exporter therefore
+/// delays at most one slot, not the whole snapshot.
+pub const TRAY_REFRESH_CONCURRENCY: usize = 4;
+
+/// The bound on one exporter method call. A hung or slow StatusNotifierItem
+/// cannot hold a worker (or a snapshot fill) indefinitely.
+pub const TRAY_EXPORTER_TIMEOUT: Duration = Duration::from_millis(2000);
+
+/// What a background tray refresh should re-read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TrayRefreshKind {
+    /// The exporter's StatusNotifierItem properties and icon.
+    Item,
+    /// The exporter's DBusMenu layout.
+    Menu,
+}
+
+#[derive(Debug, Default)]
+struct RefreshQueue {
+    pending: VecDeque<(String, TrayRefreshKind)>,
+    queued: std::collections::HashSet<(String, TrayRefreshKind)>,
+    stopped: bool,
+}
+
+/// A coalescing, bounded tray refresh queue. Requests for the same
+/// item/kind collapse into one refresh, so a burst of exporter signals costs
+/// one read rather than one per signal.
+#[derive(Clone, Default)]
+pub struct TrayRefresher {
+    state: Arc<(Mutex<RefreshQueue>, Condvar)>,
+}
+
+impl TrayRefresher {
+    /// A fresh queue.
+    pub fn new() -> Self {
+        TrayRefresher::default()
+    }
+
+    /// Queue one refresh unless the same item/kind is already pending.
+    pub fn request(&self, name: &str, kind: TrayRefreshKind) {
+        let (lock, condvar) = &*self.state;
+        let mut state = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.stopped {
+            return;
+        }
+        let key = (name.to_owned(), kind);
+        if state.queued.insert(key.clone()) {
+            state.pending.push_back(key);
+            condvar.notify_one();
+        }
+    }
+
+    /// Ask every worker to exit. Pending work is discarded.
+    pub fn stop(&self) {
+        let (lock, condvar) = &*self.state;
+        let mut state = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.stopped = true;
+        state.pending.clear();
+        state.queued.clear();
+        condvar.notify_all();
+    }
+
+    /// Take the next request, waiting until one is queued or the queue stops.
+    fn take(&self) -> Option<(String, TrayRefreshKind)> {
+        let (lock, condvar) = &*self.state;
+        let mut state = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        loop {
+            if let Some(item) = state.pending.pop_front() {
+                state.queued.remove(&item);
+                return Some(item);
+            }
+            if state.stopped {
+                return None;
+            }
+            state = condvar
+                .wait(state)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+    }
+
+    /// How many requests are waiting (diagnostics/tests).
+    pub fn pending(&self) -> usize {
+        let (lock, _) = &*self.state;
+        lock.lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .pending
+            .len()
+    }
+}
+
 /// The served object: one shared index and launch registry behind mutexes,
 /// plus the icon theme and the coalesced-subscription table.
 #[derive(Clone)]
@@ -102,6 +192,11 @@ pub struct AppIndex1 {
     /// The StatusNotifierWatcher's registered items (T-14.3); shared with the
     /// watcher object that owns the `org.kde.StatusNotifierWatcher` name.
     tray: Arc<Mutex<TrayRegistry>>,
+    /// Normalized per-item snapshots and projected menus. `TrayItems` and
+    /// `TrayMenu` answer from here; background refreshes replace entries.
+    tray_cache: Arc<Mutex<TrayCache>>,
+    /// The coalescing refresh queue the exporter subscriptions feed.
+    tray_refresher: TrayRefresher,
     /// The AppMenu.Registrar's window→menu table (T-14.4); shared with the
     /// registrar object that owns the `com.canonical.AppMenu.Registrar` name.
     menus: Arc<Mutex<AppMenuRegistry>>,
@@ -128,6 +223,8 @@ impl AppIndex1 {
             subscriptions: Arc::new(Mutex::new(Subscriptions::new())),
             wake: new_wake(),
             tray: Arc::new(Mutex::new(TrayRegistry::new())),
+            tray_cache: Arc::new(Mutex::new(TrayCache::new())),
+            tray_refresher: TrayRefresher::new(),
             menus: Arc::new(Mutex::new(AppMenuRegistry::new())),
         }
     }
@@ -135,6 +232,16 @@ impl AppIndex1 {
     /// The shared tray registry (T-14.3).
     pub fn tray(&self) -> &Arc<Mutex<TrayRegistry>> {
         &self.tray
+    }
+
+    /// The normalized tray snapshot cache.
+    pub fn tray_cache(&self) -> &Arc<Mutex<TrayCache>> {
+        &self.tray_cache
+    }
+
+    /// The coalescing background refresh queue.
+    pub fn tray_refresher(&self) -> &TrayRefresher {
+        &self.tray_refresher
     }
 
     /// The shared AppMenu.Registrar table (T-14.4).
@@ -192,6 +299,7 @@ impl AppIndex1 {
         serde_json::json!({
             "name": registration.name,
             "destination": registration.destination,
+            "owner": registration.sender,
             "path": registration.path,
             "id": prop_str(props, "Id").unwrap_or_default(),
             "title": prop_str(props, "Title").unwrap_or_default(),
@@ -214,6 +322,115 @@ impl AppIndex1 {
     ) -> Option<String> {
         let props = item_properties(connection, registration).await?;
         prop_str(&props, "Menu").filter(|path| !path.is_empty())
+    }
+
+    /// Refresh one item's normalized snapshot. Returns whether the shell-visible
+    /// item view changed. A slow or temporarily unreachable exporter keeps its
+    /// last snapshot; the owner-change cleaner owns removal.
+    async fn refresh_tray_item_async(&self, connection: &Connection, name: &str) -> bool {
+        let Some(registration) = lock_tray(&self.tray).get(name).cloned() else {
+            lock_cache(&self.tray_cache).remove(name);
+            return false;
+        };
+        let Some(props) = item_properties(connection, &registration).await else {
+            // A timeout or a temporarily unresponsive exporter is not proof
+            // that the item left; the NameOwnerChanged cleaner owns removal.
+            return false;
+        };
+        let item = self.tray_item_json(&registration, &props);
+        let menu_path = prop_str(&props, "Menu").unwrap_or_default();
+        let changed = {
+            let mut cache = lock_cache(&self.tray_cache);
+            let changed = cache.set_item(name, &registration.sender, item, &menu_path);
+            if menu_path.is_empty() {
+                cache.clear_menu(name);
+            }
+            changed
+        };
+        if !menu_path.is_empty() {
+            self.tray_refresher.request(name, TrayRefreshKind::Menu);
+        }
+        changed
+    }
+
+    /// Refresh one item or menu on a blocking worker connection. Returns
+    /// `(item_changed, menu_changed)`.
+    fn refresh_tray_entry_blocking(
+        &self,
+        connection: &zbus::blocking::Connection,
+        name: &str,
+        kind: TrayRefreshKind,
+    ) -> (bool, bool) {
+        let Some(registration) = lock_tray(&self.tray).get(name).cloned() else {
+            lock_cache(&self.tray_cache).remove(name);
+            return (false, false);
+        };
+        let mut item_changed = false;
+        let mut menu_changed = false;
+        let cache_has_item = lock_cache(&self.tray_cache).get(name).is_some();
+        if kind == TrayRefreshKind::Item || !cache_has_item {
+            let Some(props) = item_properties_blocking(connection, &registration) else {
+                // Keep the registration and its last good snapshot; a slow or
+                // momentarily unresponsive exporter must not lose its bar slot.
+                return (false, false);
+            };
+            let item = self.tray_item_json(&registration, &props);
+            let menu_path = prop_str(&props, "Menu").unwrap_or_default();
+            {
+                let mut cache = lock_cache(&self.tray_cache);
+                item_changed = cache.set_item(name, &registration.sender, item, &menu_path);
+                if menu_path.is_empty() {
+                    cache.clear_menu(name);
+                }
+            }
+        }
+        if kind == TrayRefreshKind::Menu {
+            let Some(menu_path) = lock_cache(&self.tray_cache)
+                .menu_path(name)
+                .map(str::to_owned)
+            else {
+                return (item_changed, false);
+            };
+            if menu_path.is_empty() {
+                return (item_changed, false);
+            }
+            let Some(root) =
+                fetch_menu_layout_blocking(connection, &registration.destination, &menu_path)
+            else {
+                return (item_changed, false);
+            };
+            menu_changed = lock_cache(&self.tray_cache)
+                .set_menu(name, &registration.sender, menu_rows(&root))
+                .is_some();
+        }
+        (item_changed, menu_changed)
+    }
+
+    /// Serve one item's menu from the cache, filling it on the first read.
+    /// A cache hit also queues a background refresh (AboutToShow populates
+    /// dynamic rows) without delaying the reply.
+    async fn ensure_tray_menu_async(
+        &self,
+        connection: &Connection,
+        name: &str,
+    ) -> Option<(String, u64, Vec<serde_json::Value>)> {
+        let registration = lock_tray(&self.tray).get(name).cloned()?;
+        if let Some(menu) = lock_cache(&self.tray_cache).menu(name) {
+            self.tray_refresher.request(name, TrayRefreshKind::Menu);
+            return Some(menu);
+        }
+        // A cold open must wait once: there is no cached content to show.
+        self.refresh_tray_item_async(connection, name).await;
+        let menu_path = lock_cache(&self.tray_cache)
+            .menu_path(name)
+            .map(str::to_owned)?;
+        if menu_path.is_empty() {
+            return None;
+        }
+        let root = fetch_menu_layout(connection, &registration.destination, &menu_path).await?;
+        let rows = menu_rows(&root);
+        lock_cache(&self.tray_cache).set_menu(name, &registration.sender, rows);
+        lock_cache(&self.tray_cache).menu(name)
     }
 
     /// The registry key, display name, and icon for a window identity. A
@@ -284,6 +501,13 @@ fn lock_subs(
 /// Lock the shared tray registry, recovering from a poisoned mutex.
 fn lock_tray(tray: &Arc<Mutex<TrayRegistry>>) -> std::sync::MutexGuard<'_, TrayRegistry> {
     tray.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Lock the tray snapshot cache, recovering from a poisoned mutex.
+fn lock_cache(cache: &Arc<Mutex<TrayCache>>) -> std::sync::MutexGuard<'_, TrayCache> {
+    cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Lock the shared AppMenu.Registrar table, recovering from a poisoned mutex.
@@ -377,6 +601,31 @@ async fn item_properties(
         .ok()
 }
 
+/// Blocking twin of [`item_properties`] for the background refresh workers.
+fn item_properties_blocking(
+    connection: &zbus::blocking::Connection,
+    registration: &Registration,
+) -> Option<HashMap<String, OwnedValue>> {
+    let reply = connection
+        .call_method(
+            Some(registration.destination.as_str()),
+            registration.path.as_str(),
+            Some("org.freedesktop.DBus.Properties"),
+            "GetAll",
+            &(ITEM_INTERFACE,),
+        )
+        .ok()?;
+    reply
+        .body()
+        .deserialize::<HashMap<String, OwnedValue>>()
+        .ok()
+}
+
+/// Project a menu tree's top-level rows to the design-system shape.
+fn menu_rows(root: &tray::MenuNode) -> Vec<serde_json::Value> {
+    root.children.iter().map(tray::MenuNode::to_json).collect()
+}
+
 /// Read one string property from an `a{sv}` map. An object path (the SNI
 /// `Menu` property) reads as its string form too.
 fn prop_str(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
@@ -429,6 +678,22 @@ async fn fetch_menu_layout(
         .ok()?
         .call_method("GetLayout", &(0i32, -1i32, Vec::<String>::new()))
         .await
+        .ok()?;
+    let (_, layout): (u32, OwnedValue) = reply.body().deserialize().ok()?;
+    tray::parse_layout(&layout)
+}
+
+/// Blocking twin of [`fetch_menu_layout`] for the background refresh workers.
+fn fetch_menu_layout_blocking(
+    connection: &zbus::blocking::Connection,
+    destination: &str,
+    menu_path: &str,
+) -> Option<tray::MenuNode> {
+    let proxy =
+        zbus::blocking::Proxy::new(connection, destination, menu_path, DBUSMENU_INTERFACE).ok()?;
+    let _ = proxy.call_method("AboutToShow", &(0i32,));
+    let reply = proxy
+        .call_method("GetLayout", &(0i32, -1i32, Vec::<String>::new()))
         .ok()?;
     let (_, layout): (u32, OwnedValue) = reply.body().deserialize().ok()?;
     tray::parse_layout(&layout)
@@ -700,22 +965,25 @@ impl AppIndex1 {
     }
 
     /// The live StatusNotifier/AppIndicator items as a JSON array (T-14.3).
-    /// Each item is resolved fresh from its owning process, and an item whose
-    /// process has vanished is pruned. A malformed or unresponsive item is
-    /// skipped, never an error.
-    async fn tray_items(&self, #[zbus(connection)] connection: &Connection) -> String {
-        let registrations: Vec<Registration> = lock_tray(&self.tray).items().to_vec();
-        let mut live: Vec<Registration> = Vec::with_capacity(registrations.len());
-        let mut values: Vec<serde_json::Value> = Vec::with_capacity(registrations.len());
-        for registration in registrations {
-            let Some(props) = item_properties(connection, &registration).await else {
-                lock_tray(&self.tray).remove(&registration.name);
-                continue;
-            };
-            values.push(self.tray_item_json(&registration, &props));
-            live.push(registration);
+    /// Answers from the normalized snapshot cache and never waits on an
+    /// exporter: registrations without a snapshot are queued for the bounded
+    /// background refresher, which emits `TrayChanged` when they land. An item
+    /// whose process has vanished is pruned when the owner change is observed.
+    async fn tray_items(&self) -> String {
+        let names = lock_tray(&self.tray).names();
+        lock_cache(&self.tray_cache).retain(&names);
+        let missing: Vec<String> = {
+            let cache = lock_cache(&self.tray_cache);
+            names
+                .iter()
+                .filter(|name| cache.get(name).is_none())
+                .cloned()
+                .collect()
+        };
+        for name in missing {
+            self.tray_refresher.request(&name, TrayRefreshKind::Item);
         }
-        serde_json::Value::Array(values).to_string()
+        lock_cache(&self.tray_cache).items_json()
     }
 
     /// The registered tray item names, as a JSON array (diagnostics/tests).
@@ -724,21 +992,41 @@ impl AppIndex1 {
     }
 
     /// One item's DBusMenu as a JSON array of design-system rows (T-14.3).
-    /// Calls `AboutToShow` first so dynamic menus populate, then `GetLayout`.
-    /// An unknown item or a menu failure is `[]`.
+    /// Answers from the cached projection when there is one and queues a
+    /// background refresh so dynamic rows catch up; only the first cold read
+    /// waits for `AboutToShow` + `GetLayout`. An unknown item or a menu failure
+    /// is `[]`.
     async fn tray_menu(&self, name: &str, #[zbus(connection)] connection: &Connection) -> String {
-        let Some(registration) = lock_tray(&self.tray).get(name).cloned() else {
-            return "[]".to_owned();
+        match self.ensure_tray_menu_async(connection, name).await {
+            Some((_, _, rows)) => serde_json::Value::Array(rows).to_string(),
+            None => "[]".to_owned(),
+        }
+    }
+
+    /// One item's menu plus the exporter owner and menu generation it belongs
+    /// to: `{name, owner, generation, rows}`. The shell binds an open menu and
+    /// every activation to this owner/generation, so a late reply can never
+    /// land on a replacement exporter.
+    async fn tray_menu_snapshot(
+        &self,
+        name: &str,
+        #[zbus(connection)] connection: &Connection,
+    ) -> String {
+        let owner = lock_tray(&self.tray)
+            .get(name)
+            .map(|registration| registration.sender.clone())
+            .unwrap_or_default();
+        let (generation, rows) = match self.ensure_tray_menu_async(connection, name).await {
+            Some((_, generation, rows)) => (generation, rows),
+            None => (0, Vec::new()),
         };
-        let Some(menu_path) = self.tray_menu_path(connection, &registration).await else {
-            return "[]".to_owned();
-        };
-        let Some(root) = fetch_menu_layout(connection, &registration.destination, &menu_path).await
-        else {
-            return "[]".to_owned();
-        };
-        serde_json::Value::Array(root.children.iter().map(tray::MenuNode::to_json).collect())
-            .to_string()
+        serde_json::json!({
+            "name": name,
+            "owner": owner,
+            "generation": generation,
+            "rows": rows,
+        })
+        .to_string()
     }
 
     /// Activate one tray menu row by its DBusMenu id (T-14.3). Returns whether
@@ -749,11 +1037,34 @@ impl AppIndex1 {
         id: i32,
         #[zbus(connection)] connection: &Connection,
     ) -> bool {
+        self.tray_menu_event_from(name, "", id, connection).await
+    }
+
+    /// Activate one row only when `owner` still owns the item. An empty owner
+    /// keeps the unbound behavior used by diagnostics.
+    async fn tray_menu_event_from(
+        &self,
+        name: &str,
+        owner: &str,
+        id: i32,
+        #[zbus(connection)] connection: &Connection,
+    ) -> bool {
         let Some(registration) = lock_tray(&self.tray).get(name).cloned() else {
             return false;
         };
-        let Some(menu_path) = self.tray_menu_path(connection, &registration).await else {
+        if !owner.is_empty() && registration.sender != owner {
             return false;
+        }
+        let cached_path = lock_cache(&self.tray_cache)
+            .menu_path(name)
+            .filter(|path| !path.is_empty())
+            .map(str::to_owned);
+        let menu_path = match cached_path {
+            Some(path) => path,
+            None => match self.tray_menu_path(connection, &registration).await {
+                Some(path) => path,
+                None => return false,
+            },
         };
         call_dbusmenu(
             connection,
@@ -774,9 +1085,23 @@ impl AppIndex1 {
         kind: &str,
         #[zbus(connection)] connection: &Connection,
     ) -> bool {
+        self.tray_activate_from(name, "", kind, connection).await
+    }
+
+    /// Activate an item only when `owner` still owns it.
+    async fn tray_activate_from(
+        &self,
+        name: &str,
+        owner: &str,
+        kind: &str,
+        #[zbus(connection)] connection: &Connection,
+    ) -> bool {
         let Some(registration) = lock_tray(&self.tray).get(name).cloned() else {
             return false;
         };
+        if !owner.is_empty() && registration.sender != owner {
+            return false;
+        }
         let method = match kind {
             "activate" => "Activate",
             "secondary" => "SecondaryActivate",
@@ -882,6 +1207,16 @@ impl AppIndex1 {
     /// shell re-reads `TrayItems`; there is no polling.
     #[zbus(signal)]
     async fn tray_changed(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
+
+    /// One item's projected menu changed; `generation` is the cache-wide menu
+    /// generation. The shell refreshes an open menu only when its name and
+    /// owner still match.
+    #[zbus(signal)]
+    async fn tray_menu_changed(
+        emitter: &SignalEmitter<'_>,
+        name: &str,
+        generation: u64,
+    ) -> zbus::Result<()>;
 }
 
 /// The `org.kde.StatusNotifierWatcher` registry (T-14.3). It shares the tray
@@ -890,6 +1225,8 @@ impl AppIndex1 {
 #[derive(Clone)]
 pub struct StatusNotifierWatcher {
     tray: Arc<Mutex<TrayRegistry>>,
+    cache: Arc<Mutex<TrayCache>>,
+    refresher: TrayRefresher,
 }
 
 impl Default for StatusNotifierWatcher {
@@ -903,12 +1240,33 @@ impl StatusNotifierWatcher {
     pub fn new() -> Self {
         StatusNotifierWatcher {
             tray: Arc::new(Mutex::new(TrayRegistry::new())),
+            cache: Arc::new(Mutex::new(TrayCache::new())),
+            refresher: TrayRefresher::new(),
         }
     }
 
     /// A watcher over an existing registry (shared with the app-index object).
     pub fn over(tray: Arc<Mutex<TrayRegistry>>) -> Self {
-        StatusNotifierWatcher { tray }
+        StatusNotifierWatcher {
+            tray,
+            cache: Arc::new(Mutex::new(TrayCache::new())),
+            refresher: TrayRefresher::new(),
+        }
+    }
+
+    /// A watcher over an existing registry, snapshot cache, and refresh queue,
+    /// so a registration/owner change invalidates and refills the service's
+    /// normalized view.
+    pub fn over_shared(
+        tray: Arc<Mutex<TrayRegistry>>,
+        cache: Arc<Mutex<TrayCache>>,
+        refresher: TrayRefresher,
+    ) -> Self {
+        StatusNotifierWatcher {
+            tray,
+            cache,
+            refresher,
+        }
     }
 
     /// The shared registry.
@@ -934,8 +1292,20 @@ impl StatusNotifierWatcher {
         let Some(registration) = Registration::parse(service, sender.as_str()) else {
             return false;
         };
-        let changed = lock_tray(&self.tray).register(registration);
+        let previous = lock_tray(&self.tray).get(&registration.name).cloned();
+        let changed = lock_tray(&self.tray).register(registration.clone());
         if changed {
+            // A re-registration can name a new exporter owner; never serve the
+            // previous owner's snapshot or menu to it. Refill in the background
+            // so registration itself never waits on a slow exporter.
+            if previous
+                .as_ref()
+                .map_or(true, |old| old.sender != registration.sender)
+            {
+                lock_cache(&self.cache).remove(&registration.name);
+            }
+            self.refresher
+                .request(&registration.name, TrayRefreshKind::Item);
             emit_tray_changed(connection).await;
         }
         changed
@@ -1167,10 +1537,15 @@ async fn emit_notices(emitter: &SignalEmitter<'_>, notices: &[ChangeNotice]) -> 
 /// taken; a session without a bus is reported and exited instead of blocking.
 pub fn run() -> zbus::Result<()> {
     let object = AppIndex1::new();
-    let watcher = StatusNotifierWatcher::over(object.tray().clone());
+    let watcher = StatusNotifierWatcher::over_shared(
+        object.tray().clone(),
+        object.tray_cache().clone(),
+        object.tray_refresher().clone(),
+    );
     let registrar = AppMenuRegistrar::over(object.menus().clone(), object.index().clone());
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
+        .method_timeout(TRAY_EXPORTER_TIMEOUT)
         .serve_at(DBUS_PATH, object.clone())?
         .serve_at(WATCHER_PATH, watcher)?
         .serve_at(APP_MENU_REGISTRAR_PATH, registrar)?
@@ -1193,6 +1568,8 @@ pub fn run() -> zbus::Result<()> {
 
     spawn_watcher(connection.clone(), object.clone());
     spawn_tray_cleaner(connection.clone(), object.clone());
+    spawn_tray_refresher(connection.clone(), object.clone());
+    spawn_tray_monitor(connection.clone(), object.clone());
     spawn_coalescer(connection.clone(), object);
 
     // The blocking object server runs on its own executor; parking the main
@@ -1242,6 +1619,7 @@ fn spawn_watcher(connection: connection::Connection, object: AppIndex1) {
 /// `TrayChanged` when the set actually shrinks.
 pub fn spawn_tray_cleaner(connection: connection::Connection, object: AppIndex1) {
     let tray = object.tray().clone();
+    let cache = object.tray_cache().clone();
     let menus = object.menus().clone();
     let emitter = connection.clone();
     let _ = std::thread::Builder::new()
@@ -1267,7 +1645,13 @@ pub fn spawn_tray_cleaner(connection: connection::Connection, object: AppIndex1)
                 if old_owner.is_empty() || !new_owner.is_empty() {
                     continue;
                 }
-                if !lock_tray(&tray).remove_owner(&name).is_empty() {
+                let removed_tray = lock_tray(&tray).remove_owner(&name);
+                if !removed_tray.is_empty() {
+                    let mut snapshots = lock_cache(&cache);
+                    for item in &removed_tray {
+                        snapshots.remove(item);
+                    }
+                    drop(snapshots);
                     let _ =
                         emitter.emit_signal(None::<&str>, DBUS_PATH, INTERFACE, "TrayChanged", &());
                 }
@@ -1284,6 +1668,199 @@ pub fn spawn_tray_cleaner(connection: connection::Connection, object: AppIndex1)
                             &(registration.app_id.as_str(),),
                         );
                     }
+                }
+            }
+        });
+}
+
+/// Start the bounded tray refresh workers. Each worker drains the coalescing
+/// queue and re-reads one item or menu on its own blocking connection, so a
+/// slow exporter occupies one worker instead of the whole snapshot.
+pub fn spawn_tray_refresher(connection: connection::Connection, object: AppIndex1) {
+    for index in 0..TRAY_REFRESH_CONCURRENCY {
+        let connection = connection.clone();
+        let object = object.clone();
+        let _ = std::thread::Builder::new()
+            .name(format!("dragonfruit-app-index-tray-refresh-{index}"))
+            .spawn(move || {
+                let refresher = object.tray_refresher.clone();
+                while let Some((name, kind)) = refresher.take() {
+                    let (item_changed, menu_changed) =
+                        object.refresh_tray_entry_blocking(&connection, &name, kind);
+                    if item_changed {
+                        let _ = connection.emit_signal(
+                            None::<&str>,
+                            DBUS_PATH,
+                            INTERFACE,
+                            "TrayChanged",
+                            &(),
+                        );
+                    }
+                    if menu_changed {
+                        let generation = lock_cache(&object.tray_cache).generation();
+                        let _ = connection.emit_signal(
+                            None::<&str>,
+                            DBUS_PATH,
+                            INTERFACE,
+                            "TrayMenuChanged",
+                            &(name.as_str(), generation),
+                        );
+                    }
+                }
+            });
+    }
+}
+
+/// Subscribe to exporter property, icon, attention, and menu-layout signals and
+/// queue coalesced refreshes. The match rules cover the de-facto tray
+/// exporters without one thread per item.
+pub fn spawn_tray_monitor(connection: connection::Connection, object: AppIndex1) {
+    spawn_sni_properties_monitor(connection.clone(), object.clone());
+    spawn_sni_signal_monitor(connection.clone(), object.clone());
+    spawn_menu_monitor(connection, object);
+}
+
+/// Build a signal match rule for one interface.
+fn signal_rule(interface: &str) -> Option<zbus::MatchRule<'static>> {
+    Some(
+        zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .interface(interface.to_owned())
+            .ok()?
+            .build(),
+    )
+}
+
+/// Queue an item refresh for every registration matching the message sender
+/// and object path.
+fn request_item_refresh(object: &AppIndex1, sender: &str, path: &str) {
+    let names: Vec<String> = lock_tray(&object.tray)
+        .items()
+        .iter()
+        .filter(|registration| registration.sender == sender && registration.path == path)
+        .map(|registration| registration.name.clone())
+        .collect();
+    for name in names {
+        object.tray_refresher.request(&name, TrayRefreshKind::Item);
+    }
+}
+
+/// The standard `PropertiesChanged` signal for a StatusNotifierItem.
+fn spawn_sni_properties_monitor(connection: connection::Connection, object: AppIndex1) {
+    let _ = std::thread::Builder::new()
+        .name("dragonfruit-app-index-tray-props".to_owned())
+        .spawn(move || {
+            let Some(rule) = zbus::MatchRule::builder()
+                .msg_type(zbus::message::Type::Signal)
+                .interface("org.freedesktop.DBus.Properties")
+                .ok()
+                .and_then(|builder| builder.member("PropertiesChanged").ok())
+                .and_then(|builder| builder.add_arg(ITEM_INTERFACE).ok())
+                .map(|builder| builder.build())
+            else {
+                return;
+            };
+            let Ok(messages) =
+                zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(256))
+            else {
+                return;
+            };
+            for message in messages {
+                let Ok(message) = message else { continue };
+                let Some(sender) = message
+                    .header()
+                    .sender()
+                    .map(|name| name.as_str().to_owned())
+                else {
+                    continue;
+                };
+                let Some(path) = message.header().path().map(|path| path.as_str().to_owned())
+                else {
+                    continue;
+                };
+                request_item_refresh(&object, &sender, &path);
+            }
+        });
+}
+
+/// The StatusNotifierItem's own change signals (`NewIcon`, `NewStatus`, …).
+fn spawn_sni_signal_monitor(connection: connection::Connection, object: AppIndex1) {
+    let _ = std::thread::Builder::new()
+        .name("dragonfruit-app-index-tray-sni".to_owned())
+        .spawn(move || {
+            let Some(rule) = signal_rule(ITEM_INTERFACE) else {
+                return;
+            };
+            let Ok(messages) =
+                zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(256))
+            else {
+                return;
+            };
+            for message in messages {
+                let Ok(message) = message else { continue };
+                let header = message.header();
+                let member = header.member().map(|name| name.as_str().to_owned());
+                if !matches!(
+                    member.as_deref(),
+                    Some("NewIcon")
+                        | Some("NewAttentionIcon")
+                        | Some("NewStatus")
+                        | Some("NewTitle")
+                        | Some("NewToolTip")
+                        | Some("NewMenu")
+                ) {
+                    continue;
+                }
+                let Some(sender) = header.sender().map(|name| name.as_str().to_owned()) else {
+                    continue;
+                };
+                let Some(path) = header.path().map(|path| path.as_str().to_owned()) else {
+                    continue;
+                };
+                request_item_refresh(&object, &sender, &path);
+            }
+        });
+}
+
+/// `com.canonical.dbusmenu` layout/property updates for an item's menu.
+fn spawn_menu_monitor(connection: connection::Connection, object: AppIndex1) {
+    let _ = std::thread::Builder::new()
+        .name("dragonfruit-app-index-tray-menu".to_owned())
+        .spawn(move || {
+            let Some(rule) = signal_rule(DBUSMENU_INTERFACE) else {
+                return;
+            };
+            let Ok(messages) =
+                zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(256))
+            else {
+                return;
+            };
+            for message in messages {
+                let Ok(message) = message else { continue };
+                let Some(sender) = message
+                    .header()
+                    .sender()
+                    .map(|name| name.as_str().to_owned())
+                else {
+                    continue;
+                };
+                let Some(path) = message.header().path().map(|path| path.as_str().to_owned())
+                else {
+                    continue;
+                };
+                let names: Vec<String> = lock_tray(&object.tray)
+                    .items()
+                    .iter()
+                    .filter(|registration| registration.sender == sender)
+                    .filter(|registration| {
+                        lock_cache(&object.tray_cache)
+                            .menu_path(&registration.name)
+                            .is_some_and(|menu_path| menu_path == path)
+                    })
+                    .map(|registration| registration.name.clone())
+                    .collect();
+                for name in names {
+                    object.tray_refresher.request(&name, TrayRefreshKind::Menu);
                 }
             }
         });

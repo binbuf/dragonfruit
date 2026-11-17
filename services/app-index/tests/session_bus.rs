@@ -14,11 +14,12 @@ use std::process::{Child, Command, Stdio};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use dragonfruit_app_index::dbus::{
-    AppIndex1, AppMenuRegistrar, StatusNotifierWatcher, APP_MENU_REGISTRAR_INTERFACE,
-    APP_MENU_REGISTRAR_NAME, APP_MENU_REGISTRAR_PATH, DBUS_NAME, DBUS_PATH, INTERFACE,
-    WATCHER_INTERFACE, WATCHER_NAME, WATCHER_PATH,
+    spawn_tray_monitor, spawn_tray_refresher, AppIndex1, AppMenuRegistrar, StatusNotifierWatcher,
+    APP_MENU_REGISTRAR_INTERFACE, APP_MENU_REGISTRAR_NAME, APP_MENU_REGISTRAR_PATH, DBUS_NAME,
+    DBUS_PATH, INTERFACE, WATCHER_INTERFACE, WATCHER_NAME, WATCHER_PATH,
 };
 use dragonfruit_app_index::icons::IconTheme;
 use dragonfruit_app_index::index::AppIndex;
@@ -158,11 +159,16 @@ fn serve_tray(bus: &PrivateBus, fixture: &Fixture) -> (Connection, AppIndex1) {
     let index = AppIndex::from_dirs([fixture.apps()]);
     let theme = IconTheme::from_roots([fixture.icons()], ["hicolor".to_owned()], Vec::new());
     let object = AppIndex1::from_index(index, theme);
-    let watcher = StatusNotifierWatcher::over(object.tray().clone());
+    let watcher = StatusNotifierWatcher::over_shared(
+        object.tray().clone(),
+        object.tray_cache().clone(),
+        object.tray_refresher().clone(),
+    );
     let service = zbus::blocking::connection::Builder::address(bus.address.as_str())
         .expect("valid bus address")
         .name(DBUS_NAME)
         .expect("valid well-known name")
+        .method_timeout(dragonfruit_app_index::dbus::TRAY_EXPORTER_TIMEOUT)
         .serve_at(DBUS_PATH, object.clone())
         .expect("serve the app index interface")
         .serve_at(WATCHER_PATH, watcher)
@@ -172,6 +178,10 @@ fn serve_tray(bus: &PrivateBus, fixture: &Fixture) -> (Connection, AppIndex1) {
     service
         .request_name(WATCHER_NAME)
         .expect("own the StatusNotifierWatcher name");
+    // The daemon runs these workers; the test server does too so the cached,
+    // change-driven paths are exercised instead of only cold reads.
+    spawn_tray_refresher(service.clone(), object.clone());
+    spawn_tray_monitor(service.clone(), object.clone());
     (service, object)
 }
 
@@ -276,6 +286,85 @@ impl MockItem {
     fn secondary_activate(&self, _x: i32, _y: i32) {}
 
     fn context_menu(&self, _x: i32, _y: i32) {}
+}
+
+/// A mock StatusNotifierItem whose title can change without re-registering.
+struct MockMutableItem {
+    title: Arc<Mutex<String>>,
+}
+
+#[zbus::interface(name = "org.kde.StatusNotifierItem")]
+impl MockMutableItem {
+    #[zbus(property)]
+    fn id(&self) -> String {
+        "mutable-item".to_owned()
+    }
+
+    #[zbus(property)]
+    fn title(&self) -> String {
+        self.title
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    #[zbus(property)]
+    fn status(&self) -> String {
+        "Active".to_owned()
+    }
+
+    #[zbus(property)]
+    fn icon_name(&self) -> String {
+        "firefox".to_owned()
+    }
+
+    #[zbus(property)]
+    fn item_is_menu(&self) -> bool {
+        true
+    }
+
+    #[zbus(property)]
+    fn menu(&self) -> ObjectPath<'static> {
+        ObjectPath::try_from("/MenuBar").expect("valid path")
+    }
+}
+
+/// A mock StatusNotifierItem whose `GetAll` takes longer than the service's
+/// exporter timeout. It must never block another item's snapshot or menu.
+struct MockSlowItem;
+
+#[zbus::interface(name = "org.kde.StatusNotifierItem")]
+impl MockSlowItem {
+    #[zbus(property)]
+    fn id(&self) -> String {
+        "slow-item".to_owned()
+    }
+
+    #[zbus(property)]
+    fn title(&self) -> String {
+        std::thread::sleep(Duration::from_secs(3));
+        "Slow Tray".to_owned()
+    }
+
+    #[zbus(property)]
+    fn status(&self) -> String {
+        "Active".to_owned()
+    }
+
+    #[zbus(property)]
+    fn icon_name(&self) -> String {
+        "firefox".to_owned()
+    }
+
+    #[zbus(property)]
+    fn item_is_menu(&self) -> bool {
+        false
+    }
+
+    #[zbus(property)]
+    fn menu(&self) -> ObjectPath<'static> {
+        ObjectPath::try_from("/").expect("valid path")
+    }
 }
 
 /// The menu-event log a mock tray app records.
@@ -454,6 +543,21 @@ fn call<T: serde::de::DeserializeOwned + zbus::zvariant::Type>(
 
 fn json(payload: &str) -> serde_json::Value {
     serde_json::from_str(payload).expect("the view is valid JSON")
+}
+
+/// Poll `TrayItems` until the expected number of snapshots is present. The
+/// service fills the cache on its bounded background workers and emits
+/// `TrayChanged`; a test can read before that lands.
+fn wait_for_tray_items(client: &Connection, expected: usize) -> serde_json::Value {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let items = json(&call::<String>(client, "TrayItems", ()).unwrap());
+        let count = items.as_array().map(Vec::len).unwrap_or(0);
+        if count >= expected || Instant::now() >= deadline {
+            return items;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 #[test]
@@ -860,11 +964,13 @@ fn a_mock_tray_item_registers_and_its_menu_round_trips() {
     let names = json(&call::<String>(&client, "TrayNames", ()).unwrap());
     assert_eq!(names[0], "org.example.MockTray");
 
-    let items = json(&call::<String>(&client, "TrayItems", ()).unwrap());
+    let items = wait_for_tray_items(&client, 1);
     assert_eq!(items.as_array().unwrap().len(), 1);
     let item = &items[0];
     assert_eq!(item["name"], "org.example.MockTray");
     assert_eq!(item["title"], "Mock Tray");
+    // The owner is the registering process's unique name.
+    assert!(item["owner"].as_str().unwrap().starts_with(':'));
     assert_eq!(item["iconName"], "firefox");
     assert_eq!(item["itemIsMenu"], true);
     assert_eq!(item["menuPath"], "/MenuBar");
@@ -896,6 +1002,176 @@ fn a_mock_tray_item_registers_and_its_menu_round_trips() {
     );
     assert!(!call::<bool>(&client, "TrayMenuEvent", ("org.example.Absent", 1i32)).unwrap());
     assert!(!call::<bool>(&client, "TrayActivate", ("org.example.Absent", "activate")).unwrap());
+}
+
+// T-14.3 change-driven tray: a property change reaches the service through
+// its exporter subscription, the bounded refresher updates the cache, and the
+// shell's next read sees the new snapshot without polling.
+#[test]
+fn a_tray_property_change_refreshes_the_cached_snapshot() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("tray-change");
+    fixture.seed();
+    let _service = serve_tray(&bus, &fixture);
+    let client = bus.connect();
+
+    let title = Arc::new(Mutex::new("Mock Tray".to_owned()));
+    let app = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .expect("valid bus address")
+        .name("org.example.MutableTray")
+        .expect("valid well-known name")
+        .serve_at(
+            ITEM_PATH,
+            MockMutableItem {
+                title: title.clone(),
+            },
+        )
+        .expect("serve the mock item")
+        .serve_at(
+            "/MenuBar",
+            MockMenu {
+                events: Arc::new(Mutex::new(Vec::new())),
+            },
+        )
+        .expect("serve the mock menu")
+        .build()
+        .expect("build the mock app connection");
+    let registered: bool = app
+        .call_method(
+            Some(WATCHER_NAME),
+            WATCHER_PATH,
+            Some(WATCHER_INTERFACE),
+            "RegisterStatusNotifierItem",
+            &("org.example.MutableTray",),
+        )
+        .expect("call RegisterStatusNotifierItem")
+        .body()
+        .deserialize()
+        .expect("registration reply");
+    assert!(registered);
+
+    let items = wait_for_tray_items(&client, 1);
+    assert_eq!(items[0]["title"], "Mock Tray");
+
+    *title.lock().unwrap() = "Renamed Tray".to_owned();
+    // A tray exporter announces a property change with the standard signal;
+    // the service's monitor queues one coalesced refresh for it.
+    app.emit_signal(
+        None::<&str>,
+        ITEM_PATH,
+        "org.freedesktop.DBus.Properties",
+        "PropertiesChanged",
+        &(
+            dragonfruit_app_index::dbus::ITEM_INTERFACE,
+            HashMap::<String, OwnedValue>::new(),
+            Vec::<String>::new(),
+        ),
+    )
+    .expect("emit PropertiesChanged");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let items = json(&call::<String>(&client, "TrayItems", ()).unwrap());
+        if items[0]["title"] == "Renamed Tray" {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the snapshot never refreshed");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+// T-14.3: the menu snapshot binds its rows to the exporter owner and the menu
+// generation, and an action from a replaced owner is rejected.
+#[test]
+fn a_tray_menu_snapshot_carries_its_owner_and_generation() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("tray-snapshot");
+    fixture.seed();
+    let _service = serve_tray(&bus, &fixture);
+    let client = bus.connect();
+    let (_app, _events) = mock_tray(&bus, "org.example.MockTray");
+    wait_for_tray_items(&client, 1);
+
+    let snapshot =
+        json(&call::<String>(&client, "TrayMenuSnapshot", ("org.example.MockTray",)).unwrap());
+    assert_eq!(snapshot["name"], "org.example.MockTray");
+    // The owner is the registering process's unique bus name, so a replacement
+    // exporter is distinguishable even when it claims the same well-known name.
+    let owner = snapshot["owner"].as_str().unwrap();
+    assert!(owner.starts_with(':'), "owner was {owner}");
+    assert!(snapshot["generation"].as_u64().unwrap() >= 1);
+    assert_eq!(snapshot["rows"][0]["label"], "Show Window");
+
+    assert!(call::<bool>(
+        &client,
+        "TrayMenuEventFrom",
+        ("org.example.MockTray", owner, 1i32)
+    )
+    .unwrap());
+    assert!(!call::<bool>(
+        &client,
+        "TrayMenuEventFrom",
+        ("org.example.MockTray", ":1.999", 1i32)
+    )
+    .unwrap());
+    assert!(!call::<bool>(
+        &client,
+        "TrayActivateFrom",
+        ("org.example.MockTray", ":1.999", "activate")
+    )
+    .unwrap());
+}
+
+// T-14.3: a slow exporter cannot delay another item's cached menu. The slow
+// item's own refresh is bounded by the service's exporter timeout and never
+// holds the fast item's snapshot.
+#[test]
+fn a_slow_exporter_does_not_delay_another_items_menu() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("tray-slow");
+    fixture.seed();
+    let _service = serve_tray(&bus, &fixture);
+    let client = bus.connect();
+
+    let (_fast, _events) = mock_tray(&bus, "org.example.FastTray");
+    wait_for_tray_items(&client, 1);
+
+    let slow = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .expect("valid bus address")
+        .name("org.example.SlowTray")
+        .expect("valid well-known name")
+        .serve_at(ITEM_PATH, MockSlowItem)
+        .expect("serve the slow item")
+        .build()
+        .expect("build the slow app connection");
+    let registered: bool = slow
+        .call_method(
+            Some(WATCHER_NAME),
+            WATCHER_PATH,
+            Some(WATCHER_INTERFACE),
+            "RegisterStatusNotifierItem",
+            &("org.example.SlowTray",),
+        )
+        .expect("call RegisterStatusNotifierItem")
+        .body()
+        .deserialize()
+        .expect("registration reply");
+    assert!(registered);
+
+    // Both names are visible immediately; the slow item's properties are still
+    // in flight on a worker.
+    let names = json(&call::<String>(&client, "TrayNames", ()).unwrap());
+    assert_eq!(names.as_array().unwrap().len(), 2);
+
+    let started = Instant::now();
+    let snapshot =
+        json(&call::<String>(&client, "TrayMenuSnapshot", ("org.example.FastTray",)).unwrap());
+    assert_eq!(snapshot["rows"][0]["label"], "Show Window");
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "the fast menu waited on the slow exporter: {:?}",
+        started.elapsed()
+    );
 }
 
 // T-14.3: a path-only registration is namespaced by the caller.
@@ -941,7 +1217,7 @@ fn a_path_registration_is_namespaced_by_the_sender() {
         name.starts_with(':') && name.ends_with(":/SelfItem"),
         "{name}"
     );
-    let items = json(&call::<String>(&client, "TrayItems", ()).unwrap());
+    let items = wait_for_tray_items(&client, 1);
     assert_eq!(items[0]["path"], "/SelfItem");
 }
 

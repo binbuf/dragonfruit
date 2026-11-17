@@ -18,7 +18,7 @@
 //!
 //! The D-Bus calls that fill these types live in [`crate::dbus`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use zbus::zvariant::OwnedValue;
 
@@ -182,6 +182,180 @@ impl TrayRegistry {
     /// Whether no item is registered.
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
+    }
+}
+
+/// One item's normalized shell view plus its last projected menu.
+///
+/// The service owns the only copy of this data: `TrayItems` and `TrayMenu`
+/// answer from it, and the background refresher replaces entries in place. A
+/// slow exporter therefore delays only its own refresh, never a snapshot for
+/// every other item.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraySnapshot {
+    /// The unique bus name that registered the item when the snapshot was
+    /// taken. An owner change invalidates the snapshot (and its menu).
+    pub owner: String,
+    /// The item's flat JSON view (`tray_item_json`).
+    pub item: serde_json::Value,
+    /// The item's DBusMenu object path, empty when it exports none.
+    pub menu_path: String,
+    /// The projected DBusMenu rows, absent until the first menu read.
+    pub menu: Option<Vec<serde_json::Value>>,
+    /// The cache-wide generation the current `menu` was stored at.
+    pub menu_generation: u64,
+}
+
+/// The service-side normalized snapshot table. It keeps registration order so
+/// the shell's bar order stays stable across refreshes.
+#[derive(Debug, Default)]
+pub struct TrayCache {
+    order: Vec<String>,
+    entries: HashMap<String, TraySnapshot>,
+    generation: u64,
+}
+
+impl TrayCache {
+    /// An empty cache.
+    pub fn new() -> Self {
+        TrayCache::default()
+    }
+
+    /// Store a refreshed item view. Returns whether anything the shell renders
+    /// changed. An owner change drops the cached menu: it belongs to the old
+    /// exporter and must never be served to the new one.
+    pub fn set_item(
+        &mut self,
+        name: &str,
+        owner: &str,
+        item: serde_json::Value,
+        menu_path: &str,
+    ) -> bool {
+        let owner_changed = self
+            .entries
+            .get(name)
+            .is_some_and(|entry| entry.owner != owner);
+        if owner_changed {
+            self.entries.remove(name);
+        }
+        let menu_path = menu_path.to_owned();
+        if let Some(entry) = self.entries.get_mut(name) {
+            let item_changed = entry.item != item || entry.owner != owner;
+            let menu_changed = entry.menu_path != menu_path;
+            if menu_changed {
+                entry.menu = None;
+                entry.menu_path = menu_path;
+            }
+            entry.item = item;
+            entry.owner = owner.to_owned();
+            return item_changed || menu_changed;
+        }
+        if !self.order.iter().any(|entry| entry == name) {
+            self.order.push(name.to_owned());
+        }
+        self.entries.insert(
+            name.to_owned(),
+            TraySnapshot {
+                owner: owner.to_owned(),
+                item,
+                menu_path,
+                menu: None,
+                menu_generation: 0,
+            },
+        );
+        true
+    }
+
+    /// Store a refreshed menu. Returns the new generation when the rows
+    /// actually changed, `None` when the snapshot was already current or the
+    /// exporter owner no longer matches.
+    pub fn set_menu(
+        &mut self,
+        name: &str,
+        owner: &str,
+        rows: Vec<serde_json::Value>,
+    ) -> Option<u64> {
+        let entry = self.entries.get_mut(name)?;
+        if entry.owner != owner {
+            return None;
+        }
+        if entry.menu.as_ref() == Some(&rows) {
+            return None;
+        }
+        self.generation = self.generation.wrapping_add(1);
+        entry.menu = Some(rows);
+        entry.menu_generation = self.generation;
+        Some(self.generation)
+    }
+
+    /// Drop a cached menu without removing the item (the exporter removed its
+    /// `Menu` property).
+    pub fn clear_menu(&mut self, name: &str) {
+        if let Some(entry) = self.entries.get_mut(name) {
+            entry.menu = None;
+            entry.menu_path.clear();
+        }
+    }
+
+    /// One item's snapshot.
+    pub fn get(&self, name: &str) -> Option<&TraySnapshot> {
+        self.entries.get(name)
+    }
+
+    /// One item's current menu path.
+    pub fn menu_path(&self, name: &str) -> Option<&str> {
+        self.entries.get(name).map(|entry| entry.menu_path.as_str())
+    }
+
+    /// One item's cached menu rows, owner, and generation.
+    pub fn menu(&self, name: &str) -> Option<(String, u64, Vec<serde_json::Value>)> {
+        let entry = self.entries.get(name)?;
+        let rows = entry.menu.clone()?;
+        Some((entry.owner.clone(), entry.menu_generation, rows))
+    }
+
+    /// The cache-wide menu generation. It advances whenever any item's menu
+    /// rows change.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Remove one item.
+    pub fn remove(&mut self, name: &str) -> bool {
+        self.order.retain(|entry| entry != name);
+        self.entries.remove(name).is_some()
+    }
+
+    /// Keep only the given registrations, preserving their order. Returns
+    /// whether any entry was dropped.
+    pub fn retain(&mut self, names: &[String]) -> bool {
+        let live: HashSet<&str> = names.iter().map(String::as_str).collect();
+        let before = self.entries.len();
+        self.entries.retain(|name, _| live.contains(name.as_str()));
+        self.order.retain(|name| live.contains(name.as_str()));
+        self.entries.len() != before
+    }
+
+    /// The item views in registration order. Items without a snapshot yet are
+    /// omitted, so a partially refreshed bar still renders what it knows.
+    pub fn items_json(&self) -> String {
+        let values: Vec<&serde_json::Value> = self
+            .order
+            .iter()
+            .filter_map(|name| self.entries.get(name))
+            .map(|entry| &entry.item)
+            .collect();
+        serde_json::Value::Array(values.into_iter().cloned().collect()).to_string()
+    }
+
+    /// How many snapshots are cached.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the cache is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 
@@ -497,5 +671,72 @@ mod tests {
         assert!(
             parse_layout(&OwnedValue::try_from(Value::from("not a layout")).unwrap()).is_none()
         );
+    }
+
+    fn view(name: &str, title: &str) -> serde_json::Value {
+        serde_json::json!({ "name": name, "title": title })
+    }
+
+    #[test]
+    fn the_cache_replaces_items_in_registration_order() {
+        let mut cache = TrayCache::new();
+        assert!(cache.set_item("one", "org.example.One", view("one", "One"), "/Menu"));
+        assert!(cache.set_item("two", "org.example.Two", view("two", "Two"), ""));
+        assert!(!cache.set_item("one", "org.example.One", view("one", "One"), "/Menu"));
+
+        let items: serde_json::Value = serde_json::from_str(&cache.items_json()).unwrap();
+        assert_eq!(items.as_array().unwrap().len(), 2);
+        assert_eq!(items[0]["name"], "one");
+        assert_eq!(items[1]["name"], "two");
+    }
+
+    #[test]
+    fn an_owner_change_drops_the_cached_menu() {
+        let mut cache = TrayCache::new();
+        cache.set_item("one", "org.example.One", view("one", "One"), "/Menu");
+        assert!(cache
+            .set_menu("one", "org.example.One", vec![view("row", "Row")])
+            .is_some());
+        assert!(cache.menu("one").is_some());
+
+        // A new exporter owner must never inherit the old menu.
+        assert!(cache.set_item("one", ":1.99", view("one", "One"), "/Menu"));
+        assert!(cache.menu("one").is_none());
+        let items: serde_json::Value = serde_json::from_str(&cache.items_json()).unwrap();
+        assert_eq!(items.as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_menu_refresh_only_bumps_the_generation_on_a_real_change() {
+        let mut cache = TrayCache::new();
+        cache.set_item("one", "org.example.One", view("one", "One"), "/Menu");
+        let first = cache
+            .set_menu("one", "org.example.One", vec![view("row", "Row")])
+            .unwrap();
+        assert!(first > 0);
+        assert_eq!(
+            cache.set_menu("one", "org.example.One", vec![view("row", "Row")]),
+            None
+        );
+        let second = cache
+            .set_menu("one", "org.example.One", vec![view("row", "Changed")])
+            .unwrap();
+        assert!(second > first);
+        // A stale owner cannot replace the rows.
+        assert_eq!(
+            cache.set_menu("one", ":1.99", vec![view("row", "Other")]),
+            None
+        );
+    }
+
+    #[test]
+    fn retaining_the_registry_drops_snapshots_for_departed_items() {
+        let mut cache = TrayCache::new();
+        cache.set_item("one", "org.example.One", view("one", "One"), "");
+        cache.set_item("two", "org.example.Two", view("two", "Two"), "");
+        assert!(cache.retain(&["two".to_owned()]));
+        assert!(cache.get("one").is_none());
+        assert!(cache.get("two").is_some());
+        assert!(!cache.retain(&["two".to_owned()]));
     }
 }

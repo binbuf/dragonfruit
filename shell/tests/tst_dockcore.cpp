@@ -3370,22 +3370,25 @@ private slots:
     void tray_items_and_menus_decode_from_the_service_view()
     {
         const QString itemsJson = QStringLiteral(R"([
-            { "name": "org.kde.StatusNotifierItem-1-1", "id": "telegram",
-              "title": "Telegram", "iconName": "telegram", "iconPath": "/tmp/telegram.png",
-              "menuPath": "/MenuBar", "itemIsMenu": true, "needsAttention": true,
-              "hasPixmap": false },
-            { "name": ":1.9:/SelfItem", "id": "self", "title": "", "iconName": "",
-              "iconPath": "", "menuPath": "", "itemIsMenu": false,
+            { "name": "org.kde.StatusNotifierItem-1-1", "destination": "org.kde.StatusNotifierItem-1-1",
+              "owner": ":1.42", "id": "telegram", "title": "Telegram", "iconName": "telegram",
+              "iconPath": "/tmp/telegram.png", "menuPath": "/MenuBar", "itemIsMenu": true,
+              "needsAttention": true, "hasPixmap": false },
+            { "name": ":1.9:/SelfItem", "destination": ":1.9", "owner": ":1.9", "id": "self",
+              "title": "", "iconName": "", "iconPath": "", "menuPath": "", "itemIsMenu": false,
               "needsAttention": false, "hasPixmap": true }
         ])");
         const QList<TrayItem> items = TrayClient::parseItems(itemsJson);
         QCOMPARE(items.size(), 2);
         QCOMPARE(items[0].name, QStringLiteral("org.kde.StatusNotifierItem-1-1"));
+        QCOMPARE(items[0].destination, QStringLiteral("org.kde.StatusNotifierItem-1-1"));
+        QCOMPARE(items[0].owner, QStringLiteral(":1.42"));
         QCOMPARE(items[0].title, QStringLiteral("Telegram"));
         QCOMPARE(items[0].iconPath, QStringLiteral("/tmp/telegram.png"));
         QCOMPARE(items[0].itemIsMenu, true);
         QCOMPARE(items[0].needsAttention, true);
         QCOMPARE(items[1].name, QStringLiteral(":1.9:/SelfItem"));
+        QCOMPARE(items[1].destination, QStringLiteral(":1.9"));
         QCOMPARE(items[1].hasPixmap, true);
 
         // A missing/empty name is not an item; a malformed payload is empty.
@@ -3417,6 +3420,27 @@ private slots:
 
         QCOMPARE(TrayClient::parseMenu(QStringLiteral("[]")).size(), 0);
         QCOMPARE(TrayClient::parseMenu(QStringLiteral("not json")).size(), 0);
+
+        // The menu snapshot carries the exporter owner and generation the
+        // shell binds an open menu and its actions to.
+        const QString snapshotJson = QStringLiteral(R"({
+            "name": "org.kde.StatusNotifierItem-1-1",
+            "owner": "org.kde.StatusNotifierItem-1-1",
+            "generation": 7,
+            "rows": [ { "id": 3, "type": "item", "label": "Quit", "enabled": true } ]
+        })");
+        const TrayMenuSnapshot snapshot = TrayClient::parseSnapshot(snapshotJson);
+        QCOMPARE(snapshot.ok, true);
+        QCOMPARE(snapshot.name, QStringLiteral("org.kde.StatusNotifierItem-1-1"));
+        QCOMPARE(snapshot.owner, QStringLiteral("org.kde.StatusNotifierItem-1-1"));
+        QCOMPARE(snapshot.generation, quint64(7));
+        QCOMPARE(snapshot.rows.size(), 1);
+        QCOMPARE(snapshot.rows.at(0).toMap().value(QStringLiteral("id")).toInt(), 3);
+
+        // A miss or a malformed envelope is not an openable snapshot.
+        QCOMPARE(TrayClient::parseSnapshot(QStringLiteral("{}")).ok, false);
+        QCOMPARE(TrayClient::parseSnapshot(QStringLiteral("[]")).ok, false);
+        QCOMPARE(TrayClient::parseSnapshot(QString()).ok, false);
     }
 
     // -- Add Application picker (T-14.7e) --------------------------------

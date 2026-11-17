@@ -20,6 +20,8 @@ TrayItem itemFromObject(const QJsonObject &object)
 {
     TrayItem item;
     item.name = object.value(QStringLiteral("name")).toString();
+    item.destination = object.value(QStringLiteral("destination")).toString();
+    item.owner = object.value(QStringLiteral("owner")).toString();
     item.id = object.value(QStringLiteral("id")).toString();
     item.title = object.value(QStringLiteral("title")).toString();
     item.iconName = object.value(QStringLiteral("iconName")).toString();
@@ -112,12 +114,46 @@ QVariantList TrayClient::menu(const QString &name) const
     return parseMenu(call(QStringLiteral("TrayMenu"), {name}));
 }
 
+TrayMenuSnapshot TrayClient::menuSnapshot(const QString &name) const
+{
+    return parseSnapshot(call(QStringLiteral("TrayMenuSnapshot"), {name}));
+}
+
 bool TrayClient::menuEvent(const QString &name, int id) const
 {
     return callBool(QStringLiteral("TrayMenuEvent"), {name, id});
 }
 
+bool TrayClient::menuEventFrom(const QString &name, const QString &owner, int id) const
+{
+    return callBool(QStringLiteral("TrayMenuEventFrom"), {name, owner, id});
+}
+
 bool TrayClient::activate(const QString &name, const QString &kind) const
 {
     return callBool(QStringLiteral("TrayActivate"), {name, kind});
+}
+
+bool TrayClient::activateFrom(const QString &name, const QString &owner, const QString &kind) const
+{
+    return callBool(QStringLiteral("TrayActivateFrom"), {name, owner, kind});
+}
+
+TrayMenuSnapshot TrayClient::parseSnapshot(const QString &json)
+{
+    TrayMenuSnapshot snapshot;
+    if (json.isEmpty())
+        return snapshot;
+    QJsonParseError error{};
+    const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return snapshot;
+    const QJsonObject object = document.object();
+    snapshot.name = object.value(QStringLiteral("name")).toString();
+    snapshot.owner = object.value(QStringLiteral("owner")).toString();
+    snapshot.generation =
+        static_cast<quint64>(object.value(QStringLiteral("generation")).toDouble());
+    snapshot.rows = object.value(QStringLiteral("rows")).toArray().toVariantList();
+    snapshot.ok = !snapshot.name.isEmpty();
+    return snapshot;
 }
