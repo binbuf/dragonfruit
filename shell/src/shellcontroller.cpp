@@ -11029,6 +11029,17 @@ void ShellController::bindChromePacing(ChromeFrameProducer *producer,
         qInfo() << "shell: Dock scene-graph commit path active (FR-14)";
     connect(producer, &ChromeFrameProducer::sceneChanged, this,
             [this, producer]() { markChromeDirty(producer); });
+    if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer)) {
+        // Asynchronous completion: the producer polls its own fence and
+        // announces the frame on this producer's event loop, so the commit
+        // does not block the render callback.
+        connect(gpu, &GpuChromeFrameProducer::frameReady, this,
+                [this, gpu](int view) { onChromeGpuFrameReady(gpu, view); });
+        connect(gpu, &GpuChromeFrameProducer::frameFailed, this,
+                [this, gpu](int view, const QString &reason) {
+                    onChromeGpuFrameFailed(gpu, view, reason);
+                });
+    }
 }
 
 void ShellController::markChromeDirty(ChromeFrameProducer *producer)
@@ -11046,6 +11057,10 @@ void ShellController::markChromeDirty(ChromeFrameProducer *producer)
     }
     pace.dirty = true;
     if (pace.scheduled)
+        return;
+    // An uncommitted GPU frame owns the next slot: the completion handler
+    // renders this change instead of racing the in-flight fence.
+    if (chromeProducerAwaitingCompletion(producer))
         return;
     if (!m_protocol->hasPendingFrame(pace.primaryLabel))
         scheduleChromeRender(producer);
@@ -11065,6 +11080,10 @@ void ShellController::scheduleChromeRender(ChromeFrameProducer *producer)
             return;
         pace.value().scheduled = false;
         if (!pace.value().dirty)
+            return;
+        // An in-flight GPU frame owns the next slot; its completion handler
+        // re-schedules this change. Rendering now would only defer again.
+        if (chromeProducerAwaitingCompletion(producer))
             return;
         if (m_protocol->hasPendingFrame(pace.value().primaryLabel)) {
             if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
@@ -11091,6 +11110,8 @@ void ShellController::renderChromeProducer(ChromeFrameProducer *producer, bool f
     if (fallback)
         ChromeStats::instance().recordFallbackRender();
     if (pace.dirty) {
+        if (chromeProducerAwaitingCompletion(producer))
+            return;
         if (!m_protocol->hasPendingFrame(pace.primaryLabel))
             scheduleChromeRender(producer);
         else if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
@@ -11228,6 +11249,8 @@ void ShellController::onChromeFallbackTick()
         auto it = m_chromePaces.find(producer);
         if (it == m_chromePaces.end() || !it.value().dirty)
             continue;
+        if (chromeProducerAwaitingCompletion(producer))
+            continue;
         if (!m_protocol->hasPendingFrame(it.value().primaryLabel))
             scheduleChromeRender(producer);
         else if (m_protocol->hasPendingFrame(it.value().primaryLabel,
@@ -11279,6 +11302,15 @@ void ShellController::deferChromeProducer(ChromeFrameProducer *producer)
         scheduleChromeRender(producer);
 }
 
+bool ShellController::chromeProducerAwaitingCompletion(
+    ChromeFrameProducer *producer) const
+{
+    auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer);
+    return gpu
+        && (gpu->hasPendingFrame(GpuChromeFrameProducer::PrimaryView)
+            || gpu->hasPendingFrame(GpuChromeFrameProducer::PopupView));
+}
+
 ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
     GpuChromeFrameProducer *gpu, const QString &label,
     const ChromeDmabufFrame &frame, const QSize &logicalSize,
@@ -11315,6 +11347,15 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
     ChromeStats::instance().recordDmabufFallback(label, why);
     noteSurfacePath(label, QStringLiteral("shm"), why);
     ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+    // A surface that vanished while its frame was completing is a stale scene,
+    // not a transport failure: an asynchronous commit can outlive a close. Do
+    // not disable the label for the session.
+    if (why == QLatin1String("unknown-surface")
+        || why == QLatin1String("unknown-lock-surface")
+        || why == QLatin1String("no-surface")
+        || why == QLatin1String("no-buffer-state")) {
+        return result;
+    }
     // A surface that cannot express this commit (no viewporter, no format,
     // import failure) stays on shm for the session; the rest of the chrome
     // keeps using dmabuf. A missing linux-dmabuf binding is producer-wide.
@@ -11347,116 +11388,89 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
 
     QList<int> deferredTargets;
     bool anyCommitted = false;
-    ChromeDmabufFrame frame;
-    QString exportReason;
 
     // A shared scene has one path: if any of its surfaces cannot use dmabuf,
     // the whole scene renders through T185 shm. That is the only way to avoid
     // reading back a frame that the compositor is already sampling through a
     // committed dmabuf (which can block on the GPU fence).
-    bool anyTargetDisabled = false;
-    for (const ChromeSceneTarget &target : targets) {
-        if (m_chromeDmabufDisabled.contains(target.label)
-            || (!m_chromeDmabufAllowed.isEmpty()
-                && !m_chromeDmabufAllowed.contains(target.label))) {
-            anyTargetDisabled = true;
-            break;
+    const auto sceneEligible = [this](const QList<ChromeSceneTarget> &list) {
+        for (const ChromeSceneTarget &target : list) {
+            if (m_chromeDmabufDisabled.contains(target.label)
+                || (!m_chromeDmabufAllowed.isEmpty()
+                    && !m_chromeDmabufAllowed.contains(target.label))) {
+                return false;
+            }
         }
-    }
+        return true;
+    };
+    auto paceIt = m_chromePaces.find(producer);
     const bool useGpu = gpu && gpu->gpuActive() && m_chromeDmabufEnabled
-        && !anyTargetDisabled;
+        && sceneEligible(targets) && paceIt != m_chromePaces.end();
 
     if (useGpu) {
-        // One scene render for every target. The first target owns the stats
-        // label; a shared popover does not add a second render.
-        ChromeStats::instance().recordRender(targets.first().label);
-        trace(QStringLiteral("export-begin"),
-              QStringLiteral("ring_live=%1 ring_alloc=%2 view=%3")
-                  .arg(gpu->dmabufRingLiveCount(view))
-                  .arg(gpu->dmabufRingAllocations(view))
-                  .arg(view));
-        const bool exported = gpu->exportFrame(view, &frame, &exportReason);
-        trace(QStringLiteral("export-done"),
-              QStringLiteral("ok=%1 reason=%2 slot=%3 serial=%4")
-                  .arg(exported ? 1 : 0)
-                  .arg(exportReason.isEmpty() ? QStringLiteral("none") : exportReason)
-                  .arg(frame.slot)
-                  .arg(frame.serial));
-        if (exported) {
-            int successCount = 0;
-            bool anyHardFailure = false;
-            for (int index = 0; index < targets.size(); ++index) {
-                const ChromeSceneTarget &target = targets.at(index);
-                if (!m_chromeDmabufAllowed.isEmpty()
-                    && !m_chromeDmabufAllowed.contains(target.label)) {
-                    noteSurfacePath(target.label, QStringLiteral("shm"),
-                                    QStringLiteral("not-selected"));
-                    continue;
-                }
-                QString reason;
-                trace(QStringLiteral("target-commit-begin"),
-                      QStringLiteral("target=%1").arg(target.label));
-                const ShellProtocol::DmabufCommitResult result =
-                    commitChromeDmabufTarget(gpu, target.label, frame,
-                                             target.logicalSize, target.sourceRect,
-                                             target.lockSurfaceId, &reason);
-                if (result == ShellProtocol::DmabufCommitResult::Committed) {
-                    anyCommitted = true;
-                    ++successCount;
-                    trace(QStringLiteral("target-committed"),
-                          QStringLiteral("target=%1 size=%2x%3 source=%4,%5,%6x%7")
-                              .arg(target.label)
-                              .arg(target.logicalSize.width())
-                              .arg(target.logicalSize.height())
-                              .arg(target.sourceRect.x())
-                              .arg(target.sourceRect.y())
-                              .arg(target.sourceRect.width())
-                              .arg(target.sourceRect.height()));
-                } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
-                    deferredTargets.append(index);
-                    trace(QStringLiteral("target-deferred"),
-                          QStringLiteral("target=%1 reason=%2")
-                              .arg(target.label,
-                                   reason.isEmpty() ? QStringLiteral("none")
-                                                    : reason));
-                } else {
-                    anyHardFailure = true;
-                    trace(QStringLiteral("target-failed"),
-                          QStringLiteral("target=%1 reason=%2")
-                              .arg(target.label,
-                                   reason.isEmpty() ? QStringLiteral("none")
-                                                    : reason));
-                }
+        // Phase 2: commit every frame the producer already completed, oldest
+        // first, before submitting another one. Fences signal in submission
+        // order, so this keeps the compositor's frame order intact.
+        auto queueIt = paceIt.value().pendingScenes.find(view);
+        while (gpu->hasReadyFrame(view)) {
+            if (queueIt == paceIt.value().pendingScenes.end()
+                || queueIt.value().isEmpty()) {
+                // A completed frame with no recorded scene: the view was
+                // discarded between submit and completion.
+                gpu->abandonReadyFrame(view);
+                break;
             }
-            if (successCount == 0) {
-                // Nothing holds the exported frame. The FBO is safe to read
-                // once for the shm fallback of this frame.
-                gpu->abandonDmabufFrame(view, frame.slot);
-                const QImage image = gpu->readbackCurrentFrame(view);
-                if (!image.isNull()) {
-                    for (const ChromeSceneTarget &target : targets) {
-                        if (target.commitShm && target.commitShm(image)) {
-                            anyCommitted = true;
-                            noteSurfacePath(target.label, QStringLiteral("shm"));
-                        }
-                    }
-                } else {
-                    deferChromeProducer(producer);
-                }
-            } else if (anyHardFailure || !deferredTargets.isEmpty()) {
-                // A dmabuf commit already handed this scene to the compositor.
-                // Do not read it back; a hard-failed surface is now disabled,
-                // so the next frame renders the whole scene through shm. A
-                // deferred surface retries on the release signal.
-                deferChromeProducer(producer);
+            const QList<ChromeSceneTarget> completed =
+                queueIt.value().takeFirst();
+            commitReadyChromeScene(gpu, view, completed, nullptr);
+            if (!m_chromeDmabufEnabled)
+                break;
+        }
+        if (!m_chromeDmabufEnabled) {
+            // A hard failure disabled the rail mid-queue. Return every ready
+            // slot so none stays busy without a commit; later completions see
+            // an empty queue and abandon themselves.
+            while (gpu->hasReadyFrame(view))
+                gpu->abandonReadyFrame(view);
+            paceIt.value().pendingScenes.remove(view);
+        }
+
+        if (m_chromeDmabufEnabled && sceneEligible(targets)) {
+            // Phase 1: render and submit without waiting for the fence. The
+            // completion handler commits the frame, so input keeps flowing
+            // while the GPU finishes.
+            ChromeStats::instance().recordRender(targets.first().label);
+            trace(QStringLiteral("export-begin"),
+                  QStringLiteral("ring_live=%1 ring_alloc=%2 view=%3")
+                      .arg(gpu->dmabufRingLiveCount(view))
+                      .arg(gpu->dmabufRingAllocations(view))
+                      .arg(view));
+            QString exportReason;
+            if (gpu->submitFrame(view, &exportReason)) {
+                paceIt.value().pendingScenes[view].append(targets);
+                trace(QStringLiteral("export-done"),
+                      QStringLiteral("ok=1 reason=none view=%1").arg(view));
+                if (deferred)
+                    *deferred = true;
+                // The scene is on its way to the compositor. Callers treat a
+                // true result as "this frame was accepted", not as "already
+                // presented", so their mapped/committed bookkeeping still
+                // updates before the asynchronous commit lands.
+                return true;
             }
-        } else {
-            // The producer could not export. A transient ring/fence failure
+            trace(QStringLiteral("export-done"),
+                  QStringLiteral("ok=0 reason=%1 view=%2")
+                      .arg(exportReason.isEmpty() ? QStringLiteral("none")
+                                                  : exportReason)
+                      .arg(view));
+            // The producer could not submit. A transient ring/fence failure
             // keeps the rail enabled and retries; a hard export/format failure
             // abandons it for the session so the next frame takes the shm
             // path. Never read back a slot the compositor may still hold.
             const bool transient = exportReason == QLatin1String("ring-exhausted")
-                || exportReason == QLatin1String("sync-timeout");
+                || exportReason == QLatin1String("sync-timeout")
+                || exportReason == QLatin1String("completion-pending")
+                || exportReason == QLatin1String("completion-ready");
             if (!transient) {
                 m_chromeDmabufEnabled = false;
                 ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
@@ -11469,8 +11483,13 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
                 noteSurfacePath(target.label, QStringLiteral("shm"), exportReason);
             }
             deferChromeProducer(producer);
+            return false;
         }
-    } else {
+        // A completed frame disabled the rail (import/export failure). Fall
+        // through and render this scene through shm once.
+    }
+
+    if (!useGpu || !m_chromeDmabufEnabled || !sceneEligible(targets)) {
         QString reason;
         if (!gpu || !gpu->gpuActive())
             reason = m_gpuChromeRequested && !m_gpuChromeReason.isEmpty()
@@ -11502,7 +11521,217 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
 
     if (deferred)
         *deferred = !deferredTargets.isEmpty();
+    // The shm path commits synchronously, so this is its commit endpoint.
+    noteChromeSceneCommitted(producer, targets, anyCommitted);
     return anyCommitted && deferredTargets.isEmpty();
+}
+
+bool ShellController::commitReadyChromeScene(
+    GpuChromeFrameProducer *gpu, int view,
+    const QList<ChromeSceneTarget> &targets, bool *deferred)
+{
+    if (deferred)
+        *deferred = false;
+    if (!gpu || targets.isEmpty())
+        return false;
+
+    ChromeFrameProducer *producer = gpu;
+    const bool traceDock = gpu == m_producers.value(m_dockWindow)
+        && m_dockPopoverTraceId != 0;
+    const auto trace = [this, traceDock](const QString &stage,
+                                         const QString &detail = QString()) {
+        if (traceDock)
+            ChromeStats::instance().traceEvent(m_dockPopoverTraceId, stage, detail);
+    };
+
+    ChromeDmabufFrame frame;
+    QString exportReason;
+    if (!gpu->takeCompletedFrame(view, &frame, &exportReason)) {
+        // The completed slot could not be exported. A missing/not-ready frame
+        // is a transient race with the completion handler; a hard export or
+        // format failure abandons the rail for the session.
+        const bool transient = exportReason == QLatin1String("not-ready")
+            || exportReason == QLatin1String("completion-pending")
+            || exportReason == QLatin1String("sync-timeout");
+        if (!transient) {
+            m_chromeDmabufEnabled = false;
+            ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+            ChromeStats::instance().setTransportPath(
+                QStringLiteral("render-control+shm"));
+        }
+        for (const ChromeSceneTarget &target : targets) {
+            ChromeStats::instance().recordDmabufFallback(target.label,
+                                                         exportReason);
+            noteSurfacePath(target.label, QStringLiteral("shm"), exportReason);
+        }
+        deferChromeProducer(producer);
+        return false;
+    }
+
+    int successCount = 0;
+    bool anyHardFailure = false;
+    QList<int> deferredTargets;
+    for (int index = 0; index < targets.size(); ++index) {
+        const ChromeSceneTarget &target = targets.at(index);
+        if (!m_chromeDmabufAllowed.isEmpty()
+            && !m_chromeDmabufAllowed.contains(target.label)) {
+            noteSurfacePath(target.label, QStringLiteral("shm"),
+                            QStringLiteral("not-selected"));
+            continue;
+        }
+        QString reason;
+        trace(QStringLiteral("target-commit-begin"),
+              QStringLiteral("target=%1").arg(target.label));
+        const ShellProtocol::DmabufCommitResult result =
+            commitChromeDmabufTarget(gpu, target.label, frame,
+                                     target.logicalSize, target.sourceRect,
+                                     target.lockSurfaceId, &reason);
+        if (result == ShellProtocol::DmabufCommitResult::Committed) {
+            ++successCount;
+            trace(QStringLiteral("target-committed"),
+                  QStringLiteral("target=%1 size=%2x%3 source=%4,%5,%6x%7")
+                      .arg(target.label)
+                      .arg(target.logicalSize.width())
+                      .arg(target.logicalSize.height())
+                      .arg(target.sourceRect.x())
+                      .arg(target.sourceRect.y())
+                      .arg(target.sourceRect.width())
+                      .arg(target.sourceRect.height()));
+        } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
+            deferredTargets.append(index);
+            trace(QStringLiteral("target-deferred"),
+                  QStringLiteral("target=%1 reason=%2")
+                      .arg(target.label,
+                           reason.isEmpty() ? QStringLiteral("none") : reason));
+        } else {
+            anyHardFailure = true;
+            trace(QStringLiteral("target-failed"),
+                  QStringLiteral("target=%1 reason=%2")
+                      .arg(target.label,
+                           reason.isEmpty() ? QStringLiteral("none") : reason));
+        }
+    }
+
+    bool anyCommitted = successCount > 0;
+    if (successCount == 0) {
+        // Nothing holds the exported frame. The FBO is safe to read once for
+        // the shm fallback of this frame.
+        gpu->abandonDmabufFrame(view, frame.slot);
+        const QImage image = gpu->readbackCurrentFrame(view);
+        if (!image.isNull()) {
+            for (const ChromeSceneTarget &target : targets) {
+                if (target.commitShm && target.commitShm(image)) {
+                    anyCommitted = true;
+                    noteSurfacePath(target.label, QStringLiteral("shm"));
+                }
+            }
+        } else {
+            deferChromeProducer(producer);
+        }
+    } else if (anyHardFailure || !deferredTargets.isEmpty()) {
+        // A dmabuf commit already handed this scene to the compositor. Do not
+        // read it back; a hard-failed surface is now disabled, so the next
+        // frame renders the whole scene through shm. A deferred surface
+        // retries on the release signal.
+        deferChromeProducer(producer);
+    }
+
+    noteChromeSceneCommitted(producer, targets, anyCommitted);
+    if (deferred)
+        *deferred = !deferredTargets.isEmpty();
+    return anyCommitted && deferredTargets.isEmpty();
+}
+
+void ShellController::onChromeGpuFrameReady(GpuChromeFrameProducer *gpu, int view)
+{
+    auto it = m_chromePaces.find(gpu);
+    if (it == m_chromePaces.end())
+        return;
+    auto queueIt = it.value().pendingScenes.find(view);
+    if (queueIt == it.value().pendingScenes.end() || queueIt.value().isEmpty()) {
+        // The view was discarded after the submit; nothing waits for it.
+        gpu->abandonReadyFrame(view);
+        return;
+    }
+    const QList<ChromeSceneTarget> targets = queueIt.value().takeFirst();
+    commitReadyChromeScene(gpu, view, targets, nullptr);
+
+    // A scene change that arrived while the fence was pending was not
+    // rendered over the in-flight slot; render it now. A quiet completion
+    // must not schedule another frame (that would render the same scene
+    // forever at GPU speed).
+    ChromePace &pace = it.value();
+    if (!pace.dirty || pace.scheduled)
+        return;
+    if (!m_protocol->hasPendingFrame(pace.primaryLabel))
+        scheduleChromeRender(gpu);
+    else if (m_chromeFallbackTimer && !m_chromeFallbackTimer->isActive())
+        m_chromeFallbackTimer->start();
+}
+
+void ShellController::onChromeGpuFrameFailed(GpuChromeFrameProducer *gpu, int view,
+                                             const QString &reason)
+{
+    auto it = m_chromePaces.find(gpu);
+    if (it == m_chromePaces.end())
+        return;
+    auto queueIt = it.value().pendingScenes.find(view);
+    if (queueIt == it.value().pendingScenes.end() || queueIt.value().isEmpty())
+        return;
+    const QList<ChromeSceneTarget> targets = queueIt.value().takeFirst();
+
+    // A timed-out completion never reaches the compositor. The producer kept
+    // the last completed frame, so the bounded retry can render again instead
+    // of committing a partial buffer.
+    const bool transient = reason == QLatin1String("sync-timeout")
+        || reason == QLatin1String("ring-exhausted");
+    if (!transient) {
+        m_chromeDmabufEnabled = false;
+        ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
+        ChromeStats::instance().setTransportPath(
+            QStringLiteral("render-control+shm"));
+    }
+    for (const ChromeSceneTarget &target : targets) {
+        ChromeStats::instance().recordDmabufFallback(target.label, reason);
+        noteSurfacePath(target.label, QStringLiteral("shm"), reason);
+    }
+    deferChromeProducer(gpu);
+}
+
+void ShellController::discardChromeView(GpuChromeFrameProducer *gpu, int view)
+{
+    if (!gpu)
+        return;
+    auto it = m_chromePaces.find(gpu);
+    if (it != m_chromePaces.end())
+        it.value().pendingScenes.remove(view);
+    gpu->discardView(view);
+}
+
+void ShellController::noteChromeSceneCommitted(
+    ChromeFrameProducer *producer, const QList<ChromeSceneTarget> &targets,
+    bool committed)
+{
+    if (producer != m_producers.value(m_dockWindow) || m_dockPopoverTraceId == 0)
+        return;
+    bool popup = false;
+    for (const ChromeSceneTarget &target : targets) {
+        if (target.label == QLatin1String("dock-popup")) {
+            popup = true;
+            break;
+        }
+    }
+    const bool popupCommitted = committed && popup;
+    ChromeStats::instance().traceEvent(
+        m_dockPopoverTraceId, QStringLiteral("commit-done"),
+        QStringLiteral("ok=%1 targets=%2 popup=%3")
+            .arg(committed ? 1 : 0)
+            .arg(targets.size())
+            .arg(popupCommitted ? 1 : 0));
+    // Only a frame that actually carried the popover target is the
+    // request-to-visible endpoint. A reveal/settle frame before the popover
+    // rect updates must not end the trace.
+    m_dockPopoverTraceCommitted = popupCommitted;
 }
 
 QImage ShellController::renderChromeFrame(QQuickWindow *window, int view)
@@ -11590,7 +11819,7 @@ void ShellController::releaseDockPopupTarget()
     m_dockPopupTargetSize = QSize();
     if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(
             m_producers.value(m_dockWindow))) {
-        gpu->discardView(GpuChromeFrameProducer::PopupView);
+        discardChromeView(gpu, GpuChromeFrameProducer::PopupView);
     }
     if (!previous.isEmpty()) {
         ChromeStats::instance().recordSceneResize(QStringLiteral("dock-popup"),
@@ -11608,7 +11837,7 @@ void ShellController::releaseMenuBarPopupTarget()
     m_menuBarPopupTargetSize = QSize();
     if (auto *gpu =
             qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_window))) {
-        gpu->discardView(GpuChromeFrameProducer::PopupView);
+        discardChromeView(gpu, GpuChromeFrameProducer::PopupView);
     }
     if (!previous.isEmpty()) {
         ChromeStats::instance().recordSceneResize(QStringLiteral("menubar-popup"),
@@ -11868,7 +12097,7 @@ void ShellController::renderDock()
             }
         } else {
             if (!m_dockPopupTargetSize.isEmpty() && gpuProducer)
-                gpuProducer->discardView(GpuChromeFrameProducer::PopupView);
+                discardChromeView(gpuProducer, GpuChromeFrameProducer::PopupView);
             m_dockPopupBudget.reset();
             m_dockPopupTargetSize = QSize();
         }
@@ -11879,7 +12108,6 @@ void ShellController::renderDock()
                                            QStringLiteral("commit-begin"));
     bool deferred = false;
     const bool committed = commitChromeScene(m_dockWindow, targets, &deferred);
-    bool popupCommitted = committed && hasPopover && !independentPopup;
     if (independentPopup && hasPopover && gpuProducer) {
         // Render the popup into its own content-sized view. The root item is
         // translated so the popup origin is the view origin; the strip is
@@ -11902,9 +12130,8 @@ void ShellController::renderDock()
                      image, QSize(contentWidth, contentHeight), popupSource);
              }});
         bool popupDeferred = false;
-        popupCommitted = commitChromeScene(
-            m_dockWindow, popupTargets, &popupDeferred,
-            GpuChromeFrameProducer::PopupView);
+        commitChromeScene(m_dockWindow, popupTargets, &popupDeferred,
+                          GpuChromeFrameProducer::PopupView);
         // Restore the input scene origin/size. The next strip render resizes
         // the window back to `stripSceneSize`; between frames the window must
         // still cover the popup so pointer hit-testing stays inside it.
@@ -11923,18 +12150,6 @@ void ShellController::renderDock()
                     .arg(contentHeight)
                     .arg(popupDeferred ? 1 : 0));
         }
-    }
-    if (m_dockPopoverTraceId != 0) {
-        ChromeStats::instance().traceEvent(
-            m_dockPopoverTraceId, QStringLiteral("commit-done"),
-            QStringLiteral("ok=%1 targets=%2 popup=%3")
-                .arg(committed ? 1 : 0)
-                .arg(targets.size())
-                .arg(popupCommitted ? 1 : 0));
-        // Only a frame that actually carried the popover target is the
-        // request-to-visible endpoint. A reveal/settle frame before the
-        // popover rect updates must not end the trace.
-        m_dockPopoverTraceCommitted = popupCommitted;
     }
     if (!committed && !deferred)
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
@@ -12038,14 +12253,13 @@ void ShellController::render()
         }
     } else {
         if (!m_menuBarPopupTargetSize.isEmpty() && gpuProducer)
-            gpuProducer->discardView(GpuChromeFrameProducer::PopupView);
+            discardChromeView(gpuProducer, GpuChromeFrameProducer::PopupView);
         m_menuBarPopupBudget.reset();
         m_menuBarPopupTargetSize = QSize();
     }
 
     bool deferred = false;
     const bool committed = commitChromeScene(m_window, targets, &deferred);
-    bool popupCommitted = committed && popupShown && !independentPopup;
     if (independentPopup && popupShown && gpuProducer) {
         m_item->setX(-m_popupX);
         m_item->setY(-m_popupY);
@@ -12063,9 +12277,8 @@ void ShellController::render()
                  return m_protocol->commitPopupImage(
                      image, QSize(contentWidth, contentHeight), popupSource);
              }});
-        popupCommitted = commitChromeScene(
-            m_window, popupTargets, nullptr,
-            GpuChromeFrameProducer::PopupView);
+        commitChromeScene(m_window, popupTargets, nullptr,
+                          GpuChromeFrameProducer::PopupView);
         m_item->setX(0);
         m_item->setY(0);
         gpuProducer->resize(

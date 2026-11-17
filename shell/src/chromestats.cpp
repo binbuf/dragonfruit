@@ -287,6 +287,17 @@ void ChromeStats::recordDmabufSyncWait(qint64 waitUs, bool timeout)
     Q_UNUSED(waitUs);
 }
 
+void ChromeStats::recordDmabufCompletionWait(qint64 waitUs, bool timeout)
+{
+    if (!m_enabled)
+        return;
+    ++m_dmabufCompletions;
+    if (timeout)
+        ++m_dmabufCompletionTimeouts;
+    if (waitUs >= 0)
+        m_dmabufCompletionUs.append(waitUs);
+}
+
 void ChromeStats::recordSceneResize(const QString &surface, const QSize &from,
                                     const QSize &to)
 {
@@ -519,7 +530,8 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                  "dmabuf_deferred=%15 dmabuf_fallbacks=%16 gpu=%17 "
                  "gpu_reason=%18 %19 %20 dmabuf_buffers=%21 dmabuf_allocs=%22 "
                  "dmabuf_reuses=%23 dmabuf_sync=%24 dmabuf_sync_waits=%25 "
-                 "dmabuf_sync_timeouts=%26 copies=%27")
+                 "dmabuf_sync_timeouts=%26 copies=%27 dmabuf_completions=%28 "
+                 "dmabuf_completion_timeouts=%29")
                  .arg(label)
                  .arg(m_transportPath)
                  .arg(m_sceneFrames)
@@ -546,7 +558,9 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                  .arg(m_dmabufSyncMode)
                  .arg(m_dmabufSyncWaits)
                  .arg(m_dmabufSyncTimeouts)
-                 .arg(m_copies);
+                 .arg(m_copies)
+                 .arg(m_dmabufCompletions)
+                 .arg(m_dmabufCompletionTimeouts);
 
     // T238: the A/B stage line. Kept separate from `chrome stats` so the
     // existing report parsers keep reading the same prefix and field set.
@@ -554,7 +568,8 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                  "chrome stage stats (%1): scene_resizes=%2 fbo_allocs=%3 "
                  "fbo_bytes_live=%4 fbo_bytes_peak=%5 dmabuf_imports=%6 "
                  "dmabuf_import_failures=%7 ring_exhausted=%8 popover_opens=%9 "
-                 "%10 %11 %12 %13 %14 %15 %16")
+                 "%10 %11 %12 %13 %14 %15 %16 dmabuf_completions=%17 "
+                 "dmabuf_completion_timeouts=%18 %19")
                  .arg(label)
                  .arg(m_sceneResizes)
                  .arg(m_fboAllocs)
@@ -570,7 +585,10 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                  .arg(timingText("dmabuf_hold_us", m_dmabufHoldUs))
                  .arg(timingText("dmabuf_shared_hold_us", m_dmabufSharedHoldUs))
                  .arg(timingText("commit_flush_us", m_commitFlushUs))
-                 .arg(timingText("popover_open_us", m_popoverOpenUs));
+                 .arg(timingText("popover_open_us", m_popoverOpenUs))
+                 .arg(m_dmabufCompletions)
+                 .arg(m_dmabufCompletionTimeouts)
+                 .arg(timingText("dmabuf_completion_us", m_dmabufCompletionUs));
 
     QStringList names = m_surfaces.keys();
     names.sort();
@@ -643,6 +661,7 @@ void ChromeStats::emitStats(const QString &label)
     m_dmabufRoundtripUs.clear();
     m_dmabufHoldUs.clear();
     m_dmabufSharedHoldUs.clear();
+    m_dmabufCompletionUs.clear();
     m_commitFlushUs.clear();
     m_popoverOpenUs.clear();
     for (auto it = m_surfaces.begin(); it != m_surfaces.end(); ++it) {

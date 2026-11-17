@@ -50,6 +50,8 @@ void TestChromeStats::summaryCarriesTransportCounters()
     stats.setDmabufSyncMode(QStringLiteral("gl-fence"));
     stats.recordDmabufSyncWait(100, false);
     stats.recordDmabufSyncWait(200, true);
+    stats.recordDmabufCompletionWait(150, false);
+    stats.recordDmabufCompletionWait(250, true);
     stats.recordDmabufFallback(QStringLiteral("dock"), QStringLiteral("ring-exhausted"));
     stats.recordFrameCallback(QStringLiteral("dock"), 1200);
     stats.recordSceneResize(QStringLiteral("dock"), QSize(100, 50), QSize(200, 100));
@@ -77,6 +79,9 @@ void TestChromeStats::summaryCarriesTransportCounters()
     QCOMPARE(field(global, QStringLiteral("dmabuf_buffers")), QStringLiteral("1"));
     QCOMPARE(field(global, QStringLiteral("dmabuf_fallbacks")), QStringLiteral("1"));
     QCOMPARE(field(global, QStringLiteral("dmabuf_sync_timeouts")), QStringLiteral("1"));
+    QCOMPARE(field(global, QStringLiteral("dmabuf_completions")), QStringLiteral("2"));
+    QCOMPARE(field(global, QStringLiteral("dmabuf_completion_timeouts")),
+             QStringLiteral("1"));
     QCOMPARE(field(global, QStringLiteral("shm_bytes")), QStringLiteral("0"));
 
     const QString stage = lines.at(1);
@@ -88,6 +93,11 @@ void TestChromeStats::summaryCarriesTransportCounters()
     QCOMPARE(field(stage, QStringLiteral("dmabuf_imports")), QStringLiteral("1"));
     QCOMPARE(field(stage, QStringLiteral("ring_exhausted")), QStringLiteral("1"));
     QCOMPARE(field(stage, QStringLiteral("popover_opens")), QStringLiteral("1"));
+    QCOMPARE(field(stage, QStringLiteral("dmabuf_completions")), QStringLiteral("2"));
+    QCOMPARE(field(stage, QStringLiteral("dmabuf_completion_timeouts")),
+             QStringLiteral("1"));
+    QCOMPARE(field(stage, QStringLiteral("dmabuf_completion_us_p50")),
+             QStringLiteral("150"));
     QCOMPARE(field(stage, QStringLiteral("fbo_create_us_p50")), QStringLiteral("300"));
     QCOMPARE(field(stage, QStringLiteral("dmabuf_import_us_p50")), QStringLiteral("1700"));
     QCOMPARE(field(stage, QStringLiteral("dmabuf_roundtrip_us_p50")),

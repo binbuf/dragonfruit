@@ -176,6 +176,7 @@ int ChromeDmabufRing::allocateSlot()
         slot = Slot();
         slot.used = true;
         slot.busy = true;
+        slot.phase = Phase::Submitted;
         ++m_allocations;
         return i;
     }
@@ -184,6 +185,7 @@ int ChromeDmabufRing::allocateSlot()
     Slot slot;
     slot.used = true;
     slot.busy = true;
+    slot.phase = Phase::Submitted;
     m_slots.append(slot);
     ++m_allocations;
     return m_slots.size() - 1;
@@ -196,6 +198,7 @@ int ChromeDmabufRing::acquire()
     const int free = findFreeCurrent();
     if (free >= 0) {
         m_slots[free].busy = true;
+        m_slots[free].phase = Phase::Submitted;
         ++m_reuses;
         return free;
     }
@@ -220,6 +223,7 @@ bool ChromeDmabufRing::release(uint64_t serial)
     for (Slot &slot : m_slots) {
         if (slot.used && slot.busy && slot.serial == serial) {
             slot.busy = false;
+            slot.phase = Phase::Free;
             return true;
         }
     }
@@ -234,6 +238,7 @@ bool ChromeDmabufRing::releaseSlot(int slot)
     if (!entry.used || !entry.busy)
         return false;
     entry.busy = false;
+    entry.phase = Phase::Free;
     return true;
 }
 
@@ -246,7 +251,78 @@ bool ChromeDmabufRing::abandon(int slot)
         return false;
     entry.busy = false;
     entry.serial = 0;
+    entry.phase = Phase::Free;
     return true;
+}
+
+bool ChromeDmabufRing::markPending(int slot)
+{
+    if (slot < 0 || slot >= m_slots.size())
+        return false;
+    Slot &entry = m_slots[slot];
+    if (!entry.used || !entry.busy || entry.phase != Phase::Submitted)
+        return false;
+    entry.phase = Phase::Pending;
+    return true;
+}
+
+bool ChromeDmabufRing::markReady(int slot)
+{
+    if (slot < 0 || slot >= m_slots.size())
+        return false;
+    Slot &entry = m_slots[slot];
+    if (!entry.used || !entry.busy || entry.phase != Phase::Pending)
+        return false;
+    entry.phase = Phase::Ready;
+    return true;
+}
+
+bool ChromeDmabufRing::markOwned(int slot)
+{
+    if (slot < 0 || slot >= m_slots.size())
+        return false;
+    Slot &entry = m_slots[slot];
+    if (!entry.used || !entry.busy || entry.phase != Phase::Ready)
+        return false;
+    entry.phase = Phase::Owned;
+    return true;
+}
+
+ChromeDmabufRing::Phase ChromeDmabufRing::phase(int slot) const
+{
+    if (slot < 0 || slot >= m_slots.size() || !m_slots.at(slot).used)
+        return Phase::Free;
+    return m_slots.at(slot).phase;
+}
+
+int ChromeDmabufRing::pendingCount() const
+{
+    int count = 0;
+    for (const Slot &slot : m_slots) {
+        if (slot.used && slot.phase == Phase::Pending)
+            ++count;
+    }
+    return count;
+}
+
+int ChromeDmabufRing::readyCount() const
+{
+    int count = 0;
+    for (const Slot &slot : m_slots) {
+        if (slot.used && slot.phase == Phase::Ready)
+            ++count;
+    }
+    return count;
+}
+
+int ChromeDmabufRing::ownedCount() const
+{
+    int count = 0;
+    for (const Slot &slot : m_slots) {
+        if (slot.used && slot.phase == Phase::Owned)
+            ++count;
+    }
+    return count;
 }
 
 QVector<int> ChromeDmabufRing::takeRetired()

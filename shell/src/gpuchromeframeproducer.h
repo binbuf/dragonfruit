@@ -30,6 +30,7 @@ class QOffscreenSurface;
 class QOpenGLContext;
 class QOpenGLFramebufferObject;
 class QQuickRenderControl;
+class QTimer;
 
 class GpuChromeFrameProducer : public ChromeFrameProducer
 {
@@ -88,11 +89,36 @@ public:
     // stays owned by this producer and is valid until the slot is retired.
     // The slot remains busy until `releaseDmabufFrame()` (from
     // `wl_buffer.release`) or `abandonDmabufFrame()` (deferred/failed commit).
+    // This is the synchronous API (the smoke rail): it waits for the fence
+    // before exporting. The controller uses `submitFrame()` instead.
     bool exportFrame(ChromeDmabufFrame *frame, QString *reason = nullptr);
     // Render/export one view. `view` is `PrimaryView` or `PopupView`; each has
     // its own ring, so a popup allocation never occupies a strip slot.
     bool exportFrame(int view, ChromeDmabufFrame *frame,
                      QString *reason = nullptr);
+
+    // Asynchronous GPU completion (T238). `submitFrame()` renders into a free
+    // ring slot and retains its fence without waiting; the producer polls that
+    // fence from its own event-loop timer on the render context and emits
+    // `frameReady(view)` when the slot may be exported and committed. A fence
+    // that exceeds `completionBudgetUs()` emits
+    // `frameFailed(view, "sync-timeout")`; the slot is abandoned and the last
+    // completed frame stays the readback fallback. Frames per view are kept in
+    // submission order, so commits stay in order even when several surfaces
+    // share one producer.
+    bool submitFrame(int view, QString *reason = nullptr);
+    // Export the completed slot for `view` and mark it compositor-owned.
+    // False when no frame is ready. The slot stays busy until its release.
+    bool takeCompletedFrame(int view, ChromeDmabufFrame *frame,
+                            QString *reason = nullptr);
+    bool hasPendingFrame(int view) const;
+    bool hasReadyFrame(int view) const;
+    // Return a completed but uncommitted frame to the ring (the scene was
+    // discarded before its commit).
+    void abandonReadyFrame(int view);
+    // The bounded completion budget for one submitted frame.
+    static qint64 completionBudgetUs();
+
     // The stats label for a view (`dock`/`dock-popup`, `menubar`/...). The
     // controller sets the popup label so allocation/peak accounting names the
     // surface that owns the bytes.
@@ -134,28 +160,69 @@ public:
     static bool environmentRequested();
     static QString environmentValue();
 
+signals:
+    // A submitted frame completed and its dmabuf export succeeded. The
+    // controller exports it with `takeCompletedFrame()` and commits it.
+    void frameReady(int view);
+    // A submitted frame could not be completed or exported. `reason` is the
+    // same token the synchronous path reports (`sync-timeout`, `no-egl-export`,
+    // ...); the slot has already been returned to the ring.
+    void frameFailed(int view, const QString &reason);
+
 private:
     struct SlotResources {
         QOpenGLFramebufferObject *fbo = nullptr;
         ChromeDmabufFrame frame;
+        // The export serial assigned at submit. `ensureDmabufExport()` may
+        // rebuild `frame` from the exporter, which does not carry the serial,
+        // so it is kept here and re-applied before the commit.
+        uint64_t serial = 0;
+        // True once this slot held a frame whose fence signalled and whose
+        // content may be reused without a forced full repaint.
         bool rendered = false;
+        // The retained completion fence for a submitted frame, or null when
+        // the render already finished synchronously.
+        void *fence = nullptr;
+        // Monotonic submit time, for the completion budget and the wait stats.
+        qint64 submitNs = 0;
     };
 
     struct ViewState {
         ChromeDmabufRing ring;
         QHash<int, SlotResources> slotResources;
         int lastRenderedSlot = -1;
+        // Slots whose fence is still being polled, oldest first. Several
+        // surfaces can share one producer and view (one lock surface per
+        // output), so a single in-flight slot is not enough.
+        QVector<int> pendingSlots;
+        // Completed + exported slots waiting for `takeCompletedFrame()`,
+        // oldest first. Fences signal in submission order, so the commit
+        // order matches the submit order.
+        QVector<int> readySlots;
         QString label;
     };
+
+    // The result of a non-blocking fence check for one slot.
+    enum class Completion { Pending, Ready, Timeout };
 
     ViewState &viewState(int view);
     const ViewState *viewState(int view) const;
 
     bool configureRing(int view, const QSize &physical);
+    // Render into `slot` and retain the completion fence. Does not wait.
     bool renderToFramebuffer(int view, int slot);
+    // Blocking completion for the synchronous API only.
+    bool waitForSlot(int view, int slot, qint64 budgetUs);
+    // Zero-timeout fence check. Deletes the fence once it settles.
+    Completion checkCompletion(int view, int slot);
+    // Promote a fence-complete slot to ready and export its dmabuf.
+    QString finishReadySlot(int view, int slot);
+    void pollCompletion();
+    void armCompletionPoll();
+    void cancelPending(int view);
+    void clearFence(SlotResources &resources);
     bool ensureFramebuffer(int view, int slot, const QSize &physical);
     bool ensureDmabufExport(int view, int slot);
-    bool syncGpuWork();
     QImage readbackSlot(int view, int slot);
     void collectRetiredSlots(int view);
     void destroySlotResources(int view, int slot);
@@ -182,4 +249,8 @@ private:
     QString m_reason;
     QString m_exportReason;
     QImage m_lastFrame;
+    // The completion poll runs on the shell event loop while any view has a
+    // submitted frame. It is stopped as soon as every fence has settled.
+    QTimer *m_completionTimer = nullptr;
+    int m_completionPolls = 0;
 };

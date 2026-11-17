@@ -78,6 +78,11 @@ public:
     // a frame is not committed.
     void setDmabufSyncMode(const QString &mode);
     void recordDmabufSyncWait(qint64 waitUs, bool timeout);
+    // T238 completion: the fence latency of one asynchronously submitted
+    // frame, measured from submit to the observed completion. This is wall
+    // time the shell thread did not spend waiting; it is reported separately
+    // from render and import cost. A timed-out completion is not committed.
+    void recordDmabufCompletionWait(qint64 waitUs, bool timeout);
 
     // T238: stage timings for the Dock popover A/B. These are recorded even
     // when only `DRAGONFRUIT_CHROME_STATS` is set; the correlation trace is a
@@ -224,6 +229,8 @@ private:
     quint64 m_dmabufReuses = 0;
     quint64 m_dmabufSyncWaits = 0;
     quint64 m_dmabufSyncTimeouts = 0;
+    quint64 m_dmabufCompletions = 0;
+    quint64 m_dmabufCompletionTimeouts = 0;
     QString m_dmabufSyncMode = QStringLiteral("none");
     quint64 m_frameCallbacks = 0;
     quint64 m_signalDumps = 0;
@@ -242,6 +249,7 @@ private:
     QVector<qint64> m_dmabufRoundtripUs;
     QVector<qint64> m_dmabufHoldUs;
     QVector<qint64> m_dmabufSharedHoldUs;
+    QVector<qint64> m_dmabufCompletionUs;
     QVector<qint64> m_commitFlushUs;
     QVector<qint64> m_popoverOpenUs;
     QHash<QString, SurfaceStats> m_surfaces;

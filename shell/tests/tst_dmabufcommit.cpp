@@ -27,6 +27,10 @@ private slots:
     void ringFormatChangeRetires();
     void ringFirstFormatIsAdopted();
     void ringResetDropsEverything();
+    void ringTracksCompletionPhases();
+    void ringRefusesPhaseSkips();
+    void ringAbandonFromPendingFreesSlot();
+    void ringRetireWhilePendingWaitsForRelease();
 };
 
 namespace {
@@ -296,6 +300,99 @@ void TestDmabufCommit::ringResetDropsEverything()
     QVERIFY(ring.size().isEmpty());
     QCOMPARE(ring.allocations(), quint64(0));
     QCOMPARE(ring.reuses(), quint64(0));
+}
+
+void TestDmabufCommit::ringTracksCompletionPhases()
+{
+    ChromeDmabufRing ring(3);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    const int slot = ring.acquire();
+    QCOMPARE(slot, 0);
+    // Acquired work is submitted, not yet pending or ready.
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Submitted);
+    QCOMPARE(ring.pendingCount(), 0);
+    QVERIFY(ring.setSerial(slot, 71));
+    QVERIFY(ring.markPending(slot));
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Pending);
+    QCOMPARE(ring.pendingCount(), 1);
+    QVERIFY(ring.isBusy(slot));
+    // A pending slot is not reusable: the fence still guards its pixels.
+    QVERIFY(!ring.isFree(slot));
+    QVERIFY(ring.markReady(slot));
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Ready);
+    QCOMPARE(ring.readyCount(), 1);
+    QCOMPARE(ring.pendingCount(), 0);
+    QVERIFY(ring.markOwned(slot));
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Owned);
+    QCOMPARE(ring.ownedCount(), 1);
+    QCOMPARE(ring.readyCount(), 0);
+    // The compositor release is the only transition back to reuse.
+    QVERIFY(ring.release(71));
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Free);
+    QCOMPARE(ring.ownedCount(), 0);
+    QVERIFY(ring.isFree(slot));
+}
+
+void TestDmabufCommit::ringRefusesPhaseSkips()
+{
+    ChromeDmabufRing ring(2);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    const int slot = ring.acquire();
+    // A frame cannot become ready before its fence was retained, and cannot
+    // be owned before it is ready.
+    QVERIFY(!ring.markReady(slot));
+    QVERIFY(!ring.markOwned(slot));
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Submitted);
+    QVERIFY(ring.markPending(slot));
+    QVERIFY(!ring.markOwned(slot));
+    QVERIFY(!ring.markPending(slot));
+    // A free or unknown slot has no phase transition.
+    QVERIFY(!ring.markPending(slot + 5));
+    QCOMPARE(ring.phase(slot + 5), ChromeDmabufRing::Phase::Free);
+}
+
+void TestDmabufCommit::ringAbandonFromPendingFreesSlot()
+{
+    ChromeDmabufRing ring(2);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    const int slot = ring.acquire();
+    QVERIFY(ring.setSerial(slot, 81));
+    QVERIFY(ring.markPending(slot));
+    // A view that closes while its frame is in flight returns the slot
+    // without waiting for a compositor release.
+    QVERIFY(ring.abandon(slot));
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Free);
+    QCOMPARE(ring.pendingCount(), 0);
+    QVERIFY(ring.isFree(slot));
+    // The stale serial cannot release the reused slot.
+    QVERIFY(!ring.release(81));
+}
+
+void TestDmabufCommit::ringRetireWhilePendingWaitsForRelease()
+{
+    ChromeDmabufRing ring(3);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    const int slot = ring.acquire();
+    QVERIFY(ring.setSerial(slot, 91));
+    QVERIFY(ring.markPending(slot));
+
+    // A resize retires the generation but cannot destroy a slot the GPU is
+    // still writing. The completion is what makes it collectible.
+    QVERIFY(ring.setSize(QSize(640, 360)));
+    QVERIFY(ring.isRetired(slot));
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Pending);
+    QVERIFY(ring.takeRetired().isEmpty());
+
+    QVERIFY(ring.markReady(slot));
+    QVERIFY(ring.markOwned(slot));
+    QVERIFY(ring.release(91));
+    const QVector<int> retired = ring.takeRetired();
+    QCOMPARE(retired, QVector<int>{slot});
+    QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Free);
 }
 
 QTEST_MAIN(TestDmabufCommit)

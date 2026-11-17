@@ -133,6 +133,20 @@ private:
 class ChromeDmabufRing
 {
 public:
+    // The GPU completion lifecycle of one slot. `acquire()` starts a slot in
+    // `Submitted`; a producer that keeps the fence without waiting moves it to
+    // `Pending`, then to `Ready` once the fence signals and the export exists,
+    // then to `Owned` when the compositor has the buffer. The compositor's
+    // release returns it to `Free`. A slot never leaves `Free` for rendering
+    // while any later phase still holds it.
+    enum class Phase {
+        Free,
+        Submitted,
+        Pending,
+        Ready,
+        Owned,
+    };
+
     explicit ChromeDmabufRing(int capacity = 3);
 
     // Change the geometry. Returns true when live slots were retired.
@@ -156,6 +170,16 @@ public:
     int acquire();
     // Attach the frame serial to an acquired slot. False when it is not busy.
     bool setSerial(int slot, uint64_t serial);
+    // Advance an acquired slot through the completion lifecycle. Each step is
+    // refused unless the slot is in the phase the step consumes, so a caller
+    // cannot mark a frame ready before its fence was retained.
+    bool markPending(int slot);
+    bool markReady(int slot);
+    bool markOwned(int slot);
+    Phase phase(int slot) const;
+    int pendingCount() const;
+    int readyCount() const;
+    int ownedCount() const;
     // `wl_buffer.release` returns the busy slot with this serial.
     bool release(uint64_t serial);
     bool releaseSlot(int slot);
@@ -186,6 +210,7 @@ private:
         bool busy = false;
         bool retired = false;
         uint64_t serial = 0;
+        Phase phase = Phase::Free;
     };
 
     int allocateSlot();

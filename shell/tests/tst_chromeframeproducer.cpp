@@ -6,6 +6,7 @@
 #include <QtTest>
 
 #include "chromeframeproducer.h"
+#include "gpuchromeframeproducer.h"
 
 class TestChromeFrameProducer : public QObject
 {
@@ -38,6 +39,28 @@ private slots:
                      QColor(Qt::red));
             QVERIFY(!producer.window()->isVisible());
         }
+    }
+
+    void uninitializedAsyncSubmitFailsWithoutPendingState()
+    {
+        GpuChromeFrameProducer producer;
+        QVERIFY(!producer.initialized());
+        QVERIFY(producer.completionBudgetUs() > 0);
+        // No context, no window: the submit is a recorded failure and leaves
+        // no in-flight slot behind for the controller to wait on.
+        QString reason;
+        QVERIFY(!producer.submitFrame(GpuChromeFrameProducer::PrimaryView,
+                                      &reason));
+        QVERIFY(!reason.isEmpty());
+        QVERIFY(!producer.hasPendingFrame(GpuChromeFrameProducer::PrimaryView));
+        QVERIFY(!producer.hasReadyFrame(GpuChromeFrameProducer::PrimaryView));
+        ChromeDmabufFrame frame;
+        QString takeReason;
+        QVERIFY(!producer.takeCompletedFrame(
+            GpuChromeFrameProducer::PrimaryView, &frame, &takeReason));
+        QCOMPARE(takeReason, QStringLiteral("not-ready"));
+        // Discarding an idle view is a no-op, not a crash.
+        producer.discardView(GpuChromeFrameProducer::PopupView);
     }
 };
 

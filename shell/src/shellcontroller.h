@@ -635,6 +635,24 @@ private:
     bool commitChromeScene(QQuickWindow *window,
                            const QList<ChromeSceneTarget> &targets,
                            bool *deferred = nullptr, int view = 0);
+    // T238 completion: export and commit the completed frame a view's producer
+    // announced with `frameReady`. The targets captured when the frame was
+    // submitted describe its geometry; committing them keeps submission order
+    // even though rendering no longer waits for the fence.
+    bool commitReadyChromeScene(GpuChromeFrameProducer *gpu, int view,
+                                const QList<ChromeSceneTarget> &targets,
+                                bool *deferred = nullptr);
+    void onChromeGpuFrameReady(GpuChromeFrameProducer *gpu, int view);
+    void onChromeGpuFrameFailed(GpuChromeFrameProducer *gpu, int view,
+                                const QString &reason);
+    // Drop a view's in-flight work and its queued targets (popup close or
+    // warm-target release). Safe when the view is already idle.
+    void discardChromeView(GpuChromeFrameProducer *gpu, int view);
+    // The one place a committed scene records its trace endpoint and popup
+    // ownership, for the synchronous and asynchronous commit paths alike.
+    void noteChromeSceneCommitted(ChromeFrameProducer *producer,
+                                  const QList<ChromeSceneTarget> &targets,
+                                  bool committed);
     // The independently sized popup views (T238 popup-target work). The
     // release slots return the warm allocation after the interaction session
     // ends; `shared` keeps the previous one-scene path.
@@ -648,6 +666,10 @@ private:
         const QRect &sourceRect, quintptr lockSurfaceId, QString *reason);
     // Mark the producer slot dirty for a retry after a deferred commit.
     void deferChromeProducer(ChromeFrameProducer *producer);
+    // True while a GPU producer still holds an uncommitted frame for either
+    // view. A render requested now would be deferred, so the pacer must not
+    // spin on it; the completion handler schedules the next frame instead.
+    bool chromeProducerAwaitingCompletion(ChromeFrameProducer *producer) const;
     // The stable stats label that owns a surface's producer (`dock-popup`
     // shares the Dock's render, `menubar-popup` the menu bar's).
     QString chromePaceLabel(const QString &surface) const;
@@ -1243,6 +1265,11 @@ private:
         // entry is removed when the last surface releases it, so the shared
         // Dock + popover hold time is measurable.
         QHash<quint64, qint64> dmabufCommitNs;
+        // T238 completion: the targets a submitted GPU frame will commit when
+        // its fence signals, keyed by view and kept in submission order. A
+        // producer can hold several frames (one per surface sharing it), and
+        // the commit handler pops the oldest matching scene.
+        QHash<int, QList<QList<ChromeSceneTarget>>> pendingScenes;
     };
     QHash<ChromeFrameProducer *, ChromePace> m_chromePaces;
     QTimer *m_chromeFallbackTimer = nullptr;

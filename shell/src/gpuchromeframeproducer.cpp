@@ -13,12 +13,22 @@
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
+#include <QTimer>
 #include <QtMath>
 #include <QtGui/qopenglcontext_platform.h>
+
+#include <chrono>
 
 #include "chromestats.h"
 
 namespace {
+
+qint64 monotonicNs()
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
 
 // The producer accounts for the attachments it asks Qt to allocate: RGBA8
 // colour (4 bytes/pixel) plus the combined 24-bit depth/8-bit stencil render
@@ -324,47 +334,23 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int view, int slot,
     return true;
 }
 
-bool GpuChromeFrameProducer::syncGpuWork()
+qint64 GpuChromeFrameProducer::completionBudgetUs()
 {
-    if (!m_renderContext)
-        return false;
-    QOpenGLExtraFunctions *functions = m_renderContext->extraFunctions();
-    if (!functions) {
-        m_renderContext->functions()->glFinish();
-        ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-finish"));
-        return true;
-    }
+    // The synchronous path waited in 10 ms fence chunks for up to ~100 ms.
+    // The budget is unchanged, but it is now wall time the shell thread
+    // spends handling input instead of blocking in the wait.
+    return 100000;
+}
 
-    GLsync sync = functions->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    if (!sync) {
-        m_renderContext->functions()->glFinish();
-        ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-finish"));
-        return true;
+void GpuChromeFrameProducer::clearFence(SlotResources &resources)
+{
+    if (!resources.fence)
+        return;
+    if (m_renderContext) {
+        if (QOpenGLExtraFunctions *functions = m_renderContext->extraFunctions())
+            functions->glDeleteSync(static_cast<GLsync>(resources.fence));
     }
-
-    QElapsedTimer timer;
-    timer.start();
-    GLenum status = GL_TIMEOUT_EXPIRED;
-    constexpr qint64 kFenceTimeoutUs = 100000;
-    while (timer.nsecsElapsed() / 1000 < kFenceTimeoutUs) {
-        status = functions->glClientWaitSync(
-            sync, GL_SYNC_FLUSH_COMMANDS_BIT, 10000000);
-        if (status != GL_TIMEOUT_EXPIRED)
-            break;
-    }
-    functions->glDeleteSync(sync);
-
-    const qint64 waitUs = timer.nsecsElapsed() / 1000;
-    const bool ok = status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED;
-    ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-fence"));
-    ChromeStats::instance().recordDmabufSyncWait(waitUs, !ok);
-    if (!ok) {
-        // Do not hand an unfinished buffer to the compositor. The controller
-        // commits the last complete frame through shm instead.
-        m_exportReason = QStringLiteral("sync-timeout");
-        return false;
-    }
-    return true;
+    resources.fence = nullptr;
 }
 
 bool GpuChromeFrameProducer::renderToFramebuffer(int view, int slot)
@@ -398,20 +384,373 @@ bool GpuChromeFrameProducer::renderToFramebuffer(int view, int slot)
     m_renderControl->render();
     m_renderControl->endFrame();
 
-    if (!syncGpuWork()) {
-        // The target may hold an unfinished frame. Force a full render into it
-        // on the next attempt instead of treating it as a valid static frame.
-        resources.rendered = false;
-        m_renderContext->doneCurrent();
-        return false;
+    // Retain a completion fence instead of waiting. The slot cannot be
+    // exported or committed until the fence signals; the controller keeps
+    // handling input while that happens.
+    clearFence(resources);
+    resources.rendered = false;
+    resources.submitNs = monotonicNs();
+    if (QOpenGLExtraFunctions *functions = m_renderContext->extraFunctions()) {
+        resources.fence =
+            functions->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        if (resources.fence) {
+            // Submit the frame now so the GPU starts on it before the first
+            // completion poll, instead of waiting for a later flush.
+            functions->glFlush();
+            ChromeStats::instance().setDmabufSyncMode(
+                QStringLiteral("gl-fence-async"));
+        }
     }
-    resources.rendered = true;
-    // Only a fence-complete frame becomes the readback fallback; a timed-out
-    // render must not be handed to the compositor or to the shm fallback.
-    viewState(view).lastRenderedSlot = slot;
+    if (!resources.fence) {
+        // Fence creation is unavailable. The only safe completion signal left
+        // is a synchronous finish; record it as the transport fallback.
+        m_renderContext->functions()->glFinish();
+        ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-finish"));
+    }
     ChromeStats::instance().recordSceneFrame();
     ChromeStats::instance().recordRenderComplete();
     return true;
+}
+
+bool GpuChromeFrameProducer::waitForSlot(int view, int slot, qint64 budgetUs)
+{
+    if (!m_renderContext)
+        return false;
+    auto it = viewState(view).slotResources.find(slot);
+    if (it == viewState(view).slotResources.end())
+        return false;
+    SlotResources &resources = it.value();
+    if (!resources.fence)
+        return true; // glFinish already completed the work
+
+    QOpenGLExtraFunctions *functions = m_renderContext->extraFunctions();
+    if (!functions) {
+        m_renderContext->functions()->glFinish();
+        clearFence(resources);
+        ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-finish"));
+        return true;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    GLenum status = GL_TIMEOUT_EXPIRED;
+    while (timer.nsecsElapsed() / 1000 < budgetUs) {
+        status = functions->glClientWaitSync(
+            static_cast<GLsync>(resources.fence), GL_SYNC_FLUSH_COMMANDS_BIT,
+            10000000);
+        if (status != GL_TIMEOUT_EXPIRED)
+            break;
+    }
+    const qint64 waitUs = timer.nsecsElapsed() / 1000;
+    clearFence(resources);
+    const bool ok = status == GL_ALREADY_SIGNALED
+        || status == GL_CONDITION_SATISFIED;
+    ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-fence"));
+    ChromeStats::instance().recordDmabufSyncWait(waitUs, !ok);
+    return ok;
+}
+
+GpuChromeFrameProducer::Completion
+GpuChromeFrameProducer::checkCompletion(int view, int slot)
+{
+    auto it = viewState(view).slotResources.find(slot);
+    if (it == viewState(view).slotResources.end())
+        return Completion::Timeout;
+    SlotResources &resources = it.value();
+    if (!resources.fence)
+        return Completion::Ready; // the synchronous finish completed it
+
+    QOpenGLExtraFunctions *functions =
+        m_renderContext ? m_renderContext->extraFunctions() : nullptr;
+    if (!functions) {
+        m_renderContext->functions()->glFinish();
+        clearFence(resources);
+        ChromeStats::instance().setDmabufSyncMode(QStringLiteral("gl-finish"));
+        return Completion::Ready;
+    }
+
+    // `GL_SYNC_FLUSH_COMMANDS_BIT` submits the render commands before the
+    // zero-timeout poll. Without it a buffered command stream can leave the
+    // fence unsignalled until something else flushes, which would turn every
+    // asynchronous frame into a timeout.
+    const GLenum status = functions->glClientWaitSync(
+        static_cast<GLsync>(resources.fence), GL_SYNC_FLUSH_COMMANDS_BIT, 0);
+    const qint64 waitUs = (monotonicNs() - resources.submitNs) / 1000;
+    if (status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED) {
+        clearFence(resources);
+        ChromeStats::instance().recordDmabufCompletionWait(waitUs, false);
+        return Completion::Ready;
+    }
+    if (status == GL_TIMEOUT_EXPIRED && waitUs < completionBudgetUs())
+        return Completion::Pending;
+
+    // GL_WAIT_FAILED, or the bounded budget elapsed. Never export a frame the
+    // GPU may still be writing.
+    clearFence(resources);
+    ChromeStats::instance().recordDmabufCompletionWait(waitUs, true);
+    return Completion::Timeout;
+}
+
+QString GpuChromeFrameProducer::finishReadySlot(int view, int slot)
+{
+    ViewState &state = viewState(view);
+    auto it = state.slotResources.find(slot);
+    if (it == state.slotResources.end() || !it.value().fbo)
+        return QStringLiteral("render-failed");
+    if (!ensureDmabufExport(view, slot)) {
+        return m_exportReason.isEmpty() ? QStringLiteral("no-egl-export")
+                                        : m_exportReason;
+    }
+    // The exporter rebuilds the frame struct; restore the submit serial that
+    // the compositor release is matched against.
+    it.value().frame.serial = it.value().serial;
+    it.value().rendered = true;
+    state.lastRenderedSlot = slot;
+    if (!state.ring.markReady(slot))
+        return QStringLiteral("ring-phase");
+    state.readySlots.append(slot);
+    return QString();
+}
+
+void GpuChromeFrameProducer::armCompletionPoll()
+{
+    if (!m_completionTimer) {
+        m_completionTimer = new QTimer(this);
+        m_completionTimer->setTimerType(Qt::PreciseTimer);
+        connect(m_completionTimer, &QTimer::timeout, this,
+                &GpuChromeFrameProducer::pollCompletion);
+    }
+    m_completionPolls = 0;
+    // Poll on the next event-loop turn first: a short frame is usually
+    // already complete, so its commit does not wait for a timer interval.
+    // Later polls back off in `pollCompletion()`.
+    if (m_completionTimer->isActive())
+        m_completionTimer->setInterval(0);
+    else
+        m_completionTimer->start(0);
+}
+
+void GpuChromeFrameProducer::pollCompletion()
+{
+    if (!m_renderContext || !m_surface) {
+        if (m_completionTimer)
+            m_completionTimer->stop();
+        return;
+    }
+
+    // The fence queries and the dmabuf export need the render context. Keep it
+    // current for this poll only; the shell thread owns it between frames.
+    const bool madeCurrent =
+        QOpenGLContext::currentContext() != m_renderContext
+        && m_renderContext->makeCurrent(m_surface);
+
+    QList<QPair<int, QString>> failures;
+    QList<int> readyViews;
+
+    const QList<int> views = m_views.keys();
+    for (int view : views) {
+        ViewState &state = m_views[view];
+        if (state.pendingSlots.isEmpty())
+            continue;
+        // Fences signal in submission order, so only the oldest pending slot
+        // can be the next one to commit. Checking just the front avoids
+        // exporting a newer frame ahead of an older one.
+        const int slot = state.pendingSlots.first();
+        const Completion completion = checkCompletion(view, slot);
+        if (completion == Completion::Pending)
+            continue;
+        state.pendingSlots.removeFirst();
+        auto resourcesIt = state.slotResources.find(slot);
+        if (completion == Completion::Timeout) {
+            // Keep `lastRenderedSlot` and `rendered` on the last completed
+            // frame so the shm fallback never reads a half-rendered slot.
+            if (resourcesIt != state.slotResources.end()) {
+                resourcesIt.value().rendered = false;
+                clearFence(resourcesIt.value());
+            }
+            state.ring.abandon(slot);
+            m_exportReason = QStringLiteral("sync-timeout");
+            failures.append({view, m_exportReason});
+            collectRetiredSlots(view);
+            continue;
+        }
+        const QString reason = finishReadySlot(view, slot);
+        if (reason.isEmpty()) {
+            readyViews.append(view);
+        } else {
+            if (resourcesIt != state.slotResources.end())
+                resourcesIt.value().rendered = false;
+            state.ring.abandon(slot);
+            m_exportReason = reason;
+            failures.append({view, reason});
+            collectRetiredSlots(view);
+        }
+    }
+
+    if (madeCurrent)
+        m_renderContext->doneCurrent();
+
+    // Emit after the loop: the controller's handlers commit frames and may
+    // submit new work, which must not invalidate this iteration.
+    for (const QPair<int, QString> &failure : failures)
+        emit frameFailed(failure.first, failure.second);
+    for (int view : readyViews)
+        emit frameReady(view);
+
+    bool stillPending = false;
+    for (auto it = m_views.constBegin(); it != m_views.constEnd(); ++it) {
+        if (!it.value().pendingSlots.isEmpty()) {
+            stillPending = true;
+            break;
+        }
+    }
+    if (!stillPending) {
+        if (m_completionTimer)
+            m_completionTimer->stop();
+        return;
+    }
+    ++m_completionPolls;
+    if (m_completionTimer) {
+        // Poll tightly while the fence is fresh, then back off. This keeps
+        // the commit as close to completion as possible without a 1 ms
+        // wakeup storm under a long GPU queue.
+        const int interval =
+            m_completionPolls < 4 ? 1 : (m_completionPolls < 12 ? 2 : 4);
+        if (m_completionTimer->interval() != interval)
+            m_completionTimer->setInterval(interval);
+    }
+}
+
+void GpuChromeFrameProducer::cancelPending(int view)
+{
+    ViewState &state = viewState(view);
+    while (!state.pendingSlots.isEmpty()) {
+        const int slot = state.pendingSlots.takeFirst();
+        auto it = state.slotResources.find(slot);
+        if (it != state.slotResources.end()) {
+            clearFence(it.value());
+            it.value().rendered = false;
+        }
+        state.ring.abandon(slot);
+    }
+    while (!state.readySlots.isEmpty())
+        state.ring.abandon(state.readySlots.takeFirst());
+}
+
+bool GpuChromeFrameProducer::submitFrame(int view, QString *reason)
+{
+    const auto fail = [reason](const QString &text) {
+        if (reason)
+            *reason = text;
+        return false;
+    };
+    if (!m_initialized || !m_window || !m_context || !m_surface
+        || !m_renderContext) {
+        return fail(m_reason.isEmpty() ? QStringLiteral("render-failed")
+                                       : m_reason);
+    }
+
+    ViewState &state = viewState(view);
+    const QSize physical = physicalSize(m_window->size(), m_dpr);
+    if (!configureRing(view, physical))
+        return fail(QStringLiteral("bad-size"));
+
+    const int slot = state.ring.acquire();
+    if (slot < 0) {
+        ChromeStats::instance().recordRingExhausted(viewLabel(view));
+        return fail(QStringLiteral("ring-exhausted"));
+    }
+    if (!renderToFramebuffer(view, slot)) {
+        state.ring.abandon(slot);
+        collectRetiredSlots(view);
+        return fail(m_reason.isEmpty() ? QStringLiteral("render-failed")
+                                       : m_reason);
+    }
+
+    SlotResources &resources = state.slotResources[slot];
+    resources.serial = ++m_dmabufSerial;
+    resources.frame.serial = resources.serial;
+    if (!state.ring.setSerial(slot, resources.serial)) {
+        clearFence(resources);
+        state.ring.abandon(slot);
+        m_renderContext->doneCurrent();
+        return fail(QStringLiteral("ring-serial"));
+    }
+    if (!state.ring.markPending(slot)) {
+        clearFence(resources);
+        state.ring.abandon(slot);
+        m_renderContext->doneCurrent();
+        return fail(QStringLiteral("ring-phase"));
+    }
+    state.pendingSlots.append(slot);
+    m_renderContext->doneCurrent();
+    armCompletionPoll();
+    if (reason)
+        reason->clear();
+    return true;
+}
+
+bool GpuChromeFrameProducer::takeCompletedFrame(int view,
+                                                ChromeDmabufFrame *frame,
+                                                QString *reason)
+{
+    if (!frame) {
+        if (reason)
+            *reason = QStringLiteral("bad-frame");
+        return false;
+    }
+    ViewState &state = viewState(view);
+    if (state.readySlots.isEmpty()) {
+        if (reason)
+            *reason = QStringLiteral("not-ready");
+        return false;
+    }
+    const int slot = state.readySlots.takeFirst();
+    SlotResources &resources = state.slotResources[slot];
+    resources.frame.slot = slot;
+    resources.frame.serial = resources.serial;
+    // The first export establishes the ring format. A later change retires
+    // the old generation; the just-exported frame is still committed below.
+    if (state.ring.setFormat(resources.frame.format, resources.frame.modifier))
+        collectRetiredSlots(view);
+    if (!state.ring.markOwned(slot)) {
+        if (reason)
+            *reason = QStringLiteral("ring-phase");
+        return false;
+    }
+    *frame = resources.frame;
+    if (reason)
+        reason->clear();
+    return true;
+}
+
+bool GpuChromeFrameProducer::hasPendingFrame(int view) const
+{
+    const ViewState *state = viewState(view);
+    return state && !state->pendingSlots.isEmpty();
+}
+
+bool GpuChromeFrameProducer::hasReadyFrame(int view) const
+{
+    const ViewState *state = viewState(view);
+    return state && !state->readySlots.isEmpty();
+}
+
+void GpuChromeFrameProducer::abandonReadyFrame(int view)
+{
+    ViewState &state = viewState(view);
+    if (state.readySlots.isEmpty())
+        return;
+    const int slot = state.readySlots.takeFirst();
+    if (state.ring.abandon(slot)) {
+        QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
+        const bool madeCurrent = context && m_surface
+            && QOpenGLContext::currentContext() != context
+            && context->makeCurrent(m_surface);
+        collectRetiredSlots(view);
+        if (madeCurrent)
+            context->doneCurrent();
+    }
 }
 
 QImage GpuChromeFrameProducer::renderFrame()
@@ -442,6 +781,17 @@ QImage GpuChromeFrameProducer::renderFrame(int view)
         collectRetiredSlots(view);
         return QImage();
     }
+    state.ring.markPending(slot);
+    // The readback path is the shm fallback and the smoke rail: it needs the
+    // pixels now, so it is the one caller that waits for completion inline.
+    if (!waitForSlot(view, slot, completionBudgetUs())) {
+        m_exportReason = QStringLiteral("sync-timeout");
+        state.ring.abandon(slot);
+        collectRetiredSlots(view);
+        m_renderContext->doneCurrent();
+        return QImage();
+    }
+    state.lastRenderedSlot = slot;
 
     QImage image = readbackSlot(view, slot);
     state.ring.abandon(slot);
@@ -563,6 +913,11 @@ bool GpuChromeFrameProducer::exportFrame(int view, ChromeDmabufFrame *frame,
     }
 
     ViewState &state = viewState(view);
+    if (!state.pendingSlots.isEmpty() || !state.readySlots.isEmpty()) {
+        if (reason)
+            *reason = QStringLiteral("completion-pending");
+        return false;
+    }
     const int slot = state.ring.acquire();
     if (slot < 0) {
         ChromeStats::instance().recordRingExhausted(viewLabel(view));
@@ -579,6 +934,18 @@ bool GpuChromeFrameProducer::exportFrame(int view, ChromeDmabufFrame *frame,
                 : m_exportReason;
         return false;
     }
+    state.ring.markPending(slot);
+    if (!waitForSlot(view, slot, completionBudgetUs())) {
+        // Do not hand an unfinished buffer to the compositor. The caller keeps
+        // the last completed frame for its shm fallback.
+        m_exportReason = QStringLiteral("sync-timeout");
+        state.ring.abandon(slot);
+        collectRetiredSlots(view);
+        m_renderContext->doneCurrent();
+        if (reason)
+            *reason = m_exportReason;
+        return false;
+    }
     if (!ensureDmabufExport(view, slot)) {
         state.ring.abandon(slot);
         collectRetiredSlots(view);
@@ -591,8 +958,9 @@ bool GpuChromeFrameProducer::exportFrame(int view, ChromeDmabufFrame *frame,
 
     SlotResources &resources = state.slotResources[slot];
     resources.frame.slot = slot;
-    resources.frame.serial = ++m_dmabufSerial;
-    if (!state.ring.setSerial(slot, resources.frame.serial)) {
+    resources.serial = ++m_dmabufSerial;
+    resources.frame.serial = resources.serial;
+    if (!state.ring.setSerial(slot, resources.serial)) {
         state.ring.abandon(slot);
         if (reason)
             *reason = QStringLiteral("ring-serial");
@@ -603,6 +971,10 @@ bool GpuChromeFrameProducer::exportFrame(int view, ChromeDmabufFrame *frame,
     // the old generation; the just-exported frame is still committed below.
     if (state.ring.setFormat(resources.frame.format, resources.frame.modifier))
         collectRetiredSlots(view);
+    state.ring.markReady(slot);
+    state.ring.markOwned(slot);
+    resources.rendered = true;
+    state.lastRenderedSlot = slot;
 
     *frame = resources.frame;
     m_renderContext->doneCurrent();
@@ -654,12 +1026,15 @@ void GpuChromeFrameProducer::abandonDmabufFrame(int view, int slot)
 void GpuChromeFrameProducer::discardView(int view)
 {
     ViewState &state = viewState(view);
-    state.lastRenderedSlot = -1;
-    state.ring.retireAll();
     QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
     const bool madeCurrent = context && m_surface && context->isValid()
         && QOpenGLContext::currentContext() != context
         && context->makeCurrent(m_surface);
+    // Cancel in-flight work first so the slot is free before the generation is
+    // retired; an abandoned pending slot would otherwise stay busy forever.
+    cancelPending(view);
+    state.lastRenderedSlot = -1;
+    state.ring.retireAll();
     collectRetiredSlots(view);
     if (madeCurrent)
         context->doneCurrent();
@@ -736,6 +1111,7 @@ void GpuChromeFrameProducer::destroySlotResources(int view, int slot)
         && QOpenGLContext::currentContext() != context
         && context->makeCurrent(m_surface);
     SlotResources &resources = it.value();
+    clearFence(resources);
     ChromeDmabufExporter::closeFrame(&resources.frame);
     if (resources.fbo) {
         if (m_window)
@@ -754,6 +1130,9 @@ void GpuChromeFrameProducer::destroySlotResources(int view, int slot)
 
 void GpuChromeFrameProducer::releaseGpu()
 {
+    if (m_completionTimer)
+        m_completionTimer->stop();
+
     QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
     if (context && m_surface && context->isValid())
         context->makeCurrent(m_surface);
@@ -764,11 +1143,19 @@ void GpuChromeFrameProducer::releaseGpu()
     // dereferences freed state and segfaults during shell teardown (T192b's
     // full-rail Mission Control finding, reproduced by a failed start).
     for (auto viewIt = m_views.begin(); viewIt != m_views.end(); ++viewIt) {
-        const QList<int> slotIds = viewIt.value().slotResources.keys();
+        ViewState &state = viewIt.value();
+        // Drop retained fences before their context goes away.
+        for (auto resourceIt = state.slotResources.begin();
+             resourceIt != state.slotResources.end(); ++resourceIt) {
+            clearFence(resourceIt.value());
+        }
+        state.pendingSlots.clear();
+        state.readySlots.clear();
+        const QList<int> slotIds = state.slotResources.keys();
         for (int slot : slotIds)
             destroySlotResources(viewIt.key(), slot);
-        viewIt.value().ring.reset();
-        viewIt.value().lastRenderedSlot = -1;
+        state.ring.reset();
+        state.lastRenderedSlot = -1;
     }
     m_views.clear();
     if (m_renderControl)
