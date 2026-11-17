@@ -1805,6 +1805,15 @@ pub struct DfState {
     /// T201: whether a real pointer motion has arrived. The initial seat
     /// position is (0,0), which must not count as a top-edge reveal.
     pub menu_bar_pointer_seen: bool,
+    /// Whether login-time pointer placement may still follow the output
+    /// layout. The compositor centres the pointer while the backend finishes
+    /// creating outputs, but the shell applies the persisted display policy
+    /// (mode, scale, transform) afterwards, which changes the output's
+    /// *logical* geometry. Until the user first uses a pointer-like device,
+    /// such a change re-centres the pointer on the final primary output so it
+    /// does not end up in the bottom-right because it kept pre-scale
+    /// coordinates. Cleared by [`DfState::note_pointer_activity`].
+    pointer_center_pending: bool,
 
     /// Backdrop blur pass bookkeeping (T-04.2): opened once per rendered frame
     /// by [`Self::begin_render_frame`], then applied once per output, so the
@@ -1892,6 +1901,10 @@ fn refresh_override_from_env() -> Option<OutputRefresh> {
 /// The geometric centre of an output's logical rectangle. Login parks the
 /// pointer here instead of leaving it at the global origin (a corner, and on
 /// a multi-output layout often a secondary display).
+///
+/// Callers pass `Space::output_geometry`, which is already in logical pixels:
+/// resolution, DPI-derived/fractional scale, rotation, and the output's layout
+/// offset are applied by Smithay before the midpoint is taken.
 pub fn output_center(geometry: Rectangle<i32, Logical>) -> Point<f64, Logical> {
     Point::from((
         f64::from(geometry.loc.x) + f64::from(geometry.size.w) / 2.0,
@@ -2004,6 +2017,7 @@ impl DfState {
             seat,
             menu_bar_keyboard_focused: false,
             menu_bar_pointer_seen: false,
+            pointer_center_pending: true,
             space: Space::default(),
             popups: PopupManager::default(),
             pending_windows: Vec::new(),
@@ -2241,14 +2255,51 @@ impl DfState {
     /// hook calls this after creating the outputs and seat at login; without
     /// it the pointer starts at the global origin, which is a corner and can
     /// be on a secondary display. No-op (and `None`) until both exist.
+    ///
+    /// The centre is computed from the output's **logical** geometry, so the
+    /// current mode, output scale, transform, and layout offset are all
+    /// accounted for. `Space::output_geometry` performs the physical-to-logical
+    /// conversion, which is what keeps a HiDPI or fractional-scale session
+    /// centred rather than scaled off toward the bottom-right.
     pub fn center_pointer_on_primary_output(&mut self) -> Option<Point<f64, Logical>> {
-        let (_, geometry) = self.primary_output();
-        let geometry = geometry?;
+        let (name, _) = self.primary_output();
+        let name = name?;
+        self.center_pointer_on_output_named(&name)
+    }
+
+    /// Place the pointer at the centre of the logical geometry of the output
+    /// named `name`. No-op (and `None`) when the output or pointer is absent.
+    fn center_pointer_on_output_named(&mut self, name: &str) -> Option<Point<f64, Logical>> {
+        let geometry = self.output_geometry_named(name)?;
         let pointer = self.seat.get_pointer()?;
         let location = output_center(geometry);
         pointer.set_location(location);
         self.needs_redraw = true;
         Some(location)
+    }
+
+    /// Re-centre the pointer after the output layout changed while login is
+    /// still settling.
+    ///
+    /// A native session creates its outputs before the shell has applied the
+    /// persisted display policy, so the first numeric geometry the compositor
+    /// sees is usually the preferred mode at scale 1.0. The shell then applies
+    /// the saved resolution/scale/rotation, shrinking the logical output while
+    /// the pointer keeps its old coordinates. This re-runs the placement
+    /// against the settled geometry until the user first uses a pointer-like
+    /// device, after which the pointer is the user's to move.
+    pub fn recenter_pointer_for_initial_layout(&mut self) {
+        if !self.pointer_center_pending {
+            return;
+        }
+        let _ = self.center_pointer_on_primary_output();
+    }
+
+    /// A real pointer or touch event ends the login-time placement window, so
+    /// a later display-policy change cannot yank the pointer out from under
+    /// the user.
+    pub fn note_pointer_activity(&mut self) {
+        self.pointer_center_pending = false;
     }
 
     /// The logical geometry of the output named `name`.
@@ -2835,6 +2886,11 @@ impl DfState {
         self.presentation_clocks.update(&name, refresh);
         self.apply_clock_vrr(&name, refresh);
         self.sync_refresh_policy();
+        // The same path runs for mode, scale, and transform changes. Before
+        // the first pointer/touch input, a geometry change (notably the
+        // shell's persisted display scale arriving after startup) must move
+        // the login cursor to the *new* logical centre.
+        self.recenter_pointer_for_initial_layout();
     }
 
     /// Apply the current refresh policy: the animation clock owns the fastest
@@ -2889,6 +2945,14 @@ impl DfState {
         self.after_workspace_change();
         self.reconfigure_layers();
         self.sync_refresh_policy();
+        // If login was still settling on the removed display, re-home the
+        // pointer to the remaining primary (the Space still contains the
+        // removed output until the caller unmaps it, so name it explicitly).
+        if self.pointer_center_pending {
+            if let Some(primary) = primary.as_deref() {
+                self.center_pointer_on_output_named(primary);
+            }
+        }
     }
 
     /// Re-home onto `primary` every window that was on the detached output

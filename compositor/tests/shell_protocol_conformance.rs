@@ -4146,6 +4146,188 @@ fn pointer_starts_at_the_primary_output_center() {
     );
 }
 
+/// The persisted display policy is applied *after* the compositor has placed
+/// the login pointer, so the first numeric geometry it sees is the preferred
+/// mode at scale 1. A different resolution, fractional scale, or rotation
+/// changes the output's logical geometry; without a re-centre the pointer
+/// keeps its old coordinates and lands in the bottom-right quadrant (on a 2x
+/// display, the bottom-right corner).
+///
+/// The test drives mode, scale, and rotation and checks the centre each time
+/// (1600x900 at 1.5 and 90 degrees is 600x1067 logical, centre 300,533.5).
+/// Once the user moves the pointer, later scale changes must leave it alone.
+#[test]
+fn login_pointer_recenters_when_the_display_policy_is_applied() {
+    let token = "2d".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("df-login-pointer-policy-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-login-pointer-policy",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && !state.output_geometries.is_empty(),
+    );
+
+    // The login placement already ran at the backend's 1x geometry.
+    assert_eq!(
+        wait_for_pointer(&input, (640.0, 360.0)),
+        (640.0, 360.0),
+        "the pointer starts at the 1x primary-output centre"
+    );
+
+    // A saved resolution replaces the preferred mode after startup. At 1x the
+    // 1600x900 mode centres on (800, 450).
+    state.outputs[0].set_mode(1600, 900, 60_000);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_geometries
+                .iter()
+                .any(|(_, _, width, height)| *width == 1600 && *height == 900)
+        },
+    );
+    assert_eq!(
+        wait_for_pointer(&input, (800.0, 450.0)),
+        (800.0, 450.0),
+        "a post-startup resolution change must re-centre the login pointer"
+    );
+
+    // The shell forwards the persisted fractional scale. 1600x900 at 1.5 is
+    // 1067x600 logical (Smithay rounds the logical size up), centred on
+    // (533.5, 300).
+    state.outputs[0].set_scale(1.5);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_scales
+                .iter()
+                .any(|scale| (*scale - 1.5).abs() < 0.001)
+        },
+    );
+    assert_eq!(
+        wait_for_pointer(&input, (533.5, 300.0)),
+        (533.5, 300.0),
+        "a post-startup scale change must re-centre the login pointer"
+    );
+
+    // A saved rotation reshapes the logical output: 1600x900 at 90 degrees is
+    // 900x1600 physical, 600x1067 logical, centred on (300, 533.5).
+    state.outputs[0].set_transform(df_output::Transform::_90);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_geometries
+                .iter()
+                .any(|(_, _, width, height)| *width == 600 && *height == 1067)
+        },
+    );
+    assert_eq!(
+        wait_for_pointer(&input, (300.0, 533.5)),
+        (300.0, 533.5),
+        "a post-startup rotation must re-centre the login pointer"
+    );
+
+    // A real pointer event ends the settle window. The pointer moves to
+    // (310, 543.5); switching to 2x (450x800 logical, centre 225,400) must not
+    // yank it back to the centre.
+    input.send("motion 10 10");
+    assert_eq!(
+        wait_for_pointer(&input, (310.0, 543.5)),
+        (310.0, 543.5),
+        "synthetic pointer motion must reach the seat"
+    );
+    state.outputs[0].set_scale(2.0);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_scales
+                .iter()
+                .any(|scale| (*scale - 2.0).abs() < 0.001)
+        },
+    );
+    assert_eq!(
+        pointer_position(&input),
+        (310.0, 543.5),
+        "after user input a later scale change must not move the pointer"
+    );
+
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// Parse the logical pointer position from `query pointer`.
+fn pointer_position(input: &SyntheticInput) -> (f64, f64) {
+    let report = input.query("query pointer");
+    let x = report
+        .split("x=")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| panic!("malformed pointer report: {report}"));
+    let y = report
+        .split("y=")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| panic!("malformed pointer report: {report}"));
+    (x, y)
+}
+
+/// Poll `query pointer` until it reports `expected` (or the deadline expires).
+fn wait_for_pointer(input: &SyntheticInput, expected: (f64, f64)) -> (f64, f64) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut position = pointer_position(input);
+    while Instant::now() < deadline {
+        if position == expected {
+            return position;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        position = pointer_position(input);
+    }
+    panic!("pointer stayed at {position:?}, expected {expected:?}");
+}
+
 /// Sends synthetic-input commands to the compositor's T-03 harness socket
 /// (see `compositor/src/input/synthetic.rs` for the wire format). The reply
 /// socket is bound so `query` commands can read the compositor's answer.

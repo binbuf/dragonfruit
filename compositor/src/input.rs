@@ -312,6 +312,27 @@ where
             _ => return,
         }
     }
+    // Login-time cursor placement follows the output layout until the user
+    // first touches a pointer-like device. The shell applies the persisted
+    // display scale after startup, so a geometry change before this point
+    // re-centres the cursor; after it, a scale change must never move the
+    // pointer out from under the user. Locked/suspended sessions returned
+    // above, so those dropped events do not end the settle window.
+    if matches!(
+        &event,
+        InputEvent::PointerMotion { .. }
+            | InputEvent::PointerMotionAbsolute { .. }
+            | InputEvent::PointerButton { .. }
+            | InputEvent::PointerAxis { .. }
+            | InputEvent::TouchDown { .. }
+            | InputEvent::TouchMotion { .. }
+            | InputEvent::TabletToolProximity { .. }
+            | InputEvent::TabletToolAxis { .. }
+            | InputEvent::TabletToolTip { .. }
+            | InputEvent::TabletToolButton { .. }
+    ) {
+        state.note_pointer_activity();
+    }
     // T-03.1b input-to-photon latency: stamp the input before routing it so
     // the next presented frame can be credited with the round trip. Device
     // hotplug is not user input and must not start a sample.

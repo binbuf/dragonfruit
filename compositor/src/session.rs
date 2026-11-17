@@ -122,7 +122,10 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     // Login starts from the middle of the primary display. The backend hook
     // has now created the outputs and the seat pointer; the global origin
     // would otherwise put the cursor in a corner (possibly on a secondary
-    // output). No-op on a session with no output.
+    // output). No-op on a session with no output. The layout may change once
+    // the shell applies the persisted mode/scale/transform; the state
+    // re-centres again for each such change until the first user pointer
+    // input (see `DfState::recenter_pointer_for_initial_layout`).
     state.center_pointer_on_primary_output();
 
     // Xwayland (T-06): spawned eagerly now that an output and seat exist.
