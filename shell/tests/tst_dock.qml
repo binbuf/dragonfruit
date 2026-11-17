@@ -2404,6 +2404,50 @@ Item {
             compare(bar.radius, Theme.controls.dock.radius);
         }
 
+        function test_painted_bounds_cover_the_strip_scene() {
+            // T238: the shell damages only `paintedBounds` (unioned with the
+            // previous frame) instead of the whole strip. Every visible item
+            // must stay inside it, or a partial commit would leave stale
+            // pixels outside the damage box.
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom", magnification: 0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            waitForRendering(stage);
+            var plate = findChild(dock, "dockPlate");
+            var rest = dock.paintedBounds;
+            verify(rest.w > 0 && rest.h > 0);
+            // The plate group (fill, rim, glow and the shadow room toward the
+            // anchored edge) is fully inside the reported bounds.
+            verify(rest.x <= plate.x + 0.001);
+            verify(rest.y <= plate.y + 0.001);
+            verify(rest.x + rest.w >= plate.x + plate.width - 0.001);
+            verify(rest.y + rest.h >= plate.y + plate.height - 0.001);
+            // So is every rect the Dock declares as visible for input.
+            for (var i = 0; i < dock.inputRects.length; ++i) {
+                var input = dock.inputRects[i];
+                verify(input.x >= rest.x - 0.501);
+                verify(input.y >= rest.y - 0.501);
+                verify(input.x + input.w <= rest.x + rest.w + 0.501);
+                verify(input.y + input.h <= rest.y + rest.h + 0.501);
+            }
+            // A magnified entry grows past the resting plate and must widen
+            // the bounds with it.
+            dock.magnification = 1.0;
+            dock.pointerAlong = dock._baseline.centers[1];
+            waitForMagnify();
+            var zoomed = dock.paintedBounds;
+            verify(zoomed.y < rest.y - 1,
+                   "magnified entry grows the painted bounds");
+            verify(zoomed.y + zoomed.h >= rest.y + rest.h - 0.501);
+            for (var j = 0; j < dock.inputRects.length; ++j) {
+                var zoomInput = dock.inputRects[j];
+                verify(zoomInput.y >= zoomed.y - 0.501);
+                verify(zoomInput.y + zoomInput.h <= zoomed.y + zoomed.h + 0.501);
+            }
+        }
+
         function test_panel_rect_never_flips_during_a_sweep() {
             // A one-way pointer sweep must move the integer panel edge one way
             // only, so the declared backdrop cannot ping-pong by a pixel.

@@ -300,6 +300,8 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int view, int slot,
         delete resources.fbo;
         resources.fbo = nullptr;
         resources.rendered = false;
+        // A recreated target has no baseline until the next render.
+        viewState(view).ring.setContentValid(slot, false);
         ViewState &state = viewState(view);
         if (state.lastRenderedSlot == slot)
             state.lastRenderedSlot = -1;
@@ -328,6 +330,7 @@ bool GpuChromeFrameProducer::ensureFramebuffer(int view, int slot,
     }
     resources.fbo->release();
     resources.rendered = false;
+    viewState(view).ring.setContentValid(slot, false);
     ChromeStats::instance().recordFboAlloc(
         viewLabel(view), physical, fboAttachmentBytes(physical),
         createTimer.nsecsElapsed() / 1000);
@@ -409,6 +412,9 @@ bool GpuChromeFrameProducer::renderToFramebuffer(int view, int slot)
     }
     ChromeStats::instance().recordSceneFrame();
     ChromeStats::instance().recordRenderComplete();
+    // The slot now holds a complete frame of the current generation, so a
+    // later partial commit from this slot has a valid baseline.
+    viewState(view).ring.setContentValid(slot, true);
     return true;
 }
 
@@ -502,8 +508,10 @@ QString GpuChromeFrameProducer::finishReadySlot(int view, int slot)
                                         : m_exportReason;
     }
     // The exporter rebuilds the frame struct; restore the submit serial that
-    // the compositor release is matched against.
+    // the compositor release is matched against, and the change report the
+    // controller supplied for this frame.
     it.value().frame.serial = it.value().serial;
+    it.value().frame.damage = it.value().damage;
     it.value().rendered = true;
     state.lastRenderedSlot = slot;
     if (!state.ring.markReady(slot))
@@ -639,6 +647,12 @@ void GpuChromeFrameProducer::cancelPending(int view)
 
 bool GpuChromeFrameProducer::submitFrame(int view, QString *reason)
 {
+    return submitFrame(view, ChromeSceneDamage(), reason);
+}
+
+bool GpuChromeFrameProducer::submitFrame(int view, const ChromeSceneDamage &damage,
+                                         QString *reason)
+{
     const auto fail = [reason](const QString &text) {
         if (reason)
             *reason = text;
@@ -660,6 +674,10 @@ bool GpuChromeFrameProducer::submitFrame(int view, QString *reason)
         ChromeStats::instance().recordRingExhausted(viewLabel(view));
         return fail(QStringLiteral("ring-exhausted"));
     }
+    // A slot that has no complete frame of this generation (fresh, resized,
+    // or recreated) cannot serve as a partial-damage baseline, so the first
+    // frame after any ring generation change is a full damage.
+    const bool baselineValid = state.ring.contentValid(slot);
     if (!renderToFramebuffer(view, slot)) {
         state.ring.abandon(slot);
         collectRetiredSlots(view);
@@ -670,6 +688,9 @@ bool GpuChromeFrameProducer::submitFrame(int view, QString *reason)
     SlotResources &resources = state.slotResources[slot];
     resources.serial = ++m_dmabufSerial;
     resources.frame.serial = resources.serial;
+    resources.damage = (baselineValid && damage.known)
+        ? ChromeDmabuf::frameDamage(damage.rect, m_dpr, physical)
+        : ChromeFrameDamage::full();
     if (!state.ring.setSerial(slot, resources.serial)) {
         clearFence(resources);
         state.ring.abandon(slot);
@@ -709,6 +730,7 @@ bool GpuChromeFrameProducer::takeCompletedFrame(int view,
     SlotResources &resources = state.slotResources[slot];
     resources.frame.slot = slot;
     resources.frame.serial = resources.serial;
+    resources.frame.damage = resources.damage;
     // The first export establishes the ring format. A later change retires
     // the old generation; the just-exported frame is still committed below.
     if (state.ring.setFormat(resources.frame.format, resources.frame.modifier))
@@ -974,6 +996,8 @@ bool GpuChromeFrameProducer::exportFrame(int view, ChromeDmabufFrame *frame,
     state.ring.markReady(slot);
     state.ring.markOwned(slot);
     resources.rendered = true;
+    // The synchronous rail always damages the whole target.
+    resources.frame.damage = ChromeFrameDamage::full();
     state.lastRenderedSlot = slot;
 
     *frame = resources.frame;

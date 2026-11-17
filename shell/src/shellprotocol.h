@@ -196,7 +196,12 @@ public:
     // T-21.1d: the result of a dmabuf commit. `Deferred` means the ring slot
     // is still held by the compositor; the controller retries on the release.
     // `Failed` means the caller must fall back to shm.
-    enum class DmabufCommitResult { Committed, Deferred, Failed };
+    // `Committed` attached and committed the frame. `Skipped` means the
+    // target is already showing these pixels, so no buffer was attached (a
+    // protocol-geometry-only commit may still have been sent) and the caller
+    // must return the producer slot. `Deferred` retries after a release or
+    // import; `Failed` falls back to shm.
+    enum class DmabufCommitResult { Committed, Skipped, Deferred, Failed };
 
     // Attach a dmabuf-backed buffer to the Dock surface and commit it. One
     // reusable wl_buffer is kept per producer ring slot; a size/format change

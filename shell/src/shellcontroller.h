@@ -634,7 +634,24 @@ private:
     };
     bool commitChromeScene(QQuickWindow *window,
                            const QList<ChromeSceneTarget> &targets,
-                           bool *deferred = nullptr, int view = 0);
+                           bool *deferred = nullptr, int view = 0,
+                           const ChromeSceneDamage &damage = ChromeSceneDamage());
+    // T238: the Dock strip's change report for this frame. `paintedBounds` is
+    // the Dock's complete painted extent in its own item coordinates (QML
+    // `paintedBounds`) and `overlayRect` the popover/tooltip rect when the
+    // overlay is part of the strip scene. The union with the previous frame
+    // covers motion and magnification; a moved scene (size, scale, or item
+    // origin) has no usable baseline and reports an unknown (full) damage.
+    ChromeSceneDamage dockStripDamage(const QRect &paintedBounds,
+                                      const QRect &overlayRect,
+                                      const QSize &sceneSize,
+                                      const QPoint &origin);
+    void invalidateDockDamage();
+    bool m_dockDamageValid = false;
+    QRect m_dockPaintedBounds;
+    QSize m_dockDamageSceneSize;
+    QPoint m_dockDamageOrigin;
+    qreal m_dockDamageScale = 1.0;
     // T238 completion: export and commit the completed frame a view's producer
     // announced with `frameReady`. The targets captured when the frame was
     // submitted describe its geometry; committing them keeps submission order

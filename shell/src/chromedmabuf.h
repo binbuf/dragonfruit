@@ -8,6 +8,7 @@
 #pragma once
 
 #include <QHash>
+#include <QRect>
 #include <QSize>
 #include <QString>
 #include <QVector>
@@ -15,6 +16,41 @@
 #include <cstdint>
 
 #include "gpuchromecapabilities.h"
+
+// How much of an exported frame actually changed (T238).
+//
+// The GPU path rasterizes the whole scene, but the compositor only has to
+// repair the pixels that differ from the frame it already shows. `Unknown` is
+// the safe default and keeps the pre-T238 contract: the whole target is
+// damaged. `Region` carries a bounding box, in framebuffer pixels with a
+// top-left origin, that covers every changed pixel; an empty box means the
+// frame is identical to the last committed one, so a target whose protocol
+// geometry did not change has nothing to send.
+enum class ChromeDamageKind {
+    Unknown,
+    Region,
+};
+
+struct ChromeFrameDamage {
+    ChromeDamageKind kind = ChromeDamageKind::Unknown;
+    QRect rect;
+
+    bool known() const { return kind == ChromeDamageKind::Region; }
+    static ChromeFrameDamage full() { return ChromeFrameDamage(); }
+    static ChromeFrameDamage region(const QRect &rect)
+    {
+        return ChromeFrameDamage{ChromeDamageKind::Region, rect};
+    }
+};
+
+// The same report in logical scene coordinates, which is what the controller
+// can express: QML publishes its painted bounds in layout units, and the
+// producer maps them through the device pixel ratio. `known=false` means the
+// change could not be bounded and every target is damaged in full.
+struct ChromeSceneDamage {
+    bool known = false;
+    QRect rect;
+};
 
 // One exported dmabuf plane. `fd` is owned by the caller; a commit path dups
 // it before handing it to `zwp_linux_buffer_params_v1`.
@@ -38,6 +74,8 @@ struct ChromeDmabufFrame {
     // reusable wl_buffer per (surface, slot), so a reused slot does not
     // allocate a new buffer.
     int slot = -1;
+    // Conservative change report for this export. See ChromeFrameDamage.
+    ChromeFrameDamage damage;
 
     bool valid() const
     {
@@ -65,6 +103,21 @@ ChromeDmabufCheck validate(
 // `zwp_linux_buffer_params_v1.add` takes the 64-bit modifier as two uint32s.
 uint32_t modifierHigh(uint64_t modifier);
 uint32_t modifierLow(uint64_t modifier);
+
+// Map a logical (scene-space) change region into the physical framebuffer and
+// clip it to the exported frame. `scale` is the render target's device pixel
+// ratio, so a fractional scale rounds outwards exactly like the source crop.
+// An empty or unknown region stays `Unknown` (full damage), never "no change":
+// a caller that cannot bound a change must not suppress a commit.
+ChromeFrameDamage frameDamage(const QRect &logicalRegion, qreal scale,
+                              const QSize &frameSize);
+
+// Translate a frame-level report into the buffer-space damage one target
+// should commit. `sourceRect` is the target's crop of the exported frame, so a
+// shared scene (bar + popup) gives each surface only its own part. Returns an
+// empty rect when the change does not touch this target, or the full crop when
+// the report is unknown.
+QRect targetDamage(const ChromeFrameDamage &damage, const QRect &sourceRect);
 
 } // namespace ChromeDmabuf
 
@@ -196,6 +249,13 @@ public:
     bool isFree(int slot) const;
     bool contains(int slot) const;
 
+    // Content validity (T238). A slot's pixels are only a complete frame of
+    // the current generation after the producer rendered into it; a slot that
+    // was just allocated, resized, or retired-and-recreated has no usable
+    // baseline. A commit from an invalid slot must damage its whole target.
+    bool contentValid(int slot) const;
+    void setContentValid(int slot, bool valid);
+
     int liveCount() const;
     int busyCount() const;
     int freeCount() const;
@@ -211,6 +271,9 @@ private:
         bool retired = false;
         uint64_t serial = 0;
         Phase phase = Phase::Free;
+        // Cleared whenever the slot's pixels stop being a complete frame of
+        // the current generation (allocation, resize, format change, reset).
+        bool contentValid = false;
     };
 
     int allocateSlot();

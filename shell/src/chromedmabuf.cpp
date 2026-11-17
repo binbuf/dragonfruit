@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "chromedmabuf.h"
 
+#include "chromescale.h"
+
 namespace ChromeDmabuf {
 
 ChromeDmabufCheck validate(
@@ -41,6 +43,27 @@ uint32_t modifierHigh(uint64_t modifier)
 uint32_t modifierLow(uint64_t modifier)
 {
     return static_cast<uint32_t>(modifier & 0xffffffffu);
+}
+
+ChromeFrameDamage frameDamage(const QRect &logicalRegion, qreal scale,
+                              const QSize &frameSize)
+{
+    if (logicalRegion.isEmpty() || frameSize.isEmpty())
+        return ChromeFrameDamage::full();
+    // The same rounding the source crop uses, so a damage box can never fall
+    // inside the pixels the target actually samples. A region that maps
+    // entirely outside the frame is an empty (unchanged) region, not an
+    // unknown one.
+    return ChromeFrameDamage::region(
+        ChromeScale::bufferRect(logicalRegion, scale)
+            .intersected(QRect(QPoint(0, 0), frameSize)));
+}
+
+QRect targetDamage(const ChromeFrameDamage &damage, const QRect &sourceRect)
+{
+    if (!damage.known())
+        return sourceRect;
+    return damage.rect.intersected(sourceRect);
 }
 
 } // namespace ChromeDmabuf
@@ -105,6 +128,9 @@ void ChromeDmabufRing::retireLiveSlots()
         if (!slot.used || slot.retired)
             continue;
         slot.retired = true;
+        // A retired slot holds pixels of the previous generation; they are no
+        // longer a baseline for a partial commit.
+        slot.contentValid = false;
         retired = true;
     }
     if (retired)
@@ -359,6 +385,22 @@ bool ChromeDmabufRing::isFree(int slot) const
 bool ChromeDmabufRing::contains(int slot) const
 {
     return slot >= 0 && slot < m_slots.size() && m_slots.at(slot).used;
+}
+
+bool ChromeDmabufRing::contentValid(int slot) const
+{
+    return contains(slot) && m_slots.at(slot).contentValid;
+}
+
+void ChromeDmabufRing::setContentValid(int slot, bool valid)
+{
+    if (!contains(slot))
+        return;
+    // A retired slot's pixels belong to a previous generation and are never a
+    // valid baseline again.
+    if (valid && m_slots.at(slot).retired)
+        return;
+    m_slots[slot].contentValid = valid;
 }
 
 int ChromeDmabufRing::liveCount() const

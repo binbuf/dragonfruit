@@ -31,6 +31,10 @@ private slots:
     void ringRefusesPhaseSkips();
     void ringAbandonFromPendingFreesSlot();
     void ringRetireWhilePendingWaitsForRelease();
+    void frameDamageMapsThroughScale();
+    void frameDamageClipsToTheFrame();
+    void targetDamageIntersectsTheCrop();
+    void ringTracksContentValidity();
 };
 
 namespace {
@@ -393,6 +397,94 @@ void TestDmabufCommit::ringRetireWhilePendingWaitsForRelease()
     const QVector<int> retired = ring.takeRetired();
     QCOMPARE(retired, QVector<int>{slot});
     QCOMPARE(ring.phase(slot), ChromeDmabufRing::Phase::Free);
+}
+
+void TestDmabufCommit::frameDamageMapsThroughScale()
+{
+    // A logical region becomes a framebuffer region with the same outward
+    // rounding the source crop uses, so a fractional scale never leaves a
+    // changed pixel outside the damage box.
+    const ChromeFrameDamage atOne =
+        ChromeDmabuf::frameDamage(QRect(10, 20, 30, 40), 1.0, QSize(320, 180));
+    QVERIFY(atOne.known());
+    QCOMPARE(atOne.rect, QRect(10, 20, 30, 40));
+
+    const ChromeFrameDamage atHalf =
+        ChromeDmabuf::frameDamage(QRect(10, 20, 30, 40), 1.5, QSize(480, 270));
+    QVERIFY(atHalf.known());
+    QCOMPARE(atHalf.rect, QRect(15, 30, 45, 60));
+
+    // A missing report is not "no change": it is an unknown (full) damage.
+    const ChromeFrameDamage unknown =
+        ChromeDmabuf::frameDamage(QRect(), 1.0, QSize(320, 180));
+    QVERIFY(!unknown.known());
+}
+
+void TestDmabufCommit::frameDamageClipsToTheFrame()
+{
+    const ChromeFrameDamage clipped =
+        ChromeDmabuf::frameDamage(QRect(300, 170, 60, 40), 1.0, QSize(320, 180));
+    QVERIFY(clipped.known());
+    QCOMPARE(clipped.rect, QRect(300, 170, 20, 10));
+
+    // A change entirely outside the render target leaves the target's pixels
+    // untouched, so the report is a known empty region rather than unknown.
+    const ChromeFrameDamage outside =
+        ChromeDmabuf::frameDamage(QRect(400, 400, 10, 10), 1.0, QSize(320, 180));
+    QVERIFY(outside.known());
+    QVERIFY(outside.rect.isEmpty());
+}
+
+void TestDmabufCommit::targetDamageIntersectsTheCrop()
+{
+    // A shared scene exports once and commits to two surfaces; each target
+    // only gets the part of the report that falls inside its crop.
+    const QRect strip(0, 0, 320, 40);
+    const QRect popup(120, 40, 200, 140);
+    const ChromeFrameDamage report =
+        ChromeFrameDamage::region(QRect(140, 60, 20, 20));
+    QCOMPARE(ChromeDmabuf::targetDamage(report, strip), QRect());
+    QCOMPARE(ChromeDmabuf::targetDamage(report, popup), QRect(140, 60, 20, 20));
+
+    // An unknown report always damages the target's whole crop.
+    QCOMPARE(ChromeDmabuf::targetDamage(ChromeFrameDamage::full(), strip), strip);
+    QCOMPARE(ChromeDmabuf::targetDamage(ChromeFrameDamage::full(), popup), popup);
+
+    // A known empty report is "this target already shows the frame".
+    QVERIFY(ChromeDmabuf::targetDamage(ChromeFrameDamage::region(QRect()), popup)
+                .isEmpty());
+}
+
+void TestDmabufCommit::ringTracksContentValidity()
+{
+    ChromeDmabufRing ring(3);
+    ring.configure(QSize(320, 180), GpuChromeCapabilities::Abgr8888,
+                   GpuChromeCapabilities::ModifierLinear);
+    const int slot = ring.acquire();
+    // A freshly allocated slot has no complete frame to use as a baseline.
+    QVERIFY(!ring.contentValid(slot));
+    ring.setContentValid(slot, true);
+    QVERIFY(ring.contentValid(slot));
+
+    // Reuse keeps the frame the slot already holds.
+    QVERIFY(ring.setSerial(slot, 101));
+    QVERIFY(ring.release(101));
+    QCOMPARE(ring.acquire(), slot);
+    QVERIFY(ring.contentValid(slot));
+
+    // A resize retires the generation: the old pixels are no longer a
+    // baseline for the new mapping, and a retired slot never becomes one.
+    QVERIFY(ring.setSize(QSize(640, 360)));
+    QVERIFY(ring.isRetired(slot));
+    QVERIFY(!ring.contentValid(slot));
+    ring.setContentValid(slot, true);
+    QVERIFY(!ring.contentValid(slot));
+
+    // The retired slot's contents are dropped with the slot.
+    QVERIFY(ring.setSerial(slot, 102));
+    QVERIFY(ring.release(102));
+    QCOMPARE(ring.takeRetired(), QVector<int>{slot});
+    QVERIFY(!ring.contentValid(slot));
 }
 
 QTEST_MAIN(TestDmabufCommit)

@@ -52,6 +52,15 @@ private slots:
         QVERIFY(!producer.submitFrame(GpuChromeFrameProducer::PrimaryView,
                                       &reason));
         QVERIFY(!reason.isEmpty());
+        // A conservative damage report still fails on an inert producer and
+        // leaves no in-flight slot behind.
+        QString damagedReason;
+        ChromeSceneDamage damage;
+        damage.known = true;
+        damage.rect = QRect(0, 0, 10, 10);
+        QVERIFY(!producer.submitFrame(GpuChromeFrameProducer::PrimaryView,
+                                      damage, &damagedReason));
+        QVERIFY(!damagedReason.isEmpty());
         QVERIFY(!producer.hasPendingFrame(GpuChromeFrameProducer::PrimaryView));
         QVERIFY(!producer.hasReadyFrame(GpuChromeFrameProducer::PrimaryView));
         ChromeDmabufFrame frame;

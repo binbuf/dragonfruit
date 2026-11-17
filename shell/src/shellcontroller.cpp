@@ -10960,6 +10960,41 @@ QRect ShellController::chromeBufferRect(const QRect &logical) const
     return ChromeScale::bufferRect(logical, m_chromeScale);
 }
 
+void ShellController::invalidateDockDamage()
+{
+    // The next Dock frame must damage its whole strip: the last frame this
+    // target committed is no longer the baseline the published bounds were
+    // unioned against (a deferred or failed commit, a scale change, or a
+    // discarded view).
+    m_dockDamageValid = false;
+    m_dockPaintedBounds = QRect();
+}
+
+ChromeSceneDamage ShellController::dockStripDamage(const QRect &paintedBounds,
+                                                   const QRect &overlayRect,
+                                                   const QSize &sceneSize,
+                                                   const QPoint &origin)
+{
+    ChromeSceneDamage damage;
+    const QRect bounds = paintedBounds.normalized().united(overlayRect.normalized());
+    const bool sceneMoved = !m_dockDamageValid
+        || sceneSize != m_dockDamageSceneSize
+        || origin != m_dockDamageOrigin
+        || !qFuzzyCompare(m_chromeScale, m_dockDamageScale);
+    if (!bounds.isEmpty() && !sceneMoved) {
+        damage.known = true;
+        damage.rect = m_dockPaintedBounds.united(bounds).translated(origin);
+    }
+    m_dockPaintedBounds = bounds;
+    m_dockDamageSceneSize = sceneSize;
+    m_dockDamageOrigin = origin;
+    m_dockDamageScale = m_chromeScale;
+    // An empty bound means the Dock painted nothing this frame; the next
+    // frame has no baseline to compare against.
+    m_dockDamageValid = !bounds.isEmpty();
+    return damage;
+}
+
 ChromeFrameProducer *ShellController::createChromeProducer()
 {
     // T-21.1d: one GPU-first attempt at the GPU producer. The scene-graph API
@@ -11234,6 +11269,10 @@ void ShellController::onChromeCommitDeferred(const QString &surface)
         ChromePace &pace = it.value();
         if (pace.primaryLabel != paceLabel)
             continue;
+        // The frame did not reach the target, so the next Dock frame has no
+        // committed baseline for a partial damage.
+        if (paceLabel == QLatin1String("dock"))
+            invalidateDockDamage();
         pace.dirty = true;
         if (!pace.scheduled && !m_protocol->hasPendingFrame(pace.primaryLabel))
             scheduleChromeRender(it.key());
@@ -11292,6 +11331,10 @@ void ShellController::deferChromeProducer(ChromeFrameProducer *producer)
     if (it == m_chromePaces.end())
         return;
     it.value().dirty = true;
+    // The rejected frame never reached the target: the next one cannot use a
+    // partial damage against a baseline the compositor does not have.
+    if (it.value().primaryLabel == QLatin1String("dock"))
+        invalidateDockDamage();
     // A transient export failure means the GPU is still finishing the frame.
     // Retry on the bounded safety tick instead of spinning a new render
     // immediately; a wl_buffer release still wakes the producer directly.
@@ -11321,6 +11364,14 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
             ? m_protocol->commitLockDmabuf(lockSurfaceId, frame, logicalSize, reason)
             : m_protocol->commitDmabufFor(label, frame, logicalSize, sourceRect,
                                           reason);
+    if (result == ShellProtocol::DmabufCommitResult::Skipped) {
+        // The target already shows these pixels and its protocol geometry did
+        // not change: nothing was sent, so this surface does not hold the
+        // producer slot.
+        noteSurfacePath(label, QStringLiteral("dmabuf"));
+        ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
+        return result;
+    }
     if (result == ShellProtocol::DmabufCommitResult::Committed) {
         noteSurfacePath(label, QStringLiteral("dmabuf"));
         ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
@@ -11370,7 +11421,8 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
 
 bool ShellController::commitChromeScene(QQuickWindow *window,
                                         const QList<ChromeSceneTarget> &targets,
-                                        bool *deferred, int view)
+                                        bool *deferred, int view,
+                                        const ChromeSceneDamage &damage)
 {
     if (deferred)
         *deferred = false;
@@ -11446,7 +11498,7 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
                       .arg(gpu->dmabufRingAllocations(view))
                       .arg(view));
             QString exportReason;
-            if (gpu->submitFrame(view, &exportReason)) {
+            if (gpu->submitFrame(view, damage, &exportReason)) {
                 paceIt.value().pendingScenes[view].append(targets);
                 trace(QStringLiteral("export-done"),
                       QStringLiteral("ok=1 reason=none view=%1").arg(view));
@@ -11569,6 +11621,7 @@ bool ShellController::commitReadyChromeScene(
     }
 
     int successCount = 0;
+    int skippedCount = 0;
     bool anyHardFailure = false;
     QList<int> deferredTargets;
     for (int index = 0; index < targets.size(); ++index) {
@@ -11597,6 +11650,12 @@ bool ShellController::commitReadyChromeScene(
                       .arg(target.sourceRect.y())
                       .arg(target.sourceRect.width())
                       .arg(target.sourceRect.height()));
+        } else if (result == ShellProtocol::DmabufCommitResult::Skipped) {
+            // T238: the target is already showing this content, so it does not
+            // hold the producer slot. The frame is current, not failed.
+            ++skippedCount;
+            trace(QStringLiteral("target-skipped"),
+                  QStringLiteral("target=%1").arg(target.label));
         } else if (result == ShellProtocol::DmabufCommitResult::Deferred) {
             deferredTargets.append(index);
             trace(QStringLiteral("target-deferred"),
@@ -11612,8 +11671,13 @@ bool ShellController::commitReadyChromeScene(
         }
     }
 
-    bool anyCommitted = successCount > 0;
-    if (successCount == 0) {
+    bool anyCommitted = successCount > 0 || skippedCount > 0;
+    if (successCount == 0 && skippedCount > 0
+        && deferredTargets.isEmpty() && !anyHardFailure) {
+        // Every target already had these pixels. Nothing attached the export,
+        // so return it to the ring immediately instead of reading it back.
+        gpu->releaseDmabufFrame(frame.slot, frame.serial);
+    } else if (successCount == 0) {
         // Nothing holds the exported frame. The FBO is safe to read once for
         // the shm fallback of this frame.
         gpu->abandonDmabufFrame(view, frame.slot);
@@ -11702,6 +11766,8 @@ void ShellController::discardChromeView(GpuChromeFrameProducer *gpu, int view)
 {
     if (!gpu)
         return;
+    if (view == GpuChromeFrameProducer::PrimaryView)
+        invalidateDockDamage();
     auto it = m_chromePaces.find(gpu);
     if (it != m_chromePaces.end())
         it.value().pendingScenes.remove(view);
@@ -11773,6 +11839,9 @@ void ShellController::onChromeScaleChanged(qreal scale)
     if (qFuzzyCompare(m_chromeScale, safe))
         return;
     m_chromeScale = safe;
+    // A new scale retires the ring and remaps the viewport: the strip has no
+    // partial-damage baseline at the new size.
+    invalidateDockDamage();
     updateNotificationCenterGeometry();
     updateControlCenterGeometry();
     rerenderChrome();
@@ -12106,8 +12175,21 @@ void ShellController::renderDock()
     if (m_dockPopoverTraceId != 0)
         ChromeStats::instance().traceEvent(m_dockPopoverTraceId,
                                            QStringLiteral("commit-begin"));
+    // T238: the strip's conservative damage. `paintedBounds` is the Dock's
+    // complete painted extent in item coordinates, so the union with the
+    // previous frame covers magnification, motion, and any content change
+    // inside the plate. In the shared-scene mode the popover/tooltip overlay
+    // is painted into the strip too; with independent popup targets it
+    // commits from its own view and is not part of the strip's pixels.
+    const QRect paintedBounds = dockRectProperty("paintedBounds");
+    const QRect overlayBounds = hasPopover ? QRect(px, py, pw, ph) : QRect();
+    const ChromeSceneDamage stripDamage = dockStripDamage(
+        paintedBounds, overlayBounds, stripSceneSize,
+        QPoint(renderLeft, renderTop));
     bool deferred = false;
-    const bool committed = commitChromeScene(m_dockWindow, targets, &deferred);
+    const bool committed = commitChromeScene(m_dockWindow, targets, &deferred,
+                                             GpuChromeFrameProducer::PrimaryView,
+                                             stripDamage);
     if (independentPopup && hasPopover && gpuProducer) {
         // Render the popup into its own content-sized view. The root item is
         // translated so the popup origin is the view origin; the strip is

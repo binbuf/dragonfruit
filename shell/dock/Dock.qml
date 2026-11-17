@@ -4238,6 +4238,45 @@ Rectangle {
                  w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
     }
 
+    // The strip scene's complete painted bounds in Dock-local coordinates
+    // (T238). The shell damages only this rect, unioned with the previous
+    // frame's, instead of the whole strip, so a pointer sweep repaints the
+    // plate and the magnified entries rather than the transparent band around
+    // them. Every item the Dock paints into its own scene must lie inside this
+    // rect: the plate group (fill, rim, glow, and the shadow it clips to the
+    // anchored edge room), each magnified or bouncing entry, and the rects the
+    // Dock already declares visible for input (which cover the drag
+    // affordances and labels by widening to the whole surface). An empty
+    // result makes the shell fall back to a full damage.
+    readonly property var paintedBounds: {
+        var x0 = dockPlate.x;
+        var y0 = dockPlate.y;
+        var x1 = dockPlate.x + dockPlate.width;
+        var y1 = dockPlate.y + dockPlate.height;
+        var l = layout;
+        for (var i = 0; i < l.length; ++i) {
+            // The model and its layout can be observed for one binding
+            // evaluation on opposite sides of an entry change; a missing
+            // delegate is skipped for this frame, exactly like `inputRects`.
+            if (i >= items.length || !items[i] || items[i].kind === "divider")
+                continue;
+            if (!(l[i].iconSize > iconSize + 0.5) && entryBounce(items[i]) <= 0.5)
+                continue;
+            x0 = Math.min(x0, l[i].x);
+            y0 = Math.min(y0, l[i].y);
+            x1 = Math.max(x1, l[i].x + l[i].w);
+            y1 = Math.max(y1, l[i].y + l[i].h);
+        }
+        var visible = inputRects;
+        for (var j = 0; j < visible.length; ++j) {
+            x0 = Math.min(x0, visible[j].x);
+            y0 = Math.min(y0, visible[j].y);
+            x1 = Math.max(x1, visible[j].x + visible[j].w);
+            y1 = Math.max(y1, visible[j].y + visible[j].h);
+        }
+        return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+    }
+
     // The plate perimeter as an SVG path for the plate's rounded rectangle,
     // inset by half the stroke so every rim pixel lies inside the plate shape
     // (T-14.7z, T235a). The path traces the full rounded rectangle — all four

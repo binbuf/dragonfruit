@@ -60,6 +60,10 @@ void TestChromeStats::summaryCarriesTransportCounters()
     stats.recordDmabufImport(QStringLiteral("dock"), 1500, 1700, true);
     stats.recordDmabufHold(QStringLiteral("dock"), 4000, 9000, true);
     stats.recordRingExhausted(QStringLiteral("dock"));
+    // T238: a dmabuf target whose pixels did not change sends nothing; the
+    // commit still counts its own damage area, not the whole crop.
+    stats.recordSkippedCommit(QStringLiteral("dock"), QSize(100, 50), QSize(200, 100),
+                              2, 2.0, true);
     stats.recordCommitFlush(25);
     stats.recordPopoverOpen(QStringLiteral("dock"), 12000);
 
@@ -83,6 +87,8 @@ void TestChromeStats::summaryCarriesTransportCounters()
     QCOMPARE(field(global, QStringLiteral("dmabuf_completion_timeouts")),
              QStringLiteral("1"));
     QCOMPARE(field(global, QStringLiteral("shm_bytes")), QStringLiteral("0"));
+    QCOMPARE(field(global, QStringLiteral("damage_pixels")), QStringLiteral("100"));
+    QCOMPARE(field(global, QStringLiteral("skipped_commits")), QStringLiteral("1"));
 
     const QString stage = lines.at(1);
     QVERIFY(stage.startsWith(QStringLiteral("chrome stage stats (SIGUSR1-1):")));
@@ -123,6 +129,8 @@ void TestChromeStats::summaryCarriesTransportCounters()
     QCOMPARE(field(surface, QStringLiteral("dmabuf_imports")), QStringLiteral("1"));
     QCOMPARE(field(surface, QStringLiteral("ring_exhausted")), QStringLiteral("1"));
     QCOMPARE(field(surface, QStringLiteral("popover_opens")), QStringLiteral("1"));
+    QCOMPARE(field(surface, QStringLiteral("skipped")), QStringLiteral("1"));
+    QCOMPARE(field(surface, QStringLiteral("damage_pixels")), QStringLiteral("100"));
 
     // The correlation trace is a separate opt-in; ids are monotonic and an
     // ended interaction cannot be ended twice.

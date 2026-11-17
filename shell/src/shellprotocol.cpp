@@ -93,6 +93,15 @@ struct ShellSurfaceBuffer {
     QHash<int, ShellDmabufSlot> dmabufSlots;
     QImage lastImage;
     QRect lastSourceRect;
+    // T238: the protocol geometry of the last committed dmabuf frame. A
+    // change (logical size, viewport crop, buffer size) invalidates the
+    // target and forces a full damage, so a partial commit never mixes two
+    // mappings. `dmabufCommitted` distinguishes "showing dmabuf content" from
+    // a surface that has not received its first frame.
+    bool dmabufCommitted = false;
+    QSize dmabufLogical;
+    QRect dmabufSource;
+    QSize dmabufBufferSize;
     wl_callback *frameCallback = nullptr;
     QElapsedTimer frameRequested;
 };
@@ -2022,14 +2031,45 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     if (statsEnabled)
         commitTimer.start();
 
+    // T238: what this target must send. The frame's report is conservative
+    // and shared by every surface of one scene, so each target intersects it
+    // with its own crop. A protocol geometry change (logical size, viewport
+    // source, buffer size) has no usable baseline and is always a full
+    // damage; the same is true for a target that has never committed.
+    const bool geometryChanged = !buffer->dmabufCommitted
+        || buffer->dmabufLogical != logicalSize
+        || buffer->dmabufSource != source
+        || buffer->dmabufBufferSize != frame.size;
+    QRect damage = ChromeDmabuf::targetDamage(frame.damage, source);
+    if (geometryChanged)
+        damage = source;
+
     applyDmabufScale(surface, logicalSize, source, frame.size);
+    const bool surfaceGeometryChanged = applyDockSurfaceGeometry(surface)
+        | applyMenuBarSurfaceGeometry(surface);
+
+    if (damage.isEmpty()) {
+        // The target already shows these pixels. Commit only the surface state
+        // (input region, panel rect) if it changed; either way no buffer is
+        // attached, so the caller returns the producer slot.
+        if (surfaceGeometryChanged) {
+            wl_surface_commit(surface);
+            wl_display_flush(m_display);
+        } else {
+            ChromeStats::instance().recordSkippedCommit(
+                label, logicalSize, frame.size, 1, 1.0, true);
+        }
+        if (reason)
+            reason->clear();
+        return DmabufCommitResult::Skipped;
+    }
 
     // Request the callback before the commit it should pace, exactly like the
     // shm path. The compositor answers it after this frame presents.
     requestFrameInternal(surface, buffer);
     wl_surface_attach(surface, slot.buffer, 0, 0);
-    wl_surface_damage_buffer(surface, 0, 0, frame.size.width(), frame.size.height());
-    applyDockSurfaceGeometry(surface);
+    wl_surface_damage_buffer(surface, damage.x(), damage.y(),
+                             damage.width(), damage.height());
     wl_surface_commit(surface);
     QElapsedTimer flushTimer;
     flushTimer.start();
@@ -2041,6 +2081,10 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
     buffer->lastSourceRect = QRect();
     slot.busy = true;
     slot.serial = frame.serial;
+    buffer->dmabufCommitted = true;
+    buffer->dmabufLogical = logicalSize;
+    buffer->dmabufSource = source;
+    buffer->dmabufBufferSize = frame.size;
     m_dmabufOwners.insert(slot.buffer, DmabufBufferOwner{surface, frame.slot,
                                                          frame.serial});
 
@@ -2051,7 +2095,7 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
         const qint64 bytes = qint64(frame.stride) * frame.size.height();
         ChromeStats::instance().recordCommit(
             label, logicalSize, frame.size, 1, 1.0, true, commitUs, 0,
-            qint64(source.width()) * source.height());
+            qint64(damage.width()) * damage.height());
         ChromeStats::instance().recordDmabufCommit(label, bytes);
         if (reused)
             ChromeStats::instance().recordDmabufReuse(label);

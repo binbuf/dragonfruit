@@ -107,6 +107,12 @@ public:
     // submission order, so commits stay in order even when several surfaces
     // share one producer.
     bool submitFrame(int view, QString *reason = nullptr);
+    // T238: submit with a conservative change report. `damage` is in logical
+    // scene coordinates; the producer maps it through the device pixel ratio,
+    // clips it to the render target, and carries it on the exported frame. An
+    // unknown report (the default above) damages every target in full.
+    bool submitFrame(int view, const ChromeSceneDamage &damage,
+                     QString *reason = nullptr);
     // Export the completed slot for `view` and mark it compositor-owned.
     // False when no frame is ready. The slot stays busy until its release.
     bool takeCompletedFrame(int view, ChromeDmabufFrame *frame,
@@ -185,6 +191,11 @@ private:
         void *fence = nullptr;
         // Monotonic submit time, for the completion budget and the wait stats.
         qint64 submitNs = 0;
+        // T238: the conservative change report supplied at submit, in
+        // framebuffer pixels. `ensureDmabufExport()` rebuilds `frame` from the
+        // exporter, which does not carry damage, so it is kept here and
+        // re-applied with the serial before the commit.
+        ChromeFrameDamage damage;
     };
 
     struct ViewState {

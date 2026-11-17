@@ -8,6 +8,13 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Chrome damage.** GPU chrome commits now damage only the pixels that
+  changed. The Dock publishes the strip's complete painted bounds and the shell
+  damages the union of the previous and current frame, so a pointer sweep, a
+  magnification change, or a launch bounce no longer repaints every transparent
+  pixel of the strip. Each surface translates that report through its own
+  viewport crop, an unchanged surface sends nothing, and a moved scene, an
+  unreceived frame, or a fresh buffer always falls back to a full damage.
 - **Menu popups.** Dock popovers and menu-bar dropdowns now render into their
   own content-sized render targets instead of growing the strip's shared scene.
   Opening a narrow menu no longer enlarges the Dock or bar attachments, and the

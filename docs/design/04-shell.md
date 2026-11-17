@@ -89,8 +89,11 @@ polkit, Applications drawer, and lock surfaces. A shared scene (bar + popup,
 Dock + popover) commits one exported frame to both surfaces and holds the
 producer slot until the last release; with independent popup targets the strip
 and popup have separate rings and commit one frame each
-([ADR 0286](adr/0286-content-sized-popup-render-targets.md)). If a surface
-cannot express the commit, its view uses the T185 shm path. `chrome
+([ADR 0286](adr/0286-content-sized-popup-render-targets.md)). Each commit
+damages only the change region the frame reports, intersected with that
+target's crop, and an unchanged target sends nothing
+([ADR 0288](adr/0288-conservative-per-surface-damage-on-the-gpu-path.md)). If a
+surface cannot express the commit, its view uses the T185 shm path. `chrome
 stats` reports per-surface
 `path=dmabuf|shm`, `gpu_reason`, live buffer counts, reuse, and `copy_bytes`;
 a successful dmabuf frame has zero copies
@@ -727,6 +730,19 @@ target. With the GPU rail active the popup instead gets its own content-sized
 view and ring, so the strip scene never grows when a menu opens
 ([ADR 0286](adr/0286-content-sized-popup-render-targets.md)); the popup target
 is grow-only for the session and stays warm for 750 ms after it ends.
+GPU commits carry a conservative damage report instead of damaging the whole
+exported framebuffer. `Dock.qml` publishes `paintedBounds` — the plate group,
+every magnified or bouncing entry, and the rects it declares visible for input
+— and the shell unions it with the previous frame's, so a sweep, a
+magnification change, a bounce, or a reveal damages the strip's painted extents
+rather than every transparent pixel. Each target then intersects that report
+with its own viewport crop, a target the change does not touch sends nothing,
+and a target whose input region or panel rect moved commits only that surface
+state. A scene-size, scale, origin, or target-geometry change, a frame the
+compositor did not receive, and a ring slot without a complete frame of the
+current generation all force a full damage.
+The menu bar, popup views, and the other chrome surfaces still report an
+unknown (full) damage ([ADR 0288](adr/0288-conservative-per-surface-damage-on-the-gpu-path.md)).
 `popoverHeadroom`/`popoverGutter` remain the QML placement/clamp
 budget, not the scene size; the `DRAGONFRUIT_DOCK_STABLE_POPOVER` diagnostic
 still reserves the full budget for the `t238-*` A/B diagnostic. `dock.size`/overflow changes
