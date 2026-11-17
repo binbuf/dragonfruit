@@ -4861,6 +4861,7 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
 {
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_keyboardOnDock = self->m_dockSurface && surface == self->m_dockSurface;
+    self->m_keyboardOnMenuBar = self->m_surface && surface == self->m_surface;
     self->m_keyboardOnOverview =
         self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_keyboardOnNotificationCenter =
@@ -4883,6 +4884,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
         emit self->dockKeyboardFocused(true);
+    if (self->m_keyboardOnMenuBar)
+        emit self->menuBarKeyboardFocused(true);
     if (self->m_keyboardOnOverview)
         emit self->overviewKeyboardFocused(true);
     if (self->m_keyboardOnNotificationCenter)
@@ -4908,6 +4911,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     auto *self = static_cast<ShellProtocol *>(data);
     const bool wasDock = self->m_keyboardOnDock
             || (self->m_dockSurface && surface == self->m_dockSurface);
+    const bool wasMenuBar = self->m_keyboardOnMenuBar
+            || (self->m_surface && surface == self->m_surface);
     const bool wasOverview = self->m_keyboardOnOverview
             || (self->m_overviewSurface && surface == self->m_overviewSurface);
     const bool wasNotificationCenter = self->m_keyboardOnNotificationCenter
@@ -4928,6 +4933,7 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     const bool wasAppsDrawer = self->m_keyboardOnAppsDrawer
             || (self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface);
     self->m_keyboardOnDock = false;
+    self->m_keyboardOnMenuBar = false;
     self->m_keyboardOnOverview = false;
     self->m_keyboardOnNotificationCenter = false;
     self->m_keyboardOnControlCenter = false;
@@ -4941,6 +4947,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     emit self->keyboardFocused(false);
     if (wasDock)
         emit self->dockKeyboardFocused(false);
+    if (wasMenuBar)
+        emit self->menuBarKeyboardFocused(false);
     if (wasOverview)
         emit self->overviewKeyboardFocused(false);
     if (wasNotificationCenter)

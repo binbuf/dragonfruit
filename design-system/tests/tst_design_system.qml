@@ -96,6 +96,7 @@ TestCase {
     SignalSpy { id: zoomSpy; signalName: "zoomRequested" }
     SignalSpy { id: menuSpy; signalName: "menuRequested" }
     SignalSpy { id: triggeredSpy; signalName: "triggered" }
+    SignalSpy { id: activatedAtSpy; signalName: "activatedAt" }
     SignalSpy { id: popupClosedSpy; signalName: "closed" }
     SignalSpy { id: buttonSpy; signalName: "clicked" }
     SignalSpy { id: segmentedSpy; signalName: "activated" }
@@ -1429,6 +1430,157 @@ TestCase {
         compare(cm.submenuEntries[cm.submenuHighlightedIndex].label, "Two");
     }
 
+    // Task 5: a context menu opens to arbitrary supported depth, activates
+    // the deepest command, and Escape unwinds one level at a time.
+    function test_context_menu_three_nested_levels_activate_and_escape_unwinds() {
+        var cm = make(contextMenuComponent, {
+            model: [ { id: "more", label: "More", type: "submenu", submenu: [
+                { id: "advanced", label: "Advanced", type: "submenu", submenu: [
+                    { id: "deep", label: "Deep", action: "deep" }
+                ] }
+            ] } ]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        activatedAtSpy.target = cm;
+        activatedAtSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        compare(cm.menuDepth, 1);
+        keyClick(Qt.Key_Right);
+        compare(cm.menuDepth, 2);
+        compare(cm.highlightPath[1], "advanced");
+        keyClick(Qt.Key_Right);
+        compare(cm.menuDepth, 3, "a submenu inside a submenu is reachable");
+        compare(cm.highlightPath[2], "deep");
+        var deepRow = findChild(cm, "menuRow2_0");
+        verify(deepRow !== null);
+        compare(deepRow.Accessible.selected, true,
+                "the deepest selected command exposes its selected state");
+        keyClick(Qt.Key_Return);
+        compare(triggeredSpy.count, 1);
+        compare(triggeredSpy.signalArguments[0][1].id, "deep");
+        compare(activatedAtSpy.count, 1);
+        compare(activatedAtSpy.signalArguments[0][0], 2, "level three");
+        compare(activatedAtSpy.signalArguments[0][3][0], "more");
+        compare(activatedAtSpy.signalArguments[0][3][1], "advanced");
+        compare(activatedAtSpy.signalArguments[0][3][2], "deep");
+        compare(cm.open, false);
+
+        // Escape closes exactly one level per press.
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        keyClick(Qt.Key_Right);
+        keyClick(Qt.Key_Right);
+        compare(cm.menuDepth, 3);
+        keyClick(Qt.Key_Escape);
+        compare(cm.menuDepth, 2);
+        compare(cm.open, true);
+        keyClick(Qt.Key_Escape);
+        compare(cm.menuDepth, 1);
+        compare(cm.open, true);
+        keyClick(Qt.Key_Escape);
+        compare(cm.open, false);
+    }
+
+    // Task 5: a pointer-opened menu without an explicit host rectangle is
+    // still clamped into its parent and scrolls instead of being clipped.
+    function test_context_menu_pointer_menu_clamps_into_the_host() {
+        var model = [];
+        for (var i = 0; i < 30; ++i)
+            model.push({ id: "row" + i, label: "Row " + i });
+        var cm = make(contextMenuComponent, { model: model });
+        cm.showAt(stage.width - 4, stage.height - 4);
+        waitForRendering(stage);
+        verify(cm.x >= -0.5);
+        verify(cm.x + cm.width <= stage.width + 0.5);
+        verify(cm.y >= -0.5);
+        verify(cm.y + cm.height <= stage.height + 0.5);
+        compare(cm.scrolls, true);
+    }
+
+    // Task 5: inserting rows around an open chain keeps the same commands
+    // selected on every level, including the deepest one.
+    function test_context_menu_nested_selection_survives_live_updates() {
+        var cm = make(contextMenuComponent, {
+            model: [ { id: "more", label: "More", type: "submenu", submenu: [
+                { id: "advanced", label: "Advanced", type: "submenu", submenu: [
+                    { id: "deep", label: "Deep" }
+                ] }
+            ] } ]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        keyClick(Qt.Key_Right);
+        keyClick(Qt.Key_Right);
+        compare(cm.menuDepth, 3);
+        cm.model = [
+            { id: "new0", label: "New" },
+            { id: "more", label: "More", type: "submenu", submenu: [
+                { id: "new1", label: "New child" },
+                { id: "advanced", label: "Advanced", type: "submenu", submenu: [
+                    { id: "new2", label: "New deep" },
+                    { id: "deep", label: "Deep" }
+                ] }
+            ] }
+        ];
+        waitForRendering(stage);
+        compare(cm.menuDepth, 3, "the open chain survives the insertion");
+        compare(cm.openPath[0], "more");
+        compare(cm.openPath[1], "advanced");
+        compare(cm.highlightPath[2], "deep");
+        keyClick(Qt.Key_Return);
+        compare(triggeredSpy.count, 1);
+        compare(triggeredSpy.signalArguments[0][1].id, "deep");
+    }
+
+    // Task 5: a live update that inserts, replaces, or removes the pressed
+    // row must not run the command that took its place.
+    function test_context_menu_press_does_not_run_a_replacement_row() {
+        var cm = make(contextMenuComponent, {
+            model: [ { id: "a", label: "Alpha", action: "a" },
+                     { id: "b", label: "Beta", action: "b" } ]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        var row = findChild(cm, "menuRow0");
+        verify(row !== null);
+        mousePress(row, row.width / 2, row.height / 2);
+        cm.model = [ { id: "z", label: "Zulu", action: "z" },
+                     { id: "b", label: "Beta", action: "b" } ];
+        waitForRendering(stage);
+        var replacement = findChild(cm, "menuRow0");
+        mouseRelease(replacement, replacement.width / 2,
+                     replacement.height / 2);
+        compare(triggeredSpy.count, 0,
+                "a release must not run the command that replaced the press");
+    }
+
+    // The same rule for a removed row: releasing over the survivor is inert.
+    function test_context_menu_press_on_a_removed_row_is_inert() {
+        var cm = make(contextMenuComponent, {
+            model: [ { id: "a", label: "Alpha", action: "a" },
+                     { id: "b", label: "Beta", action: "b" } ]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        var row = findChild(cm, "menuRow1");
+        verify(row !== null);
+        mousePress(row, row.width / 2, row.height / 2);
+        cm.model = [ { id: "a", label: "Alpha", action: "a" } ];
+        waitForRendering(stage);
+        var survivor = findChild(cm, "menuRow0");
+        mouseRelease(survivor, survivor.width / 2, survivor.height / 2);
+        compare(triggeredSpy.count, 0,
+                "a removed row must not activate the survivor");
+    }
+
     // -- Shortcut hints and menu row anatomy --------------------------------
 
     function test_shortcut_hint_parses_plus_chords_in_canonical_order() {
@@ -1615,6 +1767,78 @@ TestCase {
         waitForRendering(stage);
         verify(m.contentRect.w > closedWidth,
                "an open submenu must extend the committed content rect");
+    }
+
+    // Task 5: the menu-bar dropdown reaches arbitrary supported depth too.
+    function test_menu_three_nested_levels_activate_and_escape_unwinds() {
+        var m = make(menuComponent, {
+            title: "File",
+            model: [ { id: "more", label: "More", type: "submenu", submenu: [
+                { id: "advanced", label: "Advanced", type: "submenu", submenu: [
+                    { id: "deep", label: "Deep", action: "deep" }
+                ] }
+            ] } ]
+        });
+        triggeredSpy.target = m;
+        triggeredSpy.clear();
+        m.openMenu();
+        waitForRendering(stage);
+        compare(m.menuDepth, 1);
+        keyClick(Qt.Key_Right);
+        compare(m.menuDepth, 2);
+        keyClick(Qt.Key_Right);
+        compare(m.menuDepth, 3);
+        compare(m.highlightPath[2], "deep");
+        keyClick(Qt.Key_Return);
+        compare(triggeredSpy.count, 1);
+        compare(triggeredSpy.signalArguments[0][1].id, "deep");
+        compare(m.open, false);
+
+        triggeredSpy.clear();
+        m.openMenu();
+        keyClick(Qt.Key_Right);
+        keyClick(Qt.Key_Right);
+        compare(m.menuDepth, 3);
+        keyClick(Qt.Key_Escape);
+        compare(m.menuDepth, 2);
+        compare(m.open, true);
+        keyClick(Qt.Key_Escape);
+        compare(m.menuDepth, 1);
+        compare(m.open, true);
+        keyClick(Qt.Key_Escape);
+        compare(m.open, false);
+    }
+
+    // Task 5: a long dropdown is bounded by the host rectangle, scrolls, and
+    // keeps the keyboard-selected row visible.
+    function test_menu_bounds_a_long_dropdown_and_keeps_the_highlight_visible() {
+        var model = [];
+        for (var i = 0; i < 30; ++i)
+            model.push({ id: "row" + i, label: "Row " + i });
+        var m = make(menuComponent, {
+            title: "File",
+            model: model,
+            hostBounds: { x: 0, y: 0, w: 300, h: 200 }
+        });
+        m.openMenu();
+        waitForRendering(stage);
+        var bounds = m.effectiveRect;
+        verify(m.popup.width <= bounds.w + 0.5);
+        verify(m.popup.height <= bounds.h + 0.5);
+        verify(m.popup.y >= bounds.y - 0.5);
+        verify(m.popup.y + m.popup.height <= bounds.y + bounds.h + 0.5);
+        var scroll = findChild(m, "menuBarMenuScroll");
+        verify(scroll !== null);
+        compare(scroll.interactive, true);
+        keyClick(Qt.Key_End);
+        wait(50);
+        verify(scroll.flickable.contentY > 0,
+               "End must scroll the highlighted row into the viewport");
+        var top = m.rowY(m.highlightedIndex)
+                  - Theme.controls.menuBarMenu.padding;
+        verify(top >= scroll.flickable.contentY - 0.5);
+        verify(top + Theme.controls.menuBarMenu.rowHeight
+               <= scroll.flickable.contentY + scroll.flickable.height + 0.5);
     }
 
     // -- SearchField (FR-1) -------------------------------------------------

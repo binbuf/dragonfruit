@@ -979,6 +979,10 @@ signals:
     // 20). Distinct from `keyboardFocused` so the shell can route keys to the
     // Dock while the bar still tracks its own focus.
     void dockKeyboardFocused(bool focused);
+    // The menu-bar surface specifically gained/lost the keyboard (T-09
+    // keyboard entry). The shell starts or ends title/status traversal and
+    // releases chrome focus back to the active window when it ends.
+    void menuBarKeyboardFocused(bool focused);
     void keyEvent(uint32_t key, bool pressed, uint32_t modifiers);
     // A key delivered to the lock surface while the session is locked
     // (T-12.3c). Distinct from `keyEvent` so lock input never reaches the
@@ -1525,6 +1529,9 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;
+    // True while the menu-bar surface holds the keyboard (T-09 keyboard
+    // entry), so the shell can start/end title traversal.
+    bool m_keyboardOnMenuBar = false;
     // True while a lock surface holds the keyboard (T-12.3c), so key events
     // are routed to the lock scene and never to the chrome.
     bool m_keyboardOnLock = false;

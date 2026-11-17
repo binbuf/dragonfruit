@@ -50,6 +50,7 @@ Item {
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
         SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
         SignalSpy { id: traySpy; signalName: "trayMenuTriggered" }
+        SignalSpy { id: keyboardReleaseSpy; signalName: "keyboardFocusReleaseRequested" }
         SignalSpy { id: bluetoothPowerSpy; signalName: "bluetoothPowerToggleRequested" }
         SignalSpy { id: bluetoothDeviceSpy; signalName: "bluetoothDeviceToggled" }
         SignalSpy { id: bluetoothSettingsSpy; signalName: "bluetoothSettingsRequested" }
@@ -2832,6 +2833,65 @@ Item {
             compare(bar.openMenuIndex, 1);
             keyClick(Qt.Key_Escape);
             compare(bar.openMenuIndex, -1);
+        }
+
+        // Task 5: Ctrl+F2 entry moves a visible ring across the titles and
+        // the status row, opens with Return, returns focus on Escape, and
+        // releases chrome focus back to the invoking window.
+        function test_keyboard_entry_traverses_titles_and_status_and_releases() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                appMenuModel: [ { title: "File", items: [
+                    { label: "New", action: "file.new" }
+                ] } ]
+            });
+            keyboardReleaseSpy.target = bar;
+            keyboardReleaseSpy.clear();
+            bar.beginKeyboardNavigation();
+            compare(bar.keyboardFocused, true);
+            compare(bar.keyboardMenuIndex, 0);
+            var first = bar.appMenuAt(0);
+            verify(first.activeFocus, "the first title takes the focus ring");
+            compare(first.showFocusRing, true);
+
+            var last = bar.topLevelMenus.length - 1;
+            keyClick(Qt.Key_Right);
+            compare(bar.keyboardMenuIndex, 1);
+            verify(bar.appMenuAt(1).activeFocus);
+            for (var i = 1; i < last; ++i)
+                keyClick(Qt.Key_Right);
+            compare(bar.keyboardMenuIndex, last);
+            verify(bar.appMenuAt(last).activeFocus);
+
+            // Right from the last title crosses into the status row.
+            keyClick(Qt.Key_Right);
+            compare(bar.keyboardMenuIndex, -1);
+            verify(bar.keyboardStatusIndex >= 0,
+                   "the title row hands traversal to the status row");
+            // Left from the first status slot returns to the last title.
+            keyClick(Qt.Key_Left);
+            compare(bar.keyboardMenuIndex, last);
+            verify(bar.appMenuAt(last).activeFocus);
+
+            // Return opens the focused title's dropdown.
+            keyClick(Qt.Key_Return);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, last);
+            // Escape closes the dropdown and returns the ring to its title.
+            keyClick(Qt.Key_Escape);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, -1);
+            verify(bar.appMenuAt(last).activeFocus,
+                   "closing the dropdown returns focus to the invoking title");
+
+            // Escape with no menu open leaves keyboard entry and asks the
+            // shell to restore the invoking window's focus.
+            keyClick(Qt.Key_Escape);
+            compare(bar.keyboardFocused, false);
+            compare(keyboardReleaseSpy.count, 1);
         }
 
         // -- StatusNotifier tray items (T-14.3) -----------------------------

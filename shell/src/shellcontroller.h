@@ -399,6 +399,8 @@ private slots:
     void onDockPointerTrackingChanged();
     void onDockKeyboardFocused(bool focused);
     void onDockKeyboardFocusReleaseRequested();
+    void onMenuBarKeyboardFocused(bool focused);
+    void onMenuBarKeyboardFocusReleaseRequested();
     // External drag-and-drop onto the Dock (T-10 section 12).
     void onDockExternalDragEntered(bool payloadIsApp, qreal x, qreal y);
     void onDockExternalDragMoved(qreal x, qreal y);
@@ -1503,6 +1505,7 @@ private:
     // True while the Dock chrome surface holds the keyboard (T-10 section
     // 20), so key events are routed to the Dock scene for navigation.
     bool m_dockKeyboardFocused = false;
+    bool m_menuBarKeyboardFocused = false;
     // The open dropdown's window-space rectangle (valid while a menu is open).
     bool m_popupGeometryPending = false;
     int m_popupX = 0;

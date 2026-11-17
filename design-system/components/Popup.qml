@@ -19,6 +19,28 @@ Item {
     property int horizontalPadding: Theme.controls.popup.padding
     property int verticalPadding: Theme.controls.popup.padding
     property real anchorOffset: Theme.controls.popup.offset
+    // Optional host rectangle, in this popup's parent coordinates. When set,
+    // the surface is clamped into it and its content may scroll instead of
+    // growing past the host edge.
+    property var availableRect: null
+    readonly property real boundX:
+        availableRect && availableRect.w > 0 ? availableRect.x : 0
+    readonly property real boundY:
+        availableRect && availableRect.h > 0 ? availableRect.y : 0
+    readonly property real boundWidth:
+        availableRect && availableRect.w > 0 ? availableRect.w
+        : (root.parent ? root.parent.width : Number.MAX_VALUE)
+    readonly property real boundHeight:
+        availableRect && availableRect.h > 0 ? availableRect.h
+        : (root.parent ? root.parent.height : Number.MAX_VALUE)
+    readonly property real maxContentWidth:
+        availableRect && availableRect.w > 0
+            ? Math.max(0, availableRect.w - 2 * horizontalPadding)
+            : Number.MAX_VALUE
+    readonly property real maxContentHeight:
+        availableRect && availableRect.h > 0
+            ? Math.max(0, availableRect.h - 2 * verticalPadding)
+            : Number.MAX_VALUE
     property int accessibleRole: Accessible.Pane
     property string accessibleName: ""
     property string accessibleDescription: ""
@@ -124,19 +146,33 @@ Item {
     readonly property real exitTranslateX: (1 - scale) * anchorLocal.x
     readonly property real exitTranslateY: (1 - scale) * anchorLocal.y
 
-    width: Math.max(preferredWidth, contentColumn.implicitWidth + 2 * horizontalPadding)
-    height: contentColumn.implicitHeight + 2 * verticalPadding
+    readonly property real naturalWidth:
+        Math.max(preferredWidth, contentColumn.implicitWidth + 2 * horizontalPadding)
+    readonly property real naturalHeight:
+        contentColumn.implicitHeight + 2 * verticalPadding
+    width: root.availableRect ? Math.min(naturalWidth, boundWidth)
+                              : naturalWidth
+    height: root.availableRect ? Math.min(naturalHeight, boundHeight)
+                               : naturalHeight
     // Keep the surface inside the owner's width; a control near the right
     // edge (the Displays advanced button) must not open half off-screen. The
-    // vertical position is clamped to the window too (T266).
-    x: root.parent
-       ? Math.max(0, Math.min(root.parent.width - width, anchorPoint.x))
-       : anchorPoint.x
-    y: root.parent
-       ? (root.localParent !== null
-          ? Math.max(0, Math.min(root.parent.height - height, anchorPoint.y))
-          : anchorPoint.y)
-       : anchorPoint.y
+    // vertical position is clamped to the window too (T266). A popup with an
+    // explicit host rectangle clamps to that rectangle instead, so a bounded
+    // menu never crosses an output edge.
+    x: root.availableRect
+       ? Math.max(root.boundX,
+                  Math.min(root.boundX + root.boundWidth - width,
+                           root.anchorPoint.x))
+       : (root.parent
+          ? Math.max(0, Math.min(root.parent.width - width, root.anchorPoint.x))
+          : root.anchorPoint.x)
+    y: root.availableRect
+       ? Math.max(root.boundY,
+                  Math.min(root.boundY + root.boundHeight - height,
+                           root.anchorPoint.y))
+       : (root.parent && root.localParent !== null
+          ? Math.max(0, Math.min(root.parent.height - height, root.anchorPoint.y))
+          : root.anchorPoint.y)
     scale: open ? 1.0 : closeScale
     transformOrigin: Item.TopLeft
     transform: Translate {

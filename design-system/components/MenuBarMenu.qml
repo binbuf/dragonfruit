@@ -5,6 +5,11 @@ import Dragonfruit
 // A top-level menu-bar item with a declarative dropdown. The normalized
 // `menuModel` is the first-party path into the global-menu broker (FR-4,
 // T-22 consumer): publish it as-is, activate entries through `activate()`.
+//
+// Submenus recurse to arbitrary supported depth through the shared
+// `MenuLevels` model, so a chevron is never a dead end. The dropdown scrolls
+// inside the host rectangle, and every level keeps the highlighted row in
+// view.
 Item {
     id: root
 
@@ -51,12 +56,20 @@ Item {
                 root.labelShadowColor.b, root.labelShadowOpacity * 0.9)
     property alias popup: popup
     property alias open: popup.open
+    // The numeric selection mirrors the shared level model. It stays writable
+    // for callers that used the old single-level API; the stable keys are what
+    // follow a live update.
     property int highlightedIndex: -1
-    // The main-menu row whose submenu is open, -1 when none (section 13).
     property int openSubmenuIndex: -1
     property int submenuHighlightedIndex: -1
-    // Whether the bar title shows the keyboard FocusRing. The shell turns it
-    // off until it implements Tab navigation across the bar (T-09 polish).
+    property string highlightedKey: ""
+    property string openSubmenuKey: ""
+    property string submenuHighlightedKey: ""
+    // The stable identity of a row that armed the submenu hover timer.
+    readonly property int pendingHoverIndex: levels.pendingIndex
+    readonly property string pendingHoverKey: levels.pendingKey
+    readonly property string typeAheadBuffer: levels.typeAheadBuffer
+    // Whether the bar title shows the keyboard FocusRing.
     property bool showFocusRing: true
     // T-21.2c: the shell applies the compositor's Popup role state to the
     // dropdown and every submenu through this one pair of properties.
@@ -76,8 +89,31 @@ Item {
     readonly property color submenuFill:
         Material.menuFill(submenuPreset, materialBlurActive, materialTier,
                           materialFallback, trustedBackdrop)
+    // The host rectangle this dropdown may use, in the bar/content coordinate
+    // system. When unset the window content bounds are used, which keeps
+    // standalone and gallery menus bounded too.
+    property var hostBounds: null
+    readonly property var effectiveRect: {
+        if (root.hostBounds && root.hostBounds.w > 0 && root.hostBounds.h > 0) {
+            var win = Window.window;
+            if (!win)
+                return root.hostBounds;
+            var p = win.contentItem.mapToItem(root, root.hostBounds.x,
+                                              root.hostBounds.y);
+            return { x: p.x, y: p.y, w: root.hostBounds.w, h: root.hostBounds.h };
+        }
+        var hostWindow = Window.window;
+        if (!hostWindow)
+            return null;
+        var content = hostWindow.contentItem;
+        var origin = content.mapToItem(root, 0, 0);
+        return { x: origin.x, y: origin.y, w: content.width, h: content.height };
+    }
 
     signal triggered(int index, var item)
+    // The same activation with the full stable identity: the level, the row
+    // index on that level, the raw item, and the ancestor key path.
+    signal activatedAt(int level, int index, var item, var path)
     signal opened()
     signal closed()
     // Left/Right at the top level asks the owner to move to a sibling menu.
@@ -88,55 +124,35 @@ Item {
     implicitHeight: Theme.controls.menuBarMenu.barHeight
     activeFocusOnTab: true
 
+    // The one shared state model for every level of this dropdown.
+    MenuLevels {
+        id: levels
+        model: root.model
+        menuOpen: root.open
+        onActivated: (item, entry, ancestors) => {
+            root.triggered(entry.index, item);
+            root.activatedAt(entry.level, entry.index, item, ancestors);
+            if (!entry.keepOpen)
+                root.closeMenu();
+        }
+        onStateChanged: root.syncFromLevels()
+    }
+
     // Flattened, index-preserving view used for rendering and keyboard nav.
-    readonly property var entries: {
-        var out = [];
-        for (var i = 0; i < root.model.length; ++i) {
-            var m = root.model[i] || {};
-            out.push({
-                index: i,
-                type: m.type === "separator" ? "separator"
-                      : (m.type === "submenu" ? "submenu" : "item"),
-                label: m.label || "",
-                shortcut: m.shortcut || "",
-                enabled: m.enabled !== false,
-                checked: m.checked === true,
-                checkable: m.checkable === true || m.checked === true,
-                keepOpen: m.keepOpen === true,
-                disabledReason: m.disabledReason || "",
-                submenu: m.submenu || m.items || []
-            });
-        }
-        return out;
-    }
+    readonly property var entries: levels.levelEntries.length > 0
+                                   ? levels.levelEntries[0] : []
+    // Introspection/test seam for the whole open chain: the visible level
+    // count, the stable keys that opened each level, and the stable key
+    // selected on each level.
+    readonly property int menuDepth: levels.levelCount
+    readonly property var openPath: levels.openPath
+    readonly property var highlightPath: levels.highlightKeys
     // The raw children of the currently open submenu (for `triggered`).
-    readonly property var submenuModel: {
-        if (root.openSubmenuIndex < 0)
-            return [];
-        var e = root.entries[root.openSubmenuIndex];
-        return e && e.submenu ? e.submenu : [];
-    }
+    readonly property var submenuModel: levels.levelModels.length > 1
+                                        ? levels.levelModels[1] : []
     // The normalized rows of the open submenu (same shape as `entries`).
-    readonly property var submenuEntries: {
-        var out = [];
-        for (var i = 0; i < root.submenuModel.length; ++i) {
-            var m = root.submenuModel[i] || {};
-            out.push({
-                index: i,
-                type: m.type === "separator" ? "separator"
-                      : (m.type === "submenu" ? "submenu" : "item"),
-                label: m.label || "",
-                shortcut: m.shortcut || "",
-                enabled: m.enabled !== false,
-                checked: m.checked === true,
-                checkable: m.checkable === true || m.checked === true,
-                keepOpen: m.keepOpen === true,
-                disabledReason: m.disabledReason || "",
-                submenu: m.submenu || m.items || []
-            });
-        }
-        return out;
-    }
+    readonly property var submenuEntries: levels.levelEntries.length > 1
+                                          ? levels.levelEntries[1] : []
 
     // Publishable, JSON-serializable model (FR-4). No QML objects leak out.
     readonly property var menuModel: {
@@ -145,6 +161,9 @@ Item {
             var e = root.entries[i];
             out.push({
                 id: e.index,
+                key: e.key,
+                level: e.level,
+                path: e.path,
                 type: e.type,
                 label: e.label,
                 shortcut: e.shortcut,
@@ -159,8 +178,8 @@ Item {
         return out;
     }
     // T202: material regions for the shell overlay, in this item's
-    // coordinates. The attached dropdown has square top corners; the nested
-    // panel is a detached card. The shell maps both to the bar surface.
+    // coordinates. The attached dropdown has square top corners; nested
+    // panels are detached cards. The shell maps both to the bar surface.
     readonly property var regions: {
         var out = [];
         if (popup.visible || popup.open) {
@@ -171,23 +190,27 @@ Item {
                 overscan: 20
             });
         }
-        if (root.openSubmenuIndex >= 0 && submenuPanel.width > 0) {
-            out.push({
-                key: "submenu", preset: root.submenuPreset,
-                x: submenuPanel.x, y: submenuPanel.y,
-                w: submenuPanel.width, h: submenuPanel.height,
-                tl: Theme.controls.contextMenu.radius,
-                tr: Theme.controls.contextMenu.radius,
-                br: Theme.controls.contextMenu.radius,
-                bl: Theme.controls.contextMenu.radius, overscan: 20
-            });
+        if (submenuPanel.open && submenuPanel.width > 0) {
+            var childRegions = submenuPanel.regions;
+            for (var i = 0; i < childRegions.length; ++i) {
+                var region = childRegions[i];
+                out.push({
+                    key: region.key, preset: region.preset,
+                    x: submenuPanel.x + region.x,
+                    y: submenuPanel.y + region.y,
+                    w: region.w, h: region.h,
+                    tl: region.tl, tr: region.tr,
+                    br: region.br, bl: region.bl,
+                    overscan: region.overscan
+                });
+            }
         }
         return out;
     }
 
-    // The bounding box of the dropdown plus any open submenu, in root
+    // The bounding box of the dropdown plus every open submenu, in root
     // coordinates. The shell commits this as the `overlay` popup rectangle so
-    // the nested panel is not clipped.
+    // nested panels are not clipped.
     readonly property var contentRect: {
         // The logical dropdown rectangle in root coordinates. Using the
         // popup's own x/y (rather than mapToItem) keeps the binding tracking
@@ -198,25 +221,92 @@ Item {
         var h = popup.height;
         // Include the submenu as soon as it is open (not once its fade-in has
         // started), so the committed rectangle is stable from the first frame.
-        if (root.openSubmenuIndex >= 0 && submenuPanel.width > 0) {
-            var px = submenuPanel.x;
-            var py = submenuPanel.y;
-            x = Math.min(x, px);
-            y = Math.min(y, py);
-            w = Math.max(w, px + submenuPanel.width) - x;
-            h = Math.max(h, py + submenuPanel.height) - y;
+        if (submenuPanel.open && submenuPanel.width > 0) {
+            var rect = submenuPanel.contentRect;
+            x = Math.min(x, submenuPanel.x + rect.x);
+            y = Math.min(y, submenuPanel.y + rect.y);
+            w = Math.max(w, submenuPanel.x + rect.x + rect.w) - x;
+            h = Math.max(h, submenuPanel.y + rect.y + rect.h) - y;
         }
         return { x: x, y: y, w: w, h: h };
     }
+    // The dropdown hangs below the bar. Its host rectangle starts at the
+    // anchor so a long menu is bounded by the space below the bar instead of
+    // growing to the full output height and covering the bar.
+    readonly property var popupRect: {
+        var rect = root.effectiveRect;
+        if (!rect)
+            return null;
+        var top = Math.max(rect.y, popup.anchorPoint.y);
+        return { x: rect.x, y: top, w: rect.w,
+                 h: Math.max(0, rect.y + rect.h - top) };
+    }
+    readonly property real submenuGap: Theme.primitive.spacing.xxs
+    // Room on each side of the dropdown for a nested card.
+    readonly property real submenuSpaceRight: root.effectiveRect
+        ? Math.max(0, root.effectiveRect.x + root.effectiveRect.w
+                      - (popup.x + popup.width + root.submenuGap))
+        : Number.MAX_VALUE
+    readonly property real submenuSpaceLeft: root.effectiveRect
+        ? Math.max(0, popup.x - root.submenuGap - root.effectiveRect.x)
+        : Number.MAX_VALUE
     // Flip the nested panel to the dropdown's left when it would leave the
-    // window (a menu opened near the right edge).
-    readonly property bool submenuFlips: {
-        var bounds = Window.window ? Window.window.width : 0;
-        if (bounds <= 0 || submenuPanel.width <= 0)
-            return false;
-        var tracked = popup.x + popup.y;
-        var right = popup.mapToItem(null, popup.width, 0).x;
-        return right + Theme.primitive.spacing.xxs + submenuPanel.width > bounds;
+    // host rectangle (a menu opened near the right edge).
+    readonly property bool submenuFlips:
+        root.effectiveRect ? root.submenuSpaceLeft > root.submenuSpaceRight
+                           : false
+    readonly property real submenuMaxWidth:
+        root.effectiveRect
+            ? Math.max(1, root.submenuFlips ? root.submenuSpaceLeft
+                                            : root.submenuSpaceRight)
+            : Number.MAX_VALUE
+
+    // Keep the legacy numeric API in step with the shared level model.
+    property bool syncingSelection: false
+    function syncFromLevels() {
+        if (root.syncingSelection)
+            return;
+        root.syncingSelection = true;
+        root.highlightedIndex = levels.highlightIndices.length > 0
+                                ? levels.highlightIndices[0] : -1;
+        root.openSubmenuIndex = levels.openPath.length > 0
+                                ? levels.openIndexAt(0) : -1;
+        root.submenuHighlightedIndex = levels.levelCount > 1
+                                       ? levels.highlightIndexAt(1) : -1;
+        root.highlightedKey = levels.highlightKeys.length > 0
+                              ? levels.highlightKeys[0] : "";
+        root.openSubmenuKey = levels.openPath.length > 0
+                              ? levels.openPath[0] : "";
+        root.submenuHighlightedKey = levels.highlightKeys.length > 1
+                                     ? levels.highlightKeys[1] : "";
+        root.syncingSelection = false;
+    }
+    onHighlightedIndexChanged: {
+        if (!root.syncingSelection && levels.highlightIndexAt(0)
+                !== root.highlightedIndex)
+            levels.setHighlight(0, root.highlightedIndex);
+        root.keepRowVisible(root.highlightedIndex);
+    }
+    onOpenSubmenuIndexChanged: {
+        if (root.syncingSelection)
+            return;
+        if (root.openSubmenuIndex >= 0) {
+            if (levels.openIndexAt(0) !== root.openSubmenuIndex)
+                levels.openAt(0, root.openSubmenuIndex);
+        } else {
+            levels.closeFrom(0);
+        }
+    }
+    onSubmenuHighlightedIndexChanged: {
+        if (!root.syncingSelection && levels.highlightIndexAt(1)
+                !== root.submenuHighlightedIndex)
+            levels.setHighlight(1, root.submenuHighlightedIndex);
+    }
+    onModelChanged: Qt.callLater(root.reconcileLevels)
+    onEntriesChanged: root.reconcileLevels()
+    function reconcileLevels() {
+        if (levels)
+            levels.reconcile();
     }
 
     function openMenu() {
@@ -228,179 +318,100 @@ Item {
     }
 
     function activate(index) {
-        var e = root.entries[index];
-        if (!e || e.type === "separator" || !e.enabled)
-            return;
-        if (e.type === "submenu") {
-            root.openSubmenu(index);
-            return;
-        }
-        root.triggered(e.index, root.model[e.index]);
-        if (!e.keepOpen)
-            root.closeMenu();
+        levels.activateAt(0, index);
     }
 
     function moveHighlight(delta) {
-        submenuTimer.stop();
-        pendingHoverIndex = -1;
-        var count = root.entries.length;
-        if (count === 0)
-            return;
-        var i = root.highlightedIndex;
-        for (var step = 0; step < count; ++step) {
-            i = (i + delta + count) % count;
-            var e = root.entries[i];
-            if (e.type !== "separator" && e.enabled) {
-                root.highlightedIndex = i;
-                return;
-            }
-        }
+        levels.move(0, delta);
     }
 
     function openSubmenu(index) {
-        var e = root.entries[index];
-        if (!e || e.type !== "submenu" || !e.enabled)
-            return;
-        submenuTimer.stop();
-        root.highlightedIndex = index;
-        root.openSubmenuIndex = index;
-        root.submenuHighlightedIndex = -1;
-        root.moveSubmenuHighlight(1);
+        levels.openAt(0, index);
     }
 
     function closeSubmenu() {
-        submenuTimer.stop();
-        pendingHoverIndex = -1;
-        root.openSubmenuIndex = -1;
-        root.submenuHighlightedIndex = -1;
+        levels.closeFrom(0);
     }
 
     function moveSubmenuHighlight(delta) {
-        submenuTimer.stop();
-        pendingHoverIndex = -1;
-        var count = root.submenuEntries.length;
-        if (count === 0)
-            return;
-        var i = root.submenuHighlightedIndex;
-        for (var step = 0; step < count; ++step) {
-            i = (i + delta + count) % count;
-            var e = root.submenuEntries[i];
-            if (e.type !== "separator" && e.enabled) {
-                root.submenuHighlightedIndex = i;
-                return;
-            }
-        }
+        levels.move(1, delta);
     }
 
     function activateSubmenu(index) {
-        var e = root.submenuEntries[index];
-        if (!e || e.type === "separator" || !e.enabled)
-            return;
-        // Nested submenus are a follow-up; the chevron is shown but the row
-        // is inert rather than silently activating a parent item.
-        if (e.type === "submenu")
-            return;
-        root.triggered(e.index, root.submenuModel[e.index]);
-        if (!e.keepOpen)
-            root.closeMenu();
+        levels.activateAt(1, index);
+    }
+
+    function activateSubmenuHighlighted() {
+        var index = levels.highlightIndexAt(1);
+        if (index < 0)
+            index = root.submenuHighlightedIndex;
+        root.activateSubmenu(index);
     }
 
     // Type-ahead: printable keys accumulate in a short-lived buffer and move
-    // the highlight to the next enabled row whose label starts with it. The
-    // active list is the open submenu when there is one, else the main menu.
-    property string typeAheadBuffer: ""
-    function typeAheadMatch(prefix, list, current) {
-        var count = list.length;
-        for (var step = 0; step < count; ++step) {
-            var i = (current + 1 + step) % count;
-            var e = list[i];
-            if (!e || e.type === "separator" || !e.enabled)
-                continue;
-            if (e.label.toLocaleLowerCase().indexOf(prefix) === 0)
-                return i;
-        }
-        return -1;
-    }
+    // the highlight to the next enabled row whose label starts with it.
     function typeAhead(text) {
-        submenuTimer.stop();
-        pendingHoverIndex = -1;
-        if (!text || text.length === 0)
-            return;
-        var lower = text.toLocaleLowerCase();
-        typeAheadBuffer += lower;
-        typeAheadTimer.restart();
-        var list = root.openSubmenuIndex >= 0 ? root.submenuEntries : root.entries;
-        var current = root.openSubmenuIndex >= 0 ? root.submenuHighlightedIndex
-                                                 : root.highlightedIndex;
-        var match = root.typeAheadMatch(root.typeAheadBuffer, list, current);
-        // A buffer that no longer matches starts over at the newest key, so a
-        // second word ("sh" then "se") never dead-ends on the old prefix.
-        if (match < 0 && typeAheadBuffer.length > lower.length) {
-            typeAheadBuffer = lower;
-            match = root.typeAheadMatch(lower, list, current);
-        }
-        if (match < 0)
-            return;
-        if (root.openSubmenuIndex >= 0)
-            root.submenuHighlightedIndex = match;
-        else
-            root.highlightedIndex = match;
+        levels.typeAhead(levels.deepestLevel, text);
     }
     function clearTypeAhead() {
-        typeAheadTimer.stop();
-        typeAheadBuffer = "";
+        levels.clearTypeAhead();
     }
 
     // Keep the parent selected while the pointer crosses toward its submenu.
     // Entering the child cancels this pending change, including a diagonal
     // crossing through another row. A stationary sibling still wins on dwell.
-    property int pendingHoverIndex: -1
     function onMainRowHovered(index) {
-        if (!root.open)
-            return;
-        if (pendingHoverIndex === index && submenuTimer.running)
-            return;
-        submenuTimer.stop();
-        pendingHoverIndex = index;
-        if (root.openSubmenuIndex >= 0 && root.openSubmenuIndex !== index) {
-            submenuTimer.start();
-            return;
-        }
-        var e = root.entries[index];
-        root.highlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
-        if (e && e.type === "submenu" && e.enabled && root.openSubmenuIndex !== index)
-            submenuTimer.start();
+        levels.hover(0, index);
     }
     function onMainRowLeft() {
-        if (root.openSubmenuIndex < 0) {
-            submenuTimer.stop();
-            pendingHoverIndex = -1;
-        }
+        levels.leave(0);
     }
     function enterSubmenu() {
-        submenuTimer.stop();
-        pendingHoverIndex = -1;
-        root.highlightedIndex = root.openSubmenuIndex;
+        levels.enterChild(0);
     }
     function commitHover() {
-        if (!root.open)
-            return;
-        var index = pendingHoverIndex;
-        root.closeSubmenu();
-        var e = root.entries[index];
-        root.highlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
-        if (e && e.enabled && e.type === "submenu")
-            root.openSubmenu(index);
+        levels.commitHover();
     }
     // The row's top offset in popup coordinates, matching the Column layout.
     function rowY(index) {
-        var y = Theme.controls.menuBarMenu.padding;
-        for (var i = 0; i < index && i < root.entries.length; ++i) {
-            var e = root.entries[i];
-            y += (e.type === "separator") ? Theme.controls.menuBarMenu.padding
-                                          : Theme.controls.menuBarMenu.rowHeight;
+        return levels.rowY(0, index, Theme.controls.menuBarMenu.rowHeight,
+                           Theme.controls.menuBarMenu.padding);
+    }
+    function rowViewportY(index) {
+        var flickable = rowView.flickable;
+        return root.rowY(index) - (flickable ? flickable.contentY : 0);
+    }
+    // Keep the keyboard-highlighted row fully inside the bounded dropdown.
+    function keepRowVisible(index) {
+        if (!rowView.interactive || index < 0 || index >= root.entries.length)
+            return;
+        var flickable = rowView.flickable;
+        if (!flickable || flickable.height <= 0)
+            return;
+        var padding = Theme.controls.menuBarMenu.padding;
+        var top = root.rowY(index) - padding;
+        var entry = root.entries[index];
+        var height = entry && entry.type === "separator"
+                     ? padding : Theme.controls.menuBarMenu.rowHeight;
+        if (top < flickable.contentY)
+            flickable.contentY = Math.max(0, top);
+        else if (top + height > flickable.contentY + flickable.height)
+            flickable.contentY = Math.min(top + height - flickable.height,
+                                          Math.max(0, flickable.contentHeight
+                                                      - flickable.height));
+    }
+
+    // The widest row's natural width. A Column inside the scrolling
+    // viewport cannot report it once rows stretch to the bounded width, so
+    // read the delegates' implicit widths directly, like ContextMenu.
+    readonly property real naturalRowWidth: {
+        var width = 0;
+        for (var i = 0; i < rowRepeater.count; ++i) {
+            var row = rowRepeater.itemAt(i);
+            if (row && row.implicitWidth > width)
+                width = row.implicitWidth;
         }
-        return y;
+        return width;
     }
 
     Rectangle {
@@ -479,6 +490,13 @@ Item {
         root.open ? root.closeMenu() : root.openMenu();
         event.accepted = true;
     }
+    Keys.onDownPressed: (event) => {
+        if (!root.open)
+            root.openMenu();
+        else
+            levels.move(levels.deepestLevel, 1);
+        event.accepted = true;
+    }
 
     Accessible.role: Accessible.MenuItem
     Accessible.name: root.title
@@ -501,92 +519,82 @@ Item {
         materialBlurActive: root.materialBlurActive
         materialTier: root.materialTier
         materialFallback: root.materialFallback
+        availableRect: root.popupRect
+        // Size from the rows' natural width and the column's natural height.
+        // A Column inside a scrolling viewport cannot report the row width
+        // once rows stretch to the bounded width, so read it directly.
+        width: Math.min(Math.max(preferredWidth,
+                                 root.naturalRowWidth + 2 * horizontalPadding),
+                        boundWidth)
+        height: Math.min(rowColumn.implicitHeight + 2 * verticalPadding,
+                         boundHeight)
 
         onOpened: {
-            root.highlightedIndex = -1;
-            root.closeSubmenu();
-            root.clearTypeAhead();
-            root.moveHighlight(1);
+            levels.reset();
+            root.syncFromLevels();
+            if (rowView.flickable)
+                rowView.flickable.contentY = 0;
+            levels.move(0, 1);
             root.opened();
         }
         onClosed: {
-            root.highlightedIndex = -1;
-            root.closeSubmenu();
+            levels.reset();
+            root.syncFromLevels();
             root.clearTypeAhead();
             root.closed();
         }
         onEscapePressed: {
-            if (root.openSubmenuIndex >= 0)
-                root.closeSubmenu();
+            if (levels.openPath.length > 0)
+                levels.closeDeepest();
             else
                 root.closeMenu();
         }
 
         Keys.onPressed: (event) => {
+            var level = levels.deepestLevel;
+            var list = levels.levelEntries[level] || [];
             switch (event.key) {
             case Qt.Key_Down:
-                if (root.openSubmenuIndex >= 0)
-                    root.moveSubmenuHighlight(1);
-                else
-                    root.moveHighlight(1);
+                levels.move(level, 1);
                 event.accepted = true;
                 break;
             case Qt.Key_Up:
-                if (root.openSubmenuIndex >= 0)
-                    root.moveSubmenuHighlight(-1);
-                else
-                    root.moveHighlight(-1);
+                levels.move(level, -1);
                 event.accepted = true;
                 break;
             case Qt.Key_Right:
-                if (root.openSubmenuIndex >= 0) {
-                    // Nested submenus are not supported yet; keep the open
-                    // panel rather than moving the top-level selection.
-                } else {
-                    var row = root.entries[root.highlightedIndex];
-                    if (row && row.type === "submenu" && row.enabled)
-                        root.openSubmenu(root.highlightedIndex);
-                    else
+                if (levels.openPath.length <= level) {
+                    var rightIndex = levels.highlightIndexAt(level);
+                    if (rightIndex >= 0 && levels.openAt(level, rightIndex))
+                        event.accepted = true;
+                    else if (level === 0)
                         root.menuSwitchRequested(1);
+                    else
+                        event.accepted = true;
                 }
                 event.accepted = true;
                 break;
             case Qt.Key_Left:
-                if (root.openSubmenuIndex >= 0)
-                    root.closeSubmenu();
+                if (levels.openPath.length > 0)
+                    levels.closeDeepest();
                 else
                     root.menuSwitchRequested(-1);
                 event.accepted = true;
                 break;
             case Qt.Key_Home:
-                // Home/End act on the active level: the open submenu when
-                // there is one, otherwise the parent menu (reliability §10).
-                if (root.openSubmenuIndex >= 0) {
-                    root.submenuHighlightedIndex = -1;
-                    root.moveSubmenuHighlight(1);
-                } else {
-                    root.highlightedIndex = -1;
-                    root.moveHighlight(1);
-                }
+                levels.setHighlight(level, -1);
+                levels.move(level, 1);
                 event.accepted = true;
                 break;
             case Qt.Key_End:
-                if (root.openSubmenuIndex >= 0) {
-                    root.submenuHighlightedIndex = root.submenuEntries.length;
-                    root.moveSubmenuHighlight(-1);
-                } else {
-                    root.highlightedIndex = root.entries.length;
-                    root.moveHighlight(-1);
-                }
+                levels.setHighlight(level, list.length);
+                levels.move(level, -1);
                 event.accepted = true;
                 break;
             case Qt.Key_Return:
             case Qt.Key_Enter:
             case Qt.Key_Space:
-                if (root.openSubmenuIndex >= 0)
-                    root.activateSubmenu(root.submenuHighlightedIndex);
-                else
-                    root.activate(root.highlightedIndex);
+                levels.activateAt(level, levels.highlightIndexAt(level));
                 event.accepted = true;
                 break;
             default:
@@ -594,147 +602,93 @@ Item {
                         && !(event.modifiers & (Qt.ControlModifier
                                                 | Qt.AltModifier
                                                 | Qt.MetaModifier))) {
-                    root.typeAhead(event.text);
+                    levels.typeAhead(level, event.text);
                     event.accepted = true;
                 }
                 break;
             }
         }
 
-        Repeater {
-            model: root.entries
+        // The dropdown scrolls inside the host rectangle. The rows keep their
+        // natural width for sizing and stretch to the bounded panel width.
+        ScrollView {
+            id: rowView
+            objectName: "menuBarMenuScroll"
+            width: popup.width - 2 * popup.horizontalPadding
+            height: rowView.implicitHeight
+            implicitWidth: root.naturalRowWidth
+            implicitHeight: Math.min(rowColumn.implicitHeight,
+                                     popup.maxContentHeight)
+            interactive: rowColumn.implicitHeight > height
+            scrollbarVisible: interactive
 
-            delegate: MenuRow {
-                required property var modelData
-                objectName: "menuRow" + modelData.index
-                entry: modelData
-                highlighted: root.highlightedIndex === modelData.index
-                rowHeight: Theme.controls.menuBarMenu.rowHeight
-                padding: Theme.controls.menuBarMenu.padding
-                labelFontSize: Theme.controls.titlebar.fontSize
-                checkSize: Theme.controls.titlebar.fontSize
-                shortcutGap: Theme.controls.menuBarMenu.shortcutGap
-                onRowHovered: (index) => root.onMainRowHovered(index)
-                onRowLeft: root.onMainRowLeft()
-                onRowActivated: (index) => root.activate(index)
-            }
-        }
-    }
+            Column {
+                id: rowColumn
+                width: Math.max(0, rowView.width
+                                   - (rowView.interactive
+                                      ? Theme.controls.scrollView.scrollbarWidth
+                                        + Theme.controls.scrollView.scrollbarMargin
+                                      : 0))
 
-    Timer {
-        id: submenuTimer
-        interval: Theme.controls.contextMenu.submenuDelay
-        repeat: false
-        onTriggered: root.commitHover()
-    }
+                Repeater {
+                    id: rowRepeater
+                    model: root.entries
 
-    Timer {
-        id: typeAheadTimer
-        interval: 700
-        repeat: false
-        onTriggered: root.typeAheadBuffer = ""
-    }
-
-    // The nested panel for the open submenu, beside its row. It is a sibling
-    // of the popup (not a child) so it can overflow the popup's bounds without
-    // being clipped; `contentRect` reports the union for the overlay surface.
-    SubmenuPanel {
-        id: submenuPanel
-        objectName: "submenuPanel"
-        enabled: root.open && root.openSubmenuIndex >= 0
-        entriesList: root.submenuEntries
-        highlightIndex: root.submenuHighlightedIndex
-        x: popup.x + (root.submenuFlips
-                      ? -submenuPanel.width - Theme.primitive.spacing.xxs
-                      : popup.width + Theme.primitive.spacing.xxs)
-        y: popup.y + root.rowY(root.openSubmenuIndex)
-        visible: opacity > 0
-        opacity: (root.openSubmenuIndex >= 0 && root.submenuEntries.length > 0) ? 1.0 : 0.0
-        scale: root.openSubmenuIndex >= 0 ? 1.0 : 0.97
-        transformOrigin: Item.TopLeft
-        z: popup.z + 1
-        HoverHandler {
-            onHoveredChanged: if (hovered) root.enterSubmenu()
-        }
-        onRowHovered: (index) => {
-            root.enterSubmenu();
-            var e = root.submenuEntries[index];
-            root.submenuHighlightedIndex = e && e.enabled && e.type !== "separator" ? index : -1;
-        }
-        onRowActivated: (index) => root.activateSubmenu(index)
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: Theme.motion.menuOpen.duration
-                easing.type: Easing.Bezier
-                easing.bezierCurve: Theme.motion.menuOpen.curve
-            }
-        }
-        Behavior on scale {
-            NumberAnimation {
-                duration: Theme.motion.menuOpen.duration
-                easing.type: Easing.Bezier
-                easing.bezierCurve: Theme.motion.menuOpen.curve
-            }
-        }
-    }
-
-    component SubmenuPanel: Item {
-        id: subPanel
-
-        property var entriesList: []
-        property int highlightIndex: -1
-
-        signal rowHovered(int index)
-        signal rowActivated(int index)
-
-        width: Math.max(Theme.controls.menuBarMenu.minWidth,
-                        subColumn.implicitWidth + 2 * Theme.controls.menuBarMenu.padding)
-        height: subColumn.implicitHeight + 2 * Theme.controls.menuBarMenu.padding
-
-        Shadow {
-            width: subPanel.width
-            height: subPanel.height
-            radius: Theme.controls.contextMenu.radius
-            blur: Theme.controls.popup.shadowBlur
-        }
-
-        Rectangle {
-            objectName: "submenuSurface"
-            anchors.fill: parent
-            radius: Theme.controls.contextMenu.radius
-            // Submenus are detached cards: all-rounded corners and the same
-            // resolved detached fill as the context/tray family.
-            color: root.submenuFill
-            border.width: Theme.controls.window.borderWidth
-            border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border
-            antialiasing: true
-        }
-
-        Column {
-            id: subColumn
-            x: Theme.controls.menuBarMenu.padding
-            y: Theme.controls.menuBarMenu.padding
-            width: subPanel.width - 2 * Theme.controls.menuBarMenu.padding
-
-            Repeater {
-                model: subPanel.entriesList
-                delegate: MenuRow {
-                    required property var modelData
-                    entry: modelData
-                    highlighted: subPanel.highlightIndex === modelData.index
-                    rowHeight: Theme.controls.menuBarMenu.rowHeight
-                    padding: Theme.controls.menuBarMenu.padding
-                    labelFontSize: Theme.controls.titlebar.fontSize
-                    checkSize: Theme.controls.titlebar.fontSize
-                    shortcutGap: Theme.controls.menuBarMenu.shortcutGap
-                    onRowHovered: (index) => subPanel.rowHovered(index)
-                    onRowActivated: (index) => subPanel.rowActivated(index)
+                    delegate: MenuRow {
+                        required property var modelData
+                        objectName: "menuRow" + modelData.index
+                        entry: modelData
+                        constrainedWidth: parent ? parent.width : -1
+                        highlighted: root.highlightedIndex === modelData.index
+                        rowHeight: Theme.controls.menuBarMenu.rowHeight
+                        padding: Theme.controls.menuBarMenu.padding
+                        labelFontSize: Theme.controls.titlebar.fontSize
+                        checkSize: Theme.controls.titlebar.fontSize
+                        shortcutGap: Theme.controls.menuBarMenu.shortcutGap
+                        onRowHovered: (index) => root.onMainRowHovered(index)
+                        onRowLeft: root.onMainRowLeft()
+                        onRowActivated: (index) => root.activate(index)
+                    }
                 }
             }
         }
-
-        Accessible.role: Accessible.PopupMenu
     }
 
+    // The first nested card. It owns every deeper card through its own
+    // recursive child loader. It is a sibling of the popup (not a child) so it
+    // can overflow the popup's bounds without being clipped; `contentRect`
+    // reports the union for the overlay surface.
+    MenuLevelPanel {
+        id: submenuPanel
+        objectName: "submenuPanel"
+        levels: levels
+        level: 1
+        ready: true
+        boundsItem: root
+        boundsRect: root.effectiveRect
+        maxWidth: root.submenuMaxWidth
+        maxHeight: root.popupRect ? root.popupRect.h : Number.MAX_VALUE
+        gap: root.submenuGap
+        minWidth: Theme.controls.menuBarMenu.minWidth
+        rowHeight: Theme.controls.menuBarMenu.rowHeight
+        padding: Theme.controls.menuBarMenu.padding
+        labelFontSize: Theme.controls.titlebar.fontSize
+        checkSize: Theme.controls.titlebar.fontSize
+        shortcutGap: Theme.controls.menuBarMenu.shortcutGap
+        fill: root.submenuFill
+        cornerRadius: Theme.controls.contextMenu.radius
+        accessibleName: root.title
+        x: popup.x + (root.submenuFlips
+                      ? -submenuPanel.width - root.submenuGap
+                      : popup.width + root.submenuGap)
+        y: {
+            var y = popup.y + root.rowViewportY(root.openSubmenuIndex);
+            var rect = root.popupRect;
+            if (rect && rect.h > 0)
+                y = Math.max(rect.y,
+                             Math.min(rect.y + rect.h - submenuPanel.height, y));
+            return y;
+        }
+        z: popup.z + 1
+    }
 }

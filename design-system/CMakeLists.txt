@@ -70,6 +70,8 @@ qt_add_qml_module(dragonfruit-design-system
         components/Select.qml
         components/SearchablePicker.qml
         components/ContextMenu.qml
+        components/MenuLevels.qml
+        components/MenuLevelPanel.qml
         components/MenuRow.qml
         components/ShortcutHint.qml
         components/SearchField.qml

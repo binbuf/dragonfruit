@@ -147,6 +147,25 @@ Rectangle {
     // The compositor reports when the shell/menu surface holds focus; when
     // it is lost the open menu dismisses (FR-3).
     property bool shellFocused: true
+    // T-09 keyboard entry: Ctrl+F2 (compositor `FocusMenuBar`) hands the bar
+    // the keyboard. `keyboardMenuIndex` is the title ring, `keyboardStatusIndex`
+    // the status ring; -1 means that family is not focused.
+    property bool keyboardFocused: false
+    property int keyboardMenuIndex: -1
+    // The output's logical size, injected by the shell controller. It is the
+    // bound a dropdown clamps to, independent of the temporary scene growth
+    // used to render an open popup.
+    property int outputWidth: 0
+    property int outputHeight: 0
+    readonly property var hostBounds: ({
+        x: 0, y: 0,
+        w: menuBar.outputWidth > 0 ? menuBar.outputWidth
+          : (Window.window ? Window.window.width : menuBar.width),
+        h: menuBar.outputHeight > 0 ? menuBar.outputHeight
+          : (Window.window ? Window.window.height : menuBar.height)
+    })
+
+    signal keyboardFocusReleaseRequested()
 
     // The registry source: the controller's entries plus the built-in
     // clock/Quick Settings/Overview fallbacks. Deduplicating by id lets the
@@ -469,6 +488,10 @@ Rectangle {
     signal missionControlRequested()
 
     implicitHeight: Theme.controls.menuBar.height
+    // The bar root holds the keyboard during keyboard entry; a focused title
+    // or status item then owns the arrow keys.
+    focus: menuBar.keyboardFocused
+    activeFocusOnTab: false
     // Use the measurement row, not the budget-dependent visible row, so an
     // unset width resolves to "every item fits" instead of feeding the
     // overflow capacity back into the bar's own width.
@@ -642,6 +665,8 @@ Rectangle {
             return;
         var previous = openMenuIndex;
         openMenuIndex = index;
+        if (menuBar.keyboardFocused)
+            menuBar.keyboardMenuIndex = index;
         if (previous >= 0) {
             var previousItem = menuRepeater.itemAt(previous);
             if (previousItem)
@@ -803,7 +828,10 @@ Rectangle {
         batteryMenuPopup.open = false;
         bluetoothMenuPopup.open = false;
         statusMenuClosed();
-        keyboardStatusIndex = -1;
+        // Keep the status ring on the item that opened the popover when the
+        // bar owns keyboard entry; a pointer dismissal clears it.
+        if (!keyboardFocused)
+            keyboardStatusIndex = -1;
         // Return keyboard focus to the bar so the arrow keys keep driving the
         // status row after a popover closes.
         forceActiveFocus();
@@ -914,6 +942,149 @@ Rectangle {
         keyboardStatusIndex = -1;
     }
 
+    function titleHasItems(index) {
+        var menu = topLevelMenus[index] || {};
+        return menu.items !== undefined && menu.items.length > 0;
+    }
+
+    function firstTitleIndex() {
+        for (var i = 0; i < topLevelMenus.length; ++i) {
+            if (titleHasItems(i))
+                return i;
+        }
+        return -1;
+    }
+
+    function lastTitleIndex() {
+        for (var i = topLevelMenus.length - 1; i >= 0; --i) {
+            if (titleHasItems(i))
+                return i;
+        }
+        return -1;
+    }
+
+    function nextStatusIndex(from, delta) {
+        var n = statusRepeater.count;
+        var i = from + delta;
+        while (i >= 0 && i < n) {
+            var item = statusRepeater.itemAt(i);
+            if (item && item.available)
+                return i;
+            i += delta;
+        }
+        return -1;
+    }
+
+    function focusTitle(index) {
+        var item = menuRepeater.itemAt(index);
+        if (item) {
+            keyboardMenuIndex = index;
+            item.forceActiveFocus();
+        }
+    }
+
+    // Predictable title/status traversal: Left/Right moves within the title
+    // row, crosses into the status row at the edge, and comes back from the
+    // status row's other edge.
+    function moveKeyboardFocus(delta) {
+        if (keyboardMenuIndex >= 0) {
+            var i = keyboardMenuIndex;
+            for (var step = 0; step < topLevelMenus.length; ++step) {
+                i += delta;
+                if (i < 0 || i >= topLevelMenus.length) {
+                    keyboardMenuIndex = -1;
+                    keyboardStatusIndex = -1;
+                    var statusIndex = nextStatusIndex(delta > 0
+                                                      ? -1 : statusRepeater.count,
+                                                      delta);
+                    if (statusIndex >= 0) {
+                        keyboardStatusIndex = statusIndex;
+                        forceActiveFocus();
+                    }
+                    return;
+                }
+                if (titleHasItems(i)) {
+                    keyboardStatusIndex = -1;
+                    focusTitle(i);
+                    return;
+                }
+            }
+            return;
+        }
+        if (keyboardStatusIndex >= 0) {
+            var next = nextStatusIndex(keyboardStatusIndex, delta);
+            if (next >= 0) {
+                keyboardStatusIndex = next;
+                forceActiveFocus();
+                return;
+            }
+            keyboardStatusIndex = -1;
+            var title = delta > 0 ? firstTitleIndex() : lastTitleIndex();
+            if (title >= 0)
+                focusTitle(title);
+            return;
+        }
+        var first = delta > 0 ? firstTitleIndex() : lastTitleIndex();
+        if (first >= 0) {
+            focusTitle(first);
+            return;
+        }
+        moveStatusFocus(delta);
+    }
+
+    function activateKeyboardFocus() {
+        if (keyboardMenuIndex >= 0) {
+            toggleMenu(keyboardMenuIndex);
+            return;
+        }
+        if (keyboardStatusIndex >= 0) {
+            activateKeyboardStatus();
+            return;
+        }
+        var first = firstTitleIndex();
+        if (first >= 0)
+            focusTitle(first);
+    }
+
+    // Ctrl+F2 hands the bar the keyboard (the compositor's FocusMenuBar).
+    // Start on the first title; a bar with no populated menu falls back to the
+    // status row so the keyboard entry is never a dead end.
+    function beginKeyboardNavigation() {
+        keyboardFocused = true;
+        keyboardStatusIndex = -1;
+        var first = firstTitleIndex();
+        if (first >= 0) {
+            focusTitle(first);
+        } else {
+            keyboardMenuIndex = -1;
+            moveStatusFocus(1);
+            forceActiveFocus();
+        }
+    }
+
+    function endKeyboardNavigation() {
+        keyboardMenuIndex = -1;
+        keyboardStatusIndex = -1;
+        // Move focus off a title before its `activeFocusOnTab` binding follows
+        // `keyboardFocused` to false; Qt refuses that change while the item is
+        // the active focus item.
+        for (var i = 0; i < menuRepeater.count; ++i) {
+            var item = menuRepeater.itemAt(i);
+            if (item && item.activeFocus) {
+                menuBar.forceActiveFocus();
+                break;
+            }
+        }
+        keyboardFocused = false;
+    }
+
+    onKeyboardFocusedChanged: {
+        if (!keyboardFocused) {
+            keyboardMenuIndex = -1;
+            keyboardStatusIndex = -1;
+        }
+    }
+
     function activateKeyboardStatus() {
         if (keyboardStatusIndex < 0)
             return;
@@ -956,6 +1127,7 @@ Rectangle {
             closeStatusMenu();
             closeTrayMenu();
             closeOverflowMenu();
+            endKeyboardNavigation();
         }
     }
 
@@ -993,40 +1165,67 @@ Rectangle {
     }
 
     Keys.onEscapePressed: (event) => {
-        menuBar.closeMenus();
-        menuBar.closeStatusMenu();
-        menuBar.closeTrayMenu();
-        menuBar.closeOverflowMenu();
+        if (menuBar.keyboardFocused) {
+            // Leave keyboard entry and hand the keyboard back to the invoking
+            // window (the compositor restores the active window's focus).
+            menuBar.keyboardFocusReleaseRequested();
+            menuBar.endKeyboardNavigation();
+        } else {
+            menuBar.closeMenus();
+            menuBar.closeStatusMenu();
+            menuBar.closeTrayMenu();
+            menuBar.closeOverflowMenu();
+        }
         event.accepted = true;
     }
 
-    // Keyboard navigation across the status row (T-07.5b). Left/Right move
-    // the selection ring; Return/Space opens the selected item's menu (or
-    // raises its action). A popup that holds focus handles its own keys.
+    // Keyboard navigation across the title row and the status row (T-09,
+    // T-07.5b). Left/Right moves within the focused family and crosses at the
+    // edge; Return/Space opens the selected title or status item. A popup that
+    // holds focus handles its own keys.
     Keys.onLeftPressed: (event) => {
-        if (!menuBar.statusMenuOpen) {
+        if (menuBar.keyboardFocused) {
+            menuBar.moveKeyboardFocus(-1);
+            event.accepted = true;
+        } else if (!menuBar.statusMenuOpen) {
             menuBar.moveStatusFocus(-1);
             event.accepted = true;
         }
     }
 
     Keys.onRightPressed: (event) => {
-        if (!menuBar.statusMenuOpen) {
+        if (menuBar.keyboardFocused) {
+            menuBar.moveKeyboardFocus(1);
+            event.accepted = true;
+        } else if (!menuBar.statusMenuOpen) {
             menuBar.moveStatusFocus(1);
             event.accepted = true;
         }
     }
 
     Keys.onReturnPressed: (event) => {
-        if (!menuBar.statusMenuOpen) {
+        if (menuBar.keyboardFocused) {
+            menuBar.activateKeyboardFocus();
+            event.accepted = true;
+        } else if (!menuBar.statusMenuOpen) {
             menuBar.activateKeyboardStatus();
             event.accepted = true;
         }
     }
 
     Keys.onSpacePressed: (event) => {
-        if (!menuBar.statusMenuOpen) {
+        if (menuBar.keyboardFocused) {
+            menuBar.activateKeyboardFocus();
+            event.accepted = true;
+        } else if (!menuBar.statusMenuOpen) {
             menuBar.activateKeyboardStatus();
+            event.accepted = true;
+        }
+    }
+
+    Keys.onDownPressed: (event) => {
+        if (menuBar.keyboardFocused) {
+            menuBar.activateKeyboardFocus();
             event.accepted = true;
         }
     }
@@ -1048,11 +1247,11 @@ Rectangle {
                 required property var modelData
                 required property int index
 
-                // The shell does not implement Tab navigation across the bar
-                // yet; keep the offscreen window from auto-focusing the first
-                // title and drawing its FocusRing when it is shown.
-                activeFocusOnTab: false
-                showFocusRing: false
+                // Tab reaches the titles while the bar owns keyboard entry.
+                // Outside that mode the offscreen window must not auto-focus
+                // the first title and draw its ring on show.
+                activeFocusOnTab: menuBar.keyboardFocused
+                showFocusRing: menuBar.keyboardFocused
 
                 showLogo: modelData.kind === "system"
                 glyph: modelData.kind === "system" ? menuBar.osGlyph : "dragonfruit"
@@ -1061,6 +1260,7 @@ Rectangle {
                 textTreatmentEnabled: menuBar.textTreatmentEnabled
                 title: modelData.title !== undefined ? modelData.title : ""
                 model: modelData.items !== undefined ? modelData.items : []
+                hostBounds: menuBar.hostBounds
                 materialBlurActive: menuBar.popupMaterialBlurActive
                 materialTier: menuBar.popupMaterialTier
                 materialFallback: menuBar.popupMaterialFallback
@@ -1069,6 +1269,7 @@ Rectangle {
                 onMenuSwitchRequested: (delta) => menuBar.moveMenuSelection(index, delta)
                 onOpened: {
                     menuBar.openMenuIndex = index;
+                    menuBar.keyboardMenuIndex = index;
                     menuBar.appMenuOpened(index);
                 }
                 onClosed: {
@@ -1076,6 +1277,10 @@ Rectangle {
                         menuBar.openMenuIndex = -1;
                         menuBar.appMenuClosed();
                     }
+                    // Escape from a dropdown unwinds one level at a time and
+                    // returns the ring to the invoking title.
+                    if (menuBar.keyboardFocused)
+                        menuBar.focusTitle(index);
                 }
 
                 HoverHandler {
@@ -1273,6 +1478,7 @@ Rectangle {
         id: overflowContextMenu
         objectName: "overflowContextMenu"
         model: menuBar.overflowMenu
+        availableRect: menuBar.hostBounds
         accessibleName: qsTr("More menu bar items")
         materialPreset: "menuDetached"
         materialBackdrop: "trusted"
@@ -1296,6 +1502,7 @@ Rectangle {
         id: trayContextMenu
         objectName: "trayContextMenu"
         model: menuBar.trayMenu
+        availableRect: menuBar.hostBounds
         accessibleName: qsTr("Tray menu")
         materialPreset: "menuDetached"
         materialBackdrop: "trusted"

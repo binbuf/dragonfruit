@@ -821,6 +821,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onStatusItemActivated(QString)));
     connect(m_item, SIGNAL(appMenuOpened(int)), this, SLOT(onAppMenuOpened(int)));
     connect(m_item, SIGNAL(appMenuClosed()), this, SLOT(onAppMenuClosed()));
+    connect(m_item, SIGNAL(keyboardFocusReleaseRequested()), this,
+            SLOT(onMenuBarKeyboardFocusReleaseRequested()));
     connect(m_item, SIGNAL(dropdownSurfaceRegionsChanged()),
             this, SLOT(schedulePopupGeometry()));
     connect(m_item, SIGNAL(appMenuTriggered(int,int,QVariant)), this,
@@ -861,6 +863,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::pointerLeft, this, &ShellController::onPointerLeft);
     connect(m_protocol, &ShellProtocol::keyboardFocused, this,
             &ShellController::onKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::menuBarKeyboardFocused, this,
+            &ShellController::onMenuBarKeyboardFocused);
     connect(m_protocol, &ShellProtocol::keyEvent, this, &ShellController::onKeyEvent);
     connect(m_protocol, &ShellProtocol::lockKeyEvent, this, &ShellController::onLockKeyEvent);
     connect(m_protocol, &ShellProtocol::pointerAxis, this,
@@ -4115,6 +4119,12 @@ void ShellController::onConfigured(int width, int height, quint32)
     }
     m_width = width;
     m_height = height;
+    // The bar's dropdowns clamp to the output, not to the temporary scene
+    // growth used to render an open popup (T-09).
+    if (m_item) {
+        m_item->setProperty("outputWidth", m_width);
+        m_item->setProperty("outputHeight", m_height);
+    }
     fprintf(stderr, "dragonfruit-shell: menu bar configured %dx%d\n", width, height);
     scheduleRender();
     // Canvas items paint on the scene graph after the first grab; request one
@@ -7432,6 +7442,34 @@ void ShellController::onDockKeyboardFocusReleaseRequested()
     // window's keyboard focus. The resulting wl_keyboard.leave routes back
     // through onDockKeyboardFocused(false), so the state stays compositor-led.
     if (m_dockKeyboardFocused)
+        m_protocol->releaseKeyboardFocus();
+}
+
+void ShellController::onMenuBarKeyboardFocused(bool focused)
+{
+    m_menuBarKeyboardFocused = focused;
+    if (!m_item)
+        return;
+    if (focused) {
+        // Ctrl+F2 handed the bar the keyboard. The scene owns title/status
+        // traversal; move QML active focus into it so its Keys handlers fire.
+        // A pointer press also focuses the bar (OnDemand); it must not start
+        // keyboard entry or draw the title ring behind a pointer menu.
+        if (m_buttons == Qt::NoButton)
+            QMetaObject::invokeMethod(m_item, "beginKeyboardNavigation");
+    } else {
+        QMetaObject::invokeMethod(m_item, "endKeyboardNavigation");
+    }
+    scheduleRender();
+}
+
+void ShellController::onMenuBarKeyboardFocusReleaseRequested()
+{
+    // Escape left menu-bar keyboard entry (T-09). The bar has already cleared
+    // its rings; ask the compositor to restore the invoking window's focus.
+    // The resulting leave routes back through onMenuBarKeyboardFocused(false),
+    // so the state stays compositor-led.
+    if (m_menuBarKeyboardFocused)
         m_protocol->releaseKeyboardFocus();
 }
 
