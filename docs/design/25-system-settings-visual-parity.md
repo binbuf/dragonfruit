@@ -98,6 +98,11 @@ The spacer is 13 pt. The status row is a real row: it shows the current update
 state and badge from the update provider, and opens General → Software Update.
 It is not a fake notification.
 
+T285 makes this executable: `SettingsPanes.catalog` is the 26-pane order and
+`SettingsPanes.sidebarStatus` is the status row the shell prepends to the first
+group. The sidebar is 27 entries including that row. The label and badge are
+seeded from the provider contract; T286 renders the live row.
+
 General remains the default pane. The last-pane and window-geometry persistence
 from T263 stays; a deep link wins over the restored pane.
 
@@ -224,7 +229,7 @@ mirror, `docs/settings-keys.md`, the consumer test, and the map row together.
 | Overview (Mission Control) | **Removed as a top-level pane.** Its rows move to Desktop & Dock → Workspace Overview. Keep `settings://pane/mission-control` and `settings://pane/overview` as aliases to that section. |
 | Quick Settings | **Removed as a top-level pane.** Rename it **Menu Bar Controls** and move it under Menu Bar. Keep `settings://pane/control-center` and `settings://pane/quick-settings` as aliases to Menu Bar → Menu Bar Controls. |
 | Screen Saver | **Kept as its own pane** after Wallpaper. The mockup puts it under Wallpaper; this is the one deliberate deviation. Wallpaper keeps a `Screen Saver…` footer link. |
-| Online Accounts | Renamed **Internet Accounts**. Keep the stable `online-accounts` id and add `settings://pane/internet-accounts` as an alias. |
+| Online Accounts | The mockup's **Internet Accounts** label is the macOS term; the naming gate maps it to the generic **Online Accounts**. Keep the stable `online-accounts` id, keep the title Online Accounts, and add `settings://pane/internet-accounts` as an alias plus the search synonym. |
 | Autofill & Passwords | Renamed **Passwords & Keys**. Keep the `passwords` id. |
 | Backup | Renamed **Backups**. Keep the `backup` id. |
 | Mission Control | Renamed **Workspace Overview** in the Desktop & Dock section. |
@@ -247,6 +252,12 @@ mirror, `docs/settings-keys.md`, the consumer test, and the map row together.
 
 A refused link returns `false` from the shell resolver and is surfaced by the
 extras host as a rejection, never as a silent no-op.
+
+The table is executable as `SettingsPanes.aliases` and mirrored one-for-one in
+`SettingsMap.aliases` (T285). `SettingsPanes.removed`/`SettingsMap.removed`
+carry the reason the three ids left the top-level catalog; the debug view shows
+it. Biometrics has no alias, so `resolve()` returns null and the shell sets
+`lastDeepLinkError` before returning `false`.
 
 ## 4. Pane inventory
 
@@ -275,7 +286,7 @@ extras host as a rejection, never as a silent no-op.
 | `lock-screen` | Lock Screen | ship | settingsd + compositor/lock + logind |
 | `privacy` | Privacy & Security | ship | portals + polkit + LUKS + firewall |
 | `users-groups` | Users & Groups | ship | accountsservice + distro adapter + polkit |
-| `online-accounts` | Internet Accounts | ship | Online Accounts service |
+| `online-accounts` | Online Accounts | ship | Online Accounts service |
 | `keyboard` | Keyboard | ship | settingsd + compositor input + ibus/fcitx5 |
 | `mouse` | Mouse | ship | settingsd + compositor input |
 | `trackpad` | Trackpad | ship | settingsd + compositor input (libinput) |

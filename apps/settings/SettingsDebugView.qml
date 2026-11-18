@@ -41,6 +41,7 @@ Dialog {
     property alias mapButton: mapButton
     property alias closeButton: closeButton
     property alias paneMeta: paneMeta
+    property alias removedText: removedText
     property alias rowList: rowList
     property alias rowRepeater: rowList
 
@@ -121,6 +122,24 @@ Dialog {
                             .arg(root.pane.shipped ? qsTr("yes") : qsTr("no"))
                             .arg(root.pane.deepLink)
                       : ""
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                Accessible.role: Accessible.StaticText
+                Accessible.name: text
+            }
+            Text {
+                id: removedText
+                width: parent.width
+                visible: SettingsMap.removed.length > 0
+                text: {
+                    var lines = [];
+                    for (var i = 0; i < SettingsMap.removed.length; ++i) {
+                        var entry = SettingsMap.removed[i];
+                        lines.push(entry.label + ": " + entry.reason);
+                    }
+                    return lines.join("\n");
+                }
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap

@@ -115,17 +115,24 @@ any drift, on a shipped pane without a body, or on a visible row without an
 owner/key/absence path. Omitted panes live only in `SettingsMap.omittedPanes`,
 so they cannot appear in the sidebar, and each carries its reason.
 
-The map has 29 top-level catalog entries and 28 shipped panes after T229; the
-new `control-center` (Quick Settings), `search` (renamed from `spotlight`), and
-`screen-saver` entries ship with T227, and T228 ships `biometrics` plus the
-optional `online-accounts` entry. `game-controllers` remains unshipped until
-T229 lands its body.
-`storage`, `mission-control`, and `menu-bar` keep their existing ids and
-top-level placement. The Help menu opens the in-app **Pane & Row
+The map has **26 shipped panes in the 27-entry reduced sidebar** after T285
+(the update status row is the 27th entry and is not a pane). `biometrics`,
+`mission-control`, and `control-center` left the top-level catalog:
+`SettingsPanes.aliases`/`SettingsMap.aliases` land
+`mission-control`/`overview` on Desktop & Dock → Workspace Overview,
+`control-center`/`quick-settings` on Menu Bar → Menu Bar Controls,
+`internet-accounts` on `online-accounts`, and `storage` on General → Storage;
+`biometrics` is refused. `SettingsPanes.removed`/`SettingsMap.removed` carry
+the reasons and the debug view shows them. `vpn` is always visible, so the
+sidebar order is stable with no profile. `online-accounts` keeps the generic
+**Online Accounts** title (the naming gate maps the macOS *Internet Accounts*
+label) and `internet-accounts` is its alias/search synonym; the General
+sub-panes are **Passwords & Keys** and **Backups**. The Help menu opens the
+in-app **Pane & Row
 Owners…** debug view (also `DF_SETTINGS_DEBUG=1`) and the **Business-Logic
 Map** document; the debug view shows the selected pane's owner/absence/deep
-link and every row's owner/key/absence/state. See ADR
-[0231](adr/0231-executable-settings-map.md).
+link, every row's owner/key/absence/state, and the removed-pane reasons. See
+ADR [0231](adr/0231-executable-settings-map.md).
 
 ## The General group sub-panes (T226)
 
@@ -487,9 +494,11 @@ search service.
 
 Every index field is normalized once (lowercase, accent-folded, punctuation
 collapsed) and also kept in a hyphenless form, so `wi-fi`, `wifi`, and `Wi Fi`
-all match. Pane ids are aliases (`control-center` finds Quick Settings,
-`mission-control` finds Overview) and the reference names live in the synonym
-table (`time machine`, `touch id`, `internet accounts`, `autofill`, `spotlight`).
+all match. The moved pane names are synonyms of their new home
+(`control center`/`quick settings` → Menu Bar, `mission control`/`workspace
+overview` → Desktop & Dock) and the reference names live in the synonym table
+(`time machine`, `touch id`, `internet accounts`, `passwords & keys`,
+`backups`, `autofill`, `spotlight`). A removed pane is never indexed.
 
 Ranking is field-weighted: exact label, label prefix, word start, substring,
 then synonyms, pane description/section, pane title, and help text. A pane whose

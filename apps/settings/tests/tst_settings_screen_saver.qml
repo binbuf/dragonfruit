@@ -141,9 +141,12 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
             pane.hotCornersButton.clicked();
-            compare(shell.currentPaneId, "mission-control");
+            // T285: the Overview pane became a Desktop & Dock section.
+            tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
+            compare(SettingsPanes.resolve("mission-control").anchor,
+                    "Workspace Overview");
             tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
-            verify(paneOf(shell).hotCornersGroup.visible);
+            verify(shell.paneBody.item !== null);
         }
     }
 }

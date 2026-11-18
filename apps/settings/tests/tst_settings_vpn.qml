@@ -210,15 +210,16 @@ Item {
                    .indexOf("not authorized") >= 0);
         }
 
-        function test_the_optional_pane_is_gated_on_profiles() {
+        function test_the_pane_is_always_visible() {
             var shell = make();
             var ids = shell.visiblePanes.map(function(entry) { return entry.id; });
             verify(ids.indexOf("vpn") >= 0);
             Settings.setVpnFixture("empty");
             tryVerify(function() {
                 var visible = shell.visiblePanes.map(function(entry) { return entry.id; });
-                return visible.indexOf("vpn") < 0;
+                return visible.indexOf("vpn") >= 0;
             });
+            verify(SettingsPanes.resolve("vpn").paneId === "vpn");
         }
     }
 }

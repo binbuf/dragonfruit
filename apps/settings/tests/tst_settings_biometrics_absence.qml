@@ -17,17 +17,15 @@ Item {
         name: "SettingsBiometricsAbsence"
         when: windowShown
 
-        Component { id: shellComponent; SettingsShell { } }
+        // T285 removed the top-level Biometrics pane; the component stays for
+        // T299, so this absence case mounts it directly.
+        Component { id: biometricsComponent; BiometricsPane { } }
 
         function test_pane_degrades_with_every_owner_absent() {
-            var shell = createTemporaryObject(shellComponent, stage,
-                                              { width: stage.width, height: stage.height });
+            var pane = createTemporaryObject(biometricsComponent, stage,
+                                             { width: 480, height: stage.height });
             waitForRendering(stage);
             compare(Settings.biometricsAvailable, false);
-            shell.selectPane("biometrics");
-            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
-            waitForRendering(stage);
-            var pane = shell.paneBody.item;
             verify(pane);
             compare(pane.ready, false);
             compare(pane.absenceNote.visible, true);

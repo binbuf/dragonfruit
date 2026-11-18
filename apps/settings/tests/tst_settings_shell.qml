@@ -60,10 +60,10 @@ Item {
         function test_catalog_is_the_reference_ia() {
             compare(SettingsPanes.catalog[0].id, "wifi");
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
-                    "menu-bar");
+                    "printers");
             // Only panes whose content has landed are advertised (no half
-            // panes). Storage is hidden inside General, so 28 rows remain.
-            compare(SettingsPanes.shippedPanes.length, 28);
+            // panes). Storage is hidden inside General, so 26 rows remain.
+            compare(SettingsPanes.shippedPanes.length, 26);
             compare(SettingsPanes.indexOf("storage"), -1,
                     "Storage must not have a top-level sidebar row");
             compare(SettingsPanes.paneById("storage").shipped, true,
@@ -97,7 +97,7 @@ Item {
 
             // De-duplicated category identities: these pairs no longer share
             // one icon (T263).
-            var pairs = [["general", "biometrics"], ["displays", "screen-saver"],
+            var pairs = [["general", "storage"], ["displays", "screen-saver"],
                          ["network", "online-accounts"]];
             for (var p = 0; p < pairs.length; ++p) {
                 var left = SettingsPanes.paneById(pairs[p][0]);
@@ -153,7 +153,7 @@ Item {
             var shell = makeSized(740, 820);
             compare(shell.currentPaneId, "general",
                     "first launch opens General");
-            compare(shell.visiblePanes.length, 28);
+            compare(shell.visiblePanes.length, 26);
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
@@ -268,13 +268,12 @@ Item {
             shell.searchText = "";
             shell.commitSearch();
             compare(ids(shell), JSON.stringify(
-                ["wifi", "bluetooth", "network", "general", "appearance",
-                 "accessibility", "control-center", "search", "privacy",
-                 "desktop-dock", "mission-control", "displays", "wallpaper",
-                 "screen-saver", "notifications", "sound", "focus",
-                 "lock-screen", "users-groups", "biometrics", "online-accounts",
-                 "game-controllers", "printers", "keyboard", "mouse",
-                 "trackpad", "battery", "menu-bar"]));
+                ["wifi", "bluetooth", "network", "vpn", "battery", "general",
+                 "accessibility", "appearance", "desktop-dock", "displays",
+                 "menu-bar", "search", "wallpaper", "screen-saver",
+                 "notifications", "sound", "focus", "lock-screen", "privacy",
+                 "users-groups", "online-accounts", "keyboard", "mouse",
+                 "trackpad", "game-controllers", "printers"]));
         }
 
         function test_search_keeps_the_current_pane() {
@@ -290,16 +289,15 @@ Item {
             var shell = make();
             shell.sidebar.forceActiveFocus();
             waitForRendering(stage);
-            // The default pane is General. Connectivity's header is index 0,
-            // then Wi-Fi/Bluetooth/Network, then General's header (4) and its
-            // row (5).
-            compare(shell.sidebar.currentIndex, 5);
-            keyClick(Qt.Key_Down);
-            // Headers are skipped: the next row is Appearance (Personalization
-            // header at 6, Appearance at 7).
+            // The default pane is General. The sidebar starts with the update
+            // status row (0), Connectivity's five rows, a spacer (6), then
+            // General (7).
             compare(shell.sidebar.currentIndex, 7);
+            keyClick(Qt.Key_Down);
+            // The next row is Accessibility (8); the spacer is skipped.
+            compare(shell.sidebar.currentIndex, 8);
             keyClick(Qt.Key_Return);
-            compare(shell.currentPaneId, "appearance");
+            compare(shell.currentPaneId, "accessibility");
             verify(shell.canGoBack);
         }
 
@@ -416,35 +414,42 @@ Item {
         // -- T263 measured window, grouped sidebar, aliases -------------------
 
         function sectionIds(shell, index) {
-            return shell.sidebarSections[index].items.map(function(item) {
+            return shell.sidebarSections[index].items.filter(function(item) {
+                return item.spacer !== true;
+            }).map(function(item) {
                 return item.id;
             }).join(",");
         }
 
-        function test_grouped_sidebar_has_the_seven_groups() {
-            compare(SettingsPanes.groups.length, 7);
-            compare(SettingsPanes.groups[0].title, "Connectivity");
-            compare(SettingsPanes.groups[1].title, "General");
-            compare(SettingsPanes.groups[2].title, "Personalization");
-            compare(SettingsPanes.groups[3].title, "Desktop");
-            compare(SettingsPanes.groups[4].title, "Accounts & Devices");
-            compare(SettingsPanes.groups[5].title, "Input");
-            compare(SettingsPanes.groups[6].title, "System");
+        function firstPaneId(shell, index) {
+            var items = shell.sidebarSections[index].items;
+            for (var i = 0; i < items.length; ++i) {
+                if (items[i].spacer !== true && items[i].status !== true)
+                    return items[i].id;
+            }
+            return "";
+        }
+
+        function test_grouped_sidebar_has_three_logical_groups() {
+            compare(SettingsPanes.groups.length, 3);
+            compare(SettingsPanes.groups[0].title, "");
+            compare(SettingsPanes.groups[1].title, "");
+            compare(SettingsPanes.groups[2].title, "");
+            compare(SettingsPanes.groups[0].accessibleTitle, "Connectivity");
+            compare(SettingsPanes.groups[1].accessibleTitle, "Desktop");
+            compare(SettingsPanes.groups[2].accessibleTitle, "Input");
 
             var shell = make();
-            compare(shell.sidebarSections.length, 7);
-            compare(sectionIds(shell, 0), "wifi,bluetooth,network");
-            compare(sectionIds(shell, 1), "general");
+            compare(shell.sidebarSections.length, 3);
+            compare(sectionIds(shell, 0),
+                    "general/software-update,wifi,bluetooth,network,vpn,battery");
+            compare(sectionIds(shell, 1),
+                    "general,accessibility,appearance,desktop-dock,displays,"
+                    + "menu-bar,search,wallpaper,screen-saver");
             compare(sectionIds(shell, 2),
-                    "appearance,accessibility,control-center,search,privacy");
-            compare(sectionIds(shell, 3),
-                    "desktop-dock,mission-control,displays,wallpaper,"
-                    + "screen-saver,notifications,sound,focus,lock-screen");
-            compare(sectionIds(shell, 4),
-                    "users-groups,biometrics,online-accounts,"
+                    "notifications,sound,focus,lock-screen,privacy,"
+                    + "users-groups,online-accounts,keyboard,mouse,trackpad,"
                     + "game-controllers,printers");
-            compare(sectionIds(shell, 5), "keyboard,mouse,trackpad");
-            compare(sectionIds(shell, 6), "battery,menu-bar");
         }
 
         function test_measured_sizes_and_no_clipping() {
@@ -514,6 +519,70 @@ Item {
             });
         }
 
+        function test_every_sidebar_row_opens_and_no_removed_pane_appears() {
+            var shell = makeSized(740, 1400);
+            var removedIds = SettingsPanes.removed.map(function(entry) {
+                return entry.id;
+            });
+            for (var s = 0; s < shell.sidebarSections.length; ++s) {
+                var items = shell.sidebarSections[s].items;
+                for (var i = 0; i < items.length; ++i) {
+                    var item = items[i];
+                    if (item.spacer === true)
+                        continue;
+                    shell.activateSidebarItem(item.id);
+                    if (item.status === true) {
+                        tryVerify(function() {
+                            return shell.currentPaneId === "general";
+                        });
+                    } else {
+                        tryVerify(function() {
+                            return shell.currentPaneId === item.id;
+                        });
+                    }
+                    compare(removedIds.indexOf(shell.currentPaneId), -1,
+                            "a removed pane must never open from the sidebar");
+                }
+            }
+        }
+
+        function test_status_row_opens_general_software_update() {
+            var shell = makeSized(740, 820);
+            verify(SettingsPanes.resolve("general/software-update") !== null);
+            compare(SettingsPanes.resolve("general/software-update").paneId,
+                    "general");
+            compare(SettingsPanes.resolve("general/software-update").subPaneId,
+                    "software-update");
+            shell.activateSidebarItem("general/software-update");
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready;
+            });
+            tryVerify(function() {
+                return shell.paneBody.item.subPaneId === "software-update";
+            });
+            compare(shell.currentPaneId, "general");
+            compare(shell.paneTitle, "Software Update");
+        }
+
+        function test_moved_panes_land_on_their_new_home() {
+            var shell = makeSized(740, 820);
+            verify(shell.deepLink("settings://pane/control-center"));
+            tryVerify(function() { return shell.currentPaneId === "menu-bar"; });
+            compare(SettingsPanes.resolve("control-center").subPaneId,
+                    "controls");
+
+            verify(shell.deepLink("settings://pane/overview"));
+            tryVerify(function() {
+                return shell.currentPaneId === "desktop-dock";
+            });
+            compare(SettingsPanes.resolve("overview").anchor,
+                    "Workspace Overview");
+
+            verify(!shell.deepLink("settings://pane/biometrics"),
+                   "the removed Biometrics pane must be refused");
+            verify(shell.lastDeepLinkError.length > 0);
+        }
+
         function test_online_accounts_is_always_listed() {
             var shell = make();
             var ids = shell.visiblePanes.map(function(pane) { return pane.id; });
@@ -523,19 +592,19 @@ Item {
                     undefined);
         }
 
-        function test_vpn_is_optional_on_a_profile() {
+        function test_vpn_is_always_visible() {
             var vpn = SettingsPanes.paneById("vpn");
             verify(vpn !== null);
-            compare(SettingsPanes.optionalVisible(vpn, { connections: [] }), false);
-            compare(SettingsPanes.optionalVisible(vpn, { connections: [{}] }), true);
-            compare(SettingsPanes.optionalVisible(vpn, {}), false);
+            compare(vpn.optional, undefined,
+                    "T285 removed the optional-profile visibility gate");
+            compare(vpn.shipped, true);
 
             var shell = make();
             var ids = shell.visiblePanes.map(function(pane) { return pane.id; });
-            compare(ids.indexOf("vpn"), -1,
-                    "VPN is hidden without a NetworkManager profile");
+            verify(ids.indexOf("vpn") >= 0,
+                   "VPN is part of the 27-entry IA without a profile");
             verify(SettingsPanes.resolve("vpn").paneId === "vpn",
-                   "the optional VPN pane resolves to itself");
+                   "VPN resolves to itself");
         }
 
         function test_last_pane_restores_and_a_deep_link_wins() {
@@ -562,7 +631,7 @@ Item {
             // made with no scroll and no prior pointer motion.
             var shell = makeSized(740, 1400);
             for (var g = 0; g < shell.sidebarSections.length; ++g) {
-                var id = shell.sidebarSections[g].items[0].id;
+                var id = firstPaneId(shell, g);
                 var index = shell.sidebarIndexOf(id);
                 var row = shell.sidebar.rowAtIndex(index);
                 verify(row !== null, "row for " + id);
@@ -572,9 +641,30 @@ Item {
             }
         }
 
+        function test_sidebar_keyboard_skips_spacers() {
+            var shell = make();
+            var spacerIndex = -1;
+            for (var i = 0; i < shell.sidebar.entries.length; ++i) {
+                if (shell.sidebar.entries[i].type === "spacer") {
+                    spacerIndex = i;
+                    break;
+                }
+            }
+            verify(spacerIndex >= 0, "the sidebar must render its group spacer");
+            shell.sidebar.currentIndex = spacerIndex - 1;
+            shell.sidebar.move(1);
+            verify(shell.sidebar.currentIndex !== spacerIndex,
+                   "keyboard navigation must skip the spacer");
+            compare(shell.sidebar.entries[shell.sidebar.currentIndex].type,
+                    "item");
+            // A spacer index is never a pane selection.
+            compare(shell.sidebarIdAtIndex(spacerIndex), "");
+        }
+
         function test_stationary_click_after_scroll_hits_the_row_under_the_pointer() {
             var shell = makeSized(720, 480);
-            var id = "menu-bar";
+            // The last sidebar row in the reduced IA is Printers & Scanners.
+            var id = "printers";
             var index = shell.sidebarIndexOf(id);
             var row = shell.sidebar.rowAtIndex(index);
             verify(row !== null);
@@ -594,14 +684,15 @@ Item {
             var shell = makeSized(720, 480);
             for (var g = 0; g < shell.sidebarSections.length; ++g) {
                 var section = shell.sidebarSections[g];
-                var id = section.items[0].id;
+                var id = firstPaneId(shell, g);
                 shell.activateSidebarItem(id);
                 tryVerify(function() {
                     return shell.paneBody.status === Loader.Ready;
                 });
                 waitForRendering(stage);
                 compare(shell.titleBar.title, shell.paneTitle,
-                        "the title follows the pane in group " + section.title);
+                        "the title follows the pane in group "
+                        + section.accessibleTitle);
                 verify(shell.detailContent.width > 0);
                 compare(shell.titleBar.width, 720 - 232);
                 verify(shell.sidebar.scrollable);

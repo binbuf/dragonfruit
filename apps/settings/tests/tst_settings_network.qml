@@ -437,15 +437,17 @@ Item {
             tryVerify(function() { return vpn.infoDialog.open === true; });
             vpn.infoDialog.hide();
 
-            // With no profile the optional pane leaves the sidebar.
+            // T285: VPN is part of the stable 27-entry IA, so an empty
+            // profile list keeps the pane in the sidebar. T288 owns the
+            // pane's empty-state body.
             Settings.setVpnFixture("empty");
             tryVerify(function() {
                 var visible = shell.visiblePanes.map(function(entry) { return entry.id; });
-                return visible.indexOf("vpn") < 0;
+                return visible.indexOf("vpn") >= 0;
             });
-            verify(SettingsPanes.optionalVisible(
-                       SettingsPanes.paneById("vpn"),
-                       { connections: [] }) === false);
+            compare(SettingsPanes.optionalVisible(
+                        SettingsPanes.paneById("vpn"),
+                        { connections: [] }), true);
         }
 
         // T272: the pane is measured at the 740x820 window and the service

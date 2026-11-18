@@ -3,7 +3,7 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Autofill & Passwords sub-pane (T269).
+// Passwords & Keys sub-pane (T269).
 //
 // Settings stores no credentials. The pane inventories the installed password
 // managers, shows the Secret Service keyring state, records which provider
@@ -220,7 +220,7 @@ Item {
                 id: absenceNote
                 objectName: "passwordsAbsenceNote"
                 kind: "disabled-with-reason"
-                reason: qsTr("Autofill & Passwords is unavailable because the system information service is not running.")
+                reason: qsTr("Passwords & Keys is unavailable because the system information service is not running.")
             }
         }
     }

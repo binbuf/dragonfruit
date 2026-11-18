@@ -100,10 +100,11 @@ app's sidebar may group panes differently, but the catalog is complete.
 | 6.13 | AutoFill & Passwords | Passwords & Autofill | Adapt/Delegate | Secret Service/password manager |
 | 7 | Appearance | Appearance | Ship | `settingsd` + compositor |
 | 8 | Accessibility | Accessibility | Ship/Delegate | `settingsd` + compositor + Orca/speech-dispatcher |
-| 9 | Control Center | Control Center | Ship | `settingsd` + shell + adapters |
+| 9 | Control Center | Menu Bar → Menu Bar Controls | Moved under Menu Bar | `settingsd` + shell + adapters |
 | 10 | Siri & Spotlight | Search | Adapt | Search service + `settingsd`; Siri omitted |
 | 11 | Privacy & Security | Privacy & Security | Ship/Adapt | Portals + polkit + LUKS + firewall adapter |
 | 12 | Desktop & Dock | Desktop & Dock | Ship | `settingsd` → compositor/shell |
+| 12.1 | Mission Control | Desktop & Dock → Workspace Overview | Moved under Desktop & Dock | `settingsd` + compositor |
 | 13 | Displays | Displays | Ship/Adapt | Compositor + colord/display adapter |
 | 14 | Wallpaper | Wallpaper | Ship | `settingsd` + `wallpaperd` + compositor |
 | 15 | Screen Saver | Screen Saver | Ship | Shell/compositor + `settingsd` |
@@ -112,9 +113,9 @@ app's sidebar may group panes differently, but the catalog is complete.
 | 18 | Focus | Focus | Ship | Notification service + `settingsd` |
 | 19 | Screen Time | — | Omit | Apple-specific |
 | 20 | Lock Screen | Lock Screen | Ship | `settingsd` + compositor/lock + logind |
-| 21 | Touch ID & Password | Biometrics & Password | Adapt | `fprintd` + PAM + distro adapter |
+| 21 | Touch ID & Password | — | Removed (no fingerprint feature) | — |
 | 22 | Users & Groups | Users & Groups | Ship/Adapt | accountsservice + distro adapter + polkit |
-| 23 | Internet Accounts | Online Accounts | Adapt/Delegate | GNOME Online Accounts if present; else omit |
+| 23 | Internet Accounts | Online Accounts (`online-accounts`) | Adapt/Delegate; title keeps the generic name, `internet-accounts` is an alias | GNOME Online Accounts if present; else absent state |
 | 24 | Game Center | — | Omit | Apple service |
 | 25 | Wallet & Apple Pay | — | Omit | Apple service |
 | 26 | Printers & Scanners | Printers & Scanners | Ship | CUPS + SANE |
@@ -138,10 +139,16 @@ Settings debug view reads it directly; T223's search index reads the same rows.
   with T225–T229), or `omitted` (deliberately absent). Every `shipped` row must
   have a non-empty owner, key/API, and one of the five absence kinds; the test
   feeds the validator an unowned row to prove it fails.
-- The existing `storage`, `mission-control`, and `menu-bar` panes keep their
-  ids and top-level placement. New panes use the map names; user-facing titles
-  follow the T220 naming map (`Quick Settings`, `Overview`, `Search`, `Backup`,
-  `Fingerprint`, and so on).
+- T285 reduces the top-level catalog to the 26 panes in the 27-entry sidebar
+  (the update status row is the 27th entry). `storage` stays a hidden General
+  sub-pane; `mission-control` and `control-center` moved under Desktop & Dock
+  and Menu Bar. `SettingsPanes.aliases`/`SettingsMap.aliases` are the alias
+  table; `SettingsPanes.removed`/`SettingsMap.removed` carry the reason the
+  three ids left the catalog (Biometrics is refused). New panes use the map
+  names; user-facing titles are `Passwords & Keys`, `Backups`,
+  `Workspace Overview`, and `Menu Bar Controls`. The macOS label *Internet
+  Accounts* stays the generic **Online Accounts** title because the naming gate
+  maps it; `internet-accounts` is the deep-link alias and search synonym.
 - Omitted panes are not in the catalog and therefore cannot appear in the
   sidebar. Their executable ids and reasons live in `SettingsMap.omittedPanes`;
   the test asserts each is absent and documented.

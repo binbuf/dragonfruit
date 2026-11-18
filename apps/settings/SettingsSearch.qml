@@ -44,37 +44,37 @@ QtObject {
         "network": ["vpn", "firewall", "ethernet", "internet", "connections"],
         "battery": ["power", "energy", "charge", "low power mode"],
         "general": ["about", "software update", "storage", "language", "region",
-                    "date", "time", "sharing", "backup", "reset", "startup disk",
-                    "passwords", "login items", "autofill", "auto fill",
-                    "time machine"],
+                    "date", "time", "sharing", "backup", "backups", "reset",
+                    "startup disk", "passwords", "passwords & keys", "keys",
+                    "login items", "autofill", "auto fill", "time machine"],
         "storage": ["disk", "drive", "volume", "space", "disk usage"],
         "appearance": ["theme", "dark mode", "light mode", "accent", "colors",
                        "style", "transparency"],
         "accessibility": ["a11y", "screen reader", "contrast", "motion", "vision",
                           "hearing", "motor"],
-        "control-center": ["control center", "quick settings", "tiles", "modules"],
-        "menu-bar": ["status items", "clock", "menu extras", "menu bar items"],
+        "menu-bar": ["menu bar controls", "control center", "quick settings",
+                     "controls", "tiles", "modules", "status items", "clock",
+                     "menu extras", "menu bar items"],
         "search": ["spotlight", "index", "indexing", "web search", "shortcut"],
         "privacy": ["security", "permissions", "camera", "microphone", "location",
                     "files", "screen recording"],
         "desktop-dock": ["dock", "desktop", "stage", "hot corners", "windows",
-                         "widgets"],
-        "mission-control": ["mission control", "overview", "workspaces", "spaces",
-                            "hot corners", "gestures"],
+                         "widgets", "workspace overview", "workspace",
+                         "workspaces", "mission control", "overview", "spaces"],
         "displays": ["monitor", "screen", "resolution", "scale", "rotation",
                      "brightness", "night light", "refresh rate", "color"],
         "wallpaper": ["background", "desktop picture", "photo", "image",
                       "featured", "abstract", "nature", "water", "cityscape",
                       "earth", "space", "nasa", "scenery", "underwater"],
-        "screen-saver": ["screensaver", "idle", "clock"],
+        "screen-saver": ["screensaver", "screen saver", "idle", "clock"],
         "notifications": ["alerts", "banners", "previews", "badges", "sounds"],
         "sound": ["audio", "volume", "speaker", "microphone", "output", "input",
                   "alert sound"],
         "focus": ["do not disturb", "dnd", "notifications", "modes"],
         "lock-screen": ["lock", "password", "login", "sleep", "screen saver"],
-        "biometrics": ["touch id", "touchid", "fingerprint", "biometric",
-                       "password", "authentication"],
-        "users-groups": ["users", "accounts", "groups", "login", "administrator"],
+        "users-groups": ["users", "accounts", "groups", "login", "administrator",
+                         "touch id", "touchid", "fingerprint", "biometric",
+                         "biometrics"],
         "online-accounts": ["internet accounts", "internet account", "accounts",
                             "sync", "cloud", "email"],
         "printers": ["printing", "scanner", "cups", "paper"],
@@ -171,8 +171,9 @@ QtObject {
         });
     }
 
-    // The pane id is a searchable alias too: `control-center` finds Quick
-    // Settings and `mission-control` finds Overview, the two renamed panes.
+    // The pane id is a searchable alias too: `menu-bar` finds Menu Bar and
+    // `desktop-dock` finds Desktop & Dock. T285 moved Quick Settings and
+    // Overview into those panes; the old names are pane synonyms now.
     function idTerms(paneId) {
         var words = String(paneId).split(/[-_]+/).filter(function(word) {
             return word.length > 0;
@@ -301,7 +302,7 @@ QtObject {
             // sidebar group); the absence note is help text only, never the
             // subtitle of an available pane.
             var paneSubtitle = description.length > 0
-                    ? description : SettingsPanes.groupTitle(pane.group);
+                    ? description : SettingsPanes.groupAccessibleTitle(pane.group);
             var paneHelp = [pane.owner,
                             String(pane.absence || "").replace(/-/g, " "),
                             pane.absenceNote].join(" ");

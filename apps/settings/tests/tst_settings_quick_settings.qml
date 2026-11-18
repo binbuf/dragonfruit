@@ -19,7 +19,7 @@ Item {
         name: "SettingsQuickSettings"
         when: windowShown
 
-        Component { id: shellComponent; SettingsShell { } }
+        Component { id: quickSettingsComponent; QuickSettingsPane { } }
 
         readonly property var defaultModules: [
             "wifi", "bluetooth", "now-playing", "airdrop", "stage-manager",
@@ -45,21 +45,20 @@ Item {
             Settings.set("menu.control.accessibility", true);
         }
 
+        // T285 removed the top-level Quick Settings pane. The component stays
+        // for T293 to fold into Menu Bar -> Menu Bar Controls, so these cases
+        // exercise the pane directly instead of through the shell.
         function make(width, height) {
-            var shell = createTemporaryObject(shellComponent, stage, {
+            var pane = createTemporaryObject(quickSettingsComponent, stage, {
                 width: width !== undefined ? width : stage.width,
                 height: height !== undefined ? height : stage.height
             });
             waitForRendering(stage);
-            shell.selectPane("control-center");
-            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
-            waitForRendering(stage);
-            return shell;
+            verify(pane);
+            return pane;
         }
 
-        function paneOf(shell) {
-            verify(shell.paneBody.status === Loader.Ready);
-            var pane = shell.paneBody.item;
+        function paneOf(pane) {
             verify(pane);
             return pane;
         }
@@ -98,9 +97,7 @@ Item {
         }
 
         function test_pane_opens_with_the_categorized_registry() {
-            var shell = make();
-            compare(shell.currentPaneId, "control-center");
-            var pane = paneOf(shell);
+            var pane = make();
             // The catalogue is the registry's 37 modules, grouped by the same
             // categories Edit Controls uses. The default panel is the
             // 13-module subset.
@@ -352,11 +349,10 @@ Item {
         }
 
         function test_pane_fits_the_740_by_820_window() {
-            var shell = make(740, 820);
-            var pane = paneOf(shell);
+            var pane = make(740, 820);
             verify(pane.width <= 740, "pane width " + pane.width);
-            compare(shell.width, 740);
-            compare(shell.height, 820);
+            compare(pane.width, 740);
+            compare(pane.height, 820);
             verify(pane.moduleGroups.length > 0);
         }
 

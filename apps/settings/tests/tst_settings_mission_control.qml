@@ -19,7 +19,7 @@ Item {
         name: "SettingsMissionControl"
         when: windowShown
 
-        Component { id: shellComponent; SettingsShell { } }
+        Component { id: missionControlComponent; MissionControlPane { } }
 
         // The fixture store is process-global; reset the keys before every
         // case so the pane always opens on a known state.
@@ -39,28 +39,26 @@ Item {
             Settings.set("workspaces.count", 3);
         }
 
-        function make() {
-            var shell = createTemporaryObject(shellComponent, stage,
-                                              { width: stage.width, height: stage.height });
+        // T285 removed the top-level Overview pane. The component stays for
+        // T292 to fold into Desktop & Dock -> Workspace Overview, so these
+        // cases exercise the pane directly instead of through the shell.
+        function make(width, height) {
+            var pane = createTemporaryObject(missionControlComponent, stage, {
+                width: width !== undefined ? width : 480,
+                height: height !== undefined ? height : stage.height
+            });
             waitForRendering(stage);
-            shell.selectPane("mission-control");
-            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
-            waitForRendering(stage);
-            return shell;
+            verify(pane);
+            return pane;
         }
 
-        function paneOf(shell) {
-            verify(shell.paneBody.status === Loader.Ready,
-                   "the Mission Control pane body must be loaded");
-            var pane = shell.paneBody.item;
+        function paneOf(pane) {
             verify(pane);
             return pane;
         }
 
         function test_pane_opens_with_the_compositor_default_map() {
-            var shell = make();
-            compare(shell.currentPaneId, "mission-control");
-            var pane = paneOf(shell);
+            var pane = make();
             compare(pane.topLeft, "mission-control");
             compare(pane.topRight, "notification-center");
             compare(pane.bottomLeft, "desktop-reveal");
@@ -227,13 +225,7 @@ Item {
         }
 
         function test_measured_window_740x820_keeps_every_row_reachable() {
-            var shell = createTemporaryObject(shellComponent, stage,
-                                              { width: 740, height: 820 });
-            waitForRendering(stage);
-            shell.selectPane("mission-control");
-            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
-            waitForRendering(stage);
-            var pane = paneOf(shell);
+            var pane = make(480, 820);
             var groups = [pane.missionControlGroup, pane.workspacesGroup,
                           pane.hotCornersGroup];
             for (var g = 0; g < groups.length; ++g) {

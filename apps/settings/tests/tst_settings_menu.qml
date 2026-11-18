@@ -87,9 +87,11 @@ Item {
             compare(view[3].action, "fullscreen");
             compare(view[4].type, "separator");
             compare(view[5].type, "submenu");
-            compare(view[5].submenu.length, 28);
+            compare(view[5].submenu.length,
+                    SettingsPanes.shippedPanes.length);
             compare(view[5].submenu[0].action, "pane.wifi");
-            compare(view[5].submenu[27].action, "pane.menu-bar");
+            compare(view[5].submenu[view[5].submenu.length - 1].action,
+                    "pane.printers");
 
             // Help links the executable map's debug view and the document.
             var help = menus[4].items;
@@ -197,7 +199,8 @@ Item {
             compare(view.menuModel.length, 6);
             compare(view.menuModel[5].type, "submenu");
             compare(view.menuModel[5].hasSubmenu, true);
-            compare(view.entries[5].submenu.length, 28);
+            compare(view.entries[5].submenu.length,
+                    SettingsPanes.shippedPanes.length);
             // JSON-serializable with no QML objects.
             verify(JSON.stringify(view.menuModel).length > 0);
         }
@@ -207,13 +210,21 @@ Item {
             var view = SettingsMenu.menus[2].items;
             var submenu = view[5].submenu;
             compare(submenu.length, SettingsPanes.shippedPanes.length);
-            compare(submenu.length, 28);
+            compare(submenu.length, 26);
             for (var i = 0; i < submenu.length; ++i) {
                 compare(submenu[i].label, SettingsPanes.shippedPanes[i].title);
                 compare(submenu[i].action,
                         "pane." + SettingsPanes.shippedPanes[i].id);
                 compare(submenu[i].checked, false);
             }
+            // T285: the removed top-level panes are not rows, and every
+            // published pane action still dispatches.
+            var actions = submenu.map(function(entry) { return entry.action; });
+            compare(actions.indexOf("pane.biometrics"), -1);
+            compare(actions.indexOf("pane.mission-control"), -1);
+            compare(actions.indexOf("pane.control-center"), -1);
+            for (var a = 0; a < submenu.length; ++a)
+                compare(SettingsMenu.isKnownAction(submenu[a].action), true);
 
             SettingsMenu.currentPaneId = "wallpaper";
             waitForRendering(stage);

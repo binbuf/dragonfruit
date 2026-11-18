@@ -59,12 +59,12 @@ Item {
         switch (root.subPaneId) {
         case "about": return qsTr("About");
         case "software-update": return qsTr("Software Update");
-        case "passwords": return qsTr("Autofill & Passwords");
+        case "passwords": return qsTr("Passwords & Keys");
         case "login": return qsTr("Login Items & Extensions");
         case "language": return qsTr("Language & Region");
         case "date-time": return qsTr("Date & Time");
         case "sharing": return qsTr("Sharing");
-        case "backup": return qsTr("Backup");
+        case "backup": return qsTr("Backups");
         case "startup": return qsTr("Startup Disk");
         case "reset": return qsTr("Transfer or Reset");
         case "storage": return qsTr("Storage");
@@ -100,7 +100,7 @@ Item {
         : qsTr("Unavailable")
     readonly property string backupSummary: root.generalAvailable
         && root.backupView.state === "available"
-        ? String(root.backupView.label || qsTr("Backup"))
+        ? String(root.backupView.label || qsTr("Backups"))
         : qsTr("Unavailable")
     readonly property string storageSummary: root.generalAvailable
         && root.storageView.state === "available"
@@ -108,7 +108,7 @@ Item {
         : qsTr("Unavailable")
     readonly property string passwordsSummary: root.generalAvailable
         && root.passwordsView.state === "available"
-        ? String(root.passwordsView.label || qsTr("Autofill & Passwords"))
+        ? String(root.passwordsView.label || qsTr("Passwords & Keys"))
         : qsTr("Unavailable")
     readonly property string startupSummary: {
         if (!root.generalAvailable || root.startupView.state !== "available")
@@ -250,7 +250,7 @@ Item {
                     id: passwordsRow
                     objectName: "generalPasswordsRow"
                     width: parent.width
-                    label: qsTr("Autofill & Passwords")
+                    label: qsTr("Passwords & Keys")
                     description: root.passwordsSummary
                     disclosure: true
                     onDisclosureClicked: root.openSubPane("passwords")
@@ -315,7 +315,7 @@ Item {
                     id: backupRow
                     objectName: "generalBackupRow"
                     width: parent.width
-                    label: qsTr("Backup")
+                    label: qsTr("Backups")
                     description: root.backupSummary
                     disclosure: true
                     onDisclosureClicked: root.openSubPane("backup")

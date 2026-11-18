@@ -27,6 +27,7 @@ Item {
         when: windowShown
 
         Component { id: shellComponent; SettingsShell { } }
+        Component { id: missionControlComponent; MissionControlPane { } }
         Component { id: dateTimeComponent; DateTimePane { } }
         Component { id: languageComponent; LanguageRegionPane { } }
         Component { id: loginComponent; LoginItemsPane { } }
@@ -38,11 +39,11 @@ Item {
         // Every shipped Wave-1 pane, with the exact control surface the
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
-            ["appearance", "desktop-dock", "mission-control", "displays",
+            ["appearance", "desktop-dock", "displays",
              "wallpaper", "screen-saver", "wifi", "bluetooth", "network",
-             "battery", "general", "sound", "control-center",
+             "vpn", "battery", "general", "sound",
              "search", "keyboard", "mouse", "trackpad", "notifications",
-             "focus", "lock-screen", "menu-bar", "biometrics", "users-groups",
+             "focus", "lock-screen", "menu-bar", "users-groups",
              "printers", "privacy", "accessibility", "game-controllers",
              "online-accounts"]
 
@@ -97,7 +98,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 28);
+            compare(SettingsPanes.shippedPanes.length, 26);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -492,12 +493,12 @@ Item {
 
         // Mission Control is compositor-native: the pane's rows are settingsd
         // keys, so with no daemon they stay live on the schema defaults and the
-        // pane shows the absence note instead of an adapter view. The Control
-        // Center tile's absent case is the compositor bridge, owned by the
-        // shell (T-15.5b).
+        // pane shows the absence note instead of an adapter view. T285 removed
+        // the top-level pane, so this exercises the component directly; T292
+        // folds it into Desktop & Dock -> Workspace Overview.
         function test_mission_control_pane_stays_live_without_a_daemon() {
-            var shell = make();
-            var pane = showPane(shell, "mission-control");
+            var pane = createTemporaryObject(missionControlComponent, stage);
+            verify(pane);
             compare(pane.absenceNote.visible, true,
                     "the absence note explains the missing settings daemon");
             verify(pane.absenceNote.text.length > 0);

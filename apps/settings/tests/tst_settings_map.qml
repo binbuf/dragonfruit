@@ -248,48 +248,156 @@ Item {
                     "the sidebar must follow the map's grouped pane order");
         }
 
-        // -- T263 grouped IA and aliases --------------------------------------
+        // -- T285 reduced IA, aliases, and removals ---------------------------
 
         function test_every_pane_has_a_group_and_the_groups_are_ordered() {
             var order = SettingsPanes.groups.map(function(group) {
                 return group.id;
             }).join(",");
-            compare(order,
-                    "connectivity,general,personalization,desktop,"
-                    + "accounts-devices,input,system");
-            for (var i = 0; i < SettingsMap.panes.length; ++i) {
-                var pane = SettingsMap.panes[i];
+            compare(order, "connectivity,desktop,input");
+            for (var i = 0; i < SettingsPanes.groups.length; ++i) {
+                compare(SettingsPanes.groups[i].title, "",
+                        "group headings are not painted");
+                verify(SettingsPanes.groups[i].accessibleTitle.length > 0,
+                       "a logical group must keep an AT-SPI title");
+            }
+            for (var p = 0; p < SettingsMap.panes.length; ++p) {
+                var pane = SettingsMap.panes[p];
                 verify(order.indexOf(pane.group) >= 0,
                        "pane " + pane.id + " has an unknown group " + pane.group);
             }
             // The map order is the grouped order: groups never interleave.
             var lastGroup = -1;
-            for (var p = 0; p < SettingsMap.panes.length; ++p) {
-                var at = order.indexOf(SettingsMap.panes[p].group);
+            for (var q = 0; q < SettingsMap.panes.length; ++q) {
+                var at = order.indexOf(SettingsMap.panes[q].group);
                 verify(at >= lastGroup,
-                       "pane " + SettingsMap.panes[p].id
+                       "pane " + SettingsMap.panes[q].id
                        + " is out of grouped order");
                 lastGroup = at;
             }
         }
 
-        function test_storage_is_a_general_alias_and_vpn_is_optional() {
+        function test_the_catalog_has_the_twenty_seven_entry_sidebar_order() {
+            var shell = make();
+            var expected = [
+                "general/software-update",
+                "wifi", "bluetooth", "network", "vpn", "battery",
+                "general", "accessibility", "appearance", "desktop-dock",
+                "displays", "menu-bar", "search", "wallpaper", "screen-saver",
+                "notifications", "sound", "focus", "lock-screen", "privacy",
+                "users-groups", "online-accounts", "keyboard", "mouse",
+                "trackpad", "game-controllers", "printers"
+            ];
+            var actual = [];
+            for (var s = 0; s < shell.sidebarSections.length; ++s) {
+                var items = shell.sidebarSections[s].items;
+                for (var i = 0; i < items.length; ++i) {
+                    if (items[i].spacer !== true)
+                        actual.push(items[i].id);
+                }
+            }
+            compare(actual.join(","), expected.join(","),
+                    "the sidebar must have the mockup's 27 entries in order");
+            compare(actual.length, 27);
+            verify(actual.indexOf("biometrics") < 0);
+            verify(actual.indexOf("mission-control") < 0);
+            verify(actual.indexOf("control-center") < 0);
+        }
+
+        function test_groups_and_spacers_keep_their_order() {
+            var shell = make();
+            compare(shell.sidebarSections.length, 3);
+            compare(shell.sidebarSections[0].spacerAfter, true);
+            compare(shell.sidebarSections[1].spacerAfter, true);
+            compare(shell.sidebarSections[2].spacerAfter, false);
+            // The status row is prepended to the first group, not a pane.
+            compare(shell.sidebarSections[0].items[0].id,
+                    "general/software-update");
+            compare(shell.sidebarSections[0].items[0].status, true);
+            // The spacer after the first group is a non-selectable entry.
+            var firstSpacer = shell.sidebarSections[0].items[
+                shell.sidebarSections[0].items.length - 1];
+            compare(firstSpacer.spacer, true);
+            compare(shell.sidebarIdAtIndex(shell.sidebarIndexOf("wifi")),
+                    "wifi");
+            compare(shell.sidebarIdAtIndex(
+                        shell.sidebarIndexOf("general/software-update")),
+                    "general/software-update");
+            compare(shell.sidebarIndexOf("biometrics"), -1);
+        }
+
+        function test_storage_is_a_general_alias_and_vpn_is_always_visible() {
             var storage = SettingsMap.panes.filter(function(pane) {
                 return pane.id === "storage";
             })[0];
             compare(storage.hidden, true);
-            compare(storage.aliasOf, "general");
-            compare(storage.subPane, "storage");
             compare(SettingsPanes.resolve("storage").paneId, "general");
             compare(SettingsPanes.resolve("storage").subPaneId, "storage");
+            compare(SettingsMap.aliases["storage"].subPaneId, "storage");
 
             var vpn = SettingsMap.panes.filter(function(pane) {
                 return pane.id === "vpn";
             })[0];
             compare(vpn.shipped, true);
-            compare(vpn.optional, "vpn");
-            compare(vpn.linkTo, undefined);
+            compare(vpn.optional, undefined);
             compare(SettingsPanes.resolve("vpn").paneId, "vpn");
+            compare(SettingsPanes.indexOf("vpn") >= 0, true);
+        }
+
+        function test_aliases_land_on_the_new_home() {
+            compare(SettingsPanes.resolve("mission-control").paneId,
+                    "desktop-dock");
+            compare(SettingsPanes.resolve("mission-control").anchor,
+                    "Workspace Overview");
+            compare(SettingsPanes.resolve("overview").paneId, "desktop-dock");
+            compare(SettingsPanes.resolve("control-center").paneId,
+                    "menu-bar");
+            compare(SettingsPanes.resolve("control-center").subPaneId,
+                    "controls");
+            compare(SettingsPanes.resolve("quick-settings").subPaneId,
+                    "controls");
+            compare(SettingsPanes.resolve("internet-accounts").paneId,
+                    "online-accounts");
+            compare(SettingsPanes.resolve("general/software-update").paneId,
+                    "general");
+            compare(SettingsPanes.resolve("general/software-update").subPaneId,
+                    "software-update");
+
+            // The map mirrors the catalog's alias table one-for-one.
+            var catalogIds = Object.keys(SettingsPanes.aliases).sort().join(",");
+            var mapIds = Object.keys(SettingsMap.aliases).sort().join(",");
+            compare(mapIds, catalogIds, "catalog and map aliases must agree");
+            for (var id in SettingsPanes.aliases) {
+                compare(SettingsMap.aliases[id].paneId,
+                        SettingsPanes.aliases[id].paneId,
+                        "alias target for " + id);
+                compare(SettingsMap.aliases[id].subPaneId,
+                        SettingsPanes.aliases[id].subPaneId,
+                        "alias sub-pane for " + id);
+            }
+        }
+
+        function test_removed_panes_are_documented_and_biometrics_is_refused() {
+            var shell = make();
+            var ids = SettingsMap.removed.map(function(entry) { return entry.id; });
+            compare(ids.join(","), "biometrics,mission-control,control-center");
+            for (var i = 0; i < SettingsMap.removed.length; ++i) {
+                verify(SettingsMap.removed[i].reason.length > 0,
+                       "removed pane " + SettingsMap.removed[i].id
+                       + " must document its reason");
+                compare(SettingsPanes.paneById(SettingsMap.removed[i].id), null,
+                        "removed pane " + SettingsMap.removed[i].id
+                        + " must not be in the catalog");
+            }
+            compare(SettingsPanes.resolve("biometrics"), null);
+            verify(!shell.deepLink("settings://pane/biometrics"),
+                   "a removed id must be refused");
+            verify(shell.lastDeepLinkError.length > 0,
+                   "a refusal must carry a reason");
+            verify(shell.deepLink("settings://pane/mission-control"));
+            tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
+            verify(shell.deepLink("settings://pane/internet-accounts"));
+            tryVerify(function() { return shell.currentPaneId === "online-accounts"; });
         }
 
         // -- The debug view ----------------------------------------------------
@@ -322,6 +430,9 @@ Item {
             verify(Settings.mapDocUrl.toString().length > 0,
                    "the debug view's map link must resolve");
             verify(shell.debugView.mapButton.enabled);
+            verify(shell.debugView.removedText.visible,
+                   "the debug view must show the removed-pane reasons");
+            verify(shell.debugView.removedText.text.indexOf("Biometrics") >= 0);
             shell.debugView.reject();
         }
 

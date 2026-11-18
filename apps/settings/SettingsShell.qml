@@ -188,22 +188,46 @@ Item {
     signal aboutPageOpened()
 
     readonly property var visiblePanes: SettingsPanes.filter(root.searchQuery)
-    // T263: the same visible list, grouped for the source list. One catalog,
-    // one filter; the sidebar never gets a second pane list. Each item keeps
-    // the pane id so selection and activation do not depend on a flat index.
-    readonly property var sidebarSections: SettingsPanes.grouped(root.visiblePanes).map(function(section) {
-        return {
-            title: section.title,
-            items: section.items.map(function(pane) {
+    // T285: the sidebar is the catalog's three empty-title groups, the update
+    // status row prepended to the first group, and a spacer after each group
+    // the catalog marks. One catalog, one filter; the sidebar never gets a
+    // second pane list.
+    readonly property var sidebarSections: {
+        var sections = SettingsPanes.grouped(root.visiblePanes).map(function(section) {
+            var items = section.items.map(function(pane) {
                 return {
                     id: pane.id,
                     label: pane.title,
                     icon: pane.icon,
                     category: SettingsPanes.categoryStyle(pane)
                 };
-            })
-        };
+            });
+            if (section.spacerAfter === true)
+                items.push({ id: "", label: "", icon: "", spacer: true });
+            return {
+                title: section.title,
+                accessibleTitle: section.accessibleTitle,
+                spacerAfter: section.spacerAfter,
+                items: items
+            };
+        });
+        if (sections.length === 0)
+            sections.push({ title: "", accessibleTitle: qsTr("Connectivity"),
+                            spacerAfter: false, items: [] });
+        sections[0].items.unshift(root.sidebarStatusItem);
+        return sections;
+    }
+    // The update status row is a sidebar entry, not a pane (T285).
+    readonly property var sidebarStatusItem: ({
+        id: SettingsPanes.sidebarStatus.id,
+        label: SettingsPanes.sidebarStatus.label,
+        icon: SettingsPanes.sidebarStatus.icon,
+        badge: SettingsPanes.sidebarStatus.badge,
+        status: true
     })
+    // The last refused deep link's reason, so a rejection is visible rather
+    // than a silent no-op (T285).
+    property string lastDeepLinkError: ""
     readonly property var currentPane: SettingsPanes.paneById(root.currentPaneId)
     // The app's published native menu model (T-09.6a). The global menu bar
     // consumes this; it is exposed here so the app can present the same model
@@ -236,9 +260,9 @@ Item {
             Settings.traceLog(message);
     }
 
-    // The sidebar's current index counts section headers as well as rows.
-    // Computing it from the same grouped sections the Sidebar renders keeps
-    // selection in sync without a second id->index map.
+    // The sidebar's current index counts every rendered entry: rows and the
+    // spacers between groups. Computing it from the same grouped sections the
+    // Sidebar renders keeps selection in sync without a second id->index map.
     function sidebarIndexOf(id) {
         var index = 0;
         for (var s = 0; s < root.sidebarSections.length; ++s) {
@@ -269,7 +293,7 @@ Item {
             var items = section.items || [];
             for (var i = 0; i < items.length; ++i) {
                 if (current === index)
-                    return items[i].id;
+                    return items[i].id || "";
                 current += 1;
             }
         }
@@ -367,18 +391,21 @@ Item {
         root.openTarget(SettingsPanes.resolve(id));
     }
 
-    // Open a General in-place sub-pane now when the body is mounted, or after
-    // the Loader swaps.
+    // Open an in-place sub-pane now when its body is mounted. Only General
+    // queues across a Loader swap; another pane's sub-pane (Menu Bar's
+    // Menu Bar Controls, T293) opens once that pane body lands.
     function openSubPane(id) {
         if (!id || id.length === 0)
             return;
-        if (root.currentPaneId === "general" && paneBody.item !== null
+        if (root.loadedPaneId === root.currentPaneId
+                && paneBody.item !== null
                 && paneBody.item.openSubPane !== undefined) {
             paneBody.item.openSubPane(id);
             root.pendingSubPaneId = "";
             return;
         }
-        root.pendingSubPaneId = id;
+        if (root.currentPaneId === "general")
+            root.pendingSubPaneId = id;
     }
 
     function closeSubPane() {
@@ -388,8 +415,18 @@ Item {
     }
 
     // Show a pane, recording the move in history. Selecting the current pane
-    // is a no-op so arrow-key echo does not grow the stack.
+    // is a no-op so arrow-key echo does not grow the stack. T285: an id with
+    // no pane body (Overview, Quick Settings) resolves to its new home; a real
+    // pane id (including the hidden Storage body) still opens itself.
     function selectPane(id) {
+        if (!id)
+            return;
+        if (SettingsPanes.paneById(id) === null) {
+            var target = SettingsPanes.resolve(id);
+            if (target === null)
+                return;
+            id = target.paneId;
+        }
         if (!id || id === root.currentPaneId)
             return;
         root.trace("selectPane " + id);
@@ -574,31 +611,48 @@ Item {
     }
 
     function deepLink(url) {
+        root.lastDeepLinkError = "";
         var link = root.parseDeepLink(url);
-        if (link === null)
+        if (link === null) {
+            root.lastDeepLinkError = qsTr("Not a Settings pane link.");
             return false;
-        // Storage and VPN are aliases: resolve them to the pane that owns the
-        // body (General -> Storage, Network -> VPN). A hidden/optional alias
-        // is accepted only when its target is visible.
+        }
+        // Aliases resolve to the pane that owns the new home (Storage ->
+        // General/Storage, Overview -> Desktop & Dock/Workspace Overview,
+        // Quick Settings -> Menu Bar/controls). A removed id with no alias
+        // (Biometrics) is refused with its reason, never silently ignored.
         var target = SettingsPanes.resolve(link.paneId);
-        if (target === null)
+        if (target === null) {
+            var removed = SettingsPanes.removedReason(link.paneId);
+            root.lastDeepLinkError = removed.length > 0
+                    ? removed : qsTr("Unknown Settings pane: %1").arg(link.paneId);
             return false;
+        }
         var pane = SettingsPanes.paneById(target.paneId);
-        if (pane === null || !pane.shipped)
+        if (pane === null || !pane.shipped) {
+            root.lastDeepLinkError = qsTr("The target pane is not available.");
             return false;
-        if (!SettingsPanes.isVisible(link.paneId))
+        }
+        if (!SettingsPanes.isVisible(link.paneId)) {
+            root.lastDeepLinkError = qsTr("The target pane is not visible.");
             return false;
+        }
         var row = null;
         var surface = "";
         if (link.rowId.length > 0) {
             row = SettingsMap.rowFor(link.paneId, link.rowId);
-            if (row === null || row.state !== "shipped")
+            if (row === null || row.state !== "shipped") {
+                root.lastDeepLinkError = qsTr("Unknown Settings row: %1")
+                        .arg(link.rowId);
                 return false;
+            }
             surface = SettingsMap.rowSurface(link.paneId, link.rowId);
             // A row in a closed surface is only accepted when the shell can
             // open that surface; otherwise it is not landable.
-            if (surface.length === 0)
+            if (surface.length === 0) {
+                root.lastDeepLinkError = qsTr("The target row is not reachable.");
                 return false;
+            }
         }
         root.searchText = "";
         if (root.currentPaneId !== target.paneId)
@@ -804,7 +858,9 @@ Item {
     }
 
     // The pane-body registry: a pane appears here once its content has landed.
-    // T-09.3…T-09.5 add their components alongside "appearance".
+    // T285 removes the top-level Biometrics, Overview, and Quick Settings
+    // cases; their QML files stay for T292/T293/T299 to fold into the new
+    // homes.
     function paneComponent(id) {
         switch (id) {
         case "appearance":
@@ -815,8 +871,6 @@ Item {
             return batteryPaneComponent;
         case "desktop-dock":
             return desktopDockPaneComponent;
-        case "mission-control":
-            return missionControlPaneComponent;
         case "displays":
             return displaysPaneComponent;
         case "bluetooth":
@@ -849,8 +903,6 @@ Item {
             return gameControllersPaneComponent;
         case "privacy":
             return privacyPaneComponent;
-        case "biometrics":
-            return biometricsPaneComponent;
         case "online-accounts":
             return onlineAccountsPaneComponent;
         case "accessibility":
@@ -861,8 +913,6 @@ Item {
             return networkPaneComponent;
         case "vpn":
             return vpnPaneComponent;
-        case "control-center":
-            return quickSettingsPaneComponent;
         case "search":
             return searchPaneComponent;
         case "screen-saver":

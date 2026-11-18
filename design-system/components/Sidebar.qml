@@ -50,7 +50,7 @@ FocusScope {
                 var item = items[i] || {};
                 out.push({
                     index: index++,
-                    type: "item",
+                    type: item.spacer === true ? "spacer" : "item",
                     id: item.id || "",
                     label: item.label || "",
                     icon: item.icon || "",
@@ -194,6 +194,10 @@ FocusScope {
 
         required property var entry
         readonly property bool isHeader: entry.type === "header"
+        // T285: an inter-group spacer is not selectable and not announced; the
+        // keyboard path skips it because `move()` only lands on items.
+        readonly property bool isSpacer: entry.type === "spacer"
+        readonly property bool isRow: !row.isHeader && !row.isSpacer
         readonly property bool selected: root.currentIndex === entry.index
         readonly property bool hovered: rowHover.hovered
         // A resolved `SettingsCategoryIcon` style, when the item carries one.
@@ -203,7 +207,7 @@ FocusScope {
         // The resolved Phosphor name, kept out of the `SettingsCategoryIcon`
         // block so the static glyph-reference scan only sees a bound value.
         readonly property string categoryGlyph: row.category ? row.category.source : ""
-        readonly property bool hasGlyph: !row.isHeader
+        readonly property bool hasGlyph: row.isRow
                 && (row.category !== null || entry.icon.length > 0)
         readonly property real glyphSize: row.category !== null
                 ? root.categoryIconSize
@@ -220,7 +224,8 @@ FocusScope {
 
         width: parent ? parent.width : 0
         height: isHeader ? headerText.implicitHeight + Theme.controls.sidebar.sectionGap
-                         : Theme.controls.sidebar.rowHeight
+                         : isSpacer ? Theme.controls.sidebar.sectionGap
+                                    : Theme.controls.sidebar.rowHeight
 
         Text {
             id: headerText
@@ -245,7 +250,7 @@ FocusScope {
         // selection highlight (the hover animation can stall while the client
         // is idle and no frames are delivered).
         Rectangle {
-            visible: !row.isHeader
+            visible: row.isRow
             anchors.fill: parent
             radius: Theme.controls.sidebar.rowRadius
             color: row.hovered && !row.selected ? Theme.color.controlHover
@@ -262,7 +267,7 @@ FocusScope {
         }
 
         Rectangle {
-            visible: !row.isHeader
+            visible: row.isRow
             anchors.fill: parent
             radius: Theme.controls.sidebar.rowRadius
             color: row.selected ? Theme.color.accent : "transparent"
@@ -299,7 +304,7 @@ FocusScope {
         Text {
             id: rowLabel
             objectName: "sidebarRowLabel"
-            visible: !row.isHeader
+            visible: row.isRow
             anchors.left: rowGlyph.visible ? rowGlyph.right : parent.left
             anchors.leftMargin: Theme.controls.sidebar.padding
             anchors.right: badge.visible ? badge.left : parent.right
@@ -314,7 +319,7 @@ FocusScope {
 
         Rectangle {
             id: badge
-            visible: !row.isHeader && row.entry.badge.length > 0
+            visible: row.isRow && row.entry.badge.length > 0
             anchors.right: parent.right
             anchors.rightMargin: Theme.controls.sidebar.padding
             anchors.verticalCenter: parent.verticalCenter
@@ -335,35 +340,37 @@ FocusScope {
         HoverHandler {
             id: rowHover
             onHoveredChanged: {
-                if (hovered && !row.isHeader)
+                if (hovered && row.isRow)
                     root.hoveredIndex = row.entry.index;
             }
         }
 
         TapHandler {
             onTapped: {
-                if (!row.isHeader)
+                if (row.isRow)
                     root.activateIndex(row.entry.index);
             }
         }
 
         FocusRing {
-            visible: !row.isHeader
+            visible: row.isRow
             target: row
             cornerRadius: Theme.controls.sidebar.rowRadius
             shown: row.selected && root.activeFocus
         }
 
+        Accessible.ignored: row.isSpacer
         Accessible.role: row.isHeader ? Accessible.StaticText : Accessible.ListItem
         Accessible.name: row.entry.label
-        Accessible.description: row.isHeader ? ""
+        Accessible.description: row.isHeader || row.isSpacer ? ""
                                 : (row.sectionTitle.length > 0
-                                   ? row.sectionTitle : qsTr("Pane"))
-        Accessible.selected: !row.isHeader && row.selected
-        Accessible.selectable: !row.isHeader
-        Accessible.focusable: !row.isHeader
+                                   ? row.sectionTitle
+                                   : root.sections[row.entry.section].accessibleTitle || qsTr("Pane"))
+        Accessible.selected: row.isRow && row.selected
+        Accessible.selectable: row.isRow
+        Accessible.focusable: row.isRow
         Accessible.onPressAction: {
-            if (!row.isHeader)
+            if (row.isRow)
                 root.activateIndex(row.entry.index);
         }
     }

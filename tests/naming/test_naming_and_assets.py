@@ -70,10 +70,10 @@ class NamingGateTests(unittest.TestCase):
             root = Path(tmp)
             (root / "shell" / "src").mkdir(parents=True)
             (root / "shell" / "src" / "Sample.cpp").write_text(
-                'entry(QStringLiteral("App Store"));\n', encoding="utf-8"
+                'entry(QStringLiteral("Mission Control"));\n', encoding="utf-8"
             )
             errors = naming.scan(root, self.map)
-            self.assertTrue(any("App Store" in error for error in errors))
+            self.assertTrue(any("Mission Control" in error for error in errors))
 
     def test_internal_key_literal_is_not_user_facing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -90,10 +90,10 @@ class NamingGateTests(unittest.TestCase):
             root = Path(tmp)
             (root / "apps" / "settings").mkdir(parents=True)
             (root / "apps" / "settings" / "Sample.desktop").write_text(
-                "[Desktop Entry]\nName=App Store\n", encoding="utf-8"
+                "[Desktop Entry]\nName=Mission Control\n", encoding="utf-8"
             )
             errors = naming.scan(root, self.map)
-            self.assertTrue(any("App Store" in error for error in errors))
+            self.assertTrue(any("Mission Control" in error for error in errors))
 
     def test_forbidden_packaging_value_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

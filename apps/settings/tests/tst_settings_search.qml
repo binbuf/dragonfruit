@@ -130,6 +130,34 @@ Item {
             }
         }
 
+        function test_removed_panes_are_absent_from_the_index() {
+            // T285 removed three top-level panes. No entry may name one of
+            // them, even through an old label or synonym.
+            var removedIds = ["biometrics", "mission-control", "control-center"];
+            for (var i = 0; i < SettingsSearch.entries.length; ++i) {
+                compare(removedIds.indexOf(SettingsSearch.entries[i].paneId), -1,
+                        "entry " + SettingsSearch.entries[i].label
+                        + " names a removed pane");
+            }
+            var queries = ["biometrics", "mission control", "control center",
+                           "quick settings", "overview"];
+            for (var q = 0; q < queries.length; ++q) {
+                var results = SettingsSearch.search(queries[q]);
+                for (var r = 0; r < results.length; ++r) {
+                    if (results[r].kind === "showAll")
+                        continue;
+                    compare(removedIds.indexOf(results[r].paneId), -1,
+                            "'" + queries[q] + "' must not reach a removed pane");
+                    verify(String(results[r].deepLink).indexOf("settings://pane/") === 0);
+                }
+            }
+            // The moved names still reach their new homes.
+            compare(SettingsSearch.firstOfKind("quick settings", "pane").paneId,
+                    "menu-bar");
+            compare(SettingsSearch.firstOfKind("mission control", "pane").paneId,
+                    "desktop-dock");
+        }
+
         function test_search_ranks_pane_section_and_row() {
             var wallpaper = SettingsSearch.search("wallpaper");
             verify(wallpaper.length > 0);
@@ -142,14 +170,13 @@ Item {
             compare(previews[0].deepLink,
                     "settings://pane/notifications/row/previews");
 
-            // T227 adds a Quick Settings row literally named "Dark mode"; an
-            // exact row label outranks the Appearance pane's synonym. The
-            // Appearance pane still owns the theme query.
+            // T285 removed the top-level Quick Settings pane and its "Dark
+            // mode" row; the Appearance pane owns the query through its
+            // synonym again.
             var dark = SettingsSearch.search("dark mode");
             verify(dark.length > 0);
-            compare(dark[0].kind, "row");
-            compare(dark[0].deepLink,
-                    "settings://pane/control-center/row/darkMode");
+            compare(dark[0].kind, "pane");
+            compare(dark[0].paneId, "appearance");
 
             var theme = SettingsSearch.search("theme");
             verify(theme.length > 0);
@@ -216,11 +243,17 @@ Item {
                 { query: "wifi", pane: "wifi" },
                 { query: "wi-fi", pane: "wifi" },
                 { query: "Wi Fi", pane: "wifi" },
-                { query: "control center", pane: "control-center" },
-                { query: "mission control", pane: "mission-control" },
+                { query: "control center", pane: "menu-bar" },
+                { query: "quick settings", pane: "menu-bar" },
+                { query: "menu bar controls", pane: "menu-bar" },
+                { query: "mission control", pane: "desktop-dock" },
+                { query: "workspace overview", pane: "desktop-dock" },
                 { query: "time machine", pane: "general", row: "backup." },
-                { query: "touch id", pane: "biometrics" },
+                { query: "touch id", pane: "users-groups" },
                 { query: "internet accounts", pane: "online-accounts" },
+                { query: "passwords & keys", pane: "general" },
+                { query: "backups", pane: "general" },
+                { query: "screen saver", pane: "screen-saver" },
                 { query: "autofill", pane: "general" }
             ];
             for (var i = 0; i < cases.length; ++i) {
@@ -249,12 +282,12 @@ Item {
                        + test.row);
             }
 
-            // A pane id is an alias too: the renamed panes keep their macOS
-            // names as search words.
+            // A pane id is an alias too: the moved panes keep their old macOS
+            // names as search words and land on their new home.
             compare(SettingsSearch.firstOfKind("control center", "pane").paneId,
-                    "control-center");
+                    "menu-bar");
             compare(SettingsSearch.firstOfKind("mission control", "pane").paneId,
-                    "mission-control");
+                    "desktop-dock");
         }
 
         function test_pane_subtitle_is_truthful_not_an_absence_note() {
@@ -572,6 +605,16 @@ Item {
             verify(!shell.deepLink("settings://pane/appearance/row/no-such-row"));
             verify(!shell.deepLink("https://example.org/pane/appearance"));
             compare(shell.currentPaneId, "general");
+
+            // T285: Biometrics was removed, not hidden. Its link is refused
+            // with a reason; the moved panes land on their new home.
+            verify(!shell.deepLink("settings://pane/biometrics"));
+            verify(shell.lastDeepLinkError.length > 0,
+                   "a refused link must surface a reason");
+            compare(shell.currentPaneId, "general");
+            verify(shell.deepLink("settings://pane/control-center"));
+            waitForRendering(stage);
+            compare(shell.currentPaneId, "menu-bar");
 
             // Online Accounts is always present now; its deep link is valid
             // even when the host service is absent (T263/T279).

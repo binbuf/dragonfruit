@@ -314,7 +314,8 @@ Item {
             tryVerify(function() { return select.menu.open; });
             compare(select.menu.parent, host.overlayer,
                     "the popup leaves the pane and adopts the window overlay");
-            verify(select.menu.availableRect !== null);
+            verify(select.menu.effectiveRect !== null,
+                   "an anchored popup derives the overlay rectangle");
             verify(select.menu.y >= 0);
             verify(select.menu.y + select.menu.height <= host.height + 0.5);
             verify(select.menu.y < select.mapToItem(host, 0, 0).y,
@@ -445,7 +446,8 @@ Item {
                    "the resize grips stay off the scrollbar corner");
             verify(shell.detailScroll.cornerInset > 0,
                    "the scrollbars stop short of the resize corner");
-            var id = "menu-bar";
+            // The last row in the reduced 27-entry IA.
+            var id = "printers";
             var index = shell.sidebarIndexOf(id);
             var row = shell.sidebar.rowAtIndex(index);
             verify(row !== null);

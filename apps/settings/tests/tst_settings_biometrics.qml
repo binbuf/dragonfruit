@@ -21,7 +21,10 @@ Item {
         name: "SettingsBiometrics"
         when: windowShown
 
-        Component { id: shellComponent; SettingsShell { } }
+        // T285 removed the top-level Biometrics pane; T299 owns folding its
+        // remaining settings into Users & Groups. The component stays, so
+        // these cases exercise it directly.
+        Component { id: biometricsComponent; BiometricsPane { } }
 
         function init() {
             Settings.resetBiometricsFixture();
@@ -31,27 +34,21 @@ Item {
         }
 
         function make(width, height) {
-            var shell = createTemporaryObject(shellComponent, stage,
-                                              { width: width || stage.width,
-                                                height: height || stage.height });
+            var pane = createTemporaryObject(biometricsComponent, stage,
+                                             { width: width || 480,
+                                               height: height || stage.height });
             waitForRendering(stage);
-            shell.selectPane("biometrics");
-            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
-            waitForRendering(stage);
-            return shell;
+            verify(pane);
+            return pane;
         }
 
-        function paneOf(shell) {
-            verify(shell.paneBody.status === Loader.Ready);
-            var pane = shell.paneBody.item;
+        function paneOf(pane) {
             verify(pane);
             return pane;
         }
 
         function test_pane_opens_with_the_live_fixture() {
-            var shell = make();
-            compare(shell.currentPaneId, "biometrics");
-            var pane = paneOf(shell);
+            var pane = make();
             compare(pane.ready, true);
             compare(pane.fprintdAvailable, true);
             compare(pane.fingers.length, 1);
@@ -176,8 +173,7 @@ Item {
 
         // T279: the measured 740×820 window keeps both halves reachable.
         function test_measured_window_740x820_keeps_both_halves() {
-            var shell = make(740, 820);
-            var pane = paneOf(shell);
+            var pane = make(740, 820);
             verify(pane.width > 0 && pane.width <= 740);
             verify(pane.passwordRow.width > 0);
             verify(pane.fingerprintRow.width > 0);

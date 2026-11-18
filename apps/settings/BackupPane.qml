@@ -142,7 +142,7 @@ Item {
         SettingsGroup {
             id: policyGroup
             width: parent.width
-            title: qsTr("Backup")
+            title: qsTr("Backups")
 
             Text {
                 id: noBackendNote

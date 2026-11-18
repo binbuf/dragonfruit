@@ -326,7 +326,7 @@ Item {
                     "disabled-with-reason");
         }
 
-        function test_mission_control_links_to_the_overview_pane() {
+        function test_mission_control_links_to_the_overview_section() {
             var shell = make();
             var pane = paneOf(shell);
             compare(pane.missionControlGroup.title, "Window Overview");
@@ -335,8 +335,13 @@ Item {
             verify(pane.overviewRow.disclosure);
             verifyDisabledReason(pane.shortcutsRow, "Shortcuts");
             pane.overviewRow.disclosureClicked();
-            tryVerify(function() { return shell.currentPaneId === "mission-control"; });
-            compare(shell.currentPaneId, "mission-control");
+            // T285 removed the top-level Overview pane. The link now lands on
+            // Desktop & Dock -> Workspace Overview (the section body is T292).
+            compare(SettingsPanes.resolve("mission-control").paneId,
+                    "desktop-dock");
+            compare(SettingsPanes.resolve("mission-control").anchor,
+                    "Workspace Overview");
+            tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
         }
 
         function test_default_browser_choices_apply_and_persist() {
