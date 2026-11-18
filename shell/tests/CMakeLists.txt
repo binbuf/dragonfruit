@@ -898,3 +898,25 @@ set_tests_properties(tst_polkitui PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Session power confirmation dialog view tests: the Shut Down and Restart
+# copy, the power/restart glyph, the 60-second countdown, automatic expiry,
+# and confirm/cancel.
+qt_add_executable(tst_powerdialog
+    tst_powerdialog.cpp
+)
+target_link_libraries(tst_powerdialog PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-powerplugin
+)
+qt_import_qml_plugins(tst_powerdialog)
+
+add_test(
+    NAME tst_powerdialog
+    COMMAND tst_powerdialog -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_powerdialog.qml
+)
+set_tests_properties(tst_powerdialog PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

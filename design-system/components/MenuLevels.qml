@@ -37,6 +37,11 @@ QtObject {
     property int pendingLevel: -1
     property int pendingIndex: -1
     property string pendingKey: ""
+    // The level whose pointer just left a row. A zero-delay timer clears the
+    // stale highlight unless another row (or a submenu) claims the pointer
+    // first; that is what stops the last hovered row staying lit after the
+    // pointer leaves the menu.
+    property int hoverLeaveLevel: -1
 
     signal activated(var item, var entry, var ancestors)
     signal stateChanged()
@@ -351,6 +356,10 @@ QtObject {
     function hover(level, index) {
         if (!root.menuOpen)
             return;
+        // A new row claims the pointer before the leave timer retires the old
+        // highlight, so moving between rows never flickers.
+        hoverLeaveTimer.stop();
+        hoverLeaveLevel = -1;
         if (root.pendingLevel === level && root.pendingIndex === index
                 && dwellTimer.running)
             return;
@@ -386,9 +395,17 @@ QtObject {
         if (root.openIndexAt(level) >= 0)
             return;
         root.cancelPending();
+        // Defer the highlight clear one event-loop turn: a pointer crossing
+        // into a sibling delivers that sibling's enter immediately, and the
+        // timer is cancelled there. Only a pointer that truly left the menu
+        // reaches the clear.
+        root.hoverLeaveLevel = level;
+        hoverLeaveTimer.restart();
     }
 
     function enterChild(level) {
+        hoverLeaveTimer.stop();
+        root.hoverLeaveLevel = -1;
         root.cancelPending();
         var open = root.openIndexAt(level);
         if (open >= 0)
@@ -421,6 +438,8 @@ QtObject {
 
     function reset() {
         root.cancelPending();
+        hoverLeaveTimer.stop();
+        root.hoverLeaveLevel = -1;
         root.clearTypeAhead();
         root.openPath = [];
         root.highlightKeys = [];
@@ -513,6 +532,23 @@ QtObject {
         interval: Theme.controls.contextMenu.submenuDelay
         repeat: false
         onTriggered: root.commitHover()
+    }
+
+    // Retires a hover highlight after the pointer leaves a row. Interval 0
+    // runs on the next event-loop turn, after any sibling enter has had the
+    // chance to cancel it.
+    property Timer hoverLeaveTimer: Timer {
+        interval: 0
+        repeat: false
+        onTriggered: {
+            var level = root.hoverLeaveLevel;
+            root.hoverLeaveLevel = -1;
+            if (level < 0 || root.pendingLevel === level)
+                return;
+            if (root.openIndexAt(level) >= 0)
+                return;
+            root.setHighlight(level, -1);
+        }
     }
 
     property Timer typeAheadTimer: Timer {

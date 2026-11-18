@@ -2424,9 +2424,10 @@ Item {
             verify(rest.y <= plate.y + 0.001);
             verify(rest.x + rest.w >= plate.x + plate.width - 0.001);
             verify(rest.y + rest.h >= plate.y + plate.height - 0.001);
-            // So is every rect the Dock declares as visible for input.
-            for (var i = 0; i < dock.inputRects.length; ++i) {
-                var input = dock.inputRects[i];
+            // So is every input rect that corresponds to painted pixels. The
+            // transparent auto-hide hold band is deliberately excluded.
+            for (var i = 0; i < dock.paintedInputRects.length; ++i) {
+                var input = dock.paintedInputRects[i];
                 verify(input.x >= rest.x - 0.501);
                 verify(input.y >= rest.y - 0.501);
                 verify(input.x + input.w <= rest.x + rest.w + 0.501);
@@ -2441,8 +2442,8 @@ Item {
             verify(zoomed.y < rest.y - 1,
                    "magnified entry grows the painted bounds");
             verify(zoomed.y + zoomed.h >= rest.y + rest.h - 0.501);
-            for (var j = 0; j < dock.inputRects.length; ++j) {
-                var zoomInput = dock.inputRects[j];
+            for (var j = 0; j < dock.paintedInputRects.length; ++j) {
+                var zoomInput = dock.paintedInputRects[j];
                 verify(zoomInput.y >= zoomed.y - 0.501);
                 verify(zoomInput.y + zoomInput.h <= zoomed.y + zoomed.h + 0.501);
             }
@@ -3445,6 +3446,114 @@ Item {
             mouseMove(stage, 640, dock.height + 40);
             wait(Theme.controls.dock.revealDelay + 80);
             compare(dock.revealed, false);
+        }
+
+        function test_pointer_reveal_holds_along_the_full_edge() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: false,
+                entries: [ app("a", "A", true) ]
+            });
+            mouseMove(stage, 640, 220);
+            dock.hide();
+            waitForRendering(stage);
+            // Dwell far to the left of the centred plate: the pointer reveal
+            // arms the full-length hold band.
+            mouseMove(dock, 40, dock.height - 1);
+            wait(Theme.controls.dock.revealDelay + 80);
+            compare(dock.revealed, true);
+            compare(dock.pointerRevealed, true);
+            compare(dock.pointerHoldActive, true);
+            verify(dock.inputRects.length >= 1);
+            fuzzyCompare(dock.inputRects[0].x, 0, 0.001);
+            fuzzyCompare(dock.inputRects[0].w, dock.width, 0.001);
+            fuzzyCompare(dock.inputRects[0].y, dock.revealedPlateRect.y, 0.001);
+            fuzzyCompare(dock.inputRects[0].h,
+                         dock.height - dock.revealedPlateRect.y, 0.001);
+            // Travelling along the edge, still outside the plate, keeps the
+            // Dock shown for the full hide grace.
+            mouseMove(dock, 1240, dock.height - 1);
+            wait(Theme.controls.dock.hideDelay + 80);
+            compare(dock.revealed, true,
+                    "the full-length hold band must keep the Dock shown");
+            // Leaving the edge band starts the ordinary re-hide delay.
+            mouseMove(stage, 640, 220);
+            wait(Theme.controls.dock.hideDelay + 80);
+            compare(dock.revealed, false);
+            compare(dock.pointerRevealed, false);
+        }
+
+        function test_programmatic_reveal_keeps_the_plate_only_hit_area() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, autoHide: true, revealed: false,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.reveal();
+            waitForRendering(stage);
+            compare(dock.revealed, true);
+            compare(dock.pointerRevealed, false);
+            compare(dock.pointerHoldActive, false);
+            fuzzyCompare(dock.inputRects[0].x, dock.plateRect.x, 0.001);
+            fuzzyCompare(dock.inputRects[0].w, dock.plateRect.w, 0.001);
+            fuzzyCompare(dock.inputRects[0].y, dock.plateRect.y, 0.001);
+            fuzzyCompare(dock.inputRects[0].h, dock.plateRect.h, 0.001);
+        }
+
+        function test_hold_band_matches_the_vertical_dock_edges() {
+            var left = make(dockComponent, {
+                width: 160, height: 800, position: "left",
+                autoHide: true, revealed: true, pointerRevealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            fuzzyCompare(left.holdBand.x, 0, 0.001);
+            fuzzyCompare(left.holdBand.y, 0, 0.001);
+            fuzzyCompare(left.holdBand.w,
+                         left.revealedPlateRect.x + left.revealedPlateRect.w, 0.001);
+            fuzzyCompare(left.holdBand.h, left.height, 0.001);
+
+            var right = make(dockComponent, {
+                width: 160, height: 800, position: "right",
+                autoHide: true, revealed: true, pointerRevealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            fuzzyCompare(right.holdBand.x, right.revealedPlateRect.x, 0.001);
+            fuzzyCompare(right.holdBand.y, 0, 0.001);
+            fuzzyCompare(right.holdBand.w,
+                         right.width - right.revealedPlateRect.x, 0.001);
+            fuzzyCompare(right.holdBand.h, right.height, 0.001);
+        }
+
+        function test_hold_band_does_not_magnify_far_tiles() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, autoHide: true, revealed: true,
+                pointerRevealed: true, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            // The pointer is in the hold band but far outside the plate; it
+            // must keep the Dock shown without pulling the nearest end tile.
+            dock.pointerAlong = 40;
+            waitForRendering(stage);
+            compare(dock.pointerOverPlate, false);
+            compare(dock.magnifying, false);
+            dock.pointerAlong = dock._baseline.centers[1];
+            waitForRendering(stage);
+            compare(dock.pointerOverPlate, true);
+            compare(dock.magnifying, true);
+        }
+
+        function test_hold_band_is_transparent_for_strip_damage() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, autoHide: true, revealed: true,
+                pointerRevealed: true, entries: [ app("a", "A", true) ]
+            });
+            waitForRendering(stage);
+            // The input region spans the output so the pointer can travel the
+            // edge, but the hold band paints nothing and must not widen the
+            // strip's damage rect.
+            fuzzyCompare(dock.inputRects[0].w, dock.width, 0.001);
+            compare(dock.paintedInputRects.length, 0);
+            verify(dock.paintedBounds.w < dock.width,
+                   "the transparent hold band must stay out of the damage rect");
         }
 
         function test_rehide_is_suppressed_while_a_popover_is_open() {

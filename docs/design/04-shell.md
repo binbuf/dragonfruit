@@ -292,11 +292,20 @@ was started by the dev harness (`DRAGONFRUIT_DEV_RETURN`); it runs the
 harness's return and logs out. The row's presence and label are unit-tested in
 `shell/tests/tst_dockcore.cpp` via `ShellMenus::systemMenu`.
 
+**Restart and Shut Down confirmation.** The two destructive session actions
+open a centered `power-dialog` overlay surface before any logind request is
+made. The dialog carries the power or restart glyph, the confirmation question,
+a live countdown from 60 seconds, and Cancel plus the action button (the
+default, so Return confirms). Escape or a click away cancels; the countdown
+runs the action when it reaches zero. The dialog is modal and cannot appear
+under the session lock. Sleep stays a single click because it is reversible,
+and the lock screen's power row keeps its immediate path above the lock
+surface.
+
 **Still stubs (2026-11):** About This System only logs (the General > About
-pane exists but is not opened), Sleep / Restart / Shut Down / Log Out only log
-because there is no logind action backend yet, and App Store ships disabled (no
-equivalent). These are tracked in [STATUS.md](STATUS.md) G-10. Launched apps
-inherit the session environment with the shell's own
+pane exists but is not opened), Log Out only logs, and App Store ships disabled
+(no equivalent). These are tracked in [STATUS.md](STATUS.md) G-10. Launched
+apps inherit the session environment with the shell's own
 `QT_QPA_PLATFORM=offscreen` replaced by the session's Wayland platform, so a Qt
 client maps on the real session platform.
 
@@ -599,6 +608,18 @@ See [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
 [ADR 0111](adr/0111-dock-magnification-tracking-stability.md),
 [ADR 0186](adr/0186-dock-reference-retune-profile-fit-and-states.md), and the
 T-14.7a/T-14.7b/T-14.7j units.
+
+**Auto-hide hold band.** A pointer-revealed auto-hide Dock keeps a full-length
+hold band in its input region: the band spans the surface's long axis at the
+revealed plate's cross-axis extent (from the anchored edge to the plate's
+interior edge). The pointer may therefore travel anywhere along the edge the
+Dock occupies — not only over the centred plate — without starting the
+`dock.hideDelay` re-hide. The band joins the input region only while
+`pointerRevealed` is set (the edge dwell, or the pointer entering the revealed
+Dock); keyboard, attention, and hot-corner reveals keep the plate-only hit area
+until the pointer engages it. The band paints nothing, so it is excluded from
+the strip's damage rect, and magnification stays gated to the plate plus the
+maximum end-tile overhang so an edge sweep cannot pull a distant tile.
 
 **Resting proportions (T-14.7u).** The resting Dock is retuned to the mature
 reference capture (`docs/reference/macos/Dock.png`, local-only): `padding` 15,

@@ -120,6 +120,13 @@ Rectangle {
     // reduced-motion gate below removes the translation.
     property bool minimizeReaction: false
     property bool revealed: true
+    // Whether the pointer is the reason the Dock is engaged. A pointer reveal
+    // (or the pointer entering the revealed Dock) lets the hold band below keep
+    // an auto-hide Dock shown while the pointer travels anywhere along the
+    // Dock's long axis, not only over the plate. A keyboard, attention, or
+    // hot-corner reveal leaves it false until the pointer actually engages the
+    // Dock, so those reveals keep their existing hide behavior.
+    property bool pointerRevealed: false
     property bool trashFull: false
     property int trashCount: 0
     // Whether the trash backend is reachable (T-10 section 16 lifecycle:
@@ -256,12 +263,17 @@ Rectangle {
         // pointer leaves, the raw value snaps to -1 and this tracker animates
         // toward it; the held `magnifyPointer` must not follow that exit slide,
         // or the release bubble would collapse toward the Dock edge instead of
-        // shrinking around the tile the pointer left.
-        if (dock.pointerAlong >= 0 && dock.smoothPointerAlong >= 0)
+        // shrinking around the tile the pointer left. The hold band can extend
+        // past the plate, so a sideways edge sweep must not move the held
+        // pointer either.
+        if (dock.pointerAlong >= 0 && dock.smoothPointerAlong >= 0
+                && dock.pointerIsOverPlate(dock.pointerAlong))
             dock.magnifyPointer = dock.smoothPointerAlong;
     }
     onAnchorIndexChanged: {
-        if (dock.anchorIndex >= 0)
+        // Keep the release bubble on the tile the pointer left when a sideways
+        // edge sweep moves past the plate's end.
+        if (dock.anchorIndex >= 0 && dock.pointerIsOverPlate(dock.pointerAlong))
             dock.magnifyPointerIndex = dock.anchorIndex;
     }
     // True while the magnified profile is drawn: while the pointer is on the
@@ -1147,6 +1159,28 @@ Rectangle {
         return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
     }
 
+    // A pointer-engaged auto-hide Dock stays shown while the pointer is
+    // anywhere along the edge it occupies. The hold band stretches the
+    // revealed plate's cross-axis extent across the whole long axis, so the
+    // Dock behaves as if its plate were as long as the output: the pointer can
+    // travel beside the plate without starting the re-hide delay. It joins the
+    // input region only while `pointerRevealed`, so a keyboard, attention, or
+    // hot-corner reveal keeps the old plate-only hit area until the pointer
+    // actually engages the Dock.
+    readonly property bool pointerHoldActive:
+        autoHide && revealed && pointerRevealed
+    readonly property var holdBand: {
+        var plate = revealedPlateRect;
+        if (axisIsX)
+            return { x: 0, y: plate.y, w: width,
+                     h: Math.max(0, height - plate.y) };
+        if (position === "left")
+            return { x: 0, y: 0, w: Math.max(0, plate.x + plate.w),
+                     h: height };
+        return { x: plate.x, y: 0, w: Math.max(0, width - plate.x),
+                 h: height };
+    }
+
     // `revealStateChanged` lets the shell re-commit the Dock and its input
     // region when the reveal/hide transition changes the translation. The
     // slide is animated through the scene-graph commit path (FR-14), which
@@ -1164,12 +1198,21 @@ Rectangle {
         if (!revealed)
             revealed = true;
     }
+    // The pointer dwell path arms the full-length hold band (below), so the
+    // pointer can travel along the edge without dismissing the Dock. A
+    // programmatic reveal keeps `pointerRevealed` false until the pointer
+    // actually engages the Dock.
+    function revealFromPointer() {
+        pointerRevealed = true;
+        reveal();
+    }
     function hide() {
         hideTimer.stop();
         // A new concealment starts a fresh dwell the next time the pointer
         // enters the band, even if it never left it while hidden.
         revealTimer.stop();
         revealDwellArmed = false;
+        pointerRevealed = false;
         if (autoHide && revealed)
             revealed = false;
     }
@@ -1212,7 +1255,7 @@ Rectangle {
     Timer {
         id: revealTimer
         interval: Theme.controls.dock.revealDelay
-        onTriggered: dock.reveal()
+        onTriggered: dock.revealFromPointer()
     }
 
     Timer {
@@ -1504,8 +1547,30 @@ Rectangle {
         return best;
     }
 
+    // The hold band can extend far past the plate's ends. Only a pointer over
+    // the plate (plus the maximum overhang of a magnified end tile) may drive
+    // magnification; a pointer merely travelling along the edge must not pull
+    // the bubble toward the nearest end tile. `revealedPlateRect` and the
+    // peak factor are engagement-independent, so this cannot feed back into
+    // the magnified plate's growth.
+    readonly property real magnifyGatePad:
+        Math.max(0, (effectiveMagnifyPeakFactor - 1) * iconSize / 2)
+    // A function, not only the cached binding, so signal handlers that run
+    // while `pointerAlong` is changing can test the live value.
+    function pointerIsOverPlate(along) {
+        if (along < 0)
+            return false;
+        var r = revealedPlateRect;
+        var pad = magnifyGatePad;
+        if (axisIsX)
+            return along >= r.x - pad && along <= r.x + r.w + pad;
+        return along >= r.y - pad && along <= r.y + r.h + pad;
+    }
+    readonly property bool pointerOverPlate: pointerIsOverPlate(pointerAlong)
+
     readonly property bool magnifying:
         magnification > 0 && pointerAlong >= 0 && anchorIndex >= 0
+        && pointerOverPlate
         && !popoverOpen && !dragging && !resizing && revealed
 
     // Magnification is suppressed while a context menu, chooser, or stack
@@ -4238,6 +4303,14 @@ Rectangle {
                  w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
     }
 
+    // The input rects that correspond to painted pixels. The hold band is
+    // transparent (it only keeps the Dock engaged), so it must not widen the
+    // strip's damage rect; every other input rect already covers something the
+    // Dock draws.
+    readonly property var paintedInputRects:
+        pointerHoldActive && !dragging && !externalDragActive && !resizing
+            ? [] : inputRects
+
     // The strip scene's complete painted bounds in Dock-local coordinates
     // (T238). The shell damages only this rect, unioned with the previous
     // frame's, instead of the whole strip, so a pointer sweep repaints the
@@ -4267,7 +4340,7 @@ Rectangle {
             x1 = Math.max(x1, l[i].x + l[i].w);
             y1 = Math.max(y1, l[i].y + l[i].h);
         }
-        var visible = inputRects;
+        var visible = paintedInputRects;
         for (var j = 0; j < visible.length; ++j) {
             x0 = Math.min(x0, visible[j].x);
             y0 = Math.min(y0, visible[j].y);
@@ -4327,7 +4400,9 @@ Rectangle {
     // or bouncing icon rectangles. The transparent magnified band passes
     // clicks through to the windows beneath. A hidden auto-hide Dock keeps
     // only the thin edge band so the pointer can summon it back (T-10 FR-13,
-    // section 15). The shell commits this every frame.
+    // section 15). A pointer-revealed Dock adds the full-length hold band, so
+    // travelling along its edge keeps it shown as if the plate spanned the
+    // output. The shell commits this every frame.
     readonly property var inputRects: {
         if (autoHide && !revealed)
             return [edgeRect];
@@ -4335,7 +4410,7 @@ Rectangle {
         // can move through the magnified band without leaking to a window.
         if (dragging || externalDragActive || resizing)
             return [{ x: 0, y: 0, w: width, h: height }];
-        var out = [plateRect];
+        var out = [pointerHoldActive ? holdBand : plateRect];
         var l = layout;
         for (var i = 0; i < l.length; ++i) {
             // The model and its computed layout can be observed for one
@@ -5191,6 +5266,12 @@ Rectangle {
         onHoveredChanged: {
             if (hovered) {
                 hideTimer.stop();
+                // Any pointer engagement with a revealed auto-hide Dock arms
+                // the full-length hold band, so a later sideways move along the
+                // edge keeps it shown even if the Dock was revealed by another
+                // path.
+                if (dock.autoHide && dock.revealed)
+                    dock.pointerRevealed = true;
             } else {
                 dock.pointerAlong = -1;
                 revealTimer.stop();

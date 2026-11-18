@@ -157,6 +157,20 @@ Item {
                     "Authenticating…");
         }
 
+        function test_password_caret_blinks_only_while_editable() {
+            var lock = make({ authEnabled: true, authBusy: false, active: true });
+            var caret = findChild(lock, "lockCaret");
+            verify(caret !== null, "the field draws a text caret");
+            verify(caret.visible, "the caret is visible while the field is editable");
+
+            lock.authBusy = true;
+            verify(!caret.visible, "the caret is hidden while PAM verifies");
+
+            lock.authBusy = false;
+            lock.active = false;
+            verify(!caret.visible, "the caret stops with the lock scene");
+        }
+
         function test_password_mask_reflects_captured_keys() {
             var lock = make({ authEnabled: true, passwordLength: 0 });
             var placeholder = findChild(lock, "lockPasswordPlaceholder");

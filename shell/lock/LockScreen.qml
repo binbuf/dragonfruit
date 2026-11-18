@@ -54,6 +54,11 @@ Item {
     // How many characters the captured password has (T-12.3c). The buffer
     // itself stays in the shell controller; the scene only draws the mask.
     property int passwordLength: 0
+    // True while the lock scene is the live session lock. The shell clears it
+    // on teardown so the caret blink timer cannot keep a hidden scene awake.
+    property bool active: true
+    // The caret blink phase. Reset to visible whenever the field changes.
+    property bool caretVisible: true
 
     // The reference layout scales with the output instead of a fixed card.
     readonly property int timePixelSize: Math.round(Math.max(56,
@@ -65,6 +70,10 @@ Item {
         Math.min(88, root.height * 0.12)))
     readonly property int fieldWidth: Math.max(0, Math.min(320,
         root.width - 2 * Theme.primitive.spacing.xl))
+    // Text starts a few pixels right of the caret so the empty-field caret is
+    // not drawn on top of the placeholder's first glyph.
+    readonly property int fieldCaretInset: Theme.primitive.spacing.lg
+    readonly property int fieldTextInset: root.fieldCaretInset + 6
     readonly property string userInitial: root.userName.length > 0
         ? root.userName.charAt(0).toUpperCase() : "?"
     // `df_workspace.wallpaper_fit` spells the four modes; map them onto the
@@ -88,6 +97,26 @@ Item {
         for (var i = 0; i < root.passwordLength; ++i)
             mask += "\u2022";
         return mask;
+    }
+
+    function restartCaret() {
+        root.caretVisible = true;
+        if (caretTimer.running)
+            caretTimer.restart();
+    }
+
+    onPasswordLengthChanged: root.restartCaret()
+    onAuthBusyChanged: root.restartCaret()
+    onActiveChanged: root.restartCaret()
+
+    // The field is always the lock scene's input target, so the caret blinks
+    // whenever the lock is live and PAM is not verifying a submitted answer.
+    Timer {
+        id: caretTimer
+        interval: 530
+        repeat: true
+        running: root.active && root.authEnabled && !root.authBusy
+        onTriggered: root.caretVisible = !root.caretVisible
     }
 
     function submitPassword() {
@@ -217,7 +246,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Math.max(Theme.primitive.spacing.xl,
-                                       Math.round(parent.height * 0.055))
+                                       Math.round(parent.height * 0.105))
         spacing: Theme.primitive.spacing.md
 
         // The portrait disc with the account's initial.
@@ -275,9 +304,10 @@ Item {
             antialiasing: true
 
             Text {
+                id: placeholderText
                 objectName: "lockPasswordPlaceholder"
                 anchors.left: parent.left
-                anchors.leftMargin: Theme.primitive.spacing.lg
+                anchors.leftMargin: root.fieldTextInset
                 anchors.right: enterButton.left
                 anchors.rightMargin: Theme.primitive.spacing.sm
                 anchors.verticalCenter: parent.verticalCenter
@@ -293,9 +323,10 @@ Item {
             // The masked password (T-12.3c): captured keys are shown as
             // bullets, never as text and never echoed.
             Text {
+                id: maskText
                 objectName: "lockPasswordMask"
                 anchors.left: parent.left
-                anchors.leftMargin: Theme.primitive.spacing.lg
+                anchors.leftMargin: root.fieldTextInset
                 anchors.right: enterButton.left
                 anchors.rightMargin: Theme.primitive.spacing.sm
                 anchors.verticalCenter: parent.verticalCenter
@@ -305,6 +336,27 @@ Item {
                 font.pixelSize: Theme.primitive.font.sizeLg
                 font.letterSpacing: 2
                 elide: Text.ElideRight
+            }
+
+            // The text caret. The shell owns the password buffer, so this is
+            // the only cursor the field can show: a blinking bar at the end of
+            // the mask (or at the insertion point while the field is empty).
+            Rectangle {
+                id: caret
+                objectName: "lockCaret"
+                visible: root.active && root.caretVisible
+                         && root.authEnabled && !root.authBusy
+                width: 2
+                height: Math.round(Theme.primitive.font.sizeLg * 1.15)
+                radius: 1
+                color: "#ffffff"
+                anchors.verticalCenter: parent.verticalCenter
+                x: {
+                    if (root.passwordLength === 0)
+                        return root.fieldCaretInset;
+                    return Math.min(maskText.x + maskText.contentWidth + 2,
+                                    enterButton.x - 4);
+                }
             }
 
             Rectangle {

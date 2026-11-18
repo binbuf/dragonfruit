@@ -220,6 +220,18 @@ private slots:
     void onPolkitChanged();
     void onPolkitSubmitted();
     void onPolkitCancelled();
+    // Session power confirmation dialog: the surface configure, its pointer
+    // and keyboard routing, the live countdown, and the user's choice.
+    void onPowerDialogConfigured(int width, int height, quint32 serial);
+    void onPowerDialogPointerMoved(qreal x, qreal y);
+    void onPowerDialogPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onPowerDialogPointerLeft();
+    void onPowerDialogKeyboardFocused(bool focused);
+    void onPowerDialogKeyEvent(quint32 key, bool pressed);
+    void onPowerDialogSecondsChanged();
+    void onPowerDialogConfirmed();
+    void onPowerDialogCancelled();
+    void onPowerDialogExpired();
     // Session lock (T-12.3a): the compositor confirmed the lock, one lock
     // surface was configured to a full-output size, and the lock object
     // finished.
@@ -230,6 +242,12 @@ private slots:
     void onLockSubmitRequested();
     void onSessionFinished();
     void onLockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, quint32 serial);
+    // T-12.3c pointer capture: the lock UI is the only client that may receive
+    // pointer input while locked, so the enter control and power row work.
+    void onLockPointerMoved(quintptr lockSurfaceId, qreal x, qreal y);
+    void onLockPointerButton(quintptr lockSurfaceId, qreal x, qreal y, quint32 button,
+                             bool pressed);
+    void onLockPointerLeft(quintptr lockSurfaceId);
     // T-12.3b: submit the typed password to the PAM helper. Input capture
     // (T-12.3c) is what will call this; the method is the whole shell half of
     // the authentication path. Success unlocks; failure sets the lock card's
@@ -841,8 +859,18 @@ private:
     // menu's Lock Screen both route here; the shell owns the lock UI.
     void lockScreen();
     // T229a: perform a logind session action (`sleep`/`restart`/`shut-down`)
-    // from the lock screen's power row. The session menu uses the same path.
+    // from the lock screen's power row. The system menu's confirmed Restart
+    // and Shut Down calls this after the user answers.
     void performSessionAction(const QString &action);
+    // The system menu's Restart and Shut Down are gated by a confirmation
+    // dialog; Sleep and the lock screen's power row stay immediate.
+    void requestSessionAction(const QString &action);
+    // Show/hide the session power confirmation dialog and drive its scene.
+    void showPowerDialog(const QString &action);
+    void hidePowerDialog();
+    void applyPowerDialogData();
+    void renderPowerDialog();
+    void schedulePowerDialogRender();
     // Run the real-session harness's return (T-12.6b): the system menu's
     // "Quit to <previous desktop>" row. It restores the host desktop and logs
     // out; only shown when DRAGONFRUIT_DEV_RETURN is set.
@@ -1241,6 +1269,18 @@ private:
     Qt::MouseButtons m_polkitButtons = Qt::NoButton;
     bool m_polkitSceneGraphCommitLogged = false;
     QString m_polkitResponse;
+    // Session power confirmation dialog: a centered scene rendered into the
+    // `power-dialog` overlay surface. The action is `restart` or `shut-down`;
+    // the countdown lives in QML and reports `expired` at zero.
+    QQuickWindow *m_powerDialogWindow = nullptr;
+    QQuickItem *m_powerDialogItem = nullptr;
+    int m_powerDialogWidth = 0;
+    int m_powerDialogHeight = 0;
+    bool m_powerDialogActive = false;
+    bool m_powerDialogPending = false;
+    bool m_powerDialogRenderPending = false;
+    Qt::MouseButtons m_powerDialogButtons = Qt::NoButton;
+    QString m_powerDialogAction;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
     // `ext-session-lock-v1` surface per output. The map holds each surface's
     // configured size; the QML is a pure view. `m_lockTimer` refreshes the
@@ -1259,6 +1299,8 @@ private:
     // never leaves this object except into the helper's stdin; only its
     // length is exposed to the lock scene (`passwordLength`).
     QString m_lockPassword;
+    // Held lock-screen pointer buttons, forwarded to the lock scene.
+    Qt::MouseButtons m_lockButtons = Qt::NoButton;
     QSocketNotifier *m_notifier = nullptr;
     // T-21.1d: the opt-in GPU rail. `Unknown` until the first producer tries
     // to initialize; `Failed` keeps every later surface on the T185 producer.

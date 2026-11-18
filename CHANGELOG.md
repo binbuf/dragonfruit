@@ -6,6 +6,14 @@ All notable user-visible changes are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Power confirmation.** The system menu's Restart and Shut Down now open a
+  modal confirmation dialog with the matching power or restart glyph, a
+  60-second countdown, and Cancel plus the action as the default button. Escape
+  or a click away cancels; leaving the dialog alone runs the action when the
+  countdown reaches zero. Sleep stays a single click.
+
 ### Fixed
 
 - **Large lists.** Folder stacks and the Add Application picker now render
@@ -19,6 +27,13 @@ All notable user-visible changes are recorded here. The format follows
   instantiates complete status widgets or a second clock boundary timer, so an
   idle bar has one clock wakeup and the measured overflow budget still matches
   the visible slots.
+- **Dock auto-hide.** A pointer-revealed Dock now stays shown while the
+  pointer is anywhere along the edge it occupies, not only over the centred
+  plate. The hold band spans the Dock's long axis at the plate's cross-axis
+  extent, so travelling beside the plate no longer starts the re-hide delay;
+  moving away from the edge hides it as before. Programmatic reveals
+  (keyboard, attention, hot corner) keep the plate-only hit area until the
+  pointer engages the Dock.
 - **Chrome damage.** GPU chrome commits now damage only the pixels that
   changed. The Dock publishes the strip's complete painted bounds and the shell
   damages the union of the previous and current frame, so a pointer sweep, a

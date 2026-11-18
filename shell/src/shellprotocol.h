@@ -472,11 +472,40 @@ public:
     // with the next buffer commit.
     bool setPolkitInputRegion(int width, int height);
 
+    // Take the keyboard for the visible prompt (`active` true) and hand it
+    // back when the prompt closes. A polkit request is modal: the field must
+    // be typable the moment the dialog appears, not only after a click.
+    bool setPolkitKeyboardActive(bool active);
+
     // Attach `image` to the polkit surface and commit.
     bool commitPolkitImage(const QImage &image, const QSize &logicalSize = QSize());
 
     // Unmap the polkit surface (attach a null buffer).
     bool hidePolkit();
+
+    // Create the session power confirmation dialog overlay: a centered
+    // `overlay` layer surface, namespace "power-dialog", unmapped until the
+    // user chooses Restart or Shut Down. It reserves nothing
+    // (`exclusive_zone = -1`) and takes the keyboard on demand so Escape
+    // cancels and Return confirms. `width`/`height` are the dialog surface
+    // size.
+    bool createPowerDialogSurface(int width, int height);
+
+    // Set the dialog's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setPowerDialogInputRegion(int width, int height);
+
+    // Take the keyboard for the visible confirmation (`active` true) and hand
+    // it back when the dialog closes. The dialog is modal: Return and Escape
+    // must work the moment it appears, not only after a click.
+    bool setPowerDialogKeyboardActive(bool active);
+
+    // Attach `image` to the power-dialog surface and commit.
+    bool commitPowerDialogImage(const QImage &image, const QSize &logicalSize = QSize());
+
+    // Unmap the power-dialog surface (attach a null buffer).
+    bool hidePowerDialog();
 
     // Create the Applications drawer overlay (T-19.2): a full-output `overlay`
     // layer surface, namespace "apps-drawer", unmapped until the drawer opens.
@@ -820,6 +849,7 @@ public:
         Screenshot,
         ScreenCast,
         Polkit,
+        PowerDialog,
         AppsDrawer,
         Lock,
     };
@@ -882,6 +912,14 @@ signals:
     void polkitPointerLeft();
     void polkitKeyboardFocused(bool focused);
     void polkitKeyEvent(uint32_t key, bool pressed, bool shift, const QString &text);
+    // Session power confirmation dialog overlay. It only needs the key and
+    // press state: Escape cancels, Return confirms, Tab cycles the actions.
+    void powerDialogConfigured(int width, int height, uint32_t serial);
+    void powerDialogPointerMoved(qreal x, qreal y);
+    void powerDialogPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void powerDialogPointerLeft();
+    void powerDialogKeyboardFocused(bool focused);
+    void powerDialogKeyEvent(uint32_t key, bool pressed);
     // Applications drawer overlay (T-19.2): a full-output launcher surface.
     void appsDrawerConfigured(int width, int height, uint32_t serial);
     void appsDrawerPointerMoved(qreal x, qreal y);
@@ -905,6 +943,13 @@ signals:
     void sessionLocked();
     void sessionFinished();
     void lockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, uint32_t serial);
+    // Pointer input delivered to a lock surface (T-12.3c). The lock UI is the
+    // only client that may receive pointer input while locked, so the enter
+    // control and the power row stay clickable. Coordinates are surface-local.
+    void lockPointerMoved(quintptr lockSurfaceId, qreal x, qreal y);
+    void lockPointerButton(quintptr lockSurfaceId, qreal x, qreal y, uint32_t button,
+                           bool pressed);
+    void lockPointerLeft(quintptr lockSurfaceId);
     // A chrome surface's `wp_fractional_scale_v1.preferred_scale` changed.
     // `surface` is the stable `chrome stats` label; the controller rerenders
     // the mapped scene at the new physical resolution (T-21.1b).
@@ -1090,6 +1135,9 @@ private:
     void createLockSurfaces();
     // Whether `surface` is one of the live lock surfaces (T-12.3c).
     bool isLockSurface(wl_surface *surface) const;
+    // The opaque id of the lock surface backing `surface`, or 0 when it is not
+    // a lock surface. Used to label pointer events for the lock scene.
+    quintptr lockSurfaceId(wl_surface *surface) const;
     // Which chrome surface currently owns the pointer, for axis routing.
     PointerSurface currentPointerSurface() const;
     // Rebuild the Dock's running-app projection and emit `dockStateChanged`.
@@ -1193,6 +1241,8 @@ private:
                                       int32_t width, int32_t height);
     static void onPolkitConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                   int32_t width, int32_t height);
+    static void onPowerDialogConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                       int32_t width, int32_t height);
     static void onAppsDrawerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                       int32_t width, int32_t height);
     // Session-lock listeners (T-12.3a).
@@ -1509,6 +1559,17 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     bool m_polkitMapped = false;
     bool m_pointerOnPolkit = false;
     bool m_keyboardOnPolkit = false;
+    // Session power confirmation dialog overlay: a centered `overlay` surface
+    // mapped only while a Restart or Shut Down confirmation is open.
+    wl_surface *m_powerDialogSurface = nullptr;
+    df_layer_surface *m_powerDialogLayer = nullptr;
+    bool m_powerDialogMapped = false;
+    bool m_pointerOnPowerDialog = false;
+    bool m_keyboardOnPowerDialog = false;
+    // True while the pointer is on a lock surface, and the opaque id of that
+    // surface so the controller can size its scene before forwarding.
+    bool m_pointerOnLock = false;
+    quintptr m_lockPointerSurface = 0;
     // Applications drawer overlay (T-19.2): a full-output `overlay` surface
     // mapped only while the drawer is open.
     wl_surface *m_appsDrawerSurface = nullptr;

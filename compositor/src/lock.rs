@@ -25,7 +25,7 @@ use smithay::backend::renderer::{ImportAll, Renderer};
 use smithay::desktop::Window;
 use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{IsAlive, Logical, Scale, Size};
+use smithay::utils::{IsAlive, Logical, Point, Scale, Size};
 use smithay::wayland::session_lock::LockSurface;
 
 use crate::state::DfState;
@@ -136,6 +136,27 @@ impl LockModel {
 /// empty output list is never covered.
 pub fn covered_by(outputs: &[String], mapped: &[&str]) -> bool {
     !outputs.is_empty() && outputs.iter().all(|name| mapped.contains(&name.as_str()))
+}
+
+/// Resolve the lock surface under a global-logical pointer position.
+///
+/// The lock UI is the only pointer target while the session is locked. Each
+/// lock surface covers one output at that output's logical size. Smithay's
+/// pointer focus tuple carries the target's **origin in global space** (it
+/// subtracts that origin from the global motion event to produce the
+/// surface-local coordinate), so the second value is the output origin, not
+/// the pointer's local position. `None` when the pointer is outside every
+/// output or that output has no live lock surface: input is then dropped,
+/// never sent to a client.
+pub fn pointer_target(
+    state: &DfState,
+    location: Point<f64, Logical>,
+) -> Option<(WlSurface, Point<f64, Logical>)> {
+    let output = state.space.output_under(location).next()?;
+    let surface = state.lock.surface(output.name().as_str())?;
+    let geometry = state.space.output_geometry(output)?;
+    let origin = Point::from((f64::from(geometry.loc.x), f64::from(geometry.loc.y)));
+    Some((surface.wl_surface().clone(), origin))
 }
 
 /// Build the lock-surface render elements for `output` (T-12.3a).

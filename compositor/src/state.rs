@@ -7435,6 +7435,12 @@ impl SessionLockHandler for DfState {
         }
         self.menu_bar_keyboard_focused = false;
         self.hovered_titlebar = None;
+        // A client may have hidden the cursor (a video player, a fullscreen
+        // app). The lock UI owns the pointer now, so restore the themed arrow
+        // instead of inheriting an invisible or text cursor.
+        self.cursor_image = smithay::input::pointer::CursorImageStatus::default_named();
+        self.client_cursor_image = smithay::input::pointer::CursorImageStatus::default_named();
+        self.resize_cursor = None;
         // T201: a lock ends every transient menu-bar reveal. Only the lock
         // surface is composed while locked; unlock starts from the policy's
         // resting state rather than restoring a stale revealed bar.
@@ -7463,13 +7469,35 @@ impl SessionLockHandler for DfState {
             });
         }
         surface.send_configure();
+        self.lock.insert_surface(output.name(), surface);
         // T-12.3c: the lock surface is the only keyboard focus target while
         // locked, so the lock UI reads every key and no client can.
         if let Some(keyboard) = self.seat.get_keyboard() {
-            let focus = surface.wl_surface().clone();
-            keyboard.set_focus(self, Some(focus), SERIAL_COUNTER.next_serial());
+            let focus = self
+                .lock
+                .surface(output.name().as_str())
+                .map(|surface| surface.wl_surface().clone());
+            if let Some(focus) = focus {
+                keyboard.set_focus(self, Some(focus), SERIAL_COUNTER.next_serial());
+            }
         }
-        self.lock.insert_surface(output.name(), surface);
+        // The pointer target follows the same rule: only the lock surface may
+        // receive motion/buttons, and focusing it here makes the cursor appear
+        // immediately rather than on the first synthetic motion.
+        if let Some(pointer) = self.seat.get_pointer() {
+            let location = pointer.current_location();
+            let focus = crate::lock::pointer_target(self, location);
+            pointer.motion(
+                self,
+                focus,
+                &smithay::input::pointer::MotionEvent {
+                    location,
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: 0,
+                },
+            );
+            pointer.frame(self);
+        }
         self.needs_redraw = true;
         let outputs: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
         if self.lock.covers(&outputs) {
@@ -7492,6 +7520,24 @@ impl SessionLockHandler for DfState {
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
         }
+        // The lock surface is gone; clear its pointer focus so no motion or
+        // click is delivered to a dead surface. The next real motion focuses
+        // the window under the pointer and restores its cursor.
+        if let Some(pointer) = self.seat.get_pointer() {
+            let location = pointer.current_location();
+            pointer.motion(
+                self,
+                None,
+                &smithay::input::pointer::MotionEvent {
+                    location,
+                    serial: SERIAL_COUNTER.next_serial(),
+                    time: 0,
+                },
+            );
+            pointer.frame(self);
+        }
+        self.cursor_image = smithay::input::pointer::CursorImageStatus::default_named();
+        self.client_cursor_image = smithay::input::pointer::CursorImageStatus::default_named();
         // T201: restore the menu-bar resting state on unlock. A concealed
         // auto-hide bar stays concealed until the pointer reaches the top
         // edge or the focus chord reveals it.

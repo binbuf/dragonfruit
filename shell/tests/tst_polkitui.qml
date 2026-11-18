@@ -52,6 +52,20 @@ Item {
             compare(findChild(dialog, "polkitPrompt").text, "Password:");
         }
 
+        function test_the_response_field_shows_a_caret_while_editable() {
+            var dialog = make({ identityLabel: "alice", active: true });
+            var caret = findChild(dialog, "polkitCaret");
+            verify(caret !== null, "the field draws a text caret");
+            verify(caret.visible, "the caret is visible while the prompt is live");
+
+            dialog.busy = true;
+            verify(!caret.visible, "the caret is hidden while PAM verifies");
+
+            dialog.busy = false;
+            dialog.active = false;
+            verify(!caret.visible, "the caret stops when the prompt closes");
+        }
+
         function test_the_response_is_masked_unless_echoed() {
             var dialog = make({ identityLabel: "alice", responseLength: 3,
                                 responseText: "abc", promptEcho: false });

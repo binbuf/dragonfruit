@@ -322,6 +322,12 @@ constexpr int kScreenCastHeight = 460;
 constexpr int kPolkitWidth = 480;
 constexpr int kPolkitHeight = 420;
 
+// The session power confirmation dialog: a centered card rendered into its own
+// `power-dialog` overlay surface while Restart or Shut Down waits for the
+// user's answer.
+constexpr int kPowerDialogWidth = 480;
+constexpr int kPowerDialogHeight = 280;
+
 // T231: the status-row priorities. Lower values sit closer to the menu side;
 // every system extra is below the third-party band (1000+), so an overflow
 // never promotes a StatusNotifier item above a system one.
@@ -507,7 +513,8 @@ void sendChromeKeyEvent(QQuickWindow *window, quint32 key, bool pressed,
 // tested. The actions are session/system operations: System Settings opens the
 // first-party Settings app (T-09); Lock Screen is wired (T-12.3a); App Store
 // has no equivalent (disabled); About This System needs the General > About
-// pane (T-15.10); Sleep/Restart/Shut Down/Log Out await the real-session work
+// pane (T-15.10); Restart and Shut Down ask for confirmation before the logind
+// call; Sleep is immediate; Log Out awaits the real-session work
 // (T-12.6/T-16.4). Unlanded items dispatch as logged stubs.
 
 // T-21.2c: push one applied material state into a chrome QML item. `prefix`
@@ -2038,6 +2045,48 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // never opens on its own.
     m_polkit->start();
 
+    // Session power confirmation dialog: a centered offscreen scene rendered
+    // into its own `power-dialog` overlay surface while Restart or Shut Down
+    // waits for the user's answer. The QML is a pure view; the controller owns
+    // the countdown result and the logind call.
+    m_powerDialogWindow = createChromeProducer()->window();
+    m_powerDialogWindow->setColor(Qt::transparent);
+    QQmlComponent powerDialogComponent(m_engine);
+    powerDialogComponent.loadFromModule(QStringLiteral("Dragonfruit.Power"),
+                                        QStringLiteral("PowerDialog"));
+    if (powerDialogComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: PowerDialog QML error: %s\n",
+                qPrintable(powerDialogComponent.errorString()));
+        return false;
+    }
+    QObject *powerDialogObject = powerDialogComponent.create();
+    m_powerDialogItem = qobject_cast<QQuickItem *>(powerDialogObject);
+    if (!m_powerDialogItem) {
+        fprintf(stderr, "dragonfruit-shell: PowerDialog QML did not produce an item\n");
+        return false;
+    }
+    m_powerDialogItem->setParentItem(m_powerDialogWindow->contentItem());
+    connect(powerDialogObject, SIGNAL(confirmed()), this, SLOT(onPowerDialogConfirmed()));
+    connect(powerDialogObject, SIGNAL(cancelled()), this, SLOT(onPowerDialogCancelled()));
+    connect(powerDialogObject, SIGNAL(expired()), this, SLOT(onPowerDialogExpired()));
+    connect(powerDialogObject, SIGNAL(secondsRemainingChanged()), this,
+            SLOT(onPowerDialogSecondsChanged()));
+    bindChromePacing(m_producers.value(m_powerDialogWindow),
+                     QStringLiteral("power-dialog"),
+                     [this]() { renderPowerDialog(); });
+    connect(m_protocol, &ShellProtocol::powerDialogConfigured, this,
+            &ShellController::onPowerDialogConfigured);
+    connect(m_protocol, &ShellProtocol::powerDialogPointerMoved, this,
+            &ShellController::onPowerDialogPointerMoved);
+    connect(m_protocol, &ShellProtocol::powerDialogPointerButton, this,
+            &ShellController::onPowerDialogPointerButton);
+    connect(m_protocol, &ShellProtocol::powerDialogPointerLeft, this,
+            &ShellController::onPowerDialogPointerLeft);
+    connect(m_protocol, &ShellProtocol::powerDialogKeyboardFocused, this,
+            &ShellController::onPowerDialogKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::powerDialogKeyEvent, this,
+            &ShellController::onPowerDialogKeyEvent);
+
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
     // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
@@ -2067,6 +2116,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::sessionFinished, this, &ShellController::onSessionFinished);
     connect(m_protocol, &ShellProtocol::lockSurfaceConfigured, this,
             &ShellController::onLockSurfaceConfigured);
+    connect(m_protocol, &ShellProtocol::lockPointerMoved, this,
+            &ShellController::onLockPointerMoved);
+    connect(m_protocol, &ShellProtocol::lockPointerButton, this,
+            &ShellController::onLockPointerButton);
+    connect(m_protocol, &ShellProtocol::lockPointerLeft, this,
+            &ShellController::onLockPointerLeft);
     // Refresh the clock while locked; stopped on unlock so the lock scene is
     // frame-quiet once settled (FR-2).
     m_lockTimer = new QTimer(this);
@@ -2153,6 +2208,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The polkit authentication dialog is a centered `overlay` surface,
     // unmapped until a privileged request is presented (T-13.6).
     if (!m_protocol->createPolkitSurface(kPolkitWidth, kPolkitHeight))
+        return false;
+    // The session power confirmation dialog is a centered `overlay` surface,
+    // unmapped until Restart or Shut Down asks for confirmation.
+    if (!m_protocol->createPowerDialogSurface(kPowerDialogWidth, kPowerDialogHeight))
         return false;
     // The Applications drawer is a full-output `overlay` surface, unmapped
     // until the launcher opens (T-19.2).
@@ -6285,13 +6344,20 @@ void ShellController::showPolkit()
     m_polkitActive = true;
     m_polkitPending = true;
     m_polkitResponse.clear();
+    m_polkitItem->setProperty("active", true);
     applyPolkitData();
     if (m_polkitWidth > 0 && m_polkitHeight > 0)
         renderPolkit();
     // Take active focus so Escape and the password keys reach the dialog.
     m_polkitItem->forceActiveFocus();
-    if (m_protocol)
+    if (m_protocol) {
         m_protocol->setPolkitInputRegion(m_polkitWidth, m_polkitHeight);
+        // A prompt is modal: take the compositor keyboard immediately instead
+        // of waiting for a click on the card. Without this the dialog opens
+        // with the field inert and the first keystrokes go to the window
+        // underneath.
+        m_protocol->setPolkitKeyboardActive(true);
+    }
 }
 
 void ShellController::hidePolkit()
@@ -6301,10 +6367,12 @@ void ShellController::hidePolkit()
     m_polkitButtons = Qt::NoButton;
     m_polkitResponse.clear();
     if (m_polkitItem) {
+        m_polkitItem->setProperty("active", false);
         m_polkitItem->setProperty("responseText", QString());
         m_polkitItem->setProperty("responseLength", 0);
     }
     if (m_protocol) {
+        m_protocol->setPolkitKeyboardActive(false);
         m_protocol->setPolkitInputRegion(0, 0);
         m_protocol->hidePolkit();
     }
@@ -6459,6 +6527,201 @@ void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift,
     schedulePolkitRender();
 }
 
+// --- session power confirmation dialog --------------------------------------
+
+void ShellController::requestSessionAction(const QString &action)
+{
+    // Restart and Shut Down are destructive and get a confirmation; Sleep is
+    // reversible and stays one click. The lock screen's power row keeps its
+    // immediate path because it runs above the session lock.
+    if (action == QLatin1String("restart")
+        || action == QLatin1String("shut-down")) {
+        showPowerDialog(action);
+        return;
+    }
+    performSessionAction(action);
+}
+
+void ShellController::showPowerDialog(const QString &action)
+{
+    if (!m_powerDialogItem)
+        return;
+    // A confirmation must never be left under the fail-secure lock surface.
+    if (m_lockActive)
+        return;
+    m_powerDialogAction = action;
+    m_powerDialogActive = true;
+    m_powerDialogPending = true;
+    m_powerDialogItem->setProperty("secondsRemaining", 60);
+    applyPowerDialogData();
+    if (m_protocol) {
+        // Set the hit area before the first buffer commit so the very first
+        // click on an action lands instead of passing through.
+        m_protocol->setPowerDialogInputRegion(m_powerDialogWidth, m_powerDialogHeight);
+        // The dialog is modal: take the keyboard immediately so Escape and
+        // Return work without a click on the card.
+        m_protocol->setPowerDialogKeyboardActive(true);
+    }
+    if (m_powerDialogWidth > 0 && m_powerDialogHeight > 0)
+        renderPowerDialog();
+    // The action button is the default: Return confirms and the focus ring
+    // starts on the destructive choice.
+    QMetaObject::invokeMethod(m_powerDialogItem, "focusDefault");
+}
+
+void ShellController::hidePowerDialog()
+{
+    m_powerDialogActive = false;
+    m_powerDialogPending = false;
+    m_powerDialogButtons = Qt::NoButton;
+    m_powerDialogAction.clear();
+    if (m_powerDialogItem) {
+        m_powerDialogItem->setProperty("active", false);
+    }
+    if (m_protocol) {
+        m_protocol->setPowerDialogKeyboardActive(false);
+        m_protocol->setPowerDialogInputRegion(0, 0);
+        m_protocol->hidePowerDialog();
+    }
+}
+
+void ShellController::applyPowerDialogData()
+{
+    if (!m_powerDialogItem)
+        return;
+    m_powerDialogItem->setProperty("action", m_powerDialogAction);
+    m_powerDialogItem->setProperty("active", m_powerDialogActive);
+}
+
+void ShellController::renderPowerDialog()
+{
+    if (!m_powerDialogActive || !m_powerDialogPending || !m_powerDialogWindow
+        || !m_powerDialogItem)
+        return;
+    if (m_powerDialogWidth <= 0 || m_powerDialogHeight <= 0)
+        return;
+    prepareChromeScene(m_powerDialogWindow, m_powerDialogItem,
+                       QSize(m_powerDialogWidth, m_powerDialogHeight),
+                       QSize(m_powerDialogWidth, m_powerDialogHeight), m_chromeScale);
+    const QSize logical(m_powerDialogWidth, m_powerDialogHeight);
+    commitChromeScene(m_powerDialogWindow,
+                      {{QStringLiteral("power-dialog"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitPowerDialogImage(image, logical);
+                        }}});
+}
+
+void ShellController::schedulePowerDialogRender()
+{
+    if (m_powerDialogRenderPending)
+        return;
+    m_powerDialogRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_powerDialogRenderPending = false;
+        renderPowerDialog();
+    });
+}
+
+void ShellController::onPowerDialogConfigured(int width, int height, quint32)
+{
+    // The compositor sends a pre-layout configure at the full output size
+    // before applying the layer surface's requested size; skip it (the same
+    // rule as the other centered dialogs).
+    if (width != kPowerDialogWidth || height != kPowerDialogHeight) {
+        fprintf(stderr, "dragonfruit-shell: ignoring pre-layout power-dialog configure %dx%d\n",
+                width, height);
+        return;
+    }
+    m_powerDialogWidth = width;
+    m_powerDialogHeight = height;
+    if (m_protocol)
+        m_protocol->setPowerDialogInputRegion(m_powerDialogWidth, m_powerDialogHeight);
+    if (m_powerDialogPending)
+        renderPowerDialog();
+}
+
+void ShellController::onPowerDialogPointerMoved(qreal x, qreal y)
+{
+    if (!m_powerDialogWindow)
+        return;
+    sendChromePointer(m_powerDialogWindow, QEvent::MouseMove, QPointF(x, y),
+                      Qt::NoButton, m_powerDialogButtons);
+    schedulePowerDialogRender();
+}
+
+void ShellController::onPowerDialogPointerButton(qreal x, qreal y, quint32 button,
+                                                 bool pressed)
+{
+    if (!m_powerDialogWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_powerDialogButtons |= qtButton;
+    else
+        m_powerDialogButtons &= ~qtButton;
+    sendChromePointer(m_powerDialogWindow,
+                      pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                      QPointF(x, y), qtButton, m_powerDialogButtons);
+    schedulePowerDialogRender();
+}
+
+void ShellController::onPowerDialogPointerLeft()
+{
+    if (!m_powerDialogWindow)
+        return;
+    sendChromePointer(m_powerDialogWindow, QEvent::MouseMove, QPointF(-1, -1),
+                      Qt::NoButton, m_powerDialogButtons);
+    schedulePowerDialogRender();
+}
+
+void ShellController::onPowerDialogKeyboardFocused(bool focused)
+{
+    // A click-away is a cancel: an unanswered confirmation must not keep the
+    // keyboard or run the action by accident.
+    if (!focused && m_powerDialogActive)
+        hidePowerDialog();
+}
+
+void ShellController::onPowerDialogKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_powerDialogActive || !m_powerDialogWindow)
+        return;
+    sendChromeKeyEvent(m_powerDialogWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
+    schedulePowerDialogRender();
+}
+
+void ShellController::onPowerDialogSecondsChanged()
+{
+    if (m_powerDialogActive)
+        schedulePowerDialogRender();
+}
+
+void ShellController::onPowerDialogConfirmed()
+{
+    if (!m_powerDialogActive)
+        return;
+    const QString action = m_powerDialogAction;
+    hidePowerDialog();
+    performSessionAction(action);
+}
+
+void ShellController::onPowerDialogCancelled()
+{
+    hidePowerDialog();
+}
+
+void ShellController::onPowerDialogExpired()
+{
+    if (!m_powerDialogActive)
+        return;
+    const QString action = m_powerDialogAction;
+    hidePowerDialog();
+    performSessionAction(action);
+}
+
 // --- session lock (T-12.3a protocol/UI, T-12.3b authentication) -------------
 
 void ShellController::onSessionLocked()
@@ -6468,6 +6731,8 @@ void ShellController::onSessionLocked()
     if (m_notificationCenterOpen)
         hideNotificationCenter(QStringLiteral("lock"));
     hideWidgetGallery();
+    if (m_powerDialogActive)
+        hidePowerDialog();
     // A lock clears the clipboard history by default; pinned entries survive
     // (T-13.5b, ADR 0082).
     if (m_clipboard && m_clipboard->clearOnLock())
@@ -6568,11 +6833,68 @@ void ShellController::onLockSurfaceConfigured(quintptr lockSurfaceId, int width,
         renderLockSurface(lockSurfaceId);
 }
 
+void ShellController::onLockPointerMoved(quintptr lockSurfaceId, qreal x, qreal y)
+{
+    if (!m_lockActive || !m_lockWindow || !m_lockItem)
+        return;
+    // The lock scene is shared by every output; size it to the surface that
+    // owns the pointer before forwarding, so a multi-output layout uses the
+    // right logical coordinate space.
+    const auto it = m_lockSurfaceSizes.constFind(lockSurfaceId);
+    if (it != m_lockSurfaceSizes.constEnd() && !it.value().isEmpty()) {
+        const qreal scale = m_protocol ? m_protocol->outputScale() : m_chromeScale;
+        prepareChromeScene(m_lockWindow, m_lockItem, it.value(), it.value(), scale);
+    }
+    sendChromePointer(m_lockWindow, QEvent::MouseMove, QPointF(x, y),
+                      Qt::NoButton, m_lockButtons);
+}
+
+void ShellController::onLockPointerButton(quintptr lockSurfaceId, qreal x, qreal y,
+                                          quint32 button, bool pressed)
+{
+    if (!m_lockActive || !m_lockWindow || !m_lockItem)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    else if (button == 0x111)
+        qtButton = Qt::RightButton;
+    if (pressed)
+        m_lockButtons |= qtButton;
+    else
+        m_lockButtons &= ~qtButton;
+    const auto it = m_lockSurfaceSizes.constFind(lockSurfaceId);
+    if (it != m_lockSurfaceSizes.constEnd() && !it.value().isEmpty()) {
+        const qreal scale = m_protocol ? m_protocol->outputScale() : m_chromeScale;
+        prepareChromeScene(m_lockWindow, m_lockItem, it.value(), it.value(), scale);
+    }
+    sendChromePointer(m_lockWindow,
+                      pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                      QPointF(x, y), qtButton, m_lockButtons);
+    repaintLockSurfaces();
+}
+
+void ShellController::onLockPointerLeft(quintptr lockSurfaceId)
+{
+    Q_UNUSED(lockSurfaceId);
+    if (!m_lockWindow)
+        return;
+    m_lockButtons = Qt::NoButton;
+    // Move the synthesized pointer off-screen so hover clears when it leaves
+    // the lock surface.
+    sendChromePointer(m_lockWindow, QEvent::MouseMove, QPointF(-1, -1),
+                      Qt::NoButton, m_lockButtons);
+    repaintLockSurfaces();
+}
+
 void ShellController::lockScreen()
 {
     // T-12.3a: one entry point for the Cmd+Ctrl+Q shortcut and the system
     // menu's Lock Screen; the shell owns the lock UI and drives
     // `ext-session-lock-v1`.
+    // A confirmation cannot live above the fail-secure lock surface.
+    if (m_powerDialogActive)
+        hidePowerDialog();
     if (m_protocol)
         m_protocol->lockSession();
 }
@@ -6655,6 +6977,8 @@ void ShellController::showLockScreen()
     m_lockActive = true;
     m_lockPassword.clear();
     applyLockData();
+    m_lockItem->forceActiveFocus();
+    m_lockItem->setProperty("active", true);
     m_lockItem->setProperty("authEnabled", true);
     m_lockItem->setProperty("authBusy", false);
     m_lockItem->setProperty("message", QString());
@@ -6779,8 +7103,11 @@ void ShellController::teardownLockScreen()
         m_lockAuth->cancel();
     m_lockActive = false;
     m_lockPassword.clear();
-    if (m_lockItem)
+    m_lockButtons = Qt::NoButton;
+    if (m_lockItem) {
+        m_lockItem->setProperty("active", false);
         m_lockItem->setProperty("passwordLength", 0);
+    }
     if (m_lockTimer)
         m_lockTimer->stop();
     m_lockSurfaceSizes.clear();
@@ -7041,8 +7368,9 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
     } else if (action == QLatin1String("sleep") || action == QLatin1String("restart")
                || action == QLatin1String("shut-down")) {
         // T229a: the lock screen's power row and the system menu share one
-        // logind path.
-        performSessionAction(action);
+        // logind path. The menu's Restart and Shut Down are gated by the
+        // confirmation dialog; Sleep and the lock row stay immediate.
+        requestSessionAction(action);
     } else if (action == QLatin1String("log-out")) {
         // The logind session action has no shell implementation yet; it lands
         // with the real-session work (T-12.6, T-16.4).
@@ -7390,6 +7718,9 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
     case ShellProtocol::PointerSurface::Polkit:
         window = m_polkitWindow;
         break;
+    case ShellProtocol::PointerSurface::PowerDialog:
+        window = m_powerDialogWindow;
+        break;
     case ShellProtocol::PointerSurface::NotificationCenter:
         window = m_notificationCenterWindow;
         break;
@@ -7480,6 +7811,9 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
         break;
     case ShellProtocol::PointerSurface::Polkit:
         schedulePolkitRender();
+        break;
+    case ShellProtocol::PointerSurface::PowerDialog:
+        schedulePowerDialogRender();
         break;
     case ShellProtocol::PointerSurface::NotificationCenter:
         scheduleNotificationCenterRender();
@@ -11971,6 +12305,8 @@ void ShellController::rerenderChrome()
         renderScreenCast();
     if (m_polkitActive && m_polkitPending)
         renderPolkit();
+    if (m_powerDialogActive && m_powerDialogPending)
+        renderPowerDialog();
     if (m_lockActive)
         repaintLockSurfaces();
 }

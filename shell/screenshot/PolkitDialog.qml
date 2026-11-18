@@ -36,8 +36,36 @@ Item {
     property string responseText: ""
     // The length of the response buffer (for the password mask).
     property int responseLength: 0
+    // True while the dialog is the live polkit prompt. The shell clears it on
+    // close so the caret blink timer cannot keep a hidden scene awake.
+    property bool active: false
+    // The caret blink phase. Reset to visible whenever the field changes.
+    property bool caretVisible: true
 
     readonly property bool canSubmit: responseLength > 0 && !busy
+    readonly property int fieldCaretInset: Theme.primitive.spacing.md
+    readonly property int fieldTextInset: fieldCaretInset + 6
+
+    function restartCaret() {
+        root.caretVisible = true;
+        if (caretTimer.running)
+            caretTimer.restart();
+    }
+
+    onResponseLengthChanged: root.restartCaret()
+    onBusyChanged: root.restartCaret()
+    onActiveChanged: root.restartCaret()
+
+    // PAM owns the answer, so the shell feeds keys into the response buffer.
+    // This caret is the visual insertion point; it blinks only while the
+    // prompt is live and the field is editable.
+    Timer {
+        id: caretTimer
+        interval: 530
+        repeat: true
+        running: root.active && !root.busy
+        onTriggered: root.caretVisible = !root.caretVisible
+    }
 
     function mask() {
         var value = "";
@@ -174,10 +202,11 @@ Item {
                 antialiasing: true
 
                 Text {
+                    id: fieldPlaceholder
                     objectName: "polkitFieldPlaceholder"
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
-                    anchors.leftMargin: Theme.primitive.spacing.md
+                    anchors.leftMargin: root.fieldTextInset
                     visible: root.responseLength === 0
                     text: root.busy ? qsTr("Authenticating…") : qsTr("Enter your password")
                     color: Theme.color.textTertiary
@@ -185,16 +214,37 @@ Item {
                 }
 
                 Text {
+                    id: fieldValue
                     objectName: "polkitFieldValue"
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
-                    anchors.leftMargin: Theme.primitive.spacing.md
+                    anchors.leftMargin: root.fieldTextInset
                     visible: root.responseLength > 0
                     text: root.promptEcho ? root.responseText : root.mask()
                     color: Theme.color.textPrimary
                     font.pixelSize: Theme.primitive.font.sizeMd
                     elide: Text.ElideRight
-                    width: parent.width - 2 * Theme.primitive.spacing.md
+                    width: parent.width - root.fieldTextInset
+                            - Theme.primitive.spacing.md
+                }
+
+                // The text caret at the insertion point. The response buffer
+                // lives in the shell controller; this is its visible cursor.
+                Rectangle {
+                    id: caret
+                    objectName: "polkitCaret"
+                    visible: root.active && root.caretVisible && !root.busy
+                    width: 2
+                    height: Math.round(Theme.primitive.font.sizeMd * 1.2)
+                    radius: 1
+                    color: Theme.color.textPrimary
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: {
+                        if (root.responseLength === 0)
+                            return root.fieldCaretInset;
+                        return Math.min(fieldValue.x + fieldValue.contentWidth + 2,
+                                        parent.width - Theme.primitive.spacing.md - 4);
+                    }
                 }
             }
 

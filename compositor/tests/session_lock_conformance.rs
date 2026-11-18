@@ -31,8 +31,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, Proxy, QueueHandle};
 use wayland_protocols::ext::session_lock::v1::client::{
@@ -70,6 +70,7 @@ struct LockTest {
     shm: Option<wl_shm::WlShm>,
     seat: Option<wl_seat::WlSeat>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
+    pointer: Option<wl_pointer::WlPointer>,
     outputs: Vec<wl_output::WlOutput>,
     lock_manager: Option<lock_mgr::ExtSessionLockManagerV1>,
     core_global: Option<(u32, u32)>,
@@ -81,6 +82,9 @@ struct LockTest {
     /// Keyboard enter surfaces (protocol ids) and keycodes delivered here.
     keyboard_enters: Vec<u32>,
     keys: Vec<u32>,
+    /// Pointer enter surfaces and button codes delivered to the lock UI.
+    pointer_enters: Vec<u32>,
+    pointer_buttons: Vec<u32>,
     /// The lock surface's backing `wl_surface` protocol id.
     lock_surface_id: u32,
 }
@@ -160,12 +164,14 @@ impl Dispatch<wl_seat::WlSeat, ()> for LockTest {
         qh: &QueueHandle<Self>,
     ) {
         if let wl_seat::Event::Capabilities { capabilities } = event {
-            let has_keyboard = capabilities
-                .into_result()
-                .map(|caps| caps.contains(wl_seat::Capability::Keyboard))
-                .unwrap_or(false);
-            if has_keyboard && state.keyboard.is_none() {
+            let Ok(caps) = capabilities.into_result() else {
+                return;
+            };
+            if caps.contains(wl_seat::Capability::Keyboard) && state.keyboard.is_none() {
                 state.keyboard = Some(seat.get_keyboard(qh, ()));
+            }
+            if caps.contains(wl_seat::Capability::Pointer) && state.pointer.is_none() {
+                state.pointer = Some(seat.get_pointer(qh, ()));
             }
         }
     }
@@ -185,6 +191,25 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for LockTest {
                 state.keyboard_enters.push(surface.id().protocol_id());
             }
             wl_keyboard::Event::Key { key, .. } => state.keys.push(key),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for LockTest {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_pointer::Event::Enter { surface, .. } => {
+                state.pointer_enters.push(surface.id().protocol_id());
+            }
+            wl_pointer::Event::Button { button, .. } => state.pointer_buttons.push(button),
             _ => {}
         }
     }
@@ -714,13 +739,20 @@ fn locked_input_targets_the_lock_ui_and_survives_its_death() {
         |s| s.authenticated,
     );
 
-    // Wait for the seat to hand us a keyboard.
+    // Wait for the seat to hand us a keyboard and a pointer.
     wait_for(
         &mut queue,
         &mut state,
         Duration::from_secs(5),
         "seat keyboard",
         |s| s.keyboard.is_some(),
+    );
+    wait_for(
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        "seat pointer",
+        |s| s.pointer.is_some(),
     );
 
     // Lock and map the lock surface.
@@ -771,8 +803,8 @@ fn locked_input_targets_the_lock_ui_and_survives_its_death() {
         "unexpected lock report before input: {before}"
     );
 
-    // Synthetic input is captured by the lock UI: the key lands on the lock
-    // surface, and pointer input is swallowed (no client receives it).
+    // Synthetic input is captured by the lock UI: keys and pointer events land
+    // on the lock surface, and no other client receives them.
     input.send("key 30 down");
     input.send("key 30 up");
     input.send("motion-abs 0.5 0.5");
@@ -784,6 +816,20 @@ fn locked_input_targets_the_lock_ui_and_survives_its_death() {
         Duration::from_secs(5),
         "key delivered to the lock surface",
         |s| s.keys.contains(&30),
+    );
+    wait_for(
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        "pointer enter on the lock surface",
+        |s| s.pointer_enters.contains(&lock_id),
+    );
+    wait_for(
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        "button delivered to the lock surface",
+        |s| s.pointer_buttons.contains(&272),
     );
 
     let during = input.query("query lock");

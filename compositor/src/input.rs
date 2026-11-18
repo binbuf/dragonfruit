@@ -299,6 +299,32 @@ where
                 route_locked_keyboard::<B>(state, event);
                 return;
             }
+            // The lock UI is the only client that may receive pointer input
+            // while locked. It needs the pointer for the enter control, the
+            // power row, and a visible cursor; every other client stays
+            // unreachable.
+            InputEvent::PointerMotion { event } => {
+                let delta = event.delta();
+                route_locked_pointer_motion(state, delta, event.time_msec());
+                return;
+            }
+            InputEvent::PointerMotionAbsolute { event } => {
+                let location = locked_absolute_location::<B>(state, event);
+                if let Some(location) = location {
+                    route_locked_pointer_motion_to(state, location, event.time_msec());
+                }
+                return;
+            }
+            InputEvent::PointerButton { event } => {
+                route_locked_pointer_button(
+                    state,
+                    event.button_code(),
+                    event.state(),
+                    event.time_msec(),
+                );
+                return;
+            }
+            InputEvent::PointerAxis { .. } => return,
             _ => return,
         }
     }
@@ -1009,6 +1035,94 @@ where
         event.time_msec(),
         |_, _, _| FilterResult::Forward,
     );
+}
+
+/// Route a relative pointer motion to the lock surface (T-12.3c).
+///
+/// The lock UI is the only client that may see pointer input while locked.
+/// The cursor still moves and renders; only the lock surface is hit-tested.
+fn route_locked_pointer_motion(state: &mut DfState, delta: Point<f64, Logical>, time: u32) {
+    let location = {
+        let Some(pointer) = state.seat.get_pointer() else {
+            return;
+        };
+        confine_to_outputs(state, pointer.current_location() + delta)
+    };
+    route_locked_pointer_motion_to(state, location, time);
+}
+
+/// Route an absolute pointer motion to the lock surface.
+fn locked_absolute_location<B: InputBackend>(
+    state: &DfState,
+    event: &B::PointerMotionAbsoluteEvent,
+) -> Option<Point<f64, Logical>>
+where
+    B::PointerMotionAbsoluteEvent: backend_input::PointerMotionAbsoluteEvent<B>,
+{
+    let output = state.space.outputs().next()?;
+    let geometry = state.space.output_geometry(output)?;
+    if geometry.size.w <= 0 || geometry.size.h <= 0 {
+        return None;
+    }
+    let position = event.position_transformed(geometry.size);
+    let location = Point::from((
+        f64::from(geometry.loc.x) + position.x,
+        f64::from(geometry.loc.y) + position.y,
+    ));
+    Some(confine_to_outputs(state, location))
+}
+
+/// Move the pointer to `location` with the lock surface (or nothing) focused.
+fn route_locked_pointer_motion_to(state: &mut DfState, location: Point<f64, Logical>, time: u32) {
+    let Some(pointer) = state.seat.get_pointer() else {
+        return;
+    };
+    let focus = crate::lock::pointer_target(state, location);
+    pointer.motion(
+        state,
+        focus,
+        &MotionEvent {
+            location,
+            serial: SERIAL_COUNTER.next_serial(),
+            time,
+        },
+    );
+    pointer.frame(state);
+    state.needs_redraw = true;
+}
+
+/// Route a pointer button to the lock surface (T-12.3c).
+fn route_locked_pointer_button(
+    state: &mut DfState,
+    button: u32,
+    button_state: ButtonState,
+    time: u32,
+) {
+    let Some(pointer) = state.seat.get_pointer() else {
+        return;
+    };
+    // Re-assert the lock target before the press: a click must not land on a
+    // stale focus from before the pointer entered the lock UI.
+    let location = pointer.current_location();
+    let focus = crate::lock::pointer_target(state, location);
+    pointer.motion(
+        state,
+        focus,
+        &MotionEvent {
+            location,
+            serial: SERIAL_COUNTER.next_serial(),
+            time,
+        },
+    );
+    let event = ButtonEvent {
+        serial: SERIAL_COUNTER.next_serial(),
+        time,
+        button,
+        state: button_state,
+    };
+    pointer.button(state, &event);
+    pointer.frame(state);
+    state.needs_redraw = true;
 }
 
 /// Register (idempotently) a tablet device with the seat.

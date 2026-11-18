@@ -1411,6 +1411,23 @@ bool ShellProtocol::setPolkitInputRegion(int width, int height)
     return true;
 }
 
+bool ShellProtocol::setPolkitKeyboardActive(bool active)
+{
+    if (!m_polkitLayer)
+        return false;
+    df_layer_surface_set_keyboard_interaction(
+        m_polkitLayer,
+        active ? DF_LAYER_SURFACE_KEYBOARD_INTERACTION_EXCLUSIVE
+               : DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // An unmapped prompt must not keep swallowing keys: hand the keyboard back
+    // to the active window when the dialog closes.
+    if (!active && m_manager)
+        df_toplevel_manager_release_keyboard_focus(m_manager);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::commitPolkitImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_polkitSurface)
@@ -1432,6 +1449,100 @@ bool ShellProtocol::hidePolkit()
     wl_surface_commit(m_polkitSurface);
     resetSurfaceScale(m_polkitSurface);
     m_polkitMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+// --- session power confirmation dialog overlay ------------------------------
+
+bool ShellProtocol::createPowerDialogSurface(int width, int height)
+{
+    if (m_powerDialogSurface || m_powerDialogLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_powerDialogSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_powerDialogSurface);
+    m_powerDialogLayer = df_shell_get_layer_surface(m_shell, m_powerDialogSurface, nullptr,
+                                                    DF_SHELL_LAYER_OVERLAY, "power-dialog");
+    if (!m_powerDialogLayer)
+        return fail(QStringLiteral("compositor refused the power-dialog layer surface"));
+    static const df_layer_surface_listener listener = { onPowerDialogConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_powerDialogLayer, &listener, this);
+
+    // No anchors: the compositor centers the dialog on the output. Reserve
+    // nothing; take the keyboard on demand so Escape cancels and Return
+    // confirms.
+    df_layer_surface_set_size(m_powerDialogLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_powerDialogLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_powerDialogLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_powerDialogSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_powerDialogSurface, nullptr, 0, 0);
+    wl_surface_commit(m_powerDialogSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the power-dialog surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setPowerDialogInputRegion(int width, int height)
+{
+    if (!m_powerDialogSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    wl_surface_set_input_region(m_powerDialogSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::setPowerDialogKeyboardActive(bool active)
+{
+    if (!m_powerDialogLayer)
+        return false;
+    df_layer_surface_set_keyboard_interaction(
+        m_powerDialogLayer,
+        active ? DF_LAYER_SURFACE_KEYBOARD_INTERACTION_EXCLUSIVE
+               : DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // An unmapped confirmation must not keep swallowing keys: hand the
+    // keyboard back to the active window when the dialog closes.
+    if (!active && m_manager)
+        df_toplevel_manager_release_keyboard_focus(m_manager);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::commitPowerDialogImage(const QImage &image, const QSize &logicalSize)
+{
+    if (!m_powerDialogSurface)
+        return false;
+    if (!commitTo(m_powerDialogSurface, image, logicalSize))
+        return false;
+    m_powerDialogMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hidePowerDialog()
+{
+    if (!m_powerDialogSurface || !m_powerDialogLayer)
+        return false;
+    if (!m_powerDialogMapped)
+        return true;
+    cancelPendingFrame(QStringLiteral("power-dialog"));
+    wl_surface_attach(m_powerDialogSurface, nullptr, 0, 0);
+    wl_surface_commit(m_powerDialogSurface);
+    resetSurfaceScale(m_powerDialogSurface);
+    m_powerDialogMapped = false;
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -1586,13 +1697,18 @@ void ShellProtocol::createLockSurfaces()
 
 bool ShellProtocol::isLockSurface(wl_surface *surface) const
 {
+    return lockSurfaceId(surface) != 0;
+}
+
+quintptr ShellProtocol::lockSurfaceId(wl_surface *surface) const
+{
     if (!surface)
-        return false;
+        return 0;
     for (auto it = m_lockSurfaces.constBegin(); it != m_lockSurfaces.constEnd(); ++it) {
         if (it.value().surface == surface)
-            return true;
+            return reinterpret_cast<quintptr>(it.key());
     }
-    return false;
+    return 0;
 }
 
 bool ShellProtocol::lockSession()
@@ -2146,6 +2262,8 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufFor(
             m_screencastMapped = true;
         else if (surface == m_polkitSurface)
             m_polkitMapped = true;
+        else if (surface == m_powerDialogSurface)
+            m_powerDialogMapped = true;
         else if (surface == m_appsDrawerSurface)
             m_appsDrawerMapped = true;
     }
@@ -2584,6 +2702,8 @@ QString ShellProtocol::surfaceLabel(wl_surface *surface) const
         return QStringLiteral("screencast");
     if (surface == m_polkitSurface)
         return QStringLiteral("polkit");
+    if (surface == m_powerDialogSurface)
+        return QStringLiteral("power-dialog");
     if (surface == m_appsDrawerSurface)
         return QStringLiteral("apps-drawer");
     for (auto it = m_lockSurfaces.constBegin(); it != m_lockSurfaces.constEnd(); ++it) {
@@ -2625,6 +2745,8 @@ wl_surface *ShellProtocol::surfaceForLabel(const QString &label) const
         return m_screencastSurface;
     if (label == QLatin1String("polkit"))
         return m_polkitSurface;
+    if (label == QLatin1String("power-dialog"))
+        return m_powerDialogSurface;
     if (label == QLatin1String("apps-drawer"))
         return m_appsDrawerSurface;
     // `lock` is intentionally not resolved here: every output has its own lock
@@ -3645,6 +3767,11 @@ void ShellProtocol::teardown()
     m_polkitLayer = nullptr;
     m_polkitSurface = nullptr;
     m_polkitMapped = false;
+    m_pointerOnPowerDialog = false;
+    m_keyboardOnPowerDialog = false;
+    m_powerDialogLayer = nullptr;
+    m_powerDialogSurface = nullptr;
+    m_powerDialogMapped = false;
     m_appsDrawerLayer = nullptr;
     m_appsDrawerSurface = nullptr;
     m_appsDrawerMapped = false;
@@ -3927,6 +4054,15 @@ void ShellProtocol::onPolkitConfigure(void *data, df_layer_surface *, uint32_t s
     if (self->m_polkitLayer)
         df_layer_surface_ack_configure(self->m_polkitLayer, serial);
     emit self->polkitConfigured(width, height, serial);
+}
+
+void ShellProtocol::onPowerDialogConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                           int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_powerDialogLayer)
+        df_layer_surface_ack_configure(self->m_powerDialogLayer, serial);
+    emit self->powerDialogConfigured(width, height, serial);
 }
 
 void ShellProtocol::onAppsDrawerConfigure(void *data, df_layer_surface *, uint32_t serial,
@@ -4514,8 +4650,20 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_screencastSurface && surface == self->m_screencastSurface;
     self->m_pointerOnPolkit =
         self->m_polkitSurface && surface == self->m_polkitSurface;
+    self->m_pointerOnPowerDialog =
+        self->m_powerDialogSurface && surface == self->m_powerDialogSurface;
     self->m_pointerOnAppsDrawer =
         self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface;
+    self->m_pointerOnLock = false;
+    const quintptr lockId = self->lockSurfaceId(surface);
+    if (lockId != 0) {
+        self->m_pointerOnLock = true;
+        self->m_lockPointerSurface = lockId;
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->lockPointerMoved(lockId, self->m_pointerX, self->m_pointerY);
+        return;
+    }
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
     if (self->m_pointerOnAppsDrawer) {
@@ -4605,7 +4753,10 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     const bool wasScreenshot = self->m_pointerOnScreenshot;
     const bool wasScreenCast = self->m_pointerOnScreenCast;
     const bool wasPolkit = self->m_pointerOnPolkit;
+    const bool wasPowerDialog = self->m_pointerOnPowerDialog;
     const bool wasAppsDrawer = self->m_pointerOnAppsDrawer;
+    const bool wasLock = self->m_pointerOnLock;
+    const quintptr lockSurface = self->m_lockPointerSurface;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
@@ -4620,8 +4771,13 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnScreenshot = false;
     self->m_pointerOnScreenCast = false;
     self->m_pointerOnPolkit = false;
+    self->m_pointerOnPowerDialog = false;
     self->m_pointerOnAppsDrawer = false;
-    if (wasChooser)
+    self->m_pointerOnLock = false;
+    self->m_lockPointerSurface = 0;
+    if (wasLock)
+        emit self->lockPointerLeft(lockSurface);
+    else if (wasChooser)
         emit self->chooserPointerLeft();
     else if (wasWidgetGallery)
         emit self->widgetGalleryPointerLeft();
@@ -4631,6 +4787,8 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
         emit self->screencastPointerLeft();
     else if (wasPolkit)
         emit self->polkitPointerLeft();
+    else if (wasPowerDialog)
+        emit self->powerDialogPointerLeft();
     else if (wasAppsDrawer)
         emit self->appsDrawerPointerLeft();
     else if (wasOverview)
@@ -4653,6 +4811,13 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
                                     wl_fixed_t y)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnLock) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->lockPointerMoved(self->m_lockPointerSurface, self->m_pointerX,
+                                    self->m_pointerY);
+        return;
+    }
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
     if (self->m_pointerOnAppsDrawer) {
@@ -4665,6 +4830,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->polkitPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnPowerDialog) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->powerDialogPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnChooser) {
@@ -4734,6 +4905,12 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                     uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnLock) {
+        emit self->lockPointerButton(self->m_lockPointerSurface, self->m_pointerX,
+                                     self->m_pointerY, button,
+                                     state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnAppsDrawer) {
         emit self->appsDrawerPointerButton(self->m_pointerX, self->m_pointerY, button,
                                            state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -4742,6 +4919,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
     if (self->m_pointerOnPolkit) {
         emit self->polkitPointerButton(self->m_pointerX, self->m_pointerY, button,
                                        state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
+    if (self->m_pointerOnPowerDialog) {
+        emit self->powerDialogPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                            state == WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
     if (self->m_pointerOnChooser) {
@@ -4804,6 +4986,8 @@ ShellProtocol::PointerSurface ShellProtocol::currentPointerSurface() const
         return PointerSurface::AppsDrawer;
     if (m_pointerOnPolkit)
         return PointerSurface::Polkit;
+    if (m_pointerOnPowerDialog)
+        return PointerSurface::PowerDialog;
     if (m_pointerOnChooser)
         return PointerSurface::Chooser;
     if (m_pointerOnScreenshot)
@@ -4922,6 +5106,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         self->m_screencastSurface && surface == self->m_screencastSurface;
     self->m_keyboardOnPolkit =
         self->m_polkitSurface && surface == self->m_polkitSurface;
+    self->m_keyboardOnPowerDialog =
+        self->m_powerDialogSurface && surface == self->m_powerDialogSurface;
     self->m_keyboardOnAppsDrawer =
         self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface;
     self->m_keyboardOnLock = self->isLockSurface(surface);
@@ -4946,6 +5132,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->screencastKeyboardFocused(true);
     if (self->m_keyboardOnPolkit)
         emit self->polkitKeyboardFocused(true);
+    if (self->m_keyboardOnPowerDialog)
+        emit self->powerDialogKeyboardFocused(true);
     if (self->m_keyboardOnAppsDrawer)
         emit self->appsDrawerKeyboardFocused(true);
 }
@@ -4974,6 +5162,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_screencastSurface && surface == self->m_screencastSurface);
     const bool wasPolkit = self->m_keyboardOnPolkit
             || (self->m_polkitSurface && surface == self->m_polkitSurface);
+    const bool wasPowerDialog = self->m_keyboardOnPowerDialog
+            || (self->m_powerDialogSurface && surface == self->m_powerDialogSurface);
     const bool wasAppsDrawer = self->m_keyboardOnAppsDrawer
             || (self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface);
     self->m_keyboardOnDock = false;
@@ -4986,6 +5176,7 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     self->m_keyboardOnScreenshot = false;
     self->m_keyboardOnScreenCast = false;
     self->m_keyboardOnPolkit = false;
+    self->m_keyboardOnPowerDialog = false;
     self->m_keyboardOnAppsDrawer = false;
     self->m_keyboardOnLock = false;
     emit self->keyboardFocused(false);
@@ -5009,6 +5200,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->screencastKeyboardFocused(false);
     if (wasPolkit)
         emit self->polkitKeyboardFocused(false);
+    if (wasPowerDialog)
+        emit self->powerDialogKeyboardFocused(false);
     if (wasAppsDrawer)
         emit self->appsDrawerKeyboardFocused(false);
 }
@@ -5027,6 +5220,10 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     }
     if (self->m_keyboardOnPolkit) {
         emit self->polkitKeyEvent(key, pressed, self->m_keyboardShift, text);
+        return;
+    }
+    if (self->m_keyboardOnPowerDialog) {
+        emit self->powerDialogKeyEvent(key, pressed);
         return;
     }
     if (self->m_keyboardOnAppsDrawer) {

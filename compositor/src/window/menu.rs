@@ -306,12 +306,29 @@ impl WindowMenu {
         }
         if self.rect.contains(point) {
             let next = self.row_at(point);
+            let mut changed = false;
             if next != self.highlighted {
                 self.highlighted = next;
-                return true;
+                changed = true;
             }
+            if self.submenu_highlighted.is_some() {
+                self.submenu_highlighted = None;
+                changed = true;
+            }
+            return changed;
         }
-        false
+        // The pointer left the menu entirely: retire both hover highlights so
+        // the last row does not stay lit on the desktop.
+        let mut changed = false;
+        if self.highlighted.is_some() {
+            self.highlighted = None;
+            changed = true;
+        }
+        if self.submenu_highlighted.is_some() {
+            self.submenu_highlighted = None;
+            changed = true;
+        }
+        changed
     }
 
     /// Resolve a pointer press inside the menu.
