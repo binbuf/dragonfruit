@@ -18,6 +18,18 @@ FocusScope {
     // and round the bottom-left window corner.
     property color fillColor: Theme.color.surfaceMuted
     property real bottomLeftRadius: 0
+    // T286: the Settings app opts into the mockup's density and neutral
+    // selection without changing the shared defaults. Other apps keep the
+    // 28 pt accent-selected source list.
+    property real rowHeight: Theme.controls.sidebar.rowHeight
+    property real rowRadius: Theme.controls.sidebar.rowRadius
+    property real padding: Theme.controls.sidebar.padding
+    property real sectionSpacer: Theme.controls.sidebar.sectionGap
+    // "accent" (default) or "neutral" (System Settings).
+    property string selectionStyle: "accent"
+    property color neutralSelectionFill: Theme.color.controlActive
+    // T286: a selected row is kept inside the viewport when the list scrolls.
+    property bool scrollSelectedIntoView: false
     // T227: `appearance.sidebarIconSize` (small/medium/large) is mapped by the
     // app owner onto these two slots; the row height stays the design token.
     property real iconSize: Theme.controls.sidebar.iconSize
@@ -50,9 +62,13 @@ FocusScope {
                 var item = items[i] || {};
                 out.push({
                     index: index++,
-                    type: item.spacer === true ? "spacer" : "item",
+                    // T286: the update row is a real status entry: selectable,
+                    // with a badge and a status line.
+                    type: item.spacer === true ? "spacer"
+                          : item.status === true ? "status" : "item",
                     id: item.id || "",
                     label: item.label || "",
+                    statusLabel: item.statusLabel || "",
                     icon: item.icon || "",
                     badge: item.badge || "",
                     category: item.category || null,
@@ -65,7 +81,7 @@ FocusScope {
     }
     readonly property var currentItem: {
         var e = root.entries[root.currentIndex];
-        return e && e.type === "item" ? e : null;
+        return e && (e.type === "item" || e.type === "status") ? e : null;
     }
     // Category tiles are wider than a plain line glyph. If any item carries a
     // category, every item keeps that tile-width slot so labels stay in one
@@ -96,12 +112,31 @@ FocusScope {
         var i = root.currentIndex;
         for (var step = 0; step < count; ++step) {
             i = (i + delta + count) % count;
-            if (root.entries[i].type === "item") {
+            if (root.entries[i].type === "item"
+                    || root.entries[i].type === "status") {
                 root.currentIndex = i;
                 return;
             }
         }
     }
+
+    // T286: keep the selected row inside the viewport. The list is a Column in
+    // a Flickable, so the row's y is already the content offset.
+    function ensureVisible(index) {
+        if (!root.scrollSelectedIntoView)
+            return;
+        var row = root.rowAtIndex(index);
+        if (row === null || row === undefined)
+            return;
+        var top = row.y;
+        var bottom = row.y + row.height;
+        if (top < list.contentY)
+            list.contentY = top;
+        else if (bottom > list.contentY + list.height)
+            list.contentY = bottom - list.height;
+    }
+
+    onCurrentIndexChanged: root.ensureVisible(root.currentIndex)
 
     // T263: the rendered row delegate for an entry index. The stationary-click
     // regression uses it to click a row's own coordinates without a prior
@@ -112,7 +147,7 @@ FocusScope {
 
     function activateIndex(index) {
         var e = root.entries[index];
-        if (!e || e.type !== "item")
+        if (!e || (e.type !== "item" && e.type !== "status"))
             return;
         root.currentIndex = index;
         root.activated(index, e);
@@ -135,7 +170,7 @@ FocusScope {
     Flickable {
         id: list
         anchors.fill: parent
-        anchors.margins: Theme.controls.sidebar.padding
+        anchors.margins: root.padding
         clip: true
         contentWidth: width
         contentHeight: rows.implicitHeight
@@ -197,9 +232,20 @@ FocusScope {
         // T285: an inter-group spacer is not selectable and not announced; the
         // keyboard path skips it because `move()` only lands on items.
         readonly property bool isSpacer: entry.type === "spacer"
+        // T286: the update row is a status entry, not a pane. It is selectable
+        // and keyboard-reachable like an item but renders the status anatomy.
+        readonly property bool isStatus: entry.type === "status"
         readonly property bool isRow: !row.isHeader && !row.isSpacer
         readonly property bool selected: root.currentIndex === entry.index
         readonly property bool hovered: rowHover.hovered
+        // T286: the Settings app opts into the neutral selection fill; the
+        // shared default keeps the accent selection for other apps.
+        readonly property color selectionFill:
+            root.selectionStyle === "neutral" ? root.neutralSelectionFill
+                                              : Theme.color.accent
+        readonly property color selectedContent:
+            root.selectionStyle === "neutral" ? Theme.color.textPrimary
+                                              : Theme.color.accentContent
         // A resolved `SettingsCategoryIcon` style, when the item carries one.
         // Items without it keep the plain `Icon` glyph (T-19.1b).
         readonly property var category: entry.category && entry.category.source
@@ -207,7 +253,7 @@ FocusScope {
         // The resolved Phosphor name, kept out of the `SettingsCategoryIcon`
         // block so the static glyph-reference scan only sees a bound value.
         readonly property string categoryGlyph: row.category ? row.category.source : ""
-        readonly property bool hasGlyph: row.isRow
+        readonly property bool hasGlyph: row.isRow && !row.isStatus
                 && (row.category !== null || entry.icon.length > 0)
         readonly property real glyphSize: row.category !== null
                 ? root.categoryIconSize
@@ -223,9 +269,9 @@ FocusScope {
         }
 
         width: parent ? parent.width : 0
-        height: isHeader ? headerText.implicitHeight + Theme.controls.sidebar.sectionGap
-                         : isSpacer ? Theme.controls.sidebar.sectionGap
-                                    : Theme.controls.sidebar.rowHeight
+        height: isHeader ? headerText.implicitHeight + root.sectionSpacer
+                         : isSpacer ? root.sectionSpacer
+                                    : root.rowHeight
 
         Text {
             id: headerText
@@ -234,7 +280,7 @@ FocusScope {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.leftMargin: Theme.controls.sidebar.padding
+            anchors.leftMargin: root.padding
             text: row.entry.label
             color: Glass.increaseContrast ? Theme.color.textPrimary
                                           : Theme.color.textTertiary
@@ -252,7 +298,7 @@ FocusScope {
         Rectangle {
             visible: row.isRow
             anchors.fill: parent
-            radius: Theme.controls.sidebar.rowRadius
+            radius: root.rowRadius
             color: row.hovered && !row.selected ? Theme.color.controlHover
                                                 : "transparent"
             antialiasing: true
@@ -269,9 +315,24 @@ FocusScope {
         Rectangle {
             visible: row.isRow
             anchors.fill: parent
-            radius: Theme.controls.sidebar.rowRadius
-            color: row.selected ? Theme.color.accent : "transparent"
+            radius: root.rowRadius
+            color: row.selected ? row.selectionFill : "transparent"
             antialiasing: true
+        }
+
+        // The update status row keeps its own anatomy (tile, label, status
+        // line, badge); it never goes through the plain pane-row path.
+        SettingsSidebarStatusRow {
+            id: statusRow
+            visible: row.isStatus
+            anchors.fill: parent
+            label: row.entry.label
+            statusLabel: row.entry.statusLabel
+            icon: row.entry.icon
+            badge: row.entry.badge
+            category: row.category
+            selected: row.selected
+            rtl: root.rtl
         }
 
         Item {
@@ -280,7 +341,7 @@ FocusScope {
             width: row.glyphSlot
             height: row.glyphSlot
             anchors.left: parent.left
-            anchors.leftMargin: Theme.controls.sidebar.padding
+            anchors.leftMargin: root.padding
             anchors.verticalCenter: parent.verticalCenter
 
             SettingsCategoryIcon {
@@ -297,31 +358,34 @@ FocusScope {
                 visible: row.category === null
                 name: row.category === null ? row.entry.icon : ""
                 size: row.glyphSize
-                color: row.selected ? Theme.color.accentContent : Theme.color.textSecondary
+                color: row.selected ? row.selectedContent : Theme.color.textSecondary
             }
         }
 
         Text {
             id: rowLabel
             objectName: "sidebarRowLabel"
-            visible: row.isRow
+            visible: row.isRow && !row.isStatus
             anchors.left: rowGlyph.visible ? rowGlyph.right : parent.left
-            anchors.leftMargin: Theme.controls.sidebar.padding
+            anchors.leftMargin: root.padding
             anchors.right: badge.visible ? badge.left : parent.right
-            anchors.rightMargin: Theme.controls.sidebar.padding
+            anchors.rightMargin: root.padding
             anchors.verticalCenter: parent.verticalCenter
             text: row.entry.label
-            color: row.selected ? Theme.color.accentContent : Theme.color.textPrimary
+            color: row.selected ? row.selectedContent : Theme.color.textPrimary
             font.pixelSize: Theme.controls.button.fontSize
+            font.weight: row.selected && root.selectionStyle === "neutral"
+                         ? Theme.primitive.font.weightSemibold
+                         : Theme.primitive.font.weightRegular
             elide: Text.ElideRight
             horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
         }
 
         Rectangle {
             id: badge
-            visible: row.isRow && row.entry.badge.length > 0
+            visible: row.isRow && !row.isStatus && row.entry.badge.length > 0
             anchors.right: parent.right
-            anchors.rightMargin: Theme.controls.sidebar.padding
+            anchors.rightMargin: root.padding
             anchors.verticalCenter: parent.verticalCenter
             width: badgeLabel.implicitWidth + 2 * Theme.primitive.spacing.sm
             height: badgeLabel.implicitHeight + Theme.primitive.spacing.xxs
@@ -355,7 +419,7 @@ FocusScope {
         FocusRing {
             visible: row.isRow
             target: row
-            cornerRadius: Theme.controls.sidebar.rowRadius
+            cornerRadius: root.rowRadius
             shown: row.selected && root.activeFocus
         }
 

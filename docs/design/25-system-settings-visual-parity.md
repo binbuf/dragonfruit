@@ -238,6 +238,32 @@ mirror, `docs/settings-keys.md`, the consumer test, and the map row together.
 | VPN | Becomes always visible, with the mockup's empty state. The optional-profile gate is removed. |
 | Mouse, Game Controllers | Kept as top-level panes. They show their absent-hardware state when no device is present. |
 
+### 3.8a T286 implementation notes
+
+T286 lands §3.1–3.4 as tokens and shared components (see
+[08-settings.md](08-settings.md) and [10-design-system.md](10-design-system.md)).
+The target values are unchanged; these are the implementation choices worth
+recording:
+
+- The traffic lights draw the mockup's 12 pt circle inside the shared 16 pt
+  hit frame. The 11 pt edge gap is the 23 pt centre spacing the shared
+  `TrafficLights` already uses, so the visible circles match the mockup while
+  the hit target stays accessible.
+- The sidebar status row stays present when the provider reports no update
+  (label "Up to Date"), rather than disappearing. It is the honest current
+  state and keeps the General → Software Update entry reachable.
+- The help control opens the live business-logic map anchor directly. The
+  mockup's "Help content is not included" placeholder is not shipped; a
+  minimal install with no map document disables the control and explains why.
+- The sidebar search keeps its query after a result opens. The pane becomes
+  visible; the next keystroke re-opens the ranked list.
+- The neutral selected fill is a Settings opt-in on `Sidebar`
+  (`selectionStyle: "neutral"`). It is not a global accent change; Files and
+  the Applications drawer keep the accent selection.
+- The detail toolbar is the content surface. The `settingsToolbar` glass
+  preset remains in the token set for other consumers and for the increase
+  contrast edge, but the shell no longer paints a second chrome sheet.
+
 ### 3.9 Deep links
 
 | Link | Target |

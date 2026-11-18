@@ -65,6 +65,29 @@ qt_add_qml_module(dragonfruit-design-system
         components/SplitView.qml
         components/SettingsRow.qml
         components/SettingsGroup.qml
+        components/SettingsIntro.qml
+        components/SettingsBigList.qml
+        components/SettingsBigRow.qml
+        components/SettingsIconRow.qml
+        components/SettingsFooter.qml
+        components/SettingsNote.qml
+        components/SettingsBanner.qml
+        components/SettingsServiceRow.qml
+        components/SettingsScanRow.qml
+        components/SettingsRadioGroup.qml
+        components/SettingsScaleSlider.qml
+        components/SettingsModeTile.qml
+        components/SettingsHelpButton.qml
+        components/SettingsNavPill.qml
+        components/SettingsSidebarStatusRow.qml
+        components/SettingsCollectionHead.qml
+        components/SettingsWallTile.qml
+        components/SettingsChart.qml
+        components/SettingsHero.qml
+        components/SettingsStorageBar.qml
+        components/SettingsAvatar.qml
+        components/SettingsDeviceRow.qml
+        components/SettingsDiskRow.qml
         components/SegmentedControl.qml
         components/Slider.qml
         components/Select.qml
@@ -204,6 +227,29 @@ df_qml_lint(design-system
     components/SplitView.qml
     components/SettingsRow.qml
     components/SettingsGroup.qml
+    components/SettingsIntro.qml
+    components/SettingsBigList.qml
+    components/SettingsBigRow.qml
+    components/SettingsIconRow.qml
+    components/SettingsFooter.qml
+    components/SettingsNote.qml
+    components/SettingsBanner.qml
+    components/SettingsServiceRow.qml
+    components/SettingsScanRow.qml
+    components/SettingsRadioGroup.qml
+    components/SettingsScaleSlider.qml
+    components/SettingsModeTile.qml
+    components/SettingsHelpButton.qml
+    components/SettingsNavPill.qml
+    components/SettingsSidebarStatusRow.qml
+    components/SettingsCollectionHead.qml
+    components/SettingsWallTile.qml
+    components/SettingsChart.qml
+    components/SettingsHero.qml
+    components/SettingsStorageBar.qml
+    components/SettingsAvatar.qml
+    components/SettingsDeviceRow.qml
+    components/SettingsDiskRow.qml
     components/SegmentedControl.qml
     components/Slider.qml
     components/Select.qml

@@ -122,6 +122,7 @@ QtObject {
         "trackpad":      { source: "hand-pointing", gradientStart: "#8a8f98", gradientEnd: "#4f545c" },
         "printer":       { source: "printer",       gradientStart: "#5c8fd6", gradientEnd: "#2d559c" },
         "control-center": { source: "sliders-horizontal", gradientStart: "#6b7bff", gradientEnd: "#3a3fc0" },
+        "software-update": { source: "download-simple", gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" },
         "input":         { source: "squares-four",  gradientStart: "#8a8f98", gradientEnd: "#4f545c" }
     })
 

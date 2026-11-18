@@ -110,31 +110,25 @@ Item {
             }
         }
 
-        function test_sidebar_rows_and_header_adopt_the_category_tile() {
+        function test_sidebar_rows_and_intro_text() {
             var shell = make();
             // The pane list is driven by SettingsPanes.filter; each item carries
             // the resolved category style (or null) for the sidebar delegate.
             var visible = shell.visiblePanes;
             verify(SettingsPanes.categoryStyle(visible[0]) !== null,
-                   "Bluetooth must carry a category tile");
-            // The Appearance pane has no header card but its icon is mapped, so
-            // the header (when a header pane is current) resolves the tile too.
+                   "Wi-Fi must carry a category tile");
+            // General opens with intro text, not a header card. The toolbar
+            // title is the only pane title.
             shell.selectPane("general");
             waitForRendering(stage);
-            verify(shell.header.visible);
-            verify(shell.header.category !== null,
-                   "the General header must resolve a category tile");
-            compare(shell.header.category.source, "gear");
+            verify(shell.intro.visible);
+            compare(shell.intro.text, SettingsPanes.paneById("general").description);
+            compare(shell.titleBar.title, "General");
         }
 
-        function test_header_card_is_only_where_the_reference_has_one() {
-            // The Wave-1 captures (Desktop & Dock, Displays, Wallpaper) have
-            // no header card; Appearance is uncaptured but follows the same
-            // settings-list shape. Only these panes have one.
-            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("appearance")), false);
-            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("desktop-dock")), false);
-            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("displays")), false);
-            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("wallpaper")), false);
+        function test_no_header_card_and_intro_only_where_the_pane_has_copy() {
+            // T286: the four header-card panes keep their copy as intro text;
+            // every other pane opens directly at its first group.
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("general")), true);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("accessibility")), true);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("notifications")), true);
@@ -143,8 +137,18 @@ Item {
             var shell = make();
             shell.selectPane("appearance");
             waitForRendering(stage);
-            verify(!shell.header.visible,
-                   "the Appearance pane must not draw a header card");
+            verify(!shell.intro.visible,
+                   "the Appearance pane must not draw an intro or header card");
+
+            // The intro is plain text, not the removed header card.
+            shell.selectPane("general");
+            waitForRendering(stage);
+            compare(shell.intro.titleText, undefined,
+                    "the intro has no header title");
+            verify(shell.intro.height > 0);
+            verify(shell.intro.height < 120,
+                   "the intro is body copy, not a header card (height="
+                   + shell.intro.height + ")");
         }
 
         // -- Shell opens --------------------------------------------------------
@@ -173,7 +177,7 @@ Item {
                     "740 - 232 = 508 pt of detail content");
             compare(shell.detailScroll.height, 768,
                     "820 - 52 = 768 pt content viewport");
-            compare(shell.header.pane.id, "general");
+            compare(shell.titleBar.title, "General");
             // At the start of history both history affordances are dimmed.
             verify(!shell.backButton.enabled);
             verify(!shell.forwardButton.enabled);
@@ -198,11 +202,14 @@ Item {
                 compare(shell.appWindow.chromeTransparent, true);
                 fuzzyCompare(shell.sidebarPane.color.a, 0.986, 1e-4);
                 fuzzyCompare(shell.sidebarPane.color.r, 0.857, 1e-4);
-                fuzzyCompare(shell.detailToolbarSheet.color.a, 0.961, 1e-4);
-                fuzzyCompare(shell.detailToolbarSheet.color.r, 0.965, 1e-4);
+                // T286: the detail toolbar is the content surface, not a
+                // second chrome sheet.
+                fuzzyCompare(shell.detailToolbarSheet.color.a, 1.0, 1e-6);
+                fuzzyCompare(shell.detailToolbarSheet.color.r,
+                             Theme.color.surface.r, 1e-6);
                 fuzzyCompare(shell.detailSheet.color.a, 1.0, 1e-6);
                 compare(shell.detailSheet.bottomRightRadius,
-                        Theme.controls.window.radius);
+                        Theme.controls.settingsWindow.radius);
 
                 // Dark Settings is the explicit Finder-derived adaptation.
                 Settings.set("appearance.colorScheme", "dark");
@@ -210,8 +217,9 @@ Item {
                 waitForRendering(stage);
                 fuzzyCompare(shell.sidebarPane.color.a, 0.935, 1e-4);
                 fuzzyCompare(shell.sidebarPane.color.r, 0.218, 1e-4);
-                fuzzyCompare(shell.detailToolbarSheet.color.a, 0.900, 1e-4);
-                fuzzyCompare(shell.detailToolbarSheet.color.r, 0.247, 1e-4);
+                fuzzyCompare(shell.detailToolbarSheet.color.a, 1.0, 1e-6);
+                fuzzyCompare(shell.detailToolbarSheet.color.r,
+                             Theme.color.surface.r, 1e-6);
 
                 // Reduce Transparency takes the shared opaque plate.
                 Settings.set("accessibility.reduceTransparency", true);
@@ -227,7 +235,7 @@ Item {
                              Theme.color.surfaceMuted.r, 1e-6);
                 fuzzyCompare(shell.detailToolbarSheet.color.a, 1.0, 1e-6);
                 fuzzyCompare(shell.detailToolbarSheet.color.r,
-                             Theme.color.chrome.r, 1e-6);
+                             Theme.color.surface.r, 1e-6);
 
                 // Focus is a controls/text state, not a material change.
                 shell.windowActive = false;
@@ -280,7 +288,7 @@ Item {
             var shell = make();
             shell.searchText = "wall";
             compare(shell.currentPaneId, "general");
-            compare(shell.header.pane.id, "general");
+            compare(shell.titleBar.title, "General");
         }
 
         // -- Keyboard navigation + history -------------------------------------
@@ -289,6 +297,7 @@ Item {
             var shell = make();
             shell.sidebar.forceActiveFocus();
             waitForRendering(stage);
+            verify(shell.sidebar.activeFocus, "the sidebar owns keyboard focus");
             // The default pane is General. The sidebar starts with the update
             // status row (0), Connectivity's five rows, a spacer (6), then
             // General (7).
@@ -324,27 +333,39 @@ Item {
 
         // -- Selection highlight ------------------------------------------------
 
-        function test_selected_sidebar_row_is_accent_tinted() {
+        function test_selected_sidebar_row_is_neutral() {
             var shell = make();
-            // The row highlight animates in over the hover duration; let it
-            // settle before sampling pixels.
             wait(Theme.motion.hover.duration + 100);
             waitForRendering(stage);
+            // T286: the Settings sidebar uses the neutral selected fill and a
+            // semibold label, not the global accent.
+            compare(shell.sidebar.selectionStyle, "neutral");
+            var row = shell.sidebar.rowAtIndex(shell.sidebar.currentIndex);
+            verify(row !== null);
+            compare(row.selected, true);
             var img = grabImage(shell);
+            var fill = Theme.color.controlActive;
             var accent = Theme.color.accent;
-            var count = 0;
+            var neutralCount = 0;
+            var accentCount = 0;
             for (var y = 0; y < img.height; y += 2) {
-                for (var x = 0; x < 240; x += 2) {
+                for (var x = 0; x < 232; x += 2) {
                     var c = img.pixel(x, y);
+                    if (Math.abs(c.r - fill.r) < 0.02
+                            && Math.abs(c.g - fill.g) < 0.02
+                            && Math.abs(c.b - fill.b) < 0.02)
+                        neutralCount += 1;
                     if (Math.abs(c.r - accent.r) < 0.02
                             && Math.abs(c.g - accent.g) < 0.02
                             && Math.abs(c.b - accent.b) < 0.02)
-                        count += 1;
+                        accentCount += 1;
                 }
             }
-            verify(count > 20,
-                   "the selected pane row must carry the accent highlight (count="
-                   + count + " index=" + shell.sidebar.currentIndex + ")");
+            verify(neutralCount > 20,
+                   "the selected row uses the neutral fill (count="
+                   + neutralCount + ")");
+            compare(accentCount, 0,
+                    "the selected row must not paint the accent fill");
         }
 
         // -- Accessibility ------------------------------------------------------
@@ -356,10 +377,13 @@ Item {
             compare(shell.searchField.Accessible.role, Accessible.EditableText);
             compare(shell.searchField.Accessible.searchEdit, true);
             compare(shell.sidebar.Accessible.role, Accessible.List);
-            compare(shell.header.Accessible.role, Accessible.Grouping);
-            compare(shell.header.Accessible.name, "General");
-            compare(shell.backButton.Accessible.role, Accessible.Button);
-            compare(shell.backButton.Accessible.name, "Back");
+            compare(shell.intro.Accessible.role, Accessible.StaticText);
+            compare(shell.intro.text, SettingsPanes.paneById("general").description);
+            compare(shell.navPill.backButton.Accessible.role, Accessible.Button);
+            compare(shell.navPill.backButton.Accessible.name, "Back");
+            compare(shell.navPill.forwardButton.Accessible.name, "Forward");
+            compare(shell.helpButton.Accessible.role, Accessible.Button);
+            compare(shell.helpButton.Accessible.focusable, true);
         }
 
         // -- Window-control intent forwarding -----------------------------------
@@ -462,26 +486,36 @@ Item {
                 compare(shell.sidebarPane.width, 232,
                         "the sidebar is measured, not the 192 token");
                 compare(shell.detailSheet.width, width - 232);
-                compare(shell.detailContent.x, 30,
+                compare(shell.detailContent.x, 20,
                         "the measured horizontal content inset");
-                compare(shell.detailContent.width, width - 232 - 60);
+                compare(shell.detailContent.width, width - 232 - 40);
+                compare(shell.detailContent.y, 24,
+                        "the measured content top inset");
+                compare(shell.detailContent.bottomPadding, 64,
+                        "the content clears the help control");
                 compare(shell.titleBar.width, width - 232);
                 compare(shell.titleBar.height, 52);
                 compare(shell.titleBar.mapToItem(shell, 0, 0).x, 232,
                         "the detail toolbar starts at the sidebar split");
                 compare(shell.detailScroll.height, height - 52,
                         "820 - 52 = 768 pt content viewport");
-                verify(shell.header.visible,
-                       "General keeps its reference header at " + width + "x" + height);
-                compare(shell.header.width, shell.detailContent.width);
+                verify(shell.intro.visible,
+                       "General keeps its intro copy at " + width + "x" + height);
+                compare(shell.intro.width, shell.detailContent.width);
 
-                // The title is centred over the detail pane, not the window.
-                var titleCenter = shell.titleBar.mapToItem(
-                    shell, shell.titleBar.width / 2, 0).x;
-                verify(titleCenter > width / 2,
-                       "the title must sit over the detail pane at "
-                       + width + "x" + height);
+                // T286: the title is left-aligned after the history pill.
+                compare(shell.titleBar.titleAlignment, "left");
                 compare(shell.titleBar.title, "General");
+                var pillRight = shell.navPill.mapToItem(shell.titleBar,
+                                                        shell.navPill.width, 0).x;
+                var titleLeft = shell.titleBar.titleText.x;
+                verify(titleLeft >= pillRight,
+                       "the title starts after the pill at " + width + "x" + height);
+                fuzzyCompare(titleLeft - pillRight,
+                             Theme.controls.settingsWindow.titleGap, 0.5);
+                compare(shell.titleBar.titleText.horizontalAlignment,
+                        Text.AlignLeft);
+                compare(shell.titleBar.titleText.elide, Text.ElideRight);
 
                 // The grouped list scrolls instead of overflowing the card.
                 verify(shell.sidebar.scrollable,
@@ -508,8 +542,8 @@ Item {
             compare(shell.paneTitle, "Storage");
             compare(shell.windowTitle, "Storage");
             compare(shell.titleBar.title, "Storage");
-            verify(!shell.header.visible,
-                   "a General sub-pane replaces the header with its back chrome");
+            verify(!shell.intro.visible,
+                   "a General sub-pane replaces the intro with its back chrome");
 
             // The General row opens the same in-place surface.
             shell.paneBody.item.closeSubPane();
@@ -852,5 +886,200 @@ Item {
             tryCompare(win, "height", 700);
             win.close();
         }
+        // -- T286 shell geometry, density, and the new controls ---------------
+
+        function test_t286_shell_geometry_tokens() {
+            var shell = makeSized(740, 820);
+            waitForRendering(stage);
+            // Window and chrome.
+            compare(shell.appWindow.cornerRadius,
+                    Theme.controls.settingsWindow.radius);
+            compare(shell.titleBar.height, 52);
+            compare(shell.titleBar.titleText.font.pixelSize,
+                    Theme.controls.settingsWindow.titleFontSize);
+            compare(shell.titleBar.titleText.font.weight,
+                    Theme.controls.settingsWindow.titleFontWeight);
+
+            // The history pill.
+            compare(shell.navPill.width,
+                    Theme.controls.settingsWindow.navPillWidth);
+            compare(shell.navPill.height,
+                    Theme.controls.settingsWindow.navPillHeight);
+            compare(shell.navPill.backButton.width,
+                    Theme.controls.settingsWindow.navButtonWidth);
+            compare(shell.navPill.forwardButton.width,
+                    Theme.controls.settingsWindow.navButtonWidth);
+            compare(shell.navPill.divider.height,
+                    Theme.controls.settingsWindow.navDividerHeight);
+            compare(shell.navPill.divider.width, 1);
+
+            // The sidebar search: 212 x 28, 10 pt side margins, 64 pt down.
+            compare(shell.searchField.width,
+                    Theme.controls.settingsSidebar.searchWidth);
+            compare(shell.searchField.height,
+                    Theme.controls.settingsSidebar.searchHeight);
+            compare(shell.searchField.x,
+                    Theme.controls.settingsSidebar.searchInset);
+            compare(shell.searchField.y,
+                    Theme.controls.settingsSidebar.searchTop);
+            compare(shell.searchField.width
+                    + 2 * Theme.controls.settingsSidebar.searchInset,
+                    232);
+
+            // The sidebar rows, spacer, and neutral selection.
+            compare(shell.sidebar.rowHeight,
+                    Theme.controls.settingsSidebar.rowHeight);
+            compare(shell.sidebar.padding,
+                    Theme.controls.settingsSidebar.searchInset);
+            compare(shell.sidebar.selectionStyle, "neutral");
+            var spacer = null;
+            for (var i = 0; i < shell.sidebar.entries.length; ++i) {
+                if (shell.sidebar.entries[i].type === "spacer") {
+                    spacer = shell.sidebar.rowAtIndex(i);
+                    break;
+                }
+            }
+            verify(spacer !== null, "the sidebar renders a spacer");
+            compare(spacer.height,
+                    Theme.controls.settingsSidebar.sectionSpacer);
+
+            // The 24 pt help circle sits 20 pt from the content corner.
+            compare(shell.helpButton.width,
+                    Theme.controls.settingsWindow.helpButtonSize);
+            compare(shell.helpButton.height,
+                    Theme.controls.settingsWindow.helpButtonSize);
+            compare(shell.detailColumn.width - shell.helpButton.x
+                    - shell.helpButton.width,
+                    Theme.controls.settingsWindow.helpInset);
+            compare(shell.detailColumn.height - shell.helpButton.y
+                    - shell.helpButton.height,
+                    Theme.controls.settingsWindow.helpInset);
+
+            // Row heights: plain 33, icon 53, description 52.
+            compare(Theme.controls.settingsRow.height, 33);
+            compare(Theme.controls.settingsRow.iconHeight, 53);
+            compare(Theme.controls.settingsRow.descriptionHeight, 52);
+            compare(Theme.controls.settingsRow.paddingH, 12);
+            compare(Theme.controls.settingsGroup.padding, 0);
+            compare(Theme.controls.settingsGroup.radius, 10);
+        }
+
+        function test_t286_status_row_is_live_and_opens_software_update() {
+            var shell = makeSized(740, 820);
+            waitForRendering(stage);
+            var item = shell.sidebarStatusItem;
+            compare(item.status, true);
+            compare(item.id, "general/software-update");
+            compare(item.label, String(Settings.updates.label));
+            verify(item.statusLabel.length > 0);
+            if (Number(Settings.updates.updateCount || 0) > 0)
+                compare(item.badge, String(Settings.updates.updateCount));
+            else
+                compare(item.badge, "");
+
+            // The rendered status row is the first entry and is selectable.
+            compare(shell.sidebar.entries[0].type, "status");
+            var row = shell.sidebar.rowAtIndex(0);
+            verify(row !== null);
+            mouseClick(row, row.width / 2, row.height / 2);
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready;
+            });
+            tryVerify(function() {
+                return shell.paneBody.item.subPaneId === "software-update";
+            });
+            compare(shell.currentPaneId, "general");
+        }
+
+        function test_t286_selected_row_scrolls_into_view() {
+            var shell = makeSized(720, 480);
+            waitForRendering(stage);
+            // Select the last pane from the keyboard path: the row must be
+            // scrolled into the viewport.
+            var index = shell.sidebarIndexOf("printers");
+            shell.sidebar.currentIndex = index;
+            shell.syncSelection();
+            waitForRendering(stage);
+            var row = shell.sidebar.rowAtIndex(index);
+            verify(row !== null);
+            var top = row.y;
+            var bottom = row.y + row.height;
+            verify(top >= shell.sidebar.flickable.contentY - 0.5,
+                   "the selected row is not above the viewport");
+            verify(bottom <= shell.sidebar.flickable.contentY
+                            + shell.sidebar.flickable.height + 0.5,
+                   "the selected row is not below the viewport");
+        }
+
+        function test_t286_no_dead_stationary_click_on_new_controls() {
+            var shell = makeSized(740, 820);
+            waitForRendering(stage);
+            shell.selectPane("displays");
+            waitForRendering(stage);
+            verify(shell.backButton.enabled, "Back is live after navigation");
+            mouseClick(shell.backButton, shell.backButton.width / 2,
+                       shell.backButton.height / 2);
+            compare(shell.currentPaneId, "general",
+                    "a stationary click on Back steps history once");
+
+            verify(shell.forwardButton.enabled);
+            mouseClick(shell.forwardButton, shell.forwardButton.width / 2,
+                       shell.forwardButton.height / 2);
+            compare(shell.currentPaneId, "displays",
+                    "a stationary click on Forward restores the pane");
+
+            // The help control is live only when the map document exists; a
+            // disabled control must not pretend to open anything.
+            shell.lastHelpUrl = "";
+            mouseClick(shell.helpButton, shell.helpButton.width / 2,
+                       shell.helpButton.height / 2);
+            if (shell.helpAvailable) {
+                verify(shell.lastHelpUrl.length > 0,
+                       "the help control opens the live document");
+            } else {
+                compare(shell.lastHelpUrl, "",
+                        "a disabled help control is not a dead action");
+            }
+        }
+
+        function test_t286_search_result_keeps_the_query() {
+            var shell = makeSized(740, 820);
+            waitForRendering(stage);
+            shell.searchText = "wallpaper";
+            shell.commitSearch();
+            waitForRendering(stage);
+            verify(shell.showSearchResults);
+            compare(shell.searchResultsList.listView.height > 0, true);
+            // Activate the first result and keep the typed query.
+            shell.searchResultsList.currentIndex = 0;
+            shell.searchResultsList.activateCurrent();
+            tryVerify(function() { return shell.currentPaneId === "wallpaper"; });
+            compare(shell.searchText, "wallpaper");
+            compare(shell.searchField.text, "wallpaper");
+            verify(!shell.showSearchResults,
+                   "the pane is visible after a result opens");
+            // Typing again re-opens the ranked list.
+            shell.searchText = "wallpaper ";
+            shell.commitSearch();
+            verify(shell.showSearchResults);
+        }
+
+        function test_t286_minimum_window_has_no_clipping() {
+            var shell = makeSized(720, 480);
+            waitForRendering(stage);
+            compare(shell.sidebarColumn.width, 232);
+            compare(shell.detailColumn.width, 720 - 232);
+            compare(shell.detailContent.width, 720 - 232 - 40);
+            verify(shell.detailContent.height > 0);
+            verify(shell.searchField.y + shell.searchField.height
+                   < shell.sidebarColumn.height);
+            verify(shell.helpButton.mapToItem(shell, 0, 0).x >= 232);
+            verify(shell.helpButton.mapToItem(shell, 0, 0).y
+                   + shell.helpButton.height <= 480);
+            verify(shell.navPill.width + shell.titleBar.titleText.width
+                   <= shell.detailColumn.width,
+                   "the pill and title fit the minimum detail width");
+        }
+
     }
 }

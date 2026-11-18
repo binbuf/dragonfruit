@@ -1442,10 +1442,39 @@ QtObject {
             readonly property int height: 820
             readonly property int minWidth: 720
             readonly property int minHeight: 480
+            readonly property int radius: 10
             readonly property int chromeHeight: 52
             readonly property int sidebarWidth: 232
             readonly property int detailWidth: 508
-            readonly property int contentInset: 30
+            readonly property int contentInset: 20
+            readonly property int contentTopInset: 24
+            readonly property int contentBottomInset: 64
+            readonly property int navPillWidth: 78
+            readonly property int navPillHeight: 36
+            readonly property int navButtonWidth: 38
+            readonly property int navDividerHeight: 18
+            readonly property int navPillRadius: 10
+            readonly property int titleFontSize: 15
+            readonly property int titleFontWeight: 600
+            readonly property int titleGap: 12
+            readonly property int helpButtonSize: 24
+            readonly property int helpInset: 20
+            readonly property int trafficLightSize: 12
+            readonly property int trafficLightGap: 11
+            readonly property int trafficLightInsetLeft: 18
+            readonly property int trafficLightInsetTop: 22
+        }
+        readonly property var settingsSidebar: QtObject {
+            readonly property int rowHeight: 32
+            readonly property int rowRadius: 6
+            readonly property int sectionSpacer: 13
+            readonly property int searchWidth: 212
+            readonly property int searchHeight: 28
+            readonly property int searchTop: 64
+            readonly property int searchInset: 10
+            readonly property int searchResultHeight: 44
+            readonly property int searchResultIconTile: 20
+            readonly property string selectionStyle: "neutral"
         }
         readonly property var files: QtObject {
             readonly property int sidebarWidth: 198
@@ -1471,16 +1500,51 @@ QtObject {
             readonly property int minPaneWidth: 180
         }
         readonly property var settingsRow: QtObject {
-            readonly property int height: 44
+            readonly property int height: 33
+            readonly property int iconHeight: 53
+            readonly property int descriptionHeight: 52
+            readonly property int scaleHeight: 42
             readonly property int paddingH: 12
             readonly property int labelWidth: 200
-            readonly property int controlGap: 16
+            readonly property int controlGap: 12
+            readonly property int leadingTile: 29
+            readonly property int bigHeight: 52
         }
         readonly property var settingsGroup: QtObject {
             readonly property int radius: 10
-            readonly property int padding: 8
+            readonly property int padding: 0
             readonly property int rowGap: 1
-            readonly property int marginBottom: 16
+            readonly property int marginBottom: 18
+            readonly property int headingFontSize: 13
+            readonly property int headingFontWeight: 600
+            readonly property int headingTop: 26
+            readonly property int headingBottom: 8
+        }
+        readonly property var settingsRadio: QtObject {
+            readonly property int size: 16
+            readonly property int dot: 8
+        }
+        readonly property var settingsScale: QtObject {
+            readonly property int width: 246
+            readonly property int tickHeight: 6
+            readonly property int tickGap: 4
+        }
+        readonly property var settingsModeTile: QtObject {
+            readonly property int width: 132
+            readonly property int height: 84
+            readonly property int radius: 6
+        }
+        readonly property var settingsWallTile: QtObject {
+            readonly property int width: 132
+            readonly property int height: 84
+            readonly property int radius: 6
+        }
+        readonly property var settingsAvatar: QtObject {
+            readonly property int size: 36
+        }
+        readonly property var settingsChart: QtObject {
+            readonly property int height: 160
+            readonly property int barGap: 4
         }
         readonly property var segmentedControl: QtObject {
             readonly property int height: 28
@@ -1622,12 +1686,8 @@ QtObject {
             readonly property int tileGap: 10
             readonly property real tileAspect: 1.5
             readonly property int applyMinMs: 450
-            // T278: the hero is proportional to the 508-px content column
-            // (ADR 0279), not a fixed 160x100 thumbnail.
             readonly property real heroWidthRatio: 0.46
             readonly property real heroAspect: 1.6
-            // A pending apply always resolves: the provider/decode timeout and
-            // the settings-write timeout are bounded.
             readonly property int applyTimeoutMs: 20000
             readonly property int writeTimeoutMs: 5000
         }

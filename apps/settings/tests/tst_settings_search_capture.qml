@@ -31,14 +31,9 @@ Item {
 
                     Item { width: 1; height: Theme.primitive.spacing.sm }
 
-                    PaneHeader {
+                    SettingsIntro {
                         width: parent.width
-                        pane: ({
-                            id: "long-strings",
-                            title: qsTr("Barrierefreiheit und Bedienungshilfen für Menschen mit besonderen Anforderungen"),
-                            description: qsTr("Diese Beschreibung ist absichtlich sehr lang, damit der Kopfbereich über mehrere Zeilen umbricht, ohne ein Steuerelement zu verdecken."),
-                            icon: "general"
-                        })
+                        text: qsTr("Barrierefreiheit und Bedienungshilfen für Menschen mit besonderen Anforderungen. Diese Beschreibung ist absichtlich sehr lang, damit der Einführungstext über mehrere Zeilen umbricht, ohne ein Steuerelement zu verdecken.")
                     }
 
                     SettingsGroup {

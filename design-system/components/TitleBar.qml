@@ -43,6 +43,16 @@ Item {
     // default preserves the existing opaque chrome.
     property color fillColor: Theme.color.chrome
     property color borderColor: Theme.color.border
+    // T286: the Settings detail toolbar puts the title left-aligned beside the
+    // history pill. The shared default stays centred for every other app.
+    property string titleAlignment: "center"
+    property real titleFontSize: Theme.controls.titlebar.fontSize
+    property int titleFontWeight: Theme.controls.titlebar.fontWeight
+    property int titleElide: Text.ElideMiddle
+    // The gap between the leading controls and a left-aligned title.
+    property real titleGap: Theme.controls.titlebar.spacing
+    // The inset used when a left-aligned title has no leading controls.
+    property real leadingInset: WindowStyle.trafficLightInset(root.titleRowHeight)
     property alias trafficLights: lights
     property alias hovered: dragArea.containsMouse
     property alias dragArea: dragArea
@@ -165,14 +175,30 @@ Item {
 
     Text {
         id: titleText
-        anchors.centerIn: titleRow
-        width: Math.max(0, titleRow.width - 2 * root.titleSideReserve)
+        readonly property bool leftAligned: root.titleAlignment === "left"
+        readonly property real leftEdge: {
+            if (!titleText.leftAligned)
+                return root.titleSideReserve;
+            if (leadingRow.visible)
+                return leadingRow.x + leadingRow.width + root.titleGap;
+            return root.leadingInset;
+        }
+        readonly property real rightEdge:
+            trailingRow.visible
+                ? trailingRow.x - root.titleGap : root.width
+        anchors.verticalCenter: titleRow.verticalCenter
+        x: Math.max(0, titleText.leftEdge)
+        width: titleText.leftAligned
+               ? Math.max(0, titleText.rightEdge - titleText.x)
+               : Math.max(0, titleRow.width - 2 * root.titleSideReserve)
         text: root.title
-        horizontalAlignment: Text.AlignHCenter
-        elide: Text.ElideMiddle
+        horizontalAlignment: titleText.leftAligned
+                             ? (root.rtl ? Text.AlignRight : Text.AlignLeft)
+                             : Text.AlignHCenter
+        elide: root.titleElide
         color: root.active ? Theme.color.textPrimary : Theme.color.textTertiary
-        font.pixelSize: Theme.controls.titlebar.fontSize
-        font.weight: Theme.controls.titlebar.fontWeight
+        font.pixelSize: root.titleFontSize
+        font.weight: root.titleFontWeight
 
         Behavior on color {
             ColorAnimation {

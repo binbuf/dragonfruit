@@ -50,6 +50,28 @@ Item {
 
                 compare(shell.sidebarColumn.width + shell.detailColumn.width,
                         shell.width);
+                // T286: the mockup geometry holds in logical points at every
+                // device pixel ratio.
+                compare(shell.searchField.width,
+                        Theme.controls.settingsSidebar.searchWidth);
+                compare(shell.searchField.height,
+                        Theme.controls.settingsSidebar.searchHeight);
+                compare(shell.searchField.x,
+                        Theme.controls.settingsSidebar.searchInset);
+                compare(shell.searchField.y,
+                        Theme.controls.settingsSidebar.searchTop);
+                compare(shell.sidebar.rowHeight,
+                        Theme.controls.settingsSidebar.rowHeight);
+                compare(shell.navPill.width,
+                        Theme.controls.settingsWindow.navPillWidth);
+                compare(shell.navPill.height,
+                        Theme.controls.settingsWindow.navPillHeight);
+                compare(shell.detailContent.x,
+                        Theme.controls.settingsWindow.contentInset);
+                compare(shell.detailContent.y,
+                        Theme.controls.settingsWindow.contentTopInset);
+                compare(shell.helpButton.width,
+                        Theme.controls.settingsWindow.helpButtonSize);
                 verify(shell.searchField.x >= 0
                        && shell.searchField.x + shell.searchField.width
                           <= shell.sidebarColumn.width + 0.5,

@@ -2,13 +2,15 @@
 import QtQuick
 import Dragonfruit
 
-// The ranked Settings search results list (T223, grouped for T265). It replaces
-// the sidebar pane list while the search field has text, shows pane-grouped
-// results from `SettingsSearch`, and activates a result's deep link.
+// The ranked Settings search results list (T223; flat in T286). It replaces
+// the sidebar pane list while the search field has text, shows ranked results
+// from `SettingsSearch`, and activates a result's deep link.
 //
-// One pane group renders a small pane header above its first row. A capped
-// group ends with a "Show all" row; activating it expands that group instead
-// of navigating. The top line carries the result count.
+// T286: the list is one flat ranked list, not pane groups. Every row is 44 pt
+// with a 20 pt icon tile, the result title, and a pane > section breadcrumb.
+// Hover and selection are the neutral Settings fills (not the accent). A
+// capped group still ends with a "Show all" row; activating it expands that
+// group instead of navigating. The top line carries the result count.
 //
 // Keyboard: Up/Down move, Home/End jump, Return opens, Escape dismisses. The
 // list is a real AT-SPI list: every item names its pane and section, and the
@@ -141,8 +143,15 @@ FocusScope {
                 readonly property bool current: root.currentIndex === index
                 readonly property bool hovered: rowHover.hovered
                 readonly property bool isShowAll: modelData.kind === "showAll"
-                readonly property bool hasGroupHeader:
-                    modelData.groupStart === true
+                readonly property string breadcrumb: {
+                    var pane = String(modelData.paneTitle || "");
+                    var section = String(modelData.section || "");
+                    if (modelData.kind === "pane" || section.length === 0)
+                        return pane;
+                    if (section === pane)
+                        return pane;
+                    return pane + " \u203a " + section;
+                }
                 readonly property string kindLabel: modelData.kind === "pane"
                         ? qsTr("Pane")
                         : modelData.kind === "section" ? qsTr("Section")
@@ -165,48 +174,16 @@ FocusScope {
                 }
 
                 width: ListView.view ? ListView.view.width : 0
-                height: groupHeader.height + rowBody.height
-
-                Item {
-                    id: groupHeader
-                    width: parent.width
-                    height: resultRow.hasGroupHeader
-                            ? headerLabel.implicitHeight + Theme.primitive.spacing.xs
-                            : 0
-                    visible: resultRow.hasGroupHeader
-
-                    Text {
-                        id: headerLabel
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.leftMargin: Theme.primitive.spacing.sm
-                        anchors.rightMargin: Theme.primitive.spacing.sm
-                        text: resultRow.modelData.groupTitle || ""
-                        color: Glass.increaseContrast ? Theme.color.textPrimary
-                                                      : Theme.color.textTertiary
-                        font.pixelSize: Theme.primitive.font.sizeXs
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                        horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
-                        Accessible.role: Accessible.StaticText
-                        Accessible.name: text
-                    }
-                }
+                height: rowBody.height
 
                 Rectangle {
                     id: rowBody
-                    anchors.top: groupHeader.bottom
                     width: parent.width
-                    height: Math.max(Theme.controls.sidebar.rowHeight
-                                     + Theme.primitive.spacing.sm,
-                                     labelText.implicitHeight
-                                     + subtitleText.implicitHeight
-                                     + 2 * Theme.primitive.spacing.xs)
+                    height: Theme.controls.settingsSidebar.searchResultHeight
                     radius: Theme.controls.sidebar.rowRadius
-                    color: resultRow.current ? Theme.color.accent
-                                             : (resultRow.hovered
-                                                ? Theme.color.controlHover
+                    color: resultRow.current
+                           ? Theme.color.controlActive
+                           : (resultRow.hovered ? Theme.color.controlHover
                                                 : "transparent")
                     antialiasing: true
 
@@ -218,23 +195,32 @@ FocusScope {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.primitive.spacing.sm
 
-                        Icon {
+                        // T286: a 20 pt neutral icon tile.
+                        Rectangle {
+                            id: iconTile
                             anchors.verticalCenter: parent.verticalCenter
-                            name: resultRow.isShowAll
-                                  ? "chevron-down"
-                                  : resultRow.modelData.kind === "pane"
-                                    ? resultRow.modelData.icon
-                                    : resultRow.modelData.kind === "section"
-                                      ? "folder" : "file"
-                            size: Theme.controls.sidebar.iconSize
-                            color: resultRow.current
-                                   ? Theme.color.accentContent
-                                   : Theme.color.textSecondary
+                            width: Theme.controls.settingsSidebar.searchResultIconTile
+                            height: width
+                            radius: Theme.primitive.radius.sm
+                            color: Theme.color.controlFill
+                            antialiasing: true
+
+                            Icon {
+                                anchors.centerIn: parent
+                                name: resultRow.isShowAll
+                                      ? "chevron-down"
+                                      : resultRow.modelData.kind === "pane"
+                                        ? resultRow.modelData.icon
+                                        : resultRow.modelData.kind === "section"
+                                          ? "folder" : "file"
+                                size: Theme.controls.sidebar.iconSize
+                                color: Theme.color.textSecondary
+                            }
                         }
 
                         Column {
                             width: Math.max(0, parent.width
-                                            - Theme.controls.sidebar.iconSize
+                                            - iconTile.width
                                             - Theme.primitive.spacing.sm)
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: Theme.primitive.spacing.xxs
@@ -244,9 +230,7 @@ FocusScope {
                                 objectName: "searchResultLabel"
                                 width: parent.width
                                 text: resultRow.modelData.label
-                                color: resultRow.current
-                                       ? Theme.color.accentContent
-                                       : Theme.color.textPrimary
+                                color: Theme.color.textPrimary
                                 font.pixelSize: Theme.controls.button.fontSize
                                 elide: Text.ElideRight
                                 horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft
@@ -257,13 +241,10 @@ FocusScope {
                                 objectName: "searchResultSubtitle"
                                 width: parent.width
                                 visible: text.length > 0
-                                text: resultRow.modelData.subtitle
-                                color: resultRow.current
-                                       ? Theme.color.accentContent
-                                       : (Glass.increaseContrast
-                                          ? Theme.color.textPrimary
-                                          : Theme.color.textTertiary)
-                                opacity: resultRow.current ? 0.85 : 1.0
+                                text: resultRow.breadcrumb
+                                color: Glass.increaseContrast
+                                       ? Theme.color.textPrimary
+                                       : Theme.color.textTertiary
                                 font.pixelSize: Theme.primitive.font.sizeXs
                                 elide: Text.ElideRight
                                 horizontalAlignment: root.rtl ? Text.AlignRight : Text.AlignLeft

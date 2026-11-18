@@ -114,7 +114,9 @@ Item {
             results: [{
                 kind: "row", label: "A search result label that is long enough to elide",
                 subtitle: "A section subtitle that is also deliberately long",
-                paneTitle: "A pane title", section: "A section", icon: "settings",
+                paneTitle: "A pane title that is deliberately long enough to elide",
+                section: "A section whose name is also long enough to elide",
+                icon: "settings",
                 groupStart: true, groupTitle: "A group title long enough to elide",
                 deepLink: "settings://pane/appearance"
             }]

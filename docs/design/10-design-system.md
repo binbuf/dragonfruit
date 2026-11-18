@@ -25,6 +25,29 @@ Toolbar
 SplitView
 SettingsRow
 SettingsGroup
+SettingsIntro
+SettingsBigList
+SettingsBigRow
+SettingsIconRow
+SettingsFooter
+SettingsNote
+SettingsBanner
+SettingsServiceRow
+SettingsScanRow
+SettingsRadioGroup
+SettingsScaleSlider
+SettingsModeTile
+SettingsHelpButton
+SettingsNavPill
+SettingsSidebarStatusRow
+SettingsCollectionHead
+SettingsWallTile
+SettingsChart
+SettingsHero
+SettingsStorageBar
+SettingsAvatar
+SettingsDeviceRow
+SettingsDiskRow
 Toggle
 Button
 SegmentedControl
@@ -69,6 +92,35 @@ adopted by `Select`, `ContextMenu`, `Popup`, and `Dialog` themselves. A pane
 never passes a `popupParent`; a surface inside a clipped `ScrollView` is still
 drawn and hit-tested in window coordinates. The overlay has no pointer
 handlers, so an empty layer never eats a click.
+
+The Settings shell set (T286) extends that library rather than forking it.
+`SettingsRow` now owns the measured variants through properties: a 33 pt plain
+row, a 52 pt description row, a 53 pt icon row with a 29 pt leading category
+tile (`leadingTile`/`leadingTileSize`), a 12 pt horizontal inset, and a 12 pt
+control gap. `SettingsBigRow` is the same `SettingsRow` anatomy at 52 pt with a
+29 pt tile and a chevron; `SettingsBigList` is its card. `SettingsIconRow`,
+`SettingsScanRow`, `SettingsServiceRow`, and `SettingsDeviceRow` are thin
+variants of the same row, not a second widget system. `SettingsGroup` has no
+inner padding, a 10 pt radius, an 18 pt bottom gap, and a section heading that
+aligns to the card edge (13 pt semibold, 26 pt above / 8 pt below).
+
+The rest of the set is the pane vocabulary the category tasks consume:
+`SettingsIntro` (body copy plus a `Learn More...` link), `SettingsFooter`,
+`SettingsNote`, `SettingsBanner`, `SettingsRadioGroup` (16 pt circle, 8 pt
+dot, stacked or inline), `SettingsScaleSlider` (246 pt slider with ticks and
+Slow/Fast labels), `SettingsModeTile`, `SettingsWallTile`,
+`SettingsCollectionHead`, `SettingsChart`, `SettingsHero`,
+`SettingsStorageBar`, `SettingsAvatar`, `SettingsDiskRow`, and
+`SettingsSidebarStatusRow` (the update row). `SettingsNavPill` is the 78 x 36
+back/forward control with a 1 x 18 pt divider, and `SettingsHelpButton` is the
+24 pt circle. Every component lands in `design-system/components/`; a pane
+never keeps a local copy.
+
+`Sidebar` gained opt-in geometry/state properties for the same reason:
+`rowHeight`, `rowRadius`, `padding`, `sectionSpacer`, `selectionStyle`
+(`accent` by default, `neutral` for Settings), `neutralSelectionFill`, and
+`scrollSelectedIntoView`. Other first-party apps keep the shared 28 pt
+accent-selected source list.
 
 The Settings row/group contract (T266) is part of the component library:
 `SettingsRow` sizes its control slot from the child's implicit size (never

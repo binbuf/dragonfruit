@@ -25,6 +25,30 @@ Item {
     property string leadingIcon: ""
     property color leadingIconColor: Theme.color.textSecondary
     property real leadingIconSize: 20
+    // T286: an optional leading category tile (29 pt by default) or a custom
+    // leading item. A pane supplies `leadingTile` (a resolved
+    // `SettingsCategoryIcon` style) or fills `leadingData`; the label column
+    // keeps one indent either way. `labelIndent` overrides the derived left
+    // inset for a pane that owns a wider leading cell.
+    property var leadingTile: null
+    property real leadingTileSize: Theme.controls.settingsRow.leadingTile
+    property real leadingWidth: root.leadingTile !== null
+                                ? root.leadingTileSize
+                                : (root.leadingIcon.length > 0
+                                   ? root.leadingIconSize : 0)
+    property real leadingHeight: root.leadingTile !== null
+                                 ? root.leadingTileSize
+                                 : (root.leadingIcon.length > 0
+                                    ? root.leadingIconSize : 0)
+    property real labelIndent: -1
+    property alias leadingData: leadingSlot.data
+    property alias leadingSlot: leadingSlot
+    // T286: the row height variant. 0 derives it from the anatomy: 33 pt
+    // plain, 52 pt with a description, 53 pt with a leading tile.
+    property real rowHeight: 0
+    // T286: children declared inside a `SettingsRow` land in the control slot,
+    // so a variant file can extend the anatomy without a second widget.
+    default property alias contentData: controlSlot.data
     // T224: an inline failure/validation message. It sits under the label and
     // description so the row explains why a control reverted; empty hides it.
     property string errorText: ""
@@ -95,7 +119,11 @@ Item {
     property alias helpFocusRing: helpFocusRing
 
     implicitWidth: 480
-    implicitHeight: Math.max(Theme.controls.settingsRow.height,
+    readonly property real tokenHeight: root.rowHeight > 0 ? root.rowHeight
+        : root.description.length > 0 ? Theme.controls.settingsRow.descriptionHeight
+        : root.leadingWidth > 0 ? Theme.controls.settingsRow.iconHeight
+        : Theme.controls.settingsRow.height
+    implicitHeight: Math.max(root.tokenHeight,
                              labelColumn.implicitHeight + 2 * Theme.primitive.spacing.sm)
     activeFocusOnTab: true
 
@@ -278,24 +306,48 @@ Item {
         Component.onCompleted: root.syncControlLabel()
     }
 
-    Icon {
-        id: leadingIconItem
-        objectName: "settingsRowLeadingIcon"
-        visible: root.leadingIcon.length > 0
+    // The leading cell: a category tile, a plain glyph, or a pane-supplied
+    // item. It is one slot so the label column keeps a single indent.
+    Item {
+        id: leadingSlot
+        objectName: "settingsRowLeadingSlot"
+        visible: root.leadingWidth > 0 || children.length > 0
         anchors.left: parent.left
         anchors.leftMargin: Theme.controls.settingsRow.paddingH
         anchors.verticalCenter: parent.verticalCenter
-        name: root.leadingIcon
-        size: root.leadingIconSize
-        color: root.leadingIconColor
+        width: root.leadingWidth
+        height: root.leadingHeight
+
+        SettingsCategoryIcon {
+            id: leadingTileItem
+            anchors.fill: parent
+            visible: root.leadingTile !== null
+            source: root.leadingTile ? root.leadingTile.source : ""
+            gradientStart: root.leadingTile ? root.leadingTile.gradientStart
+                                            : Theme.color.accent
+            gradientEnd: root.leadingTile ? root.leadingTile.gradientEnd
+                                          : Theme.color.accent
+        }
+
+        Icon {
+            id: leadingIconItem
+            objectName: "settingsRowLeadingIcon"
+            anchors.centerIn: parent
+            visible: root.leadingTile === null && root.leadingIcon.length > 0
+            name: root.leadingIcon
+            size: root.leadingIconSize
+            color: root.leadingIconColor
+        }
     }
 
     Column {
         id: labelColumn
-        anchors.left: leadingIconItem.visible ? leadingIconItem.right : parent.left
-        anchors.leftMargin: leadingIconItem.visible
-                          ? Theme.primitive.spacing.md
-                          : Theme.controls.settingsRow.paddingH
+        anchors.left: parent.left
+        anchors.leftMargin: root.labelIndent >= 0 ? root.labelIndent
+                          : (leadingSlot.visible
+                             ? Theme.controls.settingsRow.paddingH
+                               + leadingSlot.width + Theme.primitive.spacing.md
+                             : Theme.controls.settingsRow.paddingH)
         anchors.right: controlSlot.left
         anchors.rightMargin: Theme.controls.settingsRow.controlGap
         anchors.verticalCenter: parent.verticalCenter

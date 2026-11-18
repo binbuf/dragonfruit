@@ -151,6 +151,234 @@ Item {
         }
     }
 
+
+    // T286 shared component set. Each component is created with the minimum
+    // props a pane supplies so the anatomy, tokens, and AT-SPI roles are
+    // exercised without a pane body.
+    Component {
+        id: introComponent
+        SettingsIntro {
+            width: 468
+            text: "Manage your overall setup and preferences."
+            learnMoreText: "Learn More..."
+        }
+    }
+
+    Component {
+        id: bigListComponent
+        SettingsBigList {
+            width: 468
+            SettingsBigRow {
+                width: parent.width
+                label: "About"
+                secondaryText: "Version and host details"
+                category: ({ source: "info", gradientStart: "#8e8e93", gradientEnd: "#58585c" })
+            }
+            SettingsBigRow {
+                width: parent.width
+                label: "Software Update"
+                category: ({ source: "download-simple", gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" })
+            }
+        }
+    }
+
+    Component {
+        id: iconRowComponent
+        SettingsIconRow {
+            width: 468
+            label: "Bluetooth"
+            description: "Discoverable while this pane is open"
+            category: ({ source: "bluetooth", gradientStart: "#4a9bff", gradientEnd: "#2158d0" })
+        }
+    }
+
+    Component {
+        id: footerComponent
+        SettingsFooter {
+            width: 468
+            alignment: "right"
+            Button { text: "Revert" }
+            Button { text: "Apply"; variant: "primary" }
+        }
+    }
+
+    Component {
+        id: noteComponent
+        SettingsNote {
+            width: 468
+            text: "This is a muted footnote under the card."
+        }
+    }
+
+    Component {
+        id: bannerComponent
+        SettingsBanner {
+            width: 468
+            title: "Online Accounts"
+            text: "The account service is not running."
+            actionText: "Open Accounts"
+        }
+    }
+
+    Component {
+        id: serviceRowComponent
+        SettingsServiceRow {
+            width: 468
+            label: "Wi-Fi"
+            statusText: "Connected"
+            serviceGlyph: "wifi"
+        }
+    }
+
+    Component {
+        id: switchServiceRowComponent
+        SettingsServiceRow {
+            width: 468
+            label: "Firewall"
+            statusText: "On"
+            serviceGlyph: "shield-check"
+            trailingKind: "switch"
+        }
+    }
+
+    Component {
+        id: scanRowComponent
+        SettingsScanRow {
+            width: 468
+        }
+    }
+
+    Component {
+        id: radioGroupComponent
+        SettingsRadioGroup {
+            width: 468
+            currentIndex: 0
+            options: ["Automatic", "Always", "Never"]
+        }
+    }
+
+    Component {
+        id: inlineRadioGroupComponent
+        SettingsRadioGroup {
+            width: 468
+            inline: true
+            currentIndex: 1
+            options: ["Light", "Dark", "Auto"]
+        }
+    }
+
+    Component {
+        id: scaleSliderComponent
+        SettingsScaleSlider {
+            from: 0
+            to: 10
+            value: 5
+            stepSize: 1
+            accessibleName: "Tracking speed"
+        }
+    }
+
+    Component {
+        id: modeTileComponent
+        SettingsModeTile {
+            label: "Light"
+            selected: true
+        }
+    }
+
+    Component {
+        id: navPillComponent
+        SettingsNavPill {
+            canGoBack: false
+            canGoForward: false
+        }
+    }
+
+    Component {
+        id: statusRowComponent
+        SettingsSidebarStatusRow {
+            width: 212
+            label: "1 Update Available"
+            statusLabel: "Software Update"
+            icon: "software-update"
+            badge: "1"
+            category: ({ source: "download-simple", gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" })
+        }
+    }
+
+    Component {
+        id: collectionHeadComponent
+        SettingsCollectionHead {
+            width: 468
+            title: "Dynamic"
+            actionText: "Show All"
+        }
+    }
+
+    Component {
+        id: wallTileComponent
+        SettingsWallTile {
+            label: "Sonoma"
+            selected: true
+        }
+    }
+
+    Component {
+        id: chartComponent
+        SettingsChart {
+            width: 468
+            values: [0.2, 0.5, 0.8, 0.4]
+        }
+    }
+
+    Component {
+        id: heroComponent
+        SettingsHero {
+            width: 468
+            title: "Dragonfruit Linux 44"
+            subtitle: "Example host"
+        }
+    }
+
+    Component {
+        id: storageBarComponent
+        SettingsStorageBar {
+            width: 468
+            summaryText: "180 GB of 512 GB used"
+            segments: [
+                { label: "System", value: 60, color: Theme.color.accent },
+                { label: "Documents", value: 40, color: Theme.color.success }
+            ]
+        }
+    }
+
+    Component {
+        id: avatarComponent
+        SettingsAvatar {
+            initials: "DF"
+        }
+    }
+
+    Component {
+        id: deviceRowComponent
+        SettingsDeviceRow {
+            width: 468
+            label: "Built-in Speakers"
+            statusText: "Output"
+            deviceGlyph: "volume"
+        }
+    }
+
+    Component {
+        id: diskRowComponent
+        SettingsDiskRow {
+            width: 468
+            diskName: "Startup Disk"
+            capacityText: "180 GB of 512 GB used"
+            usedFraction: 0.35
+        }
+    }
+
     Component {
         id: tileComponent
         Item {
@@ -186,6 +414,7 @@ Item {
         SignalSpy { id: disclosureSpy; signalName: "disclosureClicked" }
         SignalSpy { id: trailingSpy; signalName: "trailingActionClicked" }
         SignalSpy { id: helpSpy; signalName: "helpRequested" }
+        SignalSpy { id: navBackSpy; signalName: "backRequested" }
 
         function test_row_bounds_at_500px() {
             var row = createTemporaryObject(rowComponent, stage, {});
@@ -450,17 +679,188 @@ Item {
             var id = "printers";
             var index = shell.sidebarIndexOf(id);
             var row = shell.sidebar.rowAtIndex(index);
-            verify(row !== null);
             shell.sidebar.flickable.contentY =
                 Math.max(0, shell.sidebar.flickable.contentHeight
                             - shell.sidebar.flickable.height);
             waitForRendering(stage);
-            var point = row.mapToItem(shell, 20, row.height / 2);
+            // Re-fetch the delegate: the live status row can rebuild the
+            // Repeater model and retire the instance captured above.
+            row = shell.sidebar.rowAtIndex(index);
+            var point = row.mapToItem(shell, 20, 16);
             mouseClick(shell, point.x, point.y);
             compare(shell.currentPaneId, id,
                     "the click hits the row now under the stationary pointer");
         }
 
         Component { id: shellComponent; SettingsShell { } }
+        // -- T286 shared component set -----------------------------------------
+
+        function test_t286_components_exist_and_lay_out() {
+            var cases = [
+                [introComponent, "SettingsIntro"],
+                [bigListComponent, "SettingsBigList"],
+                [iconRowComponent, "SettingsIconRow"],
+                [footerComponent, "SettingsFooter"],
+                [noteComponent, "SettingsNote"],
+                [bannerComponent, "SettingsBanner"],
+                [serviceRowComponent, "SettingsServiceRow"],
+                [switchServiceRowComponent, "SettingsServiceRow"],
+                [scanRowComponent, "SettingsScanRow"],
+                [radioGroupComponent, "SettingsRadioGroup"],
+                [inlineRadioGroupComponent, "SettingsRadioGroup"],
+                [scaleSliderComponent, "SettingsScaleSlider"],
+                [modeTileComponent, "SettingsModeTile"],
+                [navPillComponent, "SettingsNavPill"],
+                [statusRowComponent, "SettingsSidebarStatusRow"],
+                [collectionHeadComponent, "SettingsCollectionHead"],
+                [wallTileComponent, "SettingsWallTile"],
+                [chartComponent, "SettingsChart"],
+                [heroComponent, "SettingsHero"],
+                [storageBarComponent, "SettingsStorageBar"],
+                [avatarComponent, "SettingsAvatar"],
+                [deviceRowComponent, "SettingsDeviceRow"],
+                [diskRowComponent, "SettingsDiskRow"]
+            ];
+            for (var i = 0; i < cases.length; ++i) {
+                var item = createTemporaryObject(cases[i][0], stage, {});
+                verify(item !== null, cases[i][1] + " must instantiate");
+                waitForRendering(stage);
+                verify(item.width > 0 && item.height > 0,
+                       cases[i][1] + " must lay out (w=" + item.width
+                       + " h=" + item.height + ")");
+                item.destroy();
+            }
+        }
+
+        function test_t286_row_variants_use_the_measured_heights() {
+            var big = createTemporaryObject(bigListComponent, stage, {});
+            waitForRendering(stage);
+            var rows = big.rows.children;
+            compare(rows.length, 2);
+            verify(rows[0].height >= Theme.controls.settingsRow.bigHeight,
+                   "a big row is at least 52 pt (got "
+                   + rows[0].height + ")");
+            verify(rows[0].disclosure);
+            verify(rows[0].leadingTile !== null);
+            compare(rows[0].separatorRect.visible, true);
+            compare(rows[1].separatorRect.visible, false);
+
+            var icon = createTemporaryObject(iconRowComponent, stage, {});
+            waitForRendering(stage);
+            compare(icon.height, Theme.controls.settingsRow.iconHeight);
+
+            var plain = createTemporaryObject(rowComponent, stage, {});
+            waitForRendering(stage);
+            verify(plain.height >= Theme.controls.settingsRow.descriptionHeight,
+                   "a description row is at least 52 pt (got "
+                   + plain.height + ")");
+            var service = createTemporaryObject(serviceRowComponent, stage, {});
+            waitForRendering(stage);
+            compare(service.height, Theme.controls.settingsRow.iconHeight);
+        }
+
+        function test_t286_footer_note_and_head_geometry() {
+            var footer = createTemporaryObject(footerComponent, stage, {});
+            waitForRendering(stage);
+            verify(footer.row.width > 0);
+            verify(footer.row.x > 0, "a right-aligned footer hugs the right");
+            compare(footer.height,
+                    footer.row.height + Theme.controls.settingsGroup.marginBottom);
+
+            var note = createTemporaryObject(noteComponent, stage, {});
+            waitForRendering(stage);
+            compare(note.font.pixelSize, Theme.primitive.font.sizeSm);
+            compare(note.Accessible.role, Accessible.StaticText);
+
+            var head = createTemporaryObject(collectionHeadComponent, stage, {});
+            waitForRendering(stage);
+            verify(head.titleText.x >= 0);
+            verify(head.actionLink.x > head.titleText.x);
+            compare(head.actionLink.Accessible.role, Accessible.Link);
+        }
+
+        function test_t286_radio_group_selection_and_keyboard() {
+            var group = createTemporaryObject(radioGroupComponent, stage, {});
+            waitForRendering(stage);
+            compare(group.currentIndex, 0);
+            var first = group.repeater.itemAt(0);
+            var second = group.repeater.itemAt(1);
+            verify(first !== null && second !== null);
+            compare(first.Accessible.role, Accessible.RadioButton);
+            compare(first.Accessible.checked, true);
+            compare(second.Accessible.checked, false);
+
+            // A stationary click on the second row selects it.
+            mouseClick(second, second.width / 2, second.height / 2);
+            compare(group.currentIndex, 1);
+
+            // Down moves to the next option from the keyboard.
+            group.repeater.itemAt(1).forceActiveFocus();
+            keyClick(Qt.Key_Down);
+            compare(group.currentIndex, 2);
+        }
+
+        function test_t286_scale_slider_ticks_and_range() {
+            var scale = createTemporaryObject(scaleSliderComponent, stage, {});
+            waitForRendering(stage);
+            compare(scale.width, Theme.controls.settingsScale.width);
+            compare(scale.slider.minimumValue, 0);
+            compare(scale.slider.maximumValue, 10);
+            verify(scale.tickRow.height > 0);
+            verify(scale.tickRow.children.length >= 5);
+            compare(scale.slider.Accessible.name, "Tracking speed");
+        }
+
+        function test_t286_nav_pill_states_and_stationary_click() {
+            var pill = createTemporaryObject(navPillComponent, stage, {});
+            waitForRendering(stage);
+            compare(pill.width, Theme.controls.settingsWindow.navPillWidth);
+            compare(pill.height, Theme.controls.settingsWindow.navPillHeight);
+            compare(pill.backButton.width,
+                    Theme.controls.settingsWindow.navButtonWidth);
+            compare(pill.divider.height,
+                    Theme.controls.settingsWindow.navDividerHeight);
+            verify(!pill.backButton.enabled);
+            verify(!pill.forwardButton.enabled);
+
+            navBackSpy.target = pill;
+            navBackSpy.clear();
+            pill.canGoBack = true;
+            mouseClick(pill.backButton, pill.backButton.width / 2,
+                       pill.backButton.height / 2);
+            compare(navBackSpy.count, 1, "a stationary Back click reports once");
+            pill.forwardButton.forceActiveFocus();
+            keyClick(Qt.Key_Return);
+            compare(navBackSpy.count, 1,
+                    "a disabled Forward is not a dead action");
+            navBackSpy.target = null;
+        }
+
+        function test_t286_status_row_badge_and_roles() {
+            var row = createTemporaryObject(statusRowComponent, stage, {});
+            waitForRendering(stage);
+            compare(row.height, Theme.controls.settingsSidebar.rowHeight);
+            verify(row.badgeRect.visible);
+            verify(row.badgeRect.width > 0);
+            compare(row.Accessible.role, Accessible.ListItem);
+            verify(row.Accessible.name.indexOf("Software Update") >= 0);
+            row.badge = "";
+            waitForRendering(stage);
+            verify(!row.badgeRect.visible, "an empty badge is not painted");
+        }
+
+        function test_t286_chart_and_storage_bar_draw_from_values() {
+            var chart = createTemporaryObject(chartComponent, stage, {});
+            waitForRendering(stage);
+            verify(chart.bars.children.length >= 4);
+            verify(chart.baselineRect.height > 0);
+
+            var storage = createTemporaryObject(storageBarComponent, stage, {});
+            waitForRendering(stage);
+            verify(storage.legend.children.length >= 2);
+            verify(storage.bar.width > 0);
+            verify(storage.summaryText !== undefined);
+        }
+
     }
 }

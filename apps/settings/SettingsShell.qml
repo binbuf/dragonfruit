@@ -86,6 +86,14 @@ Item {
     }
     readonly property string windowTitle: root.currentPane
         ? root.paneTitle : qsTr("System Settings")
+    // T286: the mockup opens most panes with intro text instead of a header
+    // card. A pane whose catalog description is non-empty renders it as
+    // `SettingsIntro`; the toolbar title is the only pane title.
+    readonly property string introText: root.currentPane
+        && root.currentPane.description !== undefined
+        ? String(root.currentPane.description) : ""
+    readonly property bool hasIntro: root.introText.length > 0
+                                     && !root.subPaneOpen
 
     // T265: the field's text is immediate, but the index scan is debounced so
     // typing never re-runs the search or rebuilds the sidebar model on every
@@ -94,6 +102,11 @@ Item {
     // Pane ids whose "Show all" row was activated; reset by every new query.
     property var searchExpandedGroups: []
     readonly property bool searchActive: root.searchQuery.trim().length > 0
+    // T286: opening a result keeps the query in the field but returns to the
+    // pane. Typing again re-opens the ranked list.
+    property bool searchDismissed: false
+    readonly property bool showSearchResults: root.searchActive
+                                              && !root.searchDismissed
     readonly property var searchResults: SettingsSearch.search(
         root.searchQuery, { expanded: root.searchExpandedGroups })
     readonly property int searchResultCount:
@@ -113,11 +126,15 @@ Item {
     // existing chrome-material consumers read the same surface.
     property alias toolbar: titleBar
     property alias titleBar: titleBar
+    property alias navPill: navPill
     property alias detailToolbarSheet: detailToolbarSheet
     property alias appWindow: appWindow
-    property alias header: header
-    property alias backButton: backButton
-    property alias forwardButton: forwardButton
+    // T286: the pane intro replaces the removed header card. `header` stays as
+    // an alias for older pane tests; it is intro text, not a card.
+    property alias intro: intro
+    property alias header: intro
+    property alias backButton: navPill.backButton
+    property alias forwardButton: navPill.forwardButton
     property alias paneBody: paneBody
     property alias detailSheet: detailSheet
     property alias detailScroll: detailScroll
@@ -217,14 +234,31 @@ Item {
         sections[0].items.unshift(root.sidebarStatusItem);
         return sections;
     }
-    // The update status row is a sidebar entry, not a pane (T285).
-    readonly property var sidebarStatusItem: ({
-        id: SettingsPanes.sidebarStatus.id,
-        label: SettingsPanes.sidebarStatus.label,
-        icon: SettingsPanes.sidebarStatus.icon,
-        badge: SettingsPanes.sidebarStatus.badge,
-        status: true
-    })
+    // The update status row is a sidebar entry, not a pane (T285). T286 reads
+    // the live provider: the label is the provider's state, the badge is the
+    // pending update count, and the row still opens General -> Software
+    // Update. With no host the row says so rather than inventing "Up to Date".
+    readonly property var sidebarStatusItem: {
+        var view = Settings.updates !== undefined && Settings.updates !== null
+                ? Settings.updates : ({});
+        var hostAvailable = Settings.updatesAvailable === true;
+        var providerAvailable = hostAvailable && view.updatesAvailable === true;
+        var count = providerAvailable ? Number(view.updateCount || 0) : 0;
+        var providerLabel = providerAvailable && view.label !== undefined
+                ? String(view.label) : "";
+        return {
+            id: SettingsPanes.sidebarStatus.id,
+            label: providerLabel.length > 0 ? providerLabel
+                                            : SettingsPanes.sidebarStatus.label,
+            statusLabel: hostAvailable
+                         ? qsTr("Software Update") : qsTr("Unavailable"),
+            icon: SettingsPanes.sidebarStatus.icon,
+            category: SettingsPanes.categoryStyle(
+                { icon: SettingsPanes.sidebarStatus.icon }),
+            badge: count > 0 ? String(count) : "",
+            status: true
+        };
+    }
     // The last refused deep link's reason, so a rejection is visible rather
     // than a silent no-op (T285).
     property string lastDeepLinkError: ""
@@ -534,8 +568,8 @@ Item {
     function focusAfterNavigation() {
         root.detailScroll.flickable.contentY = 0;
         var target = root.firstFocusable(paneBody.item);
-        if (target === null && header.visible)
-            target = root.firstFocusable(header);
+        if (target === null && intro.visible)
+            target = root.firstFocusable(intro);
         if (target === null)
             target = root.titleBar;
         if (target !== null && target.forceActiveFocus !== undefined)
@@ -689,8 +723,12 @@ Item {
             });
             return;
         }
-        root.searchText = "";
+        // T286: keep the query in place after a result opens.
+        var query = root.searchText;
         root.deepLink(result.deepLink);
+        root.searchText = query;
+        root.searchQuery = query;
+        root.searchDismissed = true;
     }
 
     function clearPendingHighlight() {
@@ -999,6 +1037,7 @@ Item {
         if (searchField.text !== root.searchText)
             searchField.text = root.searchText;
         root.searchExpandedGroups = [];
+        root.searchDismissed = false;
         if (root.searchText.trim().length === 0) {
             // Empty query restores the sidebar immediately; no debounce.
             searchDebounce.stop();
@@ -1009,7 +1048,17 @@ Item {
         root.syncSelection();
     }
 
-    onSidebarSectionsChanged: root.syncSelection()
+    // T286: the status row's live provider text re-evaluates the sections.
+    // That must not reset a keyboard highlight that is mid-navigation, so the
+    // list only resyncs when the current index no longer names a row.
+    onSidebarSectionsChanged: {
+        var list = root.sidebar;
+        if (list === null || list === undefined)
+            return;
+        var count = list.entries !== undefined ? list.entries.length : 0;
+        if (list.currentIndex < 0 || list.currentIndex >= count)
+            root.syncSelection();
+    }
 
     // T267: the global half of the one keyboard map (Keymap.qml).
     // The focused control gets first refusal; these commands only run when it
@@ -1328,6 +1377,8 @@ Item {
         // T206/T263: the sidebar material runs under the titlebar and the
         // detail sheet below the toolbar stays opaque.
         chromeTransparent: true
+        // T286: the mockup's 10 pt window radius (the shared default stays).
+        cornerRadius: Theme.controls.settingsWindow.radius
 
         Row {
             anchors.fill: parent
@@ -1345,8 +1396,8 @@ Item {
                     anchors.fill: parent
                     color: Material.appChromeFill("settingsSidebar",
                                                  Theme.color.surfaceMuted)
-                    topLeftRadius: Theme.controls.window.radius
-                    bottomLeftRadius: Theme.controls.window.radius
+                    topLeftRadius: Theme.controls.settingsWindow.radius
+                    bottomLeftRadius: Theme.controls.settingsWindow.radius
                 }
 
                 Item {
@@ -1373,12 +1424,19 @@ Item {
                         }
                     }
 
+                    // T286: the mockup's 12 pt circles sit 18 pt from the
+                    // left and 22 pt from the top. The frame is wider than
+                    // the circle, so the frame inset subtracts the difference.
                     TrafficLights {
                         id: sidebarTrafficLights
                         active: root.windowActive
+                        diameter: Theme.controls.settingsWindow.trafficLightSize
                         anchors.left: parent.left
-                        anchors.leftMargin: WindowStyle.trafficLightInset(parent.height)
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.controls.settingsWindow.trafficLightInsetLeft
+                        anchors.top: parent.top
+                        anchors.topMargin: Theme.controls.settingsWindow.trafficLightInsetTop
+                                            - (Theme.controls.trafficLights.buttonSize
+                                               - Theme.controls.settingsWindow.trafficLightSize) / 2
 
                         onCloseClicked: root.closeRequested()
                         onMinimizeClicked: root.minimizeRequested()
@@ -1394,92 +1452,106 @@ Item {
                     }
                 }
 
-                Column {
-                    anchors.top: sidebarToolbar.bottom
+                // T286: the search field is 212 x 28 at 10 pt side margins,
+                // 64 pt from the window top. The pane outline (or the ranked
+                // results) fills the space below it.
+                SearchField {
+                    id: searchField
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.controls.settingsSidebar.searchTop
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.controls.settingsSidebar.searchInset
+                    anchors.rightMargin: Theme.controls.settingsSidebar.searchInset
+                    height: Theme.controls.settingsSidebar.searchHeight
+                    fieldHeight: Theme.controls.settingsSidebar.searchHeight
+                    placeholderText: qsTr("Search")
+                    rtl: root.rtl
+                    Accessible.description: qsTr("Search every System Settings pane and row")
+                    onTextChanged: root.searchText = searchField.text
+                    onCleared: root.searchText = ""
+                    // T223: Down/Up move into the ranked result list; Return
+                    // opens the highlighted result; Escape clears and then
+                    // returns focus to the sidebar.
+                    onAccepted: {
+                        // Return within the debounce window still opens the
+                        // top result instead of doing nothing.
+                        root.commitSearch();
+                        searchResultsList.activateCurrent();
+                    }
+                    onEscapePressed: {
+                        if (root.searchText.length > 0)
+                            root.searchText = "";
+                        else
+                            sidebar.forceActiveFocus();
+                    }
+                    Keys.onDownPressed: (event) => {
+                        root.commitSearch();
+                        searchResultsList.focusList();
+                        event.accepted = true;
+                    }
+                    Keys.onUpPressed: (event) => {
+                        root.commitSearch();
+                        searchResultsList.focusList();
+                        event.accepted = true;
+                    }
+                }
+
+                Item {
+                    id: sidebarListHost
+                    anchors.top: searchField.bottom
+                    anchors.topMargin: Theme.primitive.spacing.sm
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
-                    anchors.margins: Theme.controls.sidebar.padding
-                    spacing: Theme.primitive.spacing.md
 
-                    SearchField {
-                        id: searchField
-                        width: parent.width
-                        placeholderText: qsTr("Search")
+                    Sidebar {
+                        id: sidebar
+                        anchors.fill: parent
+                        visible: !root.showSearchResults
+                        // T267: the sidebar labels right-align in RTL while
+                        // the row geometry mirrors through LayoutMirroring.
                         rtl: root.rtl
-                        Accessible.description: qsTr("Search every System Settings pane and row")
-                        onTextChanged: root.searchText = searchField.text
-                        onCleared: root.searchText = ""
-                        // T223: Down/Up move into the ranked result list; Return
-                        // opens the highlighted result; Escape clears and then
-                        // returns focus to the sidebar.
-                        onAccepted: {
-                            // Return within the debounce window still opens the
-                            // top result instead of doing nothing.
-                            root.commitSearch();
-                            searchResultsList.activateCurrent();
+                        // T227: the Appearance pane's sidebar icon size.
+                        iconSize: root.sidebarIconPixels
+                        categoryIconSize: root.sidebarCategoryIconPixels
+                        // T286: the Settings density and neutral selection.
+                        rowHeight: Theme.controls.settingsSidebar.rowHeight
+                        rowRadius: Theme.controls.settingsSidebar.rowRadius
+                        padding: Theme.controls.settingsSidebar.searchInset
+                        sectionSpacer: Theme.controls.settingsSidebar.sectionSpacer
+                        selectionStyle: Theme.controls.settingsSidebar.selectionStyle
+                        scrollSelectedIntoView: true
+                        // The outer ChromeSheet owns the app-local material.
+                        fillColor: "transparent"
+                        sections: root.sidebarSections
+
+                        onActivated: (index, item) => {
+                            if (item && item.id)
+                                root.activateSidebarItem(item.id);
                         }
-                        onEscapePressed: {
-                            if (root.searchText.length > 0)
-                                root.searchText = "";
-                            else
-                                sidebar.forceActiveFocus();
-                        }
-                        Keys.onDownPressed: (event) => {
-                            root.commitSearch();
-                            searchResultsList.focusList();
-                            event.accepted = true;
-                        }
-                        Keys.onUpPressed: (event) => {
-                            root.commitSearch();
-                            searchResultsList.focusList();
-                            event.accepted = true;
+                        onCurrentIndexChanged: {
+                            if (root.syncing)
+                                return;
+                            var id = root.sidebarIdAtIndex(sidebar.currentIndex);
+                            if (id.length > 0)
+                                root.activateSidebarItem(id);
                         }
                     }
 
-                    Item {
-                        width: parent.width
-                        height: Math.max(0, parent.height - searchField.height - parent.spacing)
-
-                        Sidebar {
-                            id: sidebar
-                            anchors.fill: parent
-                            visible: !root.searchActive
-                            // T267: the sidebar labels right-align in RTL while
-                            // the row geometry mirrors through LayoutMirroring.
-                            rtl: root.rtl
-                            // T227: the Appearance pane's sidebar icon size.
-                            iconSize: root.sidebarIconPixels
-                            categoryIconSize: root.sidebarCategoryIconPixels
-                            // The outer ChromeSheet owns the app-local material.
-                            fillColor: "transparent"
-                            sections: root.sidebarSections
-
-                            onActivated: (index, item) => {
-                                if (item && item.id)
-                                    root.activateSidebarItem(item.id);
-                            }
-                            onCurrentIndexChanged: {
-                                if (root.syncing)
-                                    return;
-                                var id = root.sidebarIdAtIndex(sidebar.currentIndex);
-                                if (id.length > 0)
-                                    root.activateSidebarItem(id);
-                            }
-                        }
-
-                        SettingsSearchResults {
-                            id: searchResultsList
-                            anchors.fill: parent
-                            visible: root.searchActive
-                            rtl: root.rtl
-                            results: root.searchResults
-                            query: root.searchQuery
-                            onActivated: (result) => root.activateSearchResult(result)
-                            onDismissed: {
-                                root.searchText = "";
-                                searchField.forceActiveFocus();
-                            }
+                    SettingsSearchResults {
+                        id: searchResultsList
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.controls.settingsSidebar.searchInset
+                        anchors.rightMargin: Theme.controls.settingsSidebar.searchInset
+                        visible: root.showSearchResults
+                        rtl: root.rtl
+                        results: root.searchResults
+                        query: root.searchQuery
+                        onActivated: (result) => root.activateSearchResult(result)
+                        onDismissed: {
+                            root.searchText = "";
+                            searchField.forceActiveFocus();
                         }
                     }
                 }
@@ -1495,8 +1567,8 @@ Item {
                     id: detailSheet
                     anchors.fill: parent
                     color: Theme.color.surface
-                    topRightRadius: Theme.controls.window.radius
-                    bottomRightRadius: Theme.controls.window.radius
+                    topRightRadius: Theme.controls.settingsWindow.radius
+                    bottomRightRadius: Theme.controls.settingsWindow.radius
                 }
 
                 // The detail half of the unified toolbar. The sidebar material
@@ -1508,9 +1580,10 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     height: Theme.controls.settingsWindow.chromeHeight
-                    color: Material.appChromeFill("settingsToolbar",
-                                                 Theme.color.chrome)
-                    topRightRadius: Theme.controls.window.radius
+                    // T286: the detail toolbar is the content surface, not a
+                    // second chrome sheet. The sidebar keeps its material.
+                    color: Theme.color.surface
+                    topRightRadius: Theme.controls.settingsWindow.radius
                 }
 
                 TitleBar {
@@ -1522,31 +1595,26 @@ Item {
                     title: root.paneTitle
                     active: root.windowActive
                     rtl: root.rtl
-                    // The traffic lights and sidebar live left of the split;
-                    // Back/Forward and the title live here, centred over the
-                    // detail pane rather than the whole window.
+                    // T286: the traffic lights and sidebar live left of the
+                    // split; the history pill and the left-aligned title live
+                    // here. Other apps keep the shared centred default.
                     showTrafficLights: false
                     fillColor: "transparent"
-                    borderColor: Material.appChromeBorder("settingsToolbar",
+                    borderColor: Material.appChromeBorder("settingsSidebar",
                                                          Theme.color.border)
-                    leadingData: Row {
-                        spacing: Theme.controls.toolbar.spacing
-                        Button {
-                            id: backButton
-                            icon: "chevron-left"
-                            variant: "ghost"
-                            accessibleName: qsTr("Back")
-                            enabled: root.canGoBack
-                            onClicked: root.back()
-                        }
-                        Button {
-                            id: forwardButton
-                            icon: "chevron-right"
-                            variant: "ghost"
-                            accessibleName: qsTr("Forward")
-                            enabled: root.canGoForward
-                            onClicked: root.forward()
-                        }
+                    titleAlignment: "left"
+                    titleFontSize: Theme.controls.settingsWindow.titleFontSize
+                    titleFontWeight: Theme.controls.settingsWindow.titleFontWeight
+                    titleElide: Text.ElideRight
+                    titleGap: Theme.controls.settingsWindow.titleGap
+                    leadingInset: Theme.controls.settingsWindow.contentInset
+                    leadingData: SettingsNavPill {
+                        id: navPill
+                        canGoBack: root.canGoBack
+                        canGoForward: root.canGoForward
+                        rtl: root.rtl
+                        onBackRequested: root.back()
+                        onForwardRequested: root.forward()
                     }
                     onCloseRequested: root.closeRequested()
                     onMinimizeRequested: root.minimizeRequested()
@@ -1570,20 +1638,19 @@ Item {
                     Column {
                         id: detailContent
                         x: Theme.controls.settingsWindow.contentInset
+                        y: Theme.controls.settingsWindow.contentTopInset
+                        bottomPadding: Theme.controls.settingsWindow.contentBottomInset
                         width: Math.max(0, detailScroll.width
                                           - 2 * Theme.controls.settingsWindow.contentInset)
                         spacing: Theme.primitive.spacing.lg
 
-                        PaneHeader {
-                            id: header
+                        // T286: intro text replaces the removed header card.
+                        // The category tasks add their own intro copy.
+                        SettingsIntro {
+                            id: intro
                             width: parent.width
-                            // Only panes whose macOS capture has a header card
-                            // show one; the settings-list panes open at their
-                            // first group. A General sub-pane replaces the
-                            // header with its own back chrome.
-                            visible: !root.subPaneOpen
-                                     && SettingsPanes.hasHeader(root.currentPane)
-                            pane: root.currentPane
+                            visible: root.hasIntro
+                            text: root.introText
                         }
 
                         // Panes may ask the shell to open another pane (the
@@ -1663,23 +1730,24 @@ Item {
                 // is a live document link, never a dead button. With the
                 // document absent (a minimal install) the control disables
                 // instead of pretending to open something.
-                Button {
+                SettingsHelpButton {
                     id: helpButton
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
-                    anchors.rightMargin: Theme.primitive.spacing.lg
-                    anchors.bottomMargin: Theme.primitive.spacing.lg
+                    anchors.rightMargin: Theme.controls.settingsWindow.helpInset
+                    anchors.bottomMargin: Theme.controls.settingsWindow.helpInset
                     z: 10
-                    text: "?" // df-allow-untranslated: help glyph
-                    variant: "ghost"
-                    accessibleName: root.currentPane
-                                    ? qsTr("Help for %1").arg(root.currentPane.title)
-                                    : qsTr("Help")
-                    Accessible.description: root.helpAvailable
-                                            ? qsTr("Open this pane in the business-logic map.")
-                                            : root.helpUnavailableReason
-                    enabled: root.helpAvailable
-                    onClicked: root.openHelp(root.currentPaneId)
+                    available: root.helpAvailable
+                    unavailableReason: root.helpUnavailableReason
+                    documentUrl: root.paneHelpUrl(root.currentPaneId)
+                    accessibleDescription: root.currentPane
+                        ? qsTr("Help for %1 in the business-logic map.")
+                          .arg(root.currentPane.title)
+                        : qsTr("Open this pane in the business-logic map.")
+                    Accessible.name: root.currentPane
+                        ? qsTr("Help for %1").arg(root.currentPane.title)
+                        : qsTr("Help")
+                    onHelpRequested: root.openHelp(root.currentPaneId)
                 }
             }
         }

@@ -6,6 +6,10 @@ import Dragonfruit
 // group owns the card, the optional section header, and the trailing gap; the
 // rows are supplied through the default property so apps never draw the card.
 //
+// T286: the card has no inner padding (rows own their 12 pt inset), the
+// section heading sits outside the card at the card edge with 26 pt above and
+// 8 pt below, and the 10 pt radius is the mockup's card geometry.
+//
 // `sectionId` (T223) links the card to the executable map's section so a
 // search result can deep-link to a section when the pane's rows are not
 // individual SettingsRows. `highlighted` is the deep-link landing state.
@@ -30,17 +34,15 @@ Column {
         id: titleText
         visible: root.title.length > 0
         width: parent.width
-        // T266: the section header aligns with the row labels inside the card
-        // and wraps (or elides) rather than running past the card.
-        leftPadding: Theme.controls.settingsGroup.padding
-                     + Theme.controls.settingsRow.paddingH
-        rightPadding: Theme.controls.settingsGroup.padding
-        bottomPadding: Theme.primitive.spacing.sm
+        // T286: the heading aligns to the card edge, not the row-label inset
+        // (the mockup's `.heading` sits outside the card).
+        topPadding: Theme.controls.settingsGroup.headingTop
+        bottomPadding: Theme.controls.settingsGroup.headingBottom
         text: root.title
         color: Glass.increaseContrast ? Theme.color.textPrimary
                                       : Theme.color.textSecondary
-        font.pixelSize: Theme.primitive.font.sizeSm
-        font.weight: Theme.primitive.font.weightMedium
+        font.pixelSize: Theme.controls.settingsGroup.headingFontSize
+        font.weight: Theme.controls.settingsGroup.headingFontWeight
         wrapMode: Text.Wrap
         maximumLineCount: 2
         elide: Text.ElideRight

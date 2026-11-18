@@ -479,7 +479,11 @@ Item {
 
             shell.searchResultsList.activateCurrent();
             waitForRendering(stage);
-            compare(shell.searchText, "");
+            // T286: the query stays in the field after a result opens; the
+            // ranked list hides so the pane is visible.
+            compare(shell.searchText, "show previews");
+            compare(shell.searchField.text, "show previews");
+            verify(!shell.searchResultsList.visible);
             compare(shell.currentPaneId, "notifications");
             verify(shell.highlightTarget !== null);
             compare(shell.highlightTarget.label, "Show previews");

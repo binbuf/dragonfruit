@@ -11,6 +11,9 @@ Item {
 
     property bool active: true
     property bool forceReveal: false
+    // T286: the Settings chrome uses the mockup's 12 pt circles; the shared
+    // default stays the measured 13 pt mark.
+    property real diameter: Theme.controls.trafficLights.diameter
     property alias hovered: clusterHover.hovered
     property alias closeButton: closeLight
     property alias minimizeButton: minimizeLight
@@ -79,7 +82,7 @@ Item {
             // The AX frame is 16 pt, but AppKit draws a 13 pt circle centred
             // inside it. Drawing the frame itself made the lights too big.
             anchors.centerIn: parent
-            width: Theme.controls.trafficLights.diameter
+            width: root.diameter
             height: width
             radius: width / 2
             color: root.active ? light.baseColor : Theme.color.controlActive
@@ -127,7 +130,7 @@ Item {
 
         FocusRing {
             target: light
-            cornerRadius: Theme.controls.trafficLights.diameter / 2
+            cornerRadius: root.diameter / 2
             shown: light.activeFocus
         }
 

@@ -547,10 +547,39 @@ pub mod component {
         pub const HEIGHT: f32 = 820.0_f32;
         pub const MIN_WIDTH: f32 = 720.0_f32;
         pub const MIN_HEIGHT: f32 = 480.0_f32;
+        pub const RADIUS: f32 = 10.0_f32;
         pub const CHROME_HEIGHT: f32 = 52.0_f32;
         pub const SIDEBAR_WIDTH: f32 = 232.0_f32;
         pub const DETAIL_WIDTH: f32 = 508.0_f32;
-        pub const CONTENT_INSET: f32 = 30.0_f32;
+        pub const CONTENT_INSET: f32 = 20.0_f32;
+        pub const CONTENT_TOP_INSET: f32 = 24.0_f32;
+        pub const CONTENT_BOTTOM_INSET: f32 = 64.0_f32;
+        pub const NAV_PILL_WIDTH: f32 = 78.0_f32;
+        pub const NAV_PILL_HEIGHT: f32 = 36.0_f32;
+        pub const NAV_BUTTON_WIDTH: f32 = 38.0_f32;
+        pub const NAV_DIVIDER_HEIGHT: f32 = 18.0_f32;
+        pub const NAV_PILL_RADIUS: f32 = 10.0_f32;
+        pub const TITLE_FONT_SIZE: f32 = 15.0_f32;
+        pub const TITLE_FONT_WEIGHT: f32 = 600.0_f32;
+        pub const TITLE_GAP: f32 = 12.0_f32;
+        pub const HELP_BUTTON_SIZE: f32 = 24.0_f32;
+        pub const HELP_INSET: f32 = 20.0_f32;
+        pub const TRAFFIC_LIGHT_SIZE: f32 = 12.0_f32;
+        pub const TRAFFIC_LIGHT_GAP: f32 = 11.0_f32;
+        pub const TRAFFIC_LIGHT_INSET_LEFT: f32 = 18.0_f32;
+        pub const TRAFFIC_LIGHT_INSET_TOP: f32 = 22.0_f32;
+    }
+    pub mod settings_sidebar {
+        pub const ROW_HEIGHT: f32 = 32.0_f32;
+        pub const ROW_RADIUS: f32 = 6.0_f32;
+        pub const SECTION_SPACER: f32 = 13.0_f32;
+        pub const SEARCH_WIDTH: f32 = 212.0_f32;
+        pub const SEARCH_HEIGHT: f32 = 28.0_f32;
+        pub const SEARCH_TOP: f32 = 64.0_f32;
+        pub const SEARCH_INSET: f32 = 10.0_f32;
+        pub const SEARCH_RESULT_HEIGHT: f32 = 44.0_f32;
+        pub const SEARCH_RESULT_ICON_TILE: f32 = 20.0_f32;
+        pub const SELECTION_STYLE: &str = "neutral";
     }
     pub mod files {
         pub const SIDEBAR_WIDTH: f32 = 198.0_f32;
@@ -576,16 +605,51 @@ pub mod component {
         pub const MIN_PANE_WIDTH: f32 = 180.0_f32;
     }
     pub mod settings_row {
-        pub const HEIGHT: f32 = 44.0_f32;
+        pub const HEIGHT: f32 = 33.0_f32;
+        pub const ICON_HEIGHT: f32 = 53.0_f32;
+        pub const DESCRIPTION_HEIGHT: f32 = 52.0_f32;
+        pub const SCALE_HEIGHT: f32 = 42.0_f32;
         pub const PADDING_H: f32 = 12.0_f32;
         pub const LABEL_WIDTH: f32 = 200.0_f32;
-        pub const CONTROL_GAP: f32 = 16.0_f32;
+        pub const CONTROL_GAP: f32 = 12.0_f32;
+        pub const LEADING_TILE: f32 = 29.0_f32;
+        pub const BIG_HEIGHT: f32 = 52.0_f32;
     }
     pub mod settings_group {
         pub const RADIUS: f32 = 10.0_f32;
-        pub const PADDING: f32 = 8.0_f32;
+        pub const PADDING: f32 = 0.0_f32;
         pub const ROW_GAP: f32 = 1.0_f32;
-        pub const MARGIN_BOTTOM: f32 = 16.0_f32;
+        pub const MARGIN_BOTTOM: f32 = 18.0_f32;
+        pub const HEADING_FONT_SIZE: f32 = 13.0_f32;
+        pub const HEADING_FONT_WEIGHT: f32 = 600.0_f32;
+        pub const HEADING_TOP: f32 = 26.0_f32;
+        pub const HEADING_BOTTOM: f32 = 8.0_f32;
+    }
+    pub mod settings_radio {
+        pub const SIZE: f32 = 16.0_f32;
+        pub const DOT: f32 = 8.0_f32;
+    }
+    pub mod settings_scale {
+        pub const WIDTH: f32 = 246.0_f32;
+        pub const TICK_HEIGHT: f32 = 6.0_f32;
+        pub const TICK_GAP: f32 = 4.0_f32;
+    }
+    pub mod settings_mode_tile {
+        pub const WIDTH: f32 = 132.0_f32;
+        pub const HEIGHT: f32 = 84.0_f32;
+        pub const RADIUS: f32 = 6.0_f32;
+    }
+    pub mod settings_wall_tile {
+        pub const WIDTH: f32 = 132.0_f32;
+        pub const HEIGHT: f32 = 84.0_f32;
+        pub const RADIUS: f32 = 6.0_f32;
+    }
+    pub mod settings_avatar {
+        pub const SIZE: f32 = 36.0_f32;
+    }
+    pub mod settings_chart {
+        pub const HEIGHT: f32 = 160.0_f32;
+        pub const BAR_GAP: f32 = 4.0_f32;
     }
     pub mod segmented_control {
         pub const HEIGHT: f32 = 28.0_f32;
@@ -727,8 +791,10 @@ pub mod component {
         pub const TILE_GAP: f32 = 10.0_f32;
         pub const TILE_ASPECT: f32 = 1.5_f32;
         pub const APPLY_MIN_MS: f32 = 450.0_f32;
-        pub const HERO_WIDTH: f32 = 160.0_f32;
-        pub const HERO_HEIGHT: f32 = 100.0_f32;
+        pub const HERO_WIDTH_RATIO: f32 = 0.46_f32;
+        pub const HERO_ASPECT: f32 = 1.6_f32;
+        pub const APPLY_TIMEOUT_MS: f32 = 20000.0_f32;
+        pub const WRITE_TIMEOUT_MS: f32 = 5000.0_f32;
     }
     pub mod settings_category {
         pub const SIZE: f32 = 32.0_f32;

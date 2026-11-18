@@ -482,6 +482,58 @@ projection and admin-group helper. See ADR
 [0238](adr/0238-input-breadth-users-printers-battery.md). Live evidence is
 `make t229-input-users-printers-capture` (`docs/captures/t229-*.png`).
 
+## The T286 shell chrome, sidebar, and shared components
+
+T286 turns the §3.1–3.4 mockup geometry into tokens and shared components.
+The values live in `design-system/tokens/tokens.json` (`settingsWindow`,
+`settingsSidebar`, `settingsRow`, `settingsGroup`, `settingsRadio`,
+`settingsScale`, `settingsModeTile`, `settingsWallTile`, `settingsAvatar`,
+`settingsChart`) and regenerate `Theme.qml` and the Rust token mirror; the
+shell has no app-local geometry constants.
+
+- **Window and toolbar.** 740 x 820 (720 x 480 minimum), 10 pt radius, 52 pt
+  unified toolbar. The detail toolbar is the content surface, not a second
+  chrome sheet; the sidebar keeps the `settingsSidebar` material and the
+  Reduce Transparency / Increase Contrast resolver.
+- **History pill and title.** `SettingsNavPill` is a 78 x 36 pill with two
+  38 pt buttons and a 1 x 18 pt divider, each a Tab stop with a focus ring and
+  a disabled state. The pane title is left-aligned 12 pt after the pill at
+  15 pt semibold and elides on the right. The shared `TitleBar` keeps its
+  centred default (`titleAlignment: "center"`); Settings sets `"left"`.
+- **Content.** 20 pt side inset, 24 pt top inset, 64 pt bottom padding so the
+  last row clears the help control, and a 468 pt column at 740 pt.
+- **Sidebar.** 232 pt with a 212 x 28 search field at 10 pt side margins and
+  64 pt from the window top. Rows are 32 pt with 10 pt side margins, an 8 pt
+  radius, a neutral selected fill, and a semibold selected label. The three
+  groups are separated by 13 pt spacers with no painted headings; the logical
+  Connectivity/Desktop/Input names stay in AT-SPI. The selected row scrolls
+  into view.
+- **Rows and cards.** 33 pt plain, 53 pt icon (29 pt tile), 52 pt description,
+  42 pt slider-scale, 12 pt row padding, 12 pt control gap; cards have a 10 pt
+  radius and no inner padding; headings are 13 pt semibold with 26 pt above
+  and 8 pt below, aligned to the card edge.
+- **Intro, not a header card.** The General/Accessibility/Notifications/
+  Privacy header cards are gone. `SettingsIntro` renders the pane's catalog
+  description; the toolbar title is the only pane title. A sub-pane still
+  replaces the intro with its own back chrome.
+- **Update status row.** The sidebar's first entry is the live update status
+  (`SettingsSidebarStatusRow`): the provider's label, a stable "Software
+  Update" line, and the pending-update badge. It opens General → Software
+  Update. With no host it says "Unavailable" rather than inventing a state.
+- **Help.** `SettingsHelpButton` is a 24 pt circle 20 pt from the content's
+  right/bottom corner. It opens the live business-logic map anchor for the
+  current pane; with no document it disables and explains why.
+- **Search.** The field keeps the query after a result opens; typing again
+  re-opens the ranked list. The list is one flat ranked list (44 pt rows, a
+  20 pt icon tile, the result title, and a pane > section breadcrumb) with a
+  neutral hover/selection fill, Up/Down/Home/End/Return, and the clear button.
+
+The shell tests (`tst_settings_shell`), the shared-component tests
+(`tst_settings_components`), the accessibility suite, and the 1x/1.5x/2x scale
+suite pin the geometry. `make t286-settings-shell-capture` writes the
+740 x 820 and 720 x 480 stills, the sidebar selection/spacer states, and the
+search-results state in light and dark.
+
 ## Search, deep links, and row anatomy (T223)
 
 `apps/settings/SettingsSearch.qml` is the one local Settings index. It is built
