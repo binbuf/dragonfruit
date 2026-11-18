@@ -173,7 +173,17 @@ bridge-host view the sub-pane renders, so the list never advertises a state
 the sub-pane contradicts. The list itself never hides a row because one
 adapter is absent. T269 adds the real System Report sheet, the display
 name/resolution from the live screen, the stacked Storage chart and
-recommendations, and the Autofill & Passwords provider inventory. See
+recommendations, and the Passwords & Keys provider inventory. T287 makes the
+list the mockup's intro plus an 11-row 52 pt `SettingsBigList` with per-row
+category tiles; Device Management is a mapped omission because this build has
+no Linux MDM/profile owner, and Passwords & Keys/Backups carry the two mockup
+sub lines. The sub-panes now follow the §5.1 section inventory: About's hero
+and grouped host rows, the Software Update provider card, Storage's summary
+bar/legend/categories, the Passwords keyring banner, Date & Time's Source and
+Time zone city, Language & Region's previews, Login Items' Background App
+Activity and By App/By Category extension view, Sharing's three live-service
+sections, Startup Disk's intro/advanced split, Backups' empty/backend states,
+and Transfer or Reset's transfer-assistant and Linux erase note. See
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md).
 
 The host half is `services/general-adapter` + `services/system-status/src/general.rs`

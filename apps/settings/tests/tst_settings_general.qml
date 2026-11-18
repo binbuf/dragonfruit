@@ -70,10 +70,58 @@ Item {
             compare(pane.identityReady, true);
             verify(pane.aboutRow.visible, "the About row is visible");
             verify(pane.updateRow.visible, "the Software Update row is visible");
-            compare(pane.updateRow.description, "1 Update Available");
             compare(pane.updateSummary, "1 Update Available");
-            verify(pane.passwordsRow.visible, "the Autofill & Passwords row is visible");
+            compare(pane.updateRow.secondaryText, "");
+            verify(pane.passwordsRow.visible, "the Passwords & Keys row is visible");
             compare(pane.passwordsSummary, "2 providers");
+        }
+
+        function test_general_big_list_order_heights_and_sub_lines() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.generalIntro.text,
+                    "Manage your overall setup and preferences for this computer, "
+                    + "such as updates, language, sharing, and startup.");
+            compare(pane.bigList.rows.children.length, 11,
+                    "Device Management is omitted from the rendered list");
+
+            var ids = ["aboutRow", "updateRow", "storageRow", "passwordsRow",
+                       "dateTimeRow", "languageRow", "loginRow", "sharingRow",
+                       "startupRow", "backupRow", "resetRow"];
+            var labels = ["About", "Software Update", "Storage", "Passwords & Keys",
+                          "Date & Time", "Language & Region",
+                          "Login Items & Extensions", "Sharing", "Startup Disk",
+                          "Backups", "Transfer or Reset"];
+            for (var i = 0; i < ids.length; ++i) {
+                var row = pane[ids[i]];
+                verify(row.visible, ids[i] + " must be visible");
+                compare(row.label, labels[i]);
+                verify(row.height === 52, ids[i] + " height=" + row.height);
+                verify(row.category !== null, ids[i] + " must carry a category tile");
+                verify(String(row.category.source).length > 0);
+            }
+            compare(pane.aboutRow.secondaryText, "");
+            compare(pane.passwordsRow.secondaryText, "Managed by the system keyring");
+            compare(pane.backupRow.secondaryText,
+                    "Restic / Pika / Timeshift destinations");
+            compare(pane.resetRow.secondaryText, "");
+        }
+
+        function test_device_management_is_omitted_with_a_map_reason() {
+            var row = SettingsMap.rowFor("general", "device.management");
+            verify(row !== null, "the omitted Device Management row is mapped");
+            compare(row.state, "omitted");
+            compare(row.absence, "omitted");
+            compare(row.label, "Managed Devices");
+            verify(row.reason.length > 0, "the omission carries a reason");
+            verify(row.section.length > 0);
+            compare(SettingsMap.subPaneForRow("general", "device.management"), "");
+            var shell = make();
+            var pane = paneOf(shell);
+            for (var i = 0; i < pane.bigList.rows.children.length; ++i) {
+                verify(pane.bigList.rows.children[i].label !== "Managed Devices",
+                       "the omitted managed-devices row must not be rendered");
+            }
         }
 
         function test_about_page_shows_the_host_identity() {
@@ -87,17 +135,19 @@ Item {
             compare(findChild(page, "aboutPageHero").width, 128);
             compare(findChild(page, "aboutPageHero").height, 128);
             compare(findChild(page, "aboutPageName").text, "Dragonfruit Book");
-            compare(findChild(page, "aboutPageModel").text, "Model: Not available");
-            compare(findChild(page, "aboutPageProcessor").text, "Processor: Example CPU");
-            compare(findChild(page, "aboutPageMemory").text, "Memory: 16 GB");
-            compare(findChild(page, "aboutPageGraphics").text, "Graphics: Example GPU");
+            compare(findChild(page, "aboutPageHostName").text, "Dragonfruit Book");
+            compare(findChild(page, "aboutPageProcessor").text, "Example CPU");
+            compare(findChild(page, "aboutPageMemory").text, "16 GB");
+            compare(findChild(page, "aboutPageDiskEncryption").text, "Not available");
+            compare(findChild(page, "aboutPageSecurityUpdates").text,
+                    "Included in the available updates");
             compare(findChild(page, "aboutPageOs").text, "Dragonfruit Linux 44");
-            compare(findChild(page, "aboutPageKernel").text,
-                    "Kernel: 6.12.0 · Architecture: x86_64");
-            compare(findChild(page, "aboutPageSerial").text, "Serial number: SERIAL-1");
+            compare(findChild(page, "aboutPageKernel").text, "6.12.0 · x86_64");
+            compare(findChild(page, "aboutPageSession").text, "Wayland");
             verify(findChild(page, "aboutPageDisplay").text.length > 0);
             compare(findChild(page, "aboutPageVolume").text, "Volume: /");
-            verify(findChild(page, "aboutPageStorage").text.indexOf("used") >= 0);
+            verify(findChild(page, "aboutPageStorageRow").description.indexOf("used") >= 0);
+            compare(findChild(page, "aboutPageCopyright").text.indexOf("2026") >= 0, true);
             pane.closeSubPane();
             compare(pane.subPaneId, "");
         }
@@ -176,7 +226,7 @@ Item {
             compare(findChild(page, "aboutPageName").maximumLineCount, 2);
             compare(findChild(page, "aboutPageName").elide, Text.ElideRight);
             compare(findChild(page, "aboutPageProduct").elide, Text.ElideRight);
-            compare(findChild(page, "aboutPageSerial").text, "Serial number: Not available");
+            compare(findChild(page, "aboutPageDiskEncryption").text, "Not available");
             page.openReport();
             compare(findChild(page, "aboutReportModel").control.children[0].text,
                     "Not available");
@@ -352,7 +402,7 @@ Item {
             // Install through the seam; the pane row converges with the view.
             Settings.installUpdates();
             tryVerify(function() { return pane.updateSummary === "Restart Required"; });
-            compare(pane.updateRow.description, "Restart Required");
+            compare(pane.updateRow.secondaryText, "");
             Settings.rebootUpdates();
             tryVerify(function() { return pane.updateSummary === "Up to Date"; });
         }
@@ -424,6 +474,173 @@ Item {
             compare(pane.backupSummary, "Timeshift · daily");
             compare(pane.storageSummary, "447 GiB used");
             compare(pane.startupSummary, "/dev/nvme0n1 · UEFI");
+        }
+
+        function test_software_update_provider_card_and_installed_rows() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "software-update");
+            compare(findChild(sub, "softwareUpdateProviderCard").visible, true);
+            compare(findChild(sub, "softwareUpdateProviderDetail").text,
+                    "1 update available · 1 security update");
+            compare(findChild(sub, "softwareUpdateInstalled").control.children[0].text,
+                    "Dragonfruit Linux 44");
+            compare(sub.updatesRepeater.count, 1);
+            compare(findChild(sub, "softwareUpdateBeta").visible, false);
+            compare(findChild(sub, "softwareUpdateLicense").visible, true);
+            findChild(sub, "softwareUpdateLicense").clicked();
+            verify(sub.licenseOpen);
+        }
+
+        function test_storage_bar_legend_and_volumes() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "storage");
+            compare(sub.usageGroup.visible, true);
+            compare(sub.usageChart.visible, true);
+            compare(sub.usageChartRepeater.count, 3);
+            compare(sub.usageLegendRepeater.count, 4, "three categories plus Free");
+            compare(sub.categoriesGroup.visible, true);
+            compare(sub.usageRepeater.count, 3);
+            compare(sub.manageRow.visible, true);
+            compare(sub.manageButton.text, "Show Detail");
+            compare(sub.volumesGroup.visible, true);
+            compare(sub.volumesRepeater.count >= 1, true);
+            compare(sub.removableGroup.visible, true);
+        }
+
+        function test_passwords_keyring_banner_and_provider_footer() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "passwords");
+            compare(sub.available, true);
+            compare(sub.keyringBanner.title,
+                    "Passwords and keys are stored in the system keyring");
+            compare(sub.keyringRow.label, "System Keyring");
+            compare(findChild(sub, "passwordsKeyringStatus").text, "Locked");
+            compare(sub.delegateButton.text, "Open Passwords…");
+            compare(sub.delegateButton.enabled, true);
+            // The AutoFill toggle and Delete After Use are not rendered.
+            compare(SettingsMap.rowFor("general", "passwords.autofill").state,
+                    "omitted");
+            compare(SettingsMap.rowFor("general", "passwords.deleteAfterUse").state,
+                    "omitted");
+        }
+
+        function test_date_time_source_city_and_zone_group() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "date-time");
+            compare(sub.available, true);
+            compare(sub.hostGroup.visible, true);
+            compare(sub.zoneGroup.visible, true);
+            compare(sub.sourceRow.visible, true);
+            compare(findChild(sub, "dateTimeSource").text, "Network time (NTP)");
+            compare(sub.cityRow.visible, true);
+            compare(findChild(sub, "dateTimeCity").text, "Los Angeles");
+            compare(sub.clockGroup.visible, true);
+            compare(sub.hour24Toggle.enabled, true);
+        }
+
+        function test_language_previews_and_omitted_owners() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "language");
+            compare(sub.available, true);
+            compare(sub.previewGroup.visible, true);
+            compare(sub.regionGroup.visible, true);
+            compare(sub.languageGroup.visible, true);
+            verify(sub.previewText.text.length > 0);
+            // The mockup's three rows without an owner are mapped omissions,
+            // not disabled controls.
+            compare(SettingsMap.rowFor("general", "language.textInImages").state,
+                    "omitted");
+            compare(SettingsMap.rowFor("general", "language.applications").state,
+                    "omitted");
+            compare(SettingsMap.rowFor("general", "language.translation").state,
+                    "omitted");
+        }
+
+        function test_login_items_extension_group_modes() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "login");
+            compare(sub.startGroup.title, "Open at Login");
+            compare(sub.backgroundGroup.title, "Background App Activity");
+            compare(sub.extensionsGroup.title, "Extensions");
+            compare(sub.extensionMode, 0);
+            compare(sub.extensionsFlatRepeater.visible, true);
+            compare(sub.extensionsRepeater.visible, false);
+            sub.extensionModeControl.activateIndex(1);
+            compare(sub.extensionMode, 1);
+            compare(sub.extensionsFlatRepeater.visible, false);
+            compare(sub.extensionsRepeater.visible, true);
+            sub.extensionModeControl.activateIndex(0);
+            compare(sub.extensionMode, 0);
+        }
+
+        function test_startup_disk_intro_selected_note_and_advanced() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "startup");
+            compare(sub.available, true);
+            compare(sub.selectedNote.text, "You have selected fedora.");
+            compare(sub.advancedGroup.visible, true);
+            compare(findChild(sub, "startupBootModeRow").control.children[0].text,
+                    "UEFI");
+            compare(findChild(sub, "startupSecureBootRow").control.children[0].text,
+                    "On");
+            compare(sub.restartButton.visible, true);
+        }
+
+        function test_backup_backend_and_absent_states() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "backup");
+            compare(sub.backendReady, true);
+            compare(sub.addBackupButton.visible, false);
+            compare(sub.runButton.visible, true);
+            compare(sub.restoreButton.visible, true);
+            compare(sub.policyGroup.visible, true);
+            compare(sub.statusGroup.visible, true);
+            pane.closeSubPane();
+
+            Settings.setGeneralAvailableFixture(false);
+            var absent = createTemporaryObject(backupComponent, stage);
+            verify(absent);
+            compare(absent.available, false);
+            compare(absent.addBackupButton.visible, true);
+            compare(absent.runButton.enabled, false);
+            Settings.setGeneralAvailableFixture(true);
+        }
+
+        function test_reset_transfer_assistant_and_linux_erase_note() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var sub = openSubPane(pane, "reset");
+            compare(sub.transferGroup.title, "Data Transfer");
+            compare(findChild(sub, "resetTransferButton").text,
+                    "Open Transfer Assistant…");
+            compare(findChild(sub, "resetTransferButton").enabled, false);
+            compare(sub.resetGroup.visible, true);
+            compare(sub.eraseNote.visible, true);
+            verify(sub.eraseNote.text.indexOf("reinstall") >= 0);
+            verify(sub.eraseNote.text.indexOf("Linux") >= 0);
+        }
+
+        function test_general_omitted_rows_are_documented() {
+            var omitted = ["device.management", "about.energy", "updates.beta",
+                           "sharing.contentCaching", "sharing.bluetooth",
+                           "sharing.remoteScripting"];
+            for (var i = 0; i < omitted.length; ++i) {
+                var row = SettingsMap.rowFor("general", omitted[i]);
+                verify(row !== null, omitted[i] + " must be mapped");
+                compare(row.state, "omitted");
+                compare(row.absence, "omitted");
+                verify(row.reason.length > 0,
+                       omitted[i] + " must carry an omission reason");
+            }
+            compare(SettingsMap.rowFor("general", "reset.erase").state, "omitted");
         }
 
         function test_more_info_reaches_the_canonical_page() {
@@ -732,14 +949,18 @@ Item {
             var pane = paneOf(shell);
             var sub = openSubPane(pane, "sharing");
             compare(sub.available, true);
-            compare(sub.servicesRepeater.count, 3);
-            compare(sub.servicesRepeater.itemAt(1).modelData.id, "remoteLogin");
-            var row = sub.servicesRepeater.itemAt(1);
+            // The fixture's three installed services land in the mockup's
+            // three sections: File, Printer, Remote Login.
+            compare(sub.contentRepeater.count, 1);
+            compare(sub.accessoriesRepeater.count, 1);
+            compare(sub.advancedRepeater.count, 1);
+            compare(sub.advancedRepeater.itemAt(0).modelData.id, "remoteLogin");
+            var row = sub.advancedRepeater.itemAt(0);
             // The row description is the service description only: state is the
             // toggle and authentication is the Options sheet, never a suffix.
             compare(row.description, "Allow remote login with SSH.");
             verify(row.description.indexOf("Requires authentication") < 0);
-            var toggle = findChild(row, "sharingToggle1");
+            var toggle = findChild(row, "sharingToggle-remoteLogin");
             compare(toggle.checked, true);
             toggle.toggle();
             tryVerify(function() {
@@ -770,8 +991,8 @@ Item {
 
             // Each service owns a read-only Options sheet with its real
             // details; the authentication note lives there.
-            var row = sub.servicesRepeater.itemAt(1);
-            findChild(row, "sharingOptions1").clicked();
+            var row = sub.advancedRepeater.itemAt(0);
+            findChild(row, "sharingOptions-remoteLogin").clicked();
             compare(sub.optionsDialog.open, true);
             verify(sub.optionsService.details.length >= 2);
             sub.optionsDialog.accept();

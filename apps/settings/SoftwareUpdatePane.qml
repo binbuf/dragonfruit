@@ -40,6 +40,27 @@ Item {
             return qsTr("Not checked");
         return Qt.formatDateTime(new Date(value), "yyyy-MM-dd HH:mm");
     }
+    readonly property bool betaAvailable: root.view.betaAvailable === true
+    readonly property string installedLabel: root.view.osLabel !== undefined
+        && String(root.view.osLabel).length > 0
+        ? String(root.view.osLabel) : qsTr("Not available")
+    readonly property string providerDetail: {
+        if (!root.providerAvailable)
+            return qsTr("No update provider");
+        var parts = [];
+        if (root.updateCount > 0)
+            parts.push(root.updateCount === 1
+                       ? qsTr("1 update available")
+                       : qsTr("%1 updates available").arg(root.updateCount));
+        if (root.securityCount > 0)
+            parts.push(root.securityCount === 1
+                       ? qsTr("1 security update")
+                       : qsTr("%1 security updates").arg(root.securityCount));
+        if (root.rebootRequired)
+            parts.push(qsTr("Restart required"));
+        return parts.length > 0 ? parts.join(" · ") : qsTr("Up to date");
+    }
+    property bool licenseOpen: false
 
     // Test surface (used by tst_settings_general.qml).
     property alias statusText: statusText
@@ -65,65 +86,136 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        Text {
-            id: statusText
-            objectName: "softwareUpdateStatus"
+        // The provider card: tile, status, the real offer detail, and the one
+        // set of update actions. It is not a fake "Dragonfruit OS 0.3.0"
+        // version: every line comes from the provider or says it is missing.
+        Rectangle {
+            id: providerCard
+            objectName: "softwareUpdateProviderCard"
             width: parent.width
-            text: root.statusLabel
-            color: Theme.color.textPrimary
-            font.pixelSize: 20
-            font.weight: Theme.primitive.font.weightMedium
-            wrapMode: Text.WordWrap
-            Accessible.name: qsTr("Software update status: %1").arg(text)
+            implicitHeight: providerLayout.implicitHeight
+                            + 2 * Theme.primitive.spacing.md
+            visible: root.hostAvailable
+            radius: Theme.controls.settingsGroup.radius
+            color: Theme.color.surfaceElevated
+            border.width: Theme.controls.window.borderWidth
+            border.color: Glass.increaseContrast ? Theme.color.textPrimary
+                                                 : Theme.color.border
+            antialiasing: true
+
+            Row {
+                id: providerLayout
+                x: Theme.primitive.spacing.md
+                y: Theme.primitive.spacing.md
+                width: Math.max(0, parent.width - 2 * Theme.primitive.spacing.md)
+                spacing: Theme.primitive.spacing.md
+
+                SettingsCategoryIcon {
+                    width: 44
+                    height: 44
+                    source: SettingsPanes.rowStyle("update").source
+                    gradientStart: SettingsPanes.rowStyle("update").gradientStart
+                    gradientEnd: SettingsPanes.rowStyle("update").gradientEnd
+                }
+
+                Column {
+                    width: Math.max(0, parent.width - 56)
+                    spacing: Theme.primitive.spacing.xs
+
+                    Text {
+                        id: statusText
+                        objectName: "softwareUpdateStatus"
+                        width: parent.width
+                        text: root.statusLabel
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        font.weight: Theme.primitive.font.weightSemibold
+                        wrapMode: Text.WordWrap
+                        Accessible.name: qsTr("Software update status: %1").arg(text)
+                    }
+
+                    Text {
+                        objectName: "softwareUpdateProviderDetail"
+                        width: parent.width
+                        text: root.providerDetail
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        id: messageText
+                        objectName: "softwareUpdateMessage"
+                        width: parent.width
+                        visible: root.message.length > 0
+                        text: root.message
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        id: progressText
+                        objectName: "softwareUpdateProgress"
+                        width: parent.width
+                        visible: root.busy
+                        text: qsTr("Working…")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+
+                    Row {
+                        spacing: Theme.primitive.spacing.sm
+
+                        Button {
+                            id: checkButton
+                            objectName: "softwareUpdateCheck"
+                            text: qsTr("Check for Updates")
+                            enabled: root.providerAvailable && !root.busy
+                            onClicked: Settings.checkUpdates()
+                        }
+
+                        Button {
+                            id: installButton
+                            objectName: "softwareUpdateInstall"
+                            text: qsTr("Update Now")
+                            variant: "primary"
+                            enabled: root.providerAvailable && !root.busy
+                                && root.updateCount > 0
+                            onClicked: Settings.installUpdates()
+                        }
+
+                        Button {
+                            id: restartButton
+                            objectName: "softwareUpdateRestart"
+                            text: qsTr("Restart")
+                            variant: "primary"
+                            visible: root.rebootRequired
+                            onClicked: Settings.rebootUpdates()
+                        }
+                    }
+                }
+            }
         }
 
         Text {
-            id: messageText
-            objectName: "softwareUpdateMessage"
+            id: noProviderNote
+            objectName: "softwareUpdateNoProvider"
             width: parent.width
-            visible: root.message.length > 0
-            text: root.message
+            visible: root.hostAvailable && !root.providerAvailable
+            text: qsTr("No update provider is available on this system. Install the distribution's update provider to check for updates.")
             color: Theme.color.textSecondary
             font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
         }
 
-        Text {
-            id: progressText
-            objectName: "softwareUpdateProgress"
-            width: parent.width
-            visible: root.busy
-            text: qsTr("Working…")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-        }
-
+        // Only the provider's real additional items. An empty offer is stated
+        // by the card, not by an empty group.
         SettingsGroup {
             width: parent.width
-            title: qsTr("Available Updates")
-            visible: root.hostAvailable
-
-            Text {
-                id: noProviderNote
-                objectName: "softwareUpdateNoProvider"
-                width: parent.width
-                visible: !root.providerAvailable
-                text: qsTr("No update provider is available on this system. Install the distribution's update provider to check for updates.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                width: parent.width
-                visible: root.providerAvailable && root.updates.length === 0
-                text: root.statusLabel === qsTr("Up to Date")
-                    ? qsTr("All available updates are installed.")
-                    : qsTr("No updates are on offer.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
+            title: qsTr("Also Available")
+            visible: root.hostAvailable && root.providerAvailable
+                && root.updates.length > 0
 
             Repeater {
                 id: updatesRepeater
@@ -132,55 +224,37 @@ Item {
                     required property var modelData
                     required property int index
                     width: parent.width
-                    showSeparator: index < root.updates.length - 1
                     label: modelData.name
                     description: qsTr("%1 \u2192 %2 \u00b7 %3")
                         .arg(modelData.currentVersion)
                         .arg(modelData.availableVersion)
                         .arg(modelData.severityLabel)
+                    showSeparator: index < root.updates.length - 1
                 }
-            }
-        }
-
-        Row {
-            spacing: Theme.primitive.spacing.md
-            visible: root.hostAvailable
-
-            Button {
-                id: checkButton
-                objectName: "softwareUpdateCheck"
-                text: qsTr("Check for Updates")
-                enabled: root.providerAvailable && !root.busy
-                onClicked: Settings.checkUpdates()
-            }
-
-            Button {
-                id: installButton
-                objectName: "softwareUpdateInstall"
-                text: qsTr("Update Now")
-                variant: "primary"
-                enabled: root.providerAvailable && !root.busy && root.updateCount > 0
-                onClicked: Settings.installUpdates()
-            }
-
-            Button {
-                id: restartButton
-                objectName: "softwareUpdateRestart"
-                text: qsTr("Restart")
-                variant: "primary"
-                visible: root.rebootRequired
-                onClicked: Settings.rebootUpdates()
             }
         }
 
         SettingsGroup {
             width: parent.width
-            title: qsTr("Automatic Updates")
+            title: qsTr("Installed")
             visible: root.hostAvailable
 
             SettingsRow {
+                objectName: "softwareUpdateInstalled"
                 width: parent.width
-                label: qsTr("Check for updates automatically")
+                settingsId: "updates.installed"
+                label: qsTr("Installed")
+                controlData: Text {
+                    text: root.installedLabel
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                settingsId: "updates.auto"
+                label: qsTr("Automatic Updates")
                 description: qsTr("Never enabled unless you turn it on here.")
                 controlData: Toggle {
                     id: autoCheckToggle
@@ -215,6 +289,23 @@ Item {
                 }
             }
 
+            // Beta Updates is rendered only when the provider advertises a
+            // beta channel; it is a read-only provider fact, not a stored
+            // settingsd key. With no beta provider the row is a map omission.
+            SettingsRow {
+                objectName: "softwareUpdateBeta"
+                width: parent.width
+                visible: root.betaAvailable
+                settingsId: "updates.beta"
+                label: qsTr("Beta Updates")
+                controlData: Text {
+                    text: root.view.betaLabel !== undefined
+                        ? String(root.view.betaLabel) : qsTr("Available")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
             SettingsRow {
                 id: securityRow
                 objectName: "softwareUpdateSecurity"
@@ -224,7 +315,6 @@ Item {
                     ? qsTr("%1 security update(s) are included in the available updates.")
                         .arg(root.securityCount)
                     : qsTr("Security updates are included when the provider offers them.")
-                showSeparator: false
                 controlData: Text {
                     text: root.providerAvailable
                         ? (root.securityCount > 0 ? qsTr("Included") : qsTr("None pending"))
@@ -233,11 +323,6 @@ Item {
                     font.pixelSize: Theme.controls.button.fontSize
                 }
             }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            visible: root.hostAvailable
 
             SettingsRow {
                 id: lastCheckedRow
@@ -252,6 +337,31 @@ Item {
                     font.pixelSize: Theme.controls.button.fontSize
                 }
             }
+        }
+
+        SettingsNote {
+            width: parent.width
+            visible: root.hostAvailable
+            text: qsTr("Use of this software is subject to the license agreement that accompanied the software being updated.")
+        }
+
+        SettingsFooter {
+            width: parent.width
+            visible: root.hostAvailable
+            alignment: "right"
+
+            Button {
+                objectName: "softwareUpdateLicense"
+                text: qsTr("License agreement")
+                variant: "ghost"
+                onClicked: root.licenseOpen = !root.licenseOpen
+            }
+        }
+
+        SettingsNote {
+            width: parent.width
+            visible: root.licenseOpen
+            text: qsTr("Installed host packages retain the licenses declared by their distributions.")
         }
 
         SettingsGroup {

@@ -114,9 +114,9 @@ Item {
             compare(sharing.available, true);
             waitForRendering(stage);
             grabImage(shell).save("docs/captures/t226-general-sharing-on.png");
-            var remote = sharing.servicesRepeater.itemAt(1);
+            var remote = findChild(sharing, "sharingToggle-remoteLogin");
             verify(remote);
-            remote.control.children[0].toggle();
+            remote.toggle();
             tryVerify(function() { return Settings.general.sharing.services[1].active === false; });
             wait(250);
             waitForRendering(stage);

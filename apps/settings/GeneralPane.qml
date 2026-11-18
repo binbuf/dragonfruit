@@ -121,6 +121,20 @@ Item {
     }
     readonly property string transferSummary: qsTr("Transfer data or reset settings")
 
+    // T287: the two big-list sub lines the mockup carries. Passwords names the
+    // keyring only while the Secret Service answers; Backups names the
+    // backends the host adapter can detect. Both stay honest in the absence
+    // state instead of repeating a claim the host cannot support.
+    readonly property string passwordsSubLine: root.generalAvailable
+        && root.passwordsView.state === "available"
+        && root.passwordsView.secretServiceAvailable === true
+        ? qsTr("Managed by the system keyring")
+        : qsTr("Unavailable")
+    readonly property string backupSubLine: root.generalAvailable
+        && root.backupView.state === "available"
+        ? qsTr("Restic / Pika / Timeshift destinations")
+        : qsTr("Unavailable")
+
     // Test surface (used by tst_settings_general.qml).
     property alias aboutRow: aboutRow
     property alias updateRow: updateRow
@@ -136,6 +150,8 @@ Item {
     property alias subPaneLoader: subPaneLoader
     property alias listColumn: listColumn
     property alias backButton: backButton
+    property alias generalIntro: generalIntro
+    property alias bigList: bigList
 
     signal navigateRequested(string paneId)
     signal aboutPageOpened()
@@ -208,127 +224,120 @@ Item {
             spacing: Theme.primitive.spacing.lg
             visible: root.subPaneId === ""
 
-            SettingsGroup {
+            SettingsIntro {
+                id: generalIntro
+                objectName: "generalIntro"
+                width: parent.width
+                text: qsTr("Manage your overall setup and preferences for this computer, such as updates, language, sharing, and startup.")
+            }
+
+            SettingsBigList {
+                id: bigList
+                objectName: "generalBigList"
                 width: parent.width
 
-                SettingsRow {
+                SettingsBigRow {
                     id: aboutRow
                     objectName: "generalAboutRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("about")
                     label: qsTr("About")
-                    description: root.aboutSummary
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("about")
                 }
 
-                SettingsRow {
+                SettingsBigRow {
                     id: updateRow
                     objectName: "generalUpdateRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("update")
                     label: qsTr("Software Update")
-                    description: root.updateSummary
-                    showSeparator: false
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("software-update")
                 }
-            }
 
-            SettingsGroup {
-                width: parent.width
-
-                SettingsRow {
+                SettingsBigRow {
                     id: storageRow
                     objectName: "generalStorageRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("storage")
                     label: qsTr("Storage")
-                    description: root.storageSummary
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("storage")
                 }
 
-                SettingsRow {
+                SettingsBigRow {
                     id: passwordsRow
                     objectName: "generalPasswordsRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("password")
                     label: qsTr("Passwords & Keys")
-                    description: root.passwordsSummary
-                    disclosure: true
+                    secondaryText: root.passwordsSubLine
                     onDisclosureClicked: root.openSubPane("passwords")
                 }
 
-                SettingsRow {
+                SettingsBigRow {
                     id: dateTimeRow
                     objectName: "generalDateTimeRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("clock")
                     label: qsTr("Date & Time")
-                    description: root.dateTimeSummary
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("date-time")
                 }
 
-                SettingsRow {
+                SettingsBigRow {
                     id: languageRow
                     objectName: "generalLanguageRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("language")
                     label: qsTr("Language & Region")
-                    description: root.localeSummary
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("language")
                 }
 
-                SettingsRow {
+                SettingsBigRow {
                     id: loginRow
                     objectName: "generalLoginRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("login")
                     label: qsTr("Login Items & Extensions")
-                    description: root.loginSummary
-                    showSeparator: false
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("login")
                 }
-            }
 
-            SettingsGroup {
-                width: parent.width
-
-                SettingsRow {
+                SettingsBigRow {
                     id: sharingRow
                     objectName: "generalSharingRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("sharing")
                     label: qsTr("Sharing")
-                    description: root.sharingSummary
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("sharing")
                 }
 
-                SettingsRow {
+                SettingsBigRow {
                     id: startupRow
                     objectName: "generalStartupRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("startup")
                     label: qsTr("Startup Disk")
-                    description: root.startupSummary
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("startup")
                 }
 
-                SettingsRow {
+                SettingsBigRow {
                     id: backupRow
                     objectName: "generalBackupRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("backup")
                     label: qsTr("Backups")
-                    description: root.backupSummary
-                    disclosure: true
+                    secondaryText: root.backupSubLine
                     onDisclosureClicked: root.openSubPane("backup")
                 }
 
-                SettingsRow {
+                // Device Management is deliberately not rendered: this build
+                // has no Linux MDM/profile owner. `SettingsMap` records the
+                // omission and its reason.
+
+                SettingsBigRow {
                     id: resetRow
                     objectName: "generalResetRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("transfer")
                     label: qsTr("Transfer or Reset")
-                    description: root.transferSummary
-                    showSeparator: false
-                    disclosure: true
                     onDisclosureClicked: root.openSubPane("reset")
                 }
             }

@@ -21,6 +21,8 @@ Item {
     property real segmentHeight: 0
     property real paddingX: Theme.controls.segmentedControl.padding
     property real paddingY: Theme.controls.segmentedControl.padding
+    // The consumer's setting name; the default keeps the generic control.
+    property string accessibleName: qsTr("Segmented control")
 
     signal activated(int index)
     // A disabled segment is a real state, not a dead glyph: consumers show
@@ -132,7 +134,7 @@ Item {
     }
 
     Accessible.role: Accessible.Grouping
-    Accessible.name: qsTr("Segmented control")
+    Accessible.name: root.accessibleName
 
     component Segment: Item {
         id: segment

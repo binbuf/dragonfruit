@@ -24,7 +24,7 @@ QtObject {
     // description). From the captures: General, Accessibility, Notifications,
     // and Privacy & Security. Everything else opens at its first group.
     readonly property var headerPanes: [
-        "general", "accessibility", "notifications", "privacy"
+        "accessibility", "notifications", "privacy"
     ]
 
     function hasHeader(pane) {
@@ -123,8 +123,29 @@ QtObject {
         "printer":       { source: "printer",       gradientStart: "#5c8fd6", gradientEnd: "#2d559c" },
         "control-center": { source: "sliders-horizontal", gradientStart: "#6b7bff", gradientEnd: "#3a3fc0" },
         "software-update": { source: "download-simple", gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" },
-        "input":         { source: "squares-four",  gradientStart: "#8a8f98", gradientEnd: "#4f545c" }
+        "input":         { source: "squares-four",  gradientStart: "#8a8f98", gradientEnd: "#4f545c" },
+        // T287: the General big-list row identities. The vendored glyph set is
+        // the constraint: each entry names the closest shipped Phosphor glyph
+        // (see docs/design/10-design-system.md) and keeps the sidebar tile
+        // treatment, so a row tile and a pane tile are one component.
+        "about":         { source: "info",          gradientStart: "#8e8e93", gradientEnd: "#58585c" },
+        "update":        { source: "download-simple", gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" },
+        "password":      { source: "lock-simple",   gradientStart: "#8e8e93", gradientEnd: "#58585c" },
+        "clock":         { source: "clock-counter-clockwise", gradientStart: "#ff9f0a", gradientEnd: "#c26a00" },
+        "language":      { source: "globe-simple",  gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" },
+        "login":         { source: "power",         gradientStart: "#8e8e93", gradientEnd: "#58585c" },
+        "sharing":       { source: "users",         gradientStart: "#34aadc", gradientEnd: "#0b6fa8" },
+        "startup":       { source: "hard-drive",    gradientStart: "#7d8fa6", gradientEnd: "#4a5b70" },
+        "backup":        { source: "arrow-clockwise", gradientStart: "#34c759", gradientEnd: "#14883a" },
+        "transfer":      { source: "arrows-clockwise", gradientStart: "#a06bff", gradientEnd: "#6236c4" }
     })
+
+    // The General big-list row tile for a row identity (`about`, `update`,
+    // `storage`, `password`, ...). Null means the caller keeps the plain row.
+    function rowStyle(name) {
+        var style = root.categoryStyles[String(name || "")];
+        return style === undefined ? null : style;
+    }
 
     // The `{ source, gradientStart, gradientEnd }` tile style for a pane, keyed
     // by its existing `icon` identity; null means the caller keeps `Icon.qml`.
@@ -180,9 +201,9 @@ QtObject {
           deepLink: "settings://pane/battery",
           absence: "disabled-with-reason" },
         { id: "general", title: qsTr("General"), icon: "general", group: "desktop",
-          description: qsTr("Manage your overall setup and preferences, such "
-                            + "as software updates, your device details, and "
-                            + "more."),
+          // T287: the pane body owns the mockup intro. The shell must not add a
+          // second paragraph above it.
+          description: "",
           shipped: true,
           owner: "settingsd + host/distro adapters",
           deepLink: "settings://pane/general",

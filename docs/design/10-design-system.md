@@ -197,6 +197,27 @@ pane without a mapping keeps the Tabler-backed `Icon` glyph. Geometry comes from
 that one table and are never baked into an SVG (ADR
 [0164](adr/0164-settings-category-tile.md)).
 
+T287 adds the General big-list row identities to the same table. The vendored
+set has no dedicated glyph for several mockup names, so each row uses the
+closest shipped mark; `SettingsPanes.rowStyle(name)` is the lookup:
+
+| Row identity | Glyph | Mockup intent |
+|---|---|---|
+| `about` | `info` | About |
+| `update` | `download-simple` | Software Update |
+| `storage` | `hard-drives` | Storage |
+| `password` | `lock-simple` | Passwords & Keys |
+| `clock` | `clock-counter-clockwise` | Date & Time |
+| `language` | `globe-simple` | Language & Region |
+| `login` | `power` | Login Items & Extensions |
+| `sharing` | `users` | Sharing |
+| `startup` | `hard-drive` | Startup Disk |
+| `backup` | `arrow-clockwise` | Backups |
+| `transfer` | `arrows-clockwise` | Transfer or Reset |
+
+A row tile and the pane tile use the same `SettingsCategoryIcon` container, so
+the identity is consistent even where the glyph is an approximation.
+
 ## Menu layout language
 
 Both menu surfaces — the top bar's dropdowns (`MenuBarMenu`) and pointer

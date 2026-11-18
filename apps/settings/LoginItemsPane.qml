@@ -64,11 +64,16 @@ Item {
         && (Settings.generalWriteState === "denied"
             || Settings.generalWriteState === "failed")
         ? Settings.generalWriteError : ""
+    // Extensions can be read as one flat "By App" list or grouped by the
+    // category the backend reports. Both views are the same managed data.
+    property int extensionMode: 0
 
     property alias autostartRepeater: autostartRepeater
     property alias userUnitRepeater: userUnitRepeater
     property alias addPicker: addPicker
     property alias extensionsRepeater: extensionsRepeater
+    property alias extensionsFlatRepeater: extensionsFlatRepeater
+    property alias extensionModeControl: extensionModeControl
     property alias brokenRow: brokenRow
     property alias startGroup: startGroup
     property alias backgroundGroup: backgroundGroup
@@ -84,18 +89,20 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        Text {
+        SettingsIntro {
             width: parent.width
             text: qsTr("Choose which apps open at login and which background services run with your session.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
         }
 
         SettingsGroup {
             id: startGroup
             width: parent.width
             title: qsTr("Open at Login")
+
+            SettingsNote {
+                width: parent.width
+                text: qsTr("These items will open automatically when you log in.")
+            }
 
             // A broken item is visible, named, and explained. The row stays in
             // the list so the user can remove it.
@@ -203,7 +210,12 @@ Item {
         SettingsGroup {
             id: backgroundGroup
             width: parent.width
-            title: qsTr("Allow in Background")
+            title: qsTr("Background App Activity")
+
+            SettingsNote {
+                width: parent.width
+                text: qsTr("These services can run in the background to sync data and check for updates.")
+            }
 
             Text {
                 width: parent.width
@@ -246,8 +258,42 @@ Item {
             width: parent.width
             title: qsTr("Extensions")
 
+            SettingsNote {
+                width: parent.width
+                text: qsTr("Extensions add extra functionality to the system and apps, and some may run in the background.")
+            }
+
+            SegmentedControl {
+                id: extensionModeControl
+                objectName: "loginExtensionMode"
+                model: [qsTr("By App"), qsTr("By Category")]
+                currentIndex: root.extensionMode
+                accessibleName: qsTr("Group extensions")
+                onActivated: (index) => root.extensionMode = index
+            }
+
+            Repeater {
+                id: extensionsFlatRepeater
+                visible: root.extensionMode === 0
+                model: root.extensions
+                delegate: SettingsRow {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    label: modelData.name
+                    description: modelData.detail
+                    showSeparator: index < root.extensions.length - 1
+                    controlData: Text {
+                        text: qsTr("Managed")
+                        color: Theme.color.textTertiary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                }
+            }
+
             Repeater {
                 id: extensionsRepeater
+                visible: root.extensionMode === 1
                 model: root.extensionGroups
                 delegate: Column {
                     required property var modelData

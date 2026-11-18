@@ -329,7 +329,7 @@ absence path; the executable rows are in `SettingsMap.qml`.
 |---|---|---|---|---|
 | Storage bar chart | Storage chart | Chart | UDisks2 + filesystem usage | `storage.usage` from `df`; stacked categories plus the free remainder, legend, total/used/free in GiB |
 | Categories | Categories | List | filesystem usage | Per-category byte totals and a share bar; never double-counting one device |
-| Manage… | Manage storage… | Button | Files/Storage | Live delegate to the file manager; formatting and partitioning stay in the disk utility |
+| Manage… | Show Detail | Button | Files/Storage | Live delegate to the file manager; formatting and partitioning stay in the disk utility |
 | — | Volumes | List | UDisks2 | Mount/unmount with capacity; absent UDisks2 keeps the group and its reason |
 | — | Removable media | List | UDisks2 | Eject; absent → note |
 | Recommendations | Recommendations | List | filesystem usage | Derived from live byte totals; empty Trash and review categories |
@@ -387,7 +387,7 @@ toggle and authentication is the Options sheet, never a duplicated suffix
 (T270). The Services group keeps its title and absence note when systemd is
 absent.
 
-#### 5.5.8 Backup (Time Machine)
+#### 5.5.8 Backups (Time Machine)
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
@@ -406,12 +406,12 @@ the policy rows stay live (T270).
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Startup Disk | Startup disk | Info + list + Restart | UDisks2/bootloader adapter | Read-only; the boot disk first, every disk with its size in GiB; Restart is one confirmed logind request; no bootloader rewrite (T270) |
-| Transfer or Reset | Transfer | Delegates | distro tools | No migration assistant ships; the two rows are disabled with their reason (T270) |
+| Transfer or Reset | Transfer | Delegates | distro tools | No migration assistant ships; the transfer assistant row is disabled with its reason (T270/T287) |
 | Transfer or Reset | Reset | Destructive button | `settingsd` | `org.dragonfruit.Settings1.Reset`; typed `RESET` confirmation; resets Dragonfruit settings only, never personal files or host configuration (T270) |
 | Erase All Content… | Erase All Content and Settings | Info | — | Omitted with a Linux reason: erasing every file and account is an operating-system reinstall (T270) |
 | Device Management | — | Omit | — | MDM is Apple-specific |
 
-#### 5.5.10 AutoFill & Passwords
+#### 5.5.10 Passwords & Keys
 
 Owner: Secret Service + the user's password manager/browser. Absence: the row
 shows the available provider or a note; it does not store secrets itself.
@@ -434,17 +434,27 @@ About `More Info…` button is live; the regulatory link is the one delegated
 omission.
 
 **T269 status.** The General list is complete and never collapses. About,
-Software Update, Storage, Autofill & Passwords, Date & Time, Language &
-Region, Login Items & Extensions, Sharing, Startup Disk, Backup, and Transfer
-or Reset are always rows; each summary says `Unavailable` only for its own
-absent half. Every row opens an in-place sub-pane, including Software Update
-(no dialog) and Storage (the `storage` id and deep link remain aliases).
+Software Update, Storage, Passwords & Keys, Date & Time, Language & Region,
+Login Items & Extensions, Sharing, Startup Disk, Backups, and Transfer or
+Reset are always rows; each summary says `Unavailable` only for its own absent
+half. Every row opens an in-place sub-pane, including Software Update (no
+dialog) and Storage (the `storage` id and deep link remain aliases).
 About shows model, processor, memory, graphics, serial, OS/kernel/
 architecture, the live screen name/resolution, and volume/free/total, with a
-real System Report sheet. Autofill & Passwords inventories installed providers
-and the Secret Service lock state; `defaults.passwordManager` records the
+real System Report sheet. Passwords & Keys inventories installed providers and
+the Secret Service lock state; `defaults.passwordManager` records the
 delegate, and Settings stores no secret. Transfer or Reset is the last row;
 its content is T270.
+
+**T287 status.** The rendered General list is the mockup intro plus 11
+`SettingsBigRow`s with category tiles and the Passwords & Keys/Backups sub
+lines; Device Management is a `state: "omitted"` map row with the reason “no
+Linux MDM/profile owner in scope”. The ownerless mockup rows are omissions,
+not disabled controls: Energy Compliance, Beta Updates, AutoFill Passwords and
+Keys, Delete After Use, Text in Images, Applications, Translation Languages,
+Content Caching, Bluetooth Sharing, and Remote Application Scripting. Sharing
+renders its Content & Media, Accessories & Internet, and Advanced sections
+from the live service list; a section with no installed service is not drawn.
 
 <a id="pane-appearance"></a>
 ### 5.6 Appearance

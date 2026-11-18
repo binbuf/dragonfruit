@@ -32,6 +32,22 @@ Item {
     readonly property bool use24Hour: Settings.values["clock.use24Hour"] === true
     readonly property bool showSeconds: Settings.values["menu.clock.showSeconds"] === true
     readonly property bool showDate: Settings.values["menu.clock.showDate"] !== false
+    readonly property string sourceLabel: {
+        if (!root.available)
+            return qsTr("Unavailable");
+        if (root.view.source !== undefined && String(root.view.source).length > 0)
+            return String(root.view.source);
+        return root.ntpEnabled ? qsTr("Network time (NTP)") : qsTr("Manual");
+    }
+    // The host reports IANA zone ids, so the city is the zone's last segment.
+    // It is a derivation, never a second list that could disagree.
+    readonly property string cityLabel: {
+        const zone = root.timezone;
+        if (zone.length === 0)
+            return qsTr("Not reported");
+        const parts = zone.split("/");
+        return String(parts[parts.length - 1]).replace(/_/g, " ");
+    }
 
     // T270: one host write's live state. `busy` disables the field while the
     // host answers; a denied/failed write keeps the reason next to the row.
@@ -80,7 +96,10 @@ Item {
     property alias clockOptionsDialog: clockOptionsDialog
     property alias absenceNote: absenceNote
     property alias hostGroup: hostGroup
+    property alias zoneGroup: zoneGroup
     property alias clockGroup: clockGroup
+    property alias sourceRow: sourceRow
+    property alias cityRow: cityRow
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -152,12 +171,9 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        Text {
+        SettingsIntro {
             width: parent.width
             text: qsTr("Set the system clock, time zone, and the format the menu-bar clock uses.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
         }
 
         // ── The host half (timedatectl) ──────────────────────────────────
@@ -168,6 +184,7 @@ Item {
 
             SettingsRow {
                 width: parent.width
+                settingsId: "time.auto"
                 label: qsTr("Set time and date automatically")
                 description: root.available
                     ? (root.ntpEnabled ? qsTr("Using network time")
@@ -184,43 +201,23 @@ Item {
             }
 
             SettingsRow {
+                id: sourceRow
+                objectName: "dateTimeSourceRow"
                 width: parent.width
-                label: qsTr("Time zone")
-                description: root.timezone.length > 0 ? root.timezone : qsTr("Not reported")
-                errorText: root.zoneError
-                controlData: SearchablePicker {
-                    id: timezonePicker
-                    objectName: "dateTimeTimezonePicker"
-                    model: root.timezones
-                    currentIndex: root.currentTimezoneIndex
-                    enabled: root.available
-                    accessibleName: qsTr("Time zone")
-                    placeholderText: qsTr("Search time zones")
-                    emptyText: qsTr("No time zone matches.")
-                    onActivated: (index) => {
-                        if (index >= 0 && index < root.timezones.length)
-                            Settings.setTimezone(root.timezones[index]);
-                    }
+                settingsId: "time.source"
+                label: qsTr("Source")
+                description: qsTr("The time source reported by the host.")
+                controlData: Text {
+                    objectName: "dateTimeSource"
+                    text: root.sourceLabel
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
                 }
             }
 
             SettingsRow {
                 width: parent.width
-                label: qsTr("Set time zone automatically")
-                // No location service is a documented Linux gap. The row is a
-                // real, inert control with the reason, not a hidden row.
-                description: qsTr("Needs a location service, which is not installed.")
-                controlData: Toggle {
-                    id: autoZoneToggle
-                    objectName: "dateTimeAutoZoneToggle"
-                    checked: false
-                    enabled: false
-                    accessibleName: qsTr("Set time zone automatically")
-                }
-            }
-
-            SettingsRow {
-                width: parent.width
+                settingsId: "time.manual"
                 label: qsTr("Date and time")
                 description: root.ntpEnabled
                     ? qsTr("Turn off automatic time to set the clock by hand.")
@@ -269,6 +266,20 @@ Item {
                 }
             }
 
+            SettingsRow {
+                width: parent.width
+                settingsId: "time.hour24"
+                label: qsTr("24-hour time")
+                description: qsTr("The default follows the system locale.")
+                controlData: Toggle {
+                    id: hour24Toggle
+                    objectName: "dateTimeHour24Toggle"
+                    checked: root.use24Hour
+                    accessibleName: qsTr("24-hour time")
+                    onToggled: (checked) => Settings.set("clock.use24Hour", checked)
+                }
+            }
+
             SettingsAbsenceNotice {
                 id: absenceNote
                 objectName: "dateTimeAbsenceNote"
@@ -280,24 +291,71 @@ Item {
             }
         }
 
+        SettingsGroup {
+            id: zoneGroup
+            width: parent.width
+            title: qsTr("Time Zone")
+
+            SettingsRow {
+                width: parent.width
+                settingsId: "time.autoZone"
+                label: qsTr("Set time zone automatically")
+                // No location service is a documented Linux gap. The row is a
+                // real, inert control with the reason, not a hidden row.
+                description: qsTr("Needs a location service, which is not installed.")
+                controlData: Toggle {
+                    id: autoZoneToggle
+                    objectName: "dateTimeAutoZoneToggle"
+                    checked: false
+                    enabled: false
+                    accessibleName: qsTr("Set time zone automatically")
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                settingsId: "time.zone"
+                label: qsTr("Time zone")
+                description: root.timezone.length > 0 ? root.timezone : qsTr("Not reported")
+                errorText: root.zoneError
+                controlData: SearchablePicker {
+                    id: timezonePicker
+                    objectName: "dateTimeTimezonePicker"
+                    model: root.timezones
+                    currentIndex: root.currentTimezoneIndex
+                    enabled: root.available
+                    accessibleName: qsTr("Time zone")
+                    placeholderText: qsTr("Search time zones")
+                    emptyText: qsTr("No time zone matches.")
+                    onActivated: (index) => {
+                        if (index >= 0 && index < root.timezones.length)
+                            Settings.setTimezone(root.timezones[index]);
+                    }
+                }
+            }
+
+            SettingsRow {
+                id: cityRow
+                objectName: "dateTimeCityRow"
+                width: parent.width
+                settingsId: "time.city"
+                label: qsTr("Time zone city")
+                description: qsTr("Derived from the selected time zone.")
+                showSeparator: false
+                controlData: Text {
+                    objectName: "dateTimeCity"
+                    text: root.cityLabel
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+        }
+
         // ── The settingsd clock rows stay live ───────────────────────────
         SettingsGroup {
             id: clockGroup
             width: parent.width
             title: qsTr("Clock Format")
-
-            SettingsRow {
-                width: parent.width
-                label: qsTr("24-hour time")
-                description: qsTr("The default follows the system locale.")
-                controlData: Toggle {
-                    id: hour24Toggle
-                    objectName: "dateTimeHour24Toggle"
-                    checked: root.use24Hour
-                    accessibleName: qsTr("24-hour time")
-                    onToggled: (checked) => Settings.set("clock.use24Hour", checked)
-                }
-            }
 
             SettingsRow {
                 width: parent.width

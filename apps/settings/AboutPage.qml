@@ -70,6 +70,18 @@ Item {
             : "";
         return qsTr("%1 × %2%3").arg(Math.round(width)).arg(Math.round(height)).arg(physical);
     }
+    // The session type is the product's own fact (the desktop is Wayland);
+    // the host identity view does not repeat it.
+    readonly property string sessionLabel: qsTr("Wayland")
+    // Security updates are the update provider's fact. With no provider the
+    // row says so instead of claiming "Automatic".
+    readonly property string securityUpdatesLabel: {
+        if (root.identity.updatesAvailable !== true)
+            return qsTr("Not available");
+        return root.identity.securityCount > 0
+            ? qsTr("Included in the available updates")
+            : qsTr("Automatic");
+    }
 
     signal navigateRequested(string paneId)
 
@@ -103,6 +115,9 @@ Item {
         width: parent.width
         spacing: 18
 
+        // The mockup hero: original Dragonfruit artwork, the machine name, and
+        // the product line. It replaces the old header card; the toolbar title
+        // is the only page title.
         Row {
             width: parent.width; height: 140; spacing: 20
             AboutHero { objectName: "aboutPageHero"; artworkSize: 128 }
@@ -115,7 +130,7 @@ Item {
                     // The map row `about.deviceName` lands on this rendered
                     // field; the label is the row label, not the value.
                     property string settingsId: "about.deviceName"
-                    property string label: qsTr("Device name")
+                    property string label: qsTr("Name")
                     property bool highlighted: false
                     width: parent.width
                     text: root.value("deviceName")
@@ -133,159 +148,206 @@ Item {
                     width: parent.width; elide: Text.ElideRight
                     text: root.productName; color: Theme.color.textSecondary; font.pixelSize: 13
                 }
-                Text {
-                    objectName: "aboutPageModel"
-                    width: parent.width; elide: Text.ElideRight
-                    text: qsTr("Model: %1").arg(root.value("deviceModel"))
-                    color: Theme.color.textSecondary; font.pixelSize: 12
-                    Accessible.description: root.reason("deviceModel")
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+
+            SettingsRow {
+                objectName: "aboutPageHostNameRow"
+                width: parent.width
+                settingsId: "about.deviceName"
+                label: qsTr("Name")
+                controlData: Text {
+                    objectName: "aboutPageHostName"
+                    text: root.value("deviceName")
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
                 }
-                Text {
+            }
+
+            SettingsRow {
+                objectName: "aboutPageProcessorRow"
+                width: parent.width
+                settingsId: "about.hardware"
+                label: qsTr("Processor")
+                controlData: Text {
                     objectName: "aboutPageProcessor"
-                    width: parent.width; elide: Text.ElideRight
-                    text: qsTr("Processor: %1").arg(root.value("processor"))
-                    color: Theme.color.textSecondary; font.pixelSize: 12
-                    Accessible.description: root.reason("processor")
+                    text: root.value("processor")
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
                 }
-                Text {
+            }
+
+            SettingsRow {
+                objectName: "aboutPageMemoryRow"
+                width: parent.width
+                label: qsTr("Memory")
+                controlData: Text {
                     objectName: "aboutPageMemory"
-                    width: parent.width; elide: Text.ElideRight
-                    text: qsTr("Memory: %1").arg(root.value("memoryLabel"))
-                    color: Theme.color.textSecondary; font.pixelSize: 12
-                    Accessible.description: root.reason("memoryLabel")
+                    text: root.value("memoryLabel")
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
                 }
-                Text {
-                    objectName: "aboutPageGraphics"
-                    width: parent.width; elide: Text.ElideRight
-                    text: qsTr("Graphics: %1").arg(root.value("gpuLabel"))
-                    color: Theme.color.textSecondary; font.pixelSize: 12
-                    Accessible.description: root.reason("gpuLabel")
+            }
+
+            SettingsRow {
+                objectName: "aboutPageDiskEncryptionRow"
+                width: parent.width
+                settingsId: "about.diskEncryption"
+                label: qsTr("Disk encryption")
+                description: root.identity.diskEncryption !== undefined
+                    && String(root.identity.diskEncryption).length > 0
+                    ? "" : qsTr("The host does not report disk encryption.")
+                controlData: Text {
+                    objectName: "aboutPageDiskEncryption"
+                    text: root.value("diskEncryption")
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
                 }
-                Text {
-                    objectName: "aboutPageSerial"
-                    width: parent.width; elide: Text.ElideRight
-                    text: qsTr("Serial number: %1").arg(root.identity.hasSerial === true
-                        ? root.value("serial") : qsTr("Not available"))
-                    color: Theme.color.textSecondary; font.pixelSize: 12
-                    Accessible.description: root.identity.hasSerial === true
-                        ? "" : qsTr("The host does not report a serial number.")
+            }
+
+            SettingsRow {
+                objectName: "aboutPageSecurityUpdatesRow"
+                width: parent.width
+                settingsId: "about.securityUpdates"
+                label: qsTr("Security updates")
+                controlData: Text {
+                    objectName: "aboutPageSecurityUpdates"
+                    text: root.securityUpdatesLabel
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
                 }
             }
         }
 
-        Rectangle { width: parent.width; height: 1; color: Theme.color.separator }
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Dragonfruit OS")
 
-        Text {
-            width: parent.width
-            text: qsTr("Operating System")
-            color: Theme.color.textPrimary
-            font.pixelSize: 17
-            font.weight: Font.DemiBold
-            elide: Text.ElideRight
-        }
-        Text {
-            objectName: "aboutPageOs"
-            width: parent.width
-            text: root.value("osLabel")
-            color: Theme.color.textPrimary
-            font.pixelSize: 14
-            wrapMode: Text.WordWrap
-        }
-        Text {
-            objectName: "aboutPageKernel"
-            width: parent.width
-            elide: Text.ElideRight
-            text: qsTr("Kernel: %1 · Architecture: %2")
-                .arg(root.value("kernel")).arg(root.value("architecture"))
-            color: Theme.color.textSecondary
-            font.pixelSize: 12
-        }
-        Text {
-            width: parent.width
-            text: qsTr("Version and compatibility details depend on the installed distribution.")
-            color: Theme.color.textSecondary
-            font.pixelSize: 12
-            wrapMode: Text.WordWrap
-        }
+            SettingsRow {
+                objectName: "aboutPageVersionRow"
+                width: parent.width
+                label: qsTr("Version")
+                controlData: Text {
+                    objectName: "aboutPageOs"
+                    text: root.value("osLabel")
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
 
-        Rectangle { width: parent.width; height: 1; color: Theme.color.separator }
+            SettingsRow {
+                objectName: "aboutPageKernelRow"
+                width: parent.width
+                label: qsTr("Kernel")
+                controlData: Text {
+                    objectName: "aboutPageKernel"
+                    text: qsTr("%1 · %2").arg(root.value("kernel"))
+                        .arg(root.value("architecture"))
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
 
-        Text {
-            width: parent.width
-            text: qsTr("Displays")
-            color: Theme.color.textPrimary
-            font.pixelSize: 17
-            font.weight: Font.DemiBold
-            elide: Text.ElideRight
-        }
-        Text {
-            objectName: "aboutPageDisplay"
-            width: parent.width
-            elide: Text.ElideRight
-            text: qsTr("%1 · %2").arg(root.displayName).arg(root.displayResolution)
-            color: Theme.color.textSecondary
-            font.pixelSize: 13
-            Accessible.description: root.displayName === qsTr("Not available")
-                ? qsTr("The compositor does not report an output name.") : ""
-        }
-        Button {
-            text: qsTr("Display Settings…")
-            onClicked: root.navigateRequested("displays")
+            SettingsRow {
+                objectName: "aboutPageSessionRow"
+                width: parent.width
+                settingsId: "about.session"
+                label: qsTr("Session")
+                controlData: Text {
+                    objectName: "aboutPageSession"
+                    text: root.sessionLabel
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
         }
 
-        Rectangle { width: parent.width; height: 1; color: Theme.color.separator }
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Displays")
 
-        Text {
-            width: parent.width
-            text: qsTr("Storage")
-            color: Theme.color.textPrimary
-            font.pixelSize: 17
-            font.weight: Font.DemiBold
-            elide: Text.ElideRight
-        }
-        Text {
-            objectName: "aboutPageVolume"
-            width: parent.width
-            elide: Text.ElideRight
-            text: qsTr("Volume: %1").arg(root.volumeName)
-            color: Theme.color.textSecondary
-            font.pixelSize: 13
-        }
-        Text {
-            objectName: "aboutPageStorage"
-            width: parent.width
-            elide: Text.ElideRight
-            text: qsTr("%1 of %2 used · %3 available")
-                .arg(root.usedLabel).arg(root.totalLabel).arg(root.freeLabel)
-            color: Theme.color.textSecondary
-            font.pixelSize: 13
-        }
-        Button {
-            text: qsTr("Storage Settings…")
-            onClicked: root.navigateRequested("storage")
+            SettingsRow {
+                objectName: "aboutPageDisplayRow"
+                width: parent.width
+                leadingIcon: "displays"
+                label: qsTr("Built-in display")
+                description: root.displayName
+                trailingAction: qsTr("Display Settings…")
+                controlData: Text {
+                    objectName: "aboutPageDisplay"
+                    text: root.displayResolution
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+                onTrailingActionClicked: root.navigateRequested("displays")
+            }
         }
 
-        Rectangle { width: parent.width; height: 1; color: Theme.color.separator }
+        SettingsGroup {
+            width: parent.width
+            title: qsTr("Storage")
 
-        Row {
-            spacing: 10
+            SettingsRow {
+                objectName: "aboutPageStorageRow"
+                width: parent.width
+                leadingIcon: "storage"
+                label: qsTr("System")
+                description: qsTr("%1 of %2 used · %3 available")
+                    .arg(root.usedLabel).arg(root.totalLabel).arg(root.freeLabel)
+                trailingAction: qsTr("Storage Settings…")
+                controlData: Text {
+                    objectName: "aboutPageVolume"
+                    text: qsTr("Volume: %1").arg(root.volumeName)
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+                onTrailingActionClicked: root.navigateRequested("storage")
+            }
+        }
+
+        SettingsFooter {
+            width: parent.width
+            alignment: "right"
+
             Button {
                 id: systemReportButton
                 objectName: "aboutPageSystemReport"
                 property string settingsId: "about.moreInfo"
-                property string label: qsTr("More Info…")
+                property string label: qsTr("System Report…")
                 text: qsTr("System Report…")
                 onClicked: root.openReport()
             }
-            Button {
-                text: qsTr("Licenses…")
-                variant: "ghost"
-                onClicked: root.licensesOpen = !root.licensesOpen
+        }
+
+        // The mockup's about-foot links. Energy Compliance is omitted because
+        // this build has no host energy document; the map records the reason.
+        Row {
+            width: parent.width
+            spacing: Theme.primitive.spacing.md
+
+            Text {
+                objectName: "aboutFootLicenses"
+                text: qsTr("Software License")
+                color: Theme.color.accent
+                font.pixelSize: Theme.primitive.font.sizeSm
+                TapHandler { onTapped: root.licensesOpen = !root.licensesOpen }
             }
-            Button {
-                text: qsTr("Regulatory information…")
-                variant: "ghost"
-                onClicked: root.regulatoryOpen = !root.regulatoryOpen
+            Text {
+                objectName: "aboutFootRegulatory"
+                text: qsTr("Regulatory Certification")
+                color: Theme.color.accent
+                font.pixelSize: Theme.primitive.font.sizeSm
+                TapHandler { onTapped: root.regulatoryOpen = !root.regulatoryOpen }
+            }
+            Text {
+                objectName: "aboutFootAgreement"
+                text: qsTr("License Agreement")
+                color: Theme.color.accent
+                font.pixelSize: Theme.primitive.font.sizeSm
+                TapHandler { onTapped: root.licensesOpen = !root.licensesOpen }
             }
         }
         Text {
@@ -293,6 +355,7 @@ Item {
             width: parent.width
             text: qsTr("Dragonfruit source files use their declared open source licenses; installed host packages retain their own licenses.")
             color: Theme.color.textSecondary
+            font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
         }
         Text {
@@ -300,12 +363,14 @@ Item {
             width: parent.width
             text: qsTr("No regulatory certification data is available from this host.")
             color: Theme.color.textSecondary
+            font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
         }
         Text {
+            objectName: "aboutPageCopyright"
             width: parent.width
             elide: Text.ElideRight
-            text: qsTr("Dragonfruit Linux · Open source system software")
+            text: qsTr("© 2026 Dragonfruit contributors. All rights reserved.")
             color: Theme.color.textTertiary
             font.pixelSize: 11
         }

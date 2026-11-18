@@ -72,7 +72,8 @@ Item {
     property alias keyringRow: keyringRow
     property alias delegateButton: delegateButton
     property alias noProviderNote: noProviderNote
-    property alias secretNote: secretNote
+    property alias secretNote: keyringBanner.bodyText
+    property alias keyringBanner: keyringBanner
     property alias absenceNote: absenceNote
 
     implicitWidth: 480
@@ -96,19 +97,18 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        Text {
-            id: secretNote
-            objectName: "passwordsSecretNote"
+        SettingsBanner {
+            id: keyringBanner
+            objectName: "passwordsKeyringBanner"
             width: parent.width
-            text: qsTr("Settings stores no passwords or keys. Credentials stay in the password manager you choose.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
+            title: qsTr("Passwords and keys are stored in the system keyring")
+            text: qsTr("Use the system keyring to manage passwords, passkeys, and verification codes for apps and websites. Settings stores no credentials.")
+            visible: root.available
         }
 
         SettingsGroup {
             width: parent.width
-            title: qsTr("Passwords")
+            title: qsTr("Keyring")
             visible: root.available
 
             Text {
@@ -125,16 +125,18 @@ Item {
             }
 
             SettingsRow {
+                objectName: "passwordsProviderRow"
                 width: parent.width
-                label: qsTr("Autofill source")
-                description: qsTr("The provider Autofill delegates to. No secret is stored here.")
+                settingsId: "passwords.source"
+                label: qsTr("Password provider")
+                description: qsTr("The provider Passwords & Keys delegates to. No secret is stored here.")
                 controlData: Select {
                     id: sourceSelect
                     objectName: "passwordsSourceSelect"
                     model: root.sourceModel
                     currentIndex: root.sourceIndex
                     enabled: root.providers.length > 0
-                    accessibleName: qsTr("Autofill source")
+                    accessibleName: qsTr("Password provider")
                     onActivated: (index) => Settings.set(
                         "defaults.passwordManager", root.sourceModel[index].value)
                 }
@@ -144,7 +146,9 @@ Item {
                 id: keyringRow
                 objectName: "passwordsKeyringRow"
                 width: parent.width
-                label: qsTr("Keyring")
+                settingsId: "passwords.keyring"
+                leadingIcon: "lock"
+                label: qsTr("System Keyring")
                 description: root.secretServiceAvailable
                     ? qsTr("The Secret Service is running.")
                     : qsTr("The Secret Service is not running, so providers cannot share saved credentials.")
@@ -188,14 +192,15 @@ Item {
             }
         }
 
-        Row {
-            spacing: Theme.primitive.spacing.md
+        SettingsFooter {
+            width: parent.width
             visible: root.available
+            alignment: "right"
 
             Button {
                 id: delegateButton
                 objectName: "passwordsDelegate"
-                text: qsTr("Open Password Manager")
+                text: qsTr("Open Passwords…")
                 variant: "primary"
                 enabled: root.canDelegate
                 onClicked: root.delegate()

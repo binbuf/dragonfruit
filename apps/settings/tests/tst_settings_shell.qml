@@ -117,19 +117,22 @@ Item {
             var visible = shell.visiblePanes;
             verify(SettingsPanes.categoryStyle(visible[0]) !== null,
                    "Wi-Fi must carry a category tile");
-            // General opens with intro text, not a header card. The toolbar
-            // title is the only pane title.
+            // T287: General's intro lives in the pane body, not the shell.
             shell.selectPane("general");
             waitForRendering(stage);
-            verify(shell.intro.visible);
-            compare(shell.intro.text, SettingsPanes.paneById("general").description);
+            verify(!shell.intro.visible,
+                   "the shell must not paint a second General intro");
+            verify(shell.paneBody.item.generalIntro.visible);
+            compare(shell.paneBody.item.generalIntro.text,
+                    "Manage your overall setup and preferences for this computer, "
+                    + "such as updates, language, sharing, and startup.");
             compare(shell.titleBar.title, "General");
         }
 
         function test_no_header_card_and_intro_only_where_the_pane_has_copy() {
-            // T286: the four header-card panes keep their copy as intro text;
-            // every other pane opens directly at its first group.
-            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("general")), true);
+            // T286: the three remaining header-card panes keep their copy as
+            // intro text; General's copy moved into its big-list body in T287.
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("general")), false);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("accessibility")), true);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("notifications")), true);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("privacy")), true);
@@ -140,15 +143,15 @@ Item {
             verify(!shell.intro.visible,
                    "the Appearance pane must not draw an intro or header card");
 
-            // The intro is plain text, not the removed header card.
+            // The General intro is plain text inside the pane body, not the
+            // removed header card.
             shell.selectPane("general");
             waitForRendering(stage);
-            compare(shell.intro.titleText, undefined,
-                    "the intro has no header title");
-            verify(shell.intro.height > 0);
-            verify(shell.intro.height < 120,
+            verify(!shell.intro.visible);
+            verify(shell.paneBody.item.generalIntro.height > 0);
+            verify(shell.paneBody.item.generalIntro.height < 120,
                    "the intro is body copy, not a header card (height="
-                   + shell.intro.height + ")");
+                   + shell.paneBody.item.generalIntro.height + ")");
         }
 
         // -- Shell opens --------------------------------------------------------
@@ -499,9 +502,14 @@ Item {
                         "the detail toolbar starts at the sidebar split");
                 compare(shell.detailScroll.height, height - 52,
                         "820 - 52 = 768 pt content viewport");
-                verify(shell.intro.visible,
-                       "General keeps its intro copy at " + width + "x" + height);
-                compare(shell.intro.width, shell.detailContent.width);
+                verify(!shell.intro.visible,
+                       "General's intro is in the pane body at "
+                       + width + "x" + height);
+                verify(shell.paneBody.item.generalIntro.visible,
+                       "General keeps its pane-body intro at "
+                       + width + "x" + height);
+                compare(shell.paneBody.item.generalIntro.width,
+                        shell.detailContent.width);
 
                 // T286: the title is left-aligned after the history pill.
                 compare(shell.titleBar.titleAlignment, "left");

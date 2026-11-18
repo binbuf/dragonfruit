@@ -49,7 +49,37 @@ Item {
     readonly property bool hostnameBusy: Settings.generalWriteOperation === "hostname"
         && Settings.generalWriteState === "busy"
 
-    property alias servicesRepeater: servicesRepeater
+    // The mockup's three sections. Only services the host reports are drawn;
+    // a section with no installed service is not a fake row.
+    readonly property var serviceSections: {
+        var content = [];
+        var accessories = [];
+        var advanced = [];
+        for (var i = 0; i < root.services.length; ++i) {
+            var service = root.services[i];
+            var id = String(service.id || "");
+            if (id === "file" || id === "media" || id === "screen"
+                    || id === "cache")
+                content.push(service);
+            else if (id === "bluetooth" || id === "printer"
+                     || id === "internet")
+                accessories.push(service);
+            else
+                advanced.push(service);
+        }
+        return [
+            { id: "content", title: qsTr("Content & Media"), items: content },
+            { id: "accessories", title: qsTr("Accessories & Internet"), items: accessories },
+            { id: "advanced", title: qsTr("Advanced"), items: advanced }
+        ];
+    }
+
+    property alias contentRepeater: contentRepeater
+    property alias accessoriesRepeater: accessoriesRepeater
+    property alias advancedRepeater: advancedRepeater
+    property alias contentGroup: contentGroup
+    property alias accessoriesGroup: accessoriesGroup
+    property alias advancedGroup: advancedGroup
     property alias emptyNote: emptyNote
     property alias absenceNote: absenceNote
     property alias hostnameField: hostnameField
@@ -157,10 +187,10 @@ Item {
             }
         }
 
-        SettingsGroup {
+        Column {
             id: servicesGroup
             width: parent.width
-            title: qsTr("Services")
+            spacing: Theme.primitive.spacing.lg
 
             Text {
                 id: emptyNote
@@ -173,37 +203,42 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Repeater {
-                id: servicesRepeater
-                model: root.services
-                delegate: SettingsRow {
-                    required property var modelData
-                    required property int index
-                    width: parent.width
-                    label: modelData.name
-                    description: modelData.description
-                    showSeparator: index < root.services.length - 1
-                    controlData: Row {
-                        spacing: Theme.primitive.spacing.xs
+            SettingsGroup {
+                id: contentGroup
+                width: parent.width
+                title: qsTr("Content & Media")
+                visible: root.serviceSections[0].items.length > 0
 
-                        Toggle {
-                            objectName: "sharingToggle" + index
-                            checked: modelData.active === true
-                            enabled: root.available && modelData.canToggle !== false
-                            accessibleName: modelData.name
-                            onToggled: (checked) => Settings.setSharingEnabled(
-                                modelData.id, checked)
-                        }
+                Repeater {
+                    id: contentRepeater
+                    model: root.serviceSections[0].items
+                    delegate: serviceRow
+                }
+            }
 
-                        Button {
-                            objectName: "sharingOptions" + index
-                            text: qsTr("Options…")
-                            variant: "ghost"
-                            enabled: root.available
-                            accessibleName: qsTr("%1 options").arg(modelData.name)
-                            onClicked: root.showOptions(modelData)
-                        }
-                    }
+            SettingsGroup {
+                id: accessoriesGroup
+                width: parent.width
+                title: qsTr("Accessories & Internet")
+                visible: root.serviceSections[1].items.length > 0
+
+                Repeater {
+                    id: accessoriesRepeater
+                    model: root.serviceSections[1].items
+                    delegate: serviceRow
+                }
+            }
+
+            SettingsGroup {
+                id: advancedGroup
+                width: parent.width
+                title: qsTr("Advanced")
+                visible: root.serviceSections[2].items.length > 0
+
+                Repeater {
+                    id: advancedRepeater
+                    model: root.serviceSections[2].items
+                    delegate: serviceRow
                 }
             }
 
@@ -224,6 +259,38 @@ Item {
                 reason: root.view.error !== undefined && root.view.error !== null
                     ? String(root.view.error)
                     : qsTr("Sharing is unavailable because systemd is not reachable.")
+            }
+        }
+    }
+
+    Component {
+        id: serviceRow
+        SettingsRow {
+            required property var modelData
+            required property int index
+            width: parent.width
+            label: modelData.name
+            description: modelData.description
+            controlData: Row {
+                spacing: Theme.primitive.spacing.xs
+
+                Toggle {
+                    objectName: "sharingToggle-" + modelData.id
+                    checked: modelData.active === true
+                    enabled: root.available && modelData.canToggle !== false
+                    accessibleName: modelData.name
+                    onToggled: (checked) => Settings.setSharingEnabled(
+                        modelData.id, checked)
+                }
+
+                Button {
+                    objectName: "sharingOptions-" + modelData.id
+                    text: qsTr("Options…")
+                    variant: "ghost"
+                    enabled: root.available
+                    accessibleName: qsTr("%1 options").arg(modelData.name)
+                    onClicked: root.showOptions(modelData)
+                }
             }
         }
     }

@@ -132,6 +132,7 @@ Item {
     property alias usageGroup: usageGroup
     property alias usageRepeater: usageRepeater
     property alias usageAbsenceNote: usageAbsenceNote
+    property alias categoriesGroup: categoriesGroup
     property alias manageRow: manageRow
     property alias manageButton: manageButton
     property alias usageChart: usageChart
@@ -185,11 +186,11 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        // ── Usage categories (T226) ───────────────────────────────────────
+        // ── Usage summary (T226; T287 bar + legend) ──────────────────────
         SettingsGroup {
             id: usageGroup
             width: parent.width
-            title: qsTr("Usage")
+            title: qsTr("Storage")
             // The filesystem read is independent of UDisks2; the chart keeps
             // its group title and explains its own absence rather than
             // collapsing the pane to one note.
@@ -283,6 +284,54 @@ Item {
                 font.pixelSize: Theme.primitive.font.sizeSm
             }
 
+            SettingsAbsenceNotice {
+                id: usageAbsenceNote
+                objectName: "storageUsageAbsenceNote"
+                visible: !root.usageAvailable
+                kind: "disabled-with-reason"
+                reason: qsTr("Filesystem usage is unavailable because df did not answer. "
+                             + "Volume rows and the Show Detail action stay live.")
+            }
+        }
+
+        // ── Recommendations ───────────────────────────────────────────────
+        SettingsGroup {
+            id: recommendationsGroup
+            objectName: "storageRecommendations"
+            width: parent.width
+            title: qsTr("Recommendations")
+            visible: root.usageAvailable && root.recommendations.length > 0
+
+            Repeater {
+                id: recommendationsRepeater
+                model: root.recommendations
+                delegate: SettingsRow {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    showSeparator: index < root.recommendations.length - 1
+                    label: modelData.label
+                    description: modelData.description
+                }
+            }
+        }
+
+        // ── Categories (only the sampler's real categories) ───────────────
+        SettingsGroup {
+            id: categoriesGroup
+            objectName: "storageCategories"
+            width: parent.width
+            title: qsTr("Categories")
+
+            Text {
+                width: parent.width
+                visible: !root.usageAvailable
+                text: qsTr("No category sampler answered, so the category rows are omitted.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
             Repeater {
                 id: usageRepeater
                 visible: root.usageAvailable
@@ -315,20 +364,11 @@ Item {
                 }
             }
 
-            SettingsAbsenceNotice {
-                id: usageAbsenceNote
-                objectName: "storageUsageAbsenceNote"
-                visible: !root.usageAvailable
-                kind: "disabled-with-reason"
-                reason: qsTr("Filesystem usage is unavailable because df did not answer. "
-                             + "Volume rows and the Manage action stay live.")
-            }
-
             SettingsRow {
                 id: manageRow
                 objectName: "storageManageRow"
                 width: parent.width
-                label: qsTr("Manage storage…")
+                label: qsTr("Show Detail")
                 settingsId: "manage"
                 owner: "Files / disk utility"
                 settingsKey: "storage.manage"
@@ -339,32 +379,10 @@ Item {
                 controlData: Button {
                     id: manageButton
                     objectName: "storageManageButton"
-                    text: qsTr("Open")
+                    text: qsTr("Show Detail")
                     enabled: true
-                    accessibleName: qsTr("Open the Files app to manage storage")
+                    accessibleName: qsTr("Open the Files app to show storage detail")
                     onClicked: Qt.openUrlExternally("file:///")
-                }
-            }
-        }
-
-        // ── Recommendations ───────────────────────────────────────────────
-        SettingsGroup {
-            id: recommendationsGroup
-            objectName: "storageRecommendations"
-            width: parent.width
-            title: qsTr("Recommendations")
-            visible: root.usageAvailable && root.recommendations.length > 0
-
-            Repeater {
-                id: recommendationsRepeater
-                model: root.recommendations
-                delegate: SettingsRow {
-                    required property var modelData
-                    required property int index
-                    width: parent.width
-                    showSeparator: index < root.recommendations.length - 1
-                    label: modelData.label
-                    description: modelData.description
                 }
             }
         }

@@ -217,18 +217,15 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        Text {
+        SettingsIntro {
             width: parent.width
             text: qsTr("Choose the system language and the formats the desktop uses.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
         }
 
         SettingsGroup {
             id: languageGroup
             width: parent.width
-            title: qsTr("Language")
+            title: qsTr("Preferred Languages")
 
             Repeater {
                 id: languageRepeater
@@ -300,13 +297,28 @@ Item {
                 }
             }
 
+            SettingsAbsenceNotice {
+                id: absenceNote
+                objectName: "languageAbsenceNote"
+                kind: "disabled-with-reason"
+                show: !root.available
+                reason: root.view.error !== undefined && root.view.error !== null
+                    ? String(root.view.error)
+                    : qsTr("The system locale is unavailable because localectl is not running. The format rows and preview still apply.")
+            }
+        }
+
+        SettingsGroup {
+            id: regionGroup
+            width: parent.width
+            title: qsTr("Region")
+
             SettingsRow {
                 width: parent.width
                 settingsId: "language.region"
                 label: qsTr("Region")
                 description: qsTr("The locale whose region and formatting the desktop uses.")
                 errorText: root.languageError
-                showSeparator: false
                 controlData: SearchablePicker {
                     id: regionPicker
                     objectName: "languageRegionPicker"
@@ -327,22 +339,6 @@ Item {
                     }
                 }
             }
-
-            SettingsAbsenceNotice {
-                id: absenceNote
-                objectName: "languageAbsenceNote"
-                kind: "disabled-with-reason"
-                show: !root.available
-                reason: root.view.error !== undefined && root.view.error !== null
-                    ? String(root.view.error)
-                    : qsTr("The system locale is unavailable because localectl is not running. The format rows and preview still apply.")
-            }
-        }
-
-        SettingsGroup {
-            id: regionGroup
-            width: parent.width
-            title: qsTr("Region")
 
             SettingsRow {
                 width: parent.width
@@ -441,6 +437,49 @@ Item {
             width: parent.width
             title: qsTr("Preview")
 
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Date")
+                controlData: Text {
+                    text: root.previewDate()
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Time")
+                controlData: Text {
+                    text: new Date(2026, 10, 7, 9, 41, 0).toLocaleTimeString(
+                        root.previewLocale, Locale.ShortFormat)
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Currency")
+                controlData: Text {
+                    text: (1234.56).toLocaleCurrencyString(root.previewLocale)
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Number")
+                controlData: Text {
+                    text: root.previewNumber()
+                    color: Theme.color.textPrimary
+                    font.pixelSize: Theme.controls.button.fontSize
+                }
+            }
+
+            // One combined line keeps the long-string and temperature checks
+            // readable in a single measured row.
             Text {
                 id: previewText
                 objectName: "languagePreview"
@@ -449,22 +488,6 @@ Item {
                     .arg(root.previewDate())
                     .arg(root.previewNumber())
                     .arg(root.previewTemperature())
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                width: parent.width
-                text: qsTr("Medium: %1").arg(root.previewDateFor("medium"))
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                width: parent.width
-                text: qsTr("Long: %1").arg(root.previewDateFor("long"))
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap

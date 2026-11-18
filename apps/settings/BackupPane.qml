@@ -106,6 +106,7 @@ Item {
     property alias autoToggle: autoToggle
     property alias runButton: runButton
     property alias restoreButton: restoreButton
+    property alias addBackupButton: addBackupButton
     property alias messageText: messageText
     property alias noBackendNote: noBackendNote
     property alias absenceNote: absenceNote
@@ -131,18 +132,20 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        Text {
+        SettingsIntro {
             width: parent.width
-            text: qsTr("Dragonfruit delegates the backup itself to restic, Pika Backup, or Timeshift. Choose a backend and the policy here.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
+            text: qsTr("Backups keep local snapshots and hourly copies. Dragonfruit delegates the backup itself to restic, Pika Backup, or Timeshift; choose a backend and the policy here.")
         }
 
         SettingsGroup {
             id: policyGroup
             width: parent.width
             title: qsTr("Backups")
+
+            SettingsNote {
+                width: parent.width
+                text: qsTr("Backups keep hourly copies for the past 24 hours, daily copies for the past month, and weekly copies for previous months. The oldest snapshots are removed as space is needed.")
+            }
 
             Text {
                 id: noBackendNote
@@ -317,8 +320,18 @@ Item {
             wrapMode: Text.WordWrap
         }
 
-        Row {
-            spacing: Theme.primitive.spacing.md
+        SettingsFooter {
+            width: parent.width
+            alignment: "right"
+
+            Button {
+                id: addBackupButton
+                objectName: "backupAddDiskButton"
+                text: qsTr("Add Backup Disk…")
+                visible: !root.backendReady
+                enabled: root.chooserAvailable
+                onClicked: Settings.chooseBackupDestination()
+            }
 
             Button {
                 id: runButton
@@ -336,6 +349,11 @@ Item {
                 enabled: root.canRestore
                 onClicked: Settings.openBackupRestore()
             }
+        }
+
+        SettingsNote {
+            width: parent.width
+            text: qsTr("Backups are stored by the selected system backup service. Choose a destination to keep hourly, daily, and weekly snapshots of this computer.")
         }
     }
 }

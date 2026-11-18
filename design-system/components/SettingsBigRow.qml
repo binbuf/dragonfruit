@@ -14,6 +14,7 @@ SettingsRow {
     property string secondaryText: ""
 
     rowHeight: Theme.controls.settingsRow.bigHeight
+    fixedRowHeight: true
     description: root.secondaryText
     disclosure: true
     leadingTile: root.category

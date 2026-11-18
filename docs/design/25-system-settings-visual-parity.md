@@ -114,8 +114,9 @@ than a flat list with no structure.
 
 The mockup opens most panes with intro text, not a large header card. The
 General, Accessibility, Notifications, and Privacy header cards are removed.
-Their descriptions become `SettingsIntro` text. The toolbar title is the only
-pane title.
+Their descriptions become `SettingsIntro` text. T287 moves General's intro
+into the pane body above its big list; the other three stay shell intros. The
+toolbar title is the only pane title.
 
 The mockup uses three content shapes:
 
@@ -380,6 +381,36 @@ Sub-pane dispositions:
   exists, show backend/destination/schedule rows in the same section.
 - **Transfer or Reset**: keep transfer-to/from, reset settings, and the
   explicit “Erase All Content and Settings is not offered on Linux” note.
+
+**Landed (T287).** The General list is the mockup intro plus an 11-row
+`SettingsBigList`: About, Software Update, Storage, Passwords & Keys, Date &
+Time, Language & Region, Login Items & Extensions, Sharing, Startup Disk,
+Backups, Transfer or Reset. Every row is a 52 pt `SettingsBigRow` with a 29 pt
+category tile; Passwords & Keys and Backups carry the mockup sub lines, and
+the other rows stay single-line. Device Management is not rendered: it is a
+`state: "omitted"` row in `SettingsMap` with the reason “no Linux MDM/profile
+owner in scope”. The row tiles map to the closest vendored Phosphor glyphs
+(`info`, `download-simple`, `hard-drives`, `lock-simple`, `clock-counter-clockwise`,
+`globe-simple`, `power`, `users`, `hard-drive`, `arrow-clockwise`,
+`arrows-clockwise`); `SettingsPanes.rowStyle(name)` resolves them.
+
+The sub-pane dispositions landed as written: About uses the hero and the five
+host rows plus Dragonfruit OS/Displays/Storage and the about-foot links;
+Software Update is a provider card with Also Available only when the provider
+lists items and Beta Updates only when a beta channel is advertised; Storage
+keeps the real sampler's categories and shows the summary bar/legend; Passwords
+& Keys keeps the keyring banner, provider selection and keyring status;
+Date & Time adds Source and the derived Time zone city; Language & Region adds
+the date/time/currency/number previews; Login Items adds Background App
+Activity and the By App/By Category extension view; Sharing renders Content &
+Media, Accessories & Internet, and Advanced from the live service list;
+Startup Disk adds the intro, selected-disk note and an Advanced group for
+firmware/Secure Boot; Backups keeps the empty/backend states and Add Backup
+Disk; Transfer or Reset names the transfer assistant and the Linux erase
+limitation. The ownerless rows the mockup still lists are map omissions, not
+disabled controls: Energy Compliance, Beta Updates, AutoFill Passwords and
+Keys, Delete After Use, Text in Images, Applications, Translation Languages,
+Content Caching, Bluetooth Sharing, and Remote Application Scripting.
 
 ### 5.2 Connectivity
 

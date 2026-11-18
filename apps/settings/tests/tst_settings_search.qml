@@ -253,6 +253,11 @@ Item {
                 { query: "internet accounts", pane: "online-accounts" },
                 { query: "passwords & keys", pane: "general" },
                 { query: "backups", pane: "general" },
+                { query: "keyring", pane: "general" },
+                { query: "restic", pane: "general" },
+                { query: "timeshift", pane: "general" },
+                { query: "date and time", pane: "general" },
+                { query: "language", pane: "general" },
                 { query: "screen saver", pane: "screen-saver" },
                 { query: "autofill", pane: "general" }
             ];
@@ -831,8 +836,8 @@ Item {
         }
 
         function test_pane_headers_stay_reference_scoped() {
-            compare(SettingsPanes.headerPanes.length, 4);
-            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("general")), true);
+            compare(SettingsPanes.headerPanes.length, 3);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("general")), false);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("accessibility")), true);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("notifications")), true);
             compare(SettingsPanes.hasHeader(SettingsPanes.paneById("privacy")), true);

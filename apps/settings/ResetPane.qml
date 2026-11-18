@@ -34,41 +34,31 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        Text {
+        SettingsIntro {
             width: parent.width
             text: qsTr("Move your information to another computer, or reset Dragonfruit's own settings.")
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeSm
-            wrapMode: Text.WordWrap
         }
 
         SettingsGroup {
             id: transferGroup
             width: parent.width
-            title: qsTr("Transfer")
+            title: qsTr("Data Transfer")
 
-            SettingsRow {
+            SettingsNote {
                 width: parent.width
-                label: qsTr("Transfer to another computer")
-                description: qsTr("No migration assistant is installed. Copy your files from your home folder to move them.")
-                controlData: Button {
-                    objectName: "resetTransferButton"
-                    text: qsTr("Open…")
-                    enabled: false
-                    accessibleName: qsTr("Transfer to another computer")
-                }
+                text: qsTr("Use the transfer assistant to move data, settings, and applications to this computer from another computer, a backup, or a disk. You can also transfer information from this computer to another.")
             }
 
             SettingsRow {
                 width: parent.width
-                label: qsTr("Transfer from another computer")
-                description: qsTr("Mount the other computer's drive and copy the files you need into your home folder.")
+                label: qsTr("Transfer data, settings, and applications")
+                description: qsTr("No migration assistant is installed. Copy your files from your home folder to move them.")
                 showSeparator: false
                 controlData: Button {
-                    objectName: "resetTransferFromButton"
-                    text: qsTr("Open…")
+                    objectName: "resetTransferButton"
+                    text: qsTr("Open Transfer Assistant…")
                     enabled: false
-                    accessibleName: qsTr("Transfer from another computer")
+                    accessibleName: qsTr("Open Transfer Assistant")
                 }
             }
         }
@@ -94,6 +84,15 @@ Item {
                     }
                 }
             }
+
+            // Erase All Content is the one mockup row with no Linux owner: it
+            // is a reinstall, not a settings action, so the page says so.
+            SettingsNote {
+                id: eraseNote
+                objectName: "resetEraseNote"
+                width: parent.width
+                text: qsTr("Erase All Content and Settings is not offered on Linux. Erasing every file and account is a reinstall of the operating system, not a settings action, so this page never pretends to do it.")
+            }
         }
 
         Text {
@@ -105,21 +104,6 @@ Item {
             color: Theme.color.textSecondary
             font.pixelSize: Theme.primitive.font.sizeSm
             wrapMode: Text.WordWrap
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: qsTr("Erase All Content and Settings")
-
-            Text {
-                id: eraseNote
-                objectName: "resetEraseNote"
-                width: parent.width
-                text: qsTr("Not offered on Linux. Erasing every file and account is a reinstall of the operating system, not a settings action, so this page never pretends to do it.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
         }
     }
 

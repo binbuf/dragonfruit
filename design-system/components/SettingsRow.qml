@@ -46,6 +46,10 @@ Item {
     // T286: the row height variant. 0 derives it from the anatomy: 33 pt
     // plain, 52 pt with a description, 53 pt with a leading tile.
     property real rowHeight: 0
+    // T287: a big-list row keeps its 52 pt token even when the optional second
+    // line makes the label column a pixel taller. The row still grows for a
+    // wrapped localized label unless this is set.
+    property bool fixedRowHeight: false
     // T286: children declared inside a `SettingsRow` land in the control slot,
     // so a variant file can extend the anatomy without a second widget.
     default property alias contentData: controlSlot.data
@@ -123,7 +127,8 @@ Item {
         : root.description.length > 0 ? Theme.controls.settingsRow.descriptionHeight
         : root.leadingWidth > 0 ? Theme.controls.settingsRow.iconHeight
         : Theme.controls.settingsRow.height
-    implicitHeight: Math.max(root.tokenHeight,
+    implicitHeight: root.fixedRowHeight ? root.tokenHeight
+                                        : Math.max(root.tokenHeight,
                              labelColumn.implicitHeight + 2 * Theme.primitive.spacing.sm)
     activeFocusOnTab: true
 

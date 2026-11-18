@@ -775,13 +775,13 @@ own state; one absent half does not hide the list.
 | About | About | Disclosure | host info | ship |
 | Software Update | Software Update | Disclosure | PackageKit/native provider | ship |
 | Storage | Storage | Disclosure | UDisks2 + `df` | ship |
-| Autofill & Passwords | Passwords & autofill | Disclosure | Secret Service/portal | adapt/delegate |
+| Autofill & Passwords | Passwords & Keys | Disclosure | Secret Service/portal | adapt/delegate |
 | Date & Time | Date & Time | Disclosure | `timedatectl` + settingsd | ship |
 | Language & Region | Language & Region | Disclosure | `localectl` + settingsd | ship |
 | Login Items & Extensions | Login Items & Extensions | Disclosure | XDG autostart + systemd + portals | ship |
 | Sharing | Sharing | Disclosure | Samba/NFS/CUPS/SSH/portal | ship/adapt |
 | Startup Disk | Startup Disk | Disclosure | UDisks2/bootloader | adapt/read-only |
-| Time Machine | Backup | Disclosure | restic/Pika/Timeshift | adapt/delegate |
+| Time Machine | Backups | Disclosure | restic/Pika/Timeshift | adapt/delegate |
 | Transfer or Reset | Transfer or Reset | Disclosure | settingsd reset + delegates | adapt |
 | Device Management | — | Omit | — | omit: no MDM |
 | AppleCare & Warranty | — | Omit | — | omit: no service |
@@ -792,10 +792,18 @@ the host identity, the distribution provider is a second, independently
 optional half, and every row's summary says `Unavailable` only for its own
 missing owner. Every row opens an in-place sub-pane; Software Update is no
 longer a dialog, Storage keeps `settings://pane/storage` as an alias, and
-Autofill & Passwords inventories installed Secret Service providers without
+Passwords & Keys inventories installed Secret Service providers without
 storing a secret. Transfer or Reset is the last row; its content is T270.
 About shows the model, processor, memory, graphics, serial, OS, real display
 name/resolution, and volume/free/total, with a real System Report sheet.
+
+**Superseded by T287 (2026-11-17 mockup).** The rendered list is now the
+mockup intro plus 11 rows (Device Management omitted), the rows are 52 pt
+`SettingsBigRow`s with category tiles, and the sub-panes follow the section
+inventory in
+[25-system-settings-visual-parity.md](25-system-settings-visual-parity.md)
+§5.1. The tables below remain the row-ownership record; where a label or row
+differs, §5.1 wins.
 
 #### 4.6.1 About — T269
 
@@ -824,7 +832,7 @@ name/resolution, and volume/free/total, with a real System Report sheet.
 | Beta updates | — | Omit | — | omit: no beta channel |
 | Last checked / progress | Last checked / progress | Info | provider | ship |
 
-#### 4.6.3 Autofill & Passwords — T269
+#### 4.6.3 Passwords & Keys — T269/T287
 
 Owner: Secret Service/portal. Absence: provider list with a note; no secret
 storage in Settings.

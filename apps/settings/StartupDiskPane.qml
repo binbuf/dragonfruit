@@ -64,6 +64,8 @@ Item {
     property alias readOnlyNote: readOnlyNote
     property alias absenceNote: absenceNote
     property alias diskListGroup: diskListGroup
+    property alias advancedGroup: advancedGroup
+    property alias selectedNote: selectedNote
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -74,6 +76,11 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
+        SettingsIntro {
+            width: parent.width
+            text: qsTr("Select the system you want to use to start up your computer.")
+        }
+
         SettingsGroup {
             width: parent.width
             title: qsTr("Startup Disk")
@@ -82,14 +89,31 @@ Item {
                 id: diskRow
                 objectName: "startupDiskRow"
                 width: parent.width
+                settingsId: "reset.startupDisk"
+                leadingIcon: "drive-harddisk"
                 label: qsTr("Startup disk")
                 description: root.diskDetail
+                showSeparator: false
                 controlData: Text {
                     text: root.bootLabel.length > 0 ? root.bootLabel : "—"
                     color: Theme.color.textPrimary
                     font.pixelSize: Theme.controls.button.fontSize
                 }
             }
+        }
+
+        SettingsNote {
+            id: selectedNote
+            objectName: "startupSelectedNote"
+            width: parent.width
+            text: qsTr("You have selected %1.").arg(
+                root.bootLabel.length > 0 ? root.bootLabel : qsTr("this disk"))
+        }
+
+        SettingsGroup {
+            id: advancedGroup
+            width: parent.width
+            title: qsTr("Advanced")
 
             SettingsRow {
                 width: parent.width
@@ -115,6 +139,7 @@ Item {
                 id: bootModeRow
                 objectName: "startupBootModeRow"
                 width: parent.width
+                settingsId: "startup.advanced"
                 label: qsTr("Firmware")
                 controlData: Text {
                     text: String(root.view.bootMode || "—")
@@ -178,47 +203,43 @@ Item {
             }
         }
 
-        SettingsGroup {
+        SettingsNote {
+            id: readOnlyNote
+            objectName: "startupReadOnlyNote"
             width: parent.width
+            text: qsTr("Changing the startup disk is not supported here. Use the firmware boot menu at power-on.")
+        }
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Restart")
-                description: qsTr("Restarts this computer. The startup disk is chosen in the firmware boot menu.")
-                errorText: root.writeError
-                showSeparator: false
-                controlData: Button {
-                    id: restartButton
-                    objectName: "startupRestartButton"
-                    text: root.restarting ? qsTr("Restarting…") : qsTr("Restart…")
-                    enabled: root.available && !root.restarting
-                    onClicked: root.restartDialog.show()
-                }
+        Text {
+            width: parent.width
+            visible: root.writeError.length > 0
+            text: root.writeError
+            color: Theme.color.danger
+            font.pixelSize: Theme.primitive.font.sizeSm
+            wrapMode: Text.WordWrap
+        }
+
+        SettingsFooter {
+            width: parent.width
+            alignment: "right"
+
+            Button {
+                id: restartButton
+                objectName: "startupRestartButton"
+                text: root.restarting ? qsTr("Restarting…") : qsTr("Restart…")
+                enabled: root.available && !root.restarting
+                onClicked: root.restartDialog.show()
             }
         }
 
-        SettingsGroup {
-            width: parent.width
-
-            Text {
-                id: readOnlyNote
-                objectName: "startupReadOnlyNote"
-                width: parent.width
-                text: qsTr("Changing the startup disk is not supported here. Use the firmware boot menu at power-on.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-            }
-
-            SettingsAbsenceNotice {
-                id: absenceNote
-                objectName: "startupAbsenceNote"
-                kind: "read-only"
-                show: !root.available
-                reason: root.view.error !== undefined && root.view.error !== null
-                    ? String(root.view.error)
-                    : qsTr("Startup Disk information is unavailable on this system.")
-            }
+        SettingsAbsenceNotice {
+            id: absenceNote
+            objectName: "startupAbsenceNote"
+            kind: "read-only"
+            show: !root.available
+            reason: root.view.error !== undefined && root.view.error !== null
+                ? String(root.view.error)
+                : qsTr("Startup Disk information is unavailable on this system.")
         }
     }
 
