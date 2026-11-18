@@ -4,10 +4,10 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Lock
 
-// Lock-screen tests (T-12.3a): the first-party lock view renders the account,
-// clock, lock glyph, and password-field placeholder the shell controller drives
-// it with, and exposes the locked session to assistive technology. Runs
-// headless on the offscreen platform.
+// Lock-screen tests (T-12.3a): the first-party lock view renders the wallpaper,
+// date/time, account portrait, password field, and circular enter control the
+// shell controller drives it with, and exposes the locked session to assistive
+// technology. Runs headless on the offscreen platform.
 Item {
     id: stage
     width: 1280
@@ -28,19 +28,102 @@ Item {
             return lock;
         }
 
-        function test_renders_the_account_clock_and_lock_glyph() {
+        function test_renders_the_account_clock_and_password_controls() {
             var lock = make({
                 userName: "ada",
-                timeText: "09:41",
-                dateText: "Monday 1 January",
+                timeText: "9:41",
+                dateText: "Tue Nov 17",
                 message: ""
             });
 
-            compare(findChild(lock, "lockClock").text, "09:41");
-            compare(findChild(lock, "lockDate").text, "Monday 1 January");
+            compare(findChild(lock, "lockClock").text, "9:41");
+            compare(findChild(lock, "lockDate").text, "Tue Nov 17");
             compare(findChild(lock, "lockUserName").text, "ada");
-            verify(findChild(lock, "lockCard") !== null);
-            verify(findChild(lock, "lockGlyph") !== null);
+            verify(findChild(lock, "lockPasswordField") !== null);
+            verify(findChild(lock, "lockEnterButton") !== null);
+            compare(findChild(lock, "lockEnterGlyph").text, "\u2192");
+        }
+
+        // The reference layout puts the date above the time, both horizontally
+        // centred at the top of the output.
+        function test_clock_is_date_above_time_at_the_top_center() {
+            var lock = make({ timeText: "9:41", dateText: "Tue Nov 17" });
+            var date = findChild(lock, "lockDate");
+            var clock = findChild(lock, "lockClock");
+
+            verify(date.y + date.height <= clock.y + 0.5);
+            verify(date.mapToItem(lock, 0, 0).y < lock.height * 0.35);
+            verify(Math.abs(date.mapToItem(lock, date.width / 2, 0).x
+                            - lock.width / 2) <= 1);
+            verify(Math.abs(clock.mapToItem(lock, clock.width / 2, 0).x
+                            - lock.width / 2) <= 1);
+        }
+
+        // The portrait and password field form the bottom-centre block; the
+        // field follows the portrait and the enter control sits inside its
+        // right edge.
+        function test_portrait_and_password_field_are_at_the_bottom_center() {
+            var lock = make({ userName: "ada" });
+            var avatar = findChild(lock, "lockAvatar");
+            var field = findChild(lock, "lockPasswordField");
+            var button = findChild(lock, "lockEnterButton");
+
+            verify(Math.abs(avatar.mapToItem(lock, avatar.width / 2, 0).x
+                            - lock.width / 2) <= 1);
+            verify(Math.abs(field.mapToItem(lock, field.width / 2, 0).x
+                            - lock.width / 2) <= 1);
+            verify(avatar.mapToItem(lock, 0, avatar.height).y
+                   <= field.mapToItem(lock, 0, 0).y + 0.5);
+            verify(field.mapToItem(lock, 0, field.height).y > lock.height * 0.6);
+
+            var buttonRect = button.mapToItem(lock, 0, 0);
+            var fieldRect = field.mapToItem(lock, 0, 0);
+            verify(buttonRect.x >= fieldRect.x);
+            verify(buttonRect.y >= fieldRect.y);
+            verify(buttonRect.x + button.width <= fieldRect.x + field.width);
+            verify(buttonRect.y + button.height <= fieldRect.y + field.height);
+            // Fitted to the inside of the right edge, not floating outside.
+            verify(fieldRect.x + field.width - (buttonRect.x + button.width)
+                   <= button.width / 2);
+        }
+
+        function test_enter_control_submits_the_captured_password() {
+            var lock = make({ authEnabled: true, passwordLength: 2 });
+            var seen = 0;
+            lock.submitPasswordRequested.connect(function() { seen += 1; });
+
+            findChild(lock, "lockEnterButton").clicked();
+            compare(seen, 1);
+
+            // The control is inert while PAM is busy or the field is empty.
+            lock.authBusy = true;
+            findChild(lock, "lockEnterButton").clicked();
+            compare(seen, 1);
+
+            lock.authBusy = false;
+            lock.passwordLength = 0;
+            findChild(lock, "lockEnterButton").clicked();
+            compare(seen, 1);
+        }
+
+        // The opaque lock surface draws the session's own wallpaper instead of
+        // leaving the desktop visible underneath it.
+        function test_wallpaper_is_the_lock_background() {
+            var lock = make({ wallpaperColor: "#336699", wallpaperFit: "fill" });
+            var colorFill = findChild(lock, "lockWallpaperColor");
+            var image = findChild(lock, "lockWallpaper");
+            verify(colorFill.visible);
+            verify(Math.abs(colorFill.color.r - 0.2) < 0.01);
+            verify(Math.abs(colorFill.color.g - 0.4) < 0.01);
+            verify(Math.abs(colorFill.color.b - 0.6) < 0.01);
+            compare(image.fillMode, Image.PreserveAspectCrop);
+
+            lock.wallpaperFit = "fit";
+            compare(image.fillMode, Image.PreserveAspectFit);
+            lock.wallpaperFit = "stretch";
+            compare(image.fillMode, Image.Stretch);
+            lock.wallpaperFit = "center";
+            compare(image.fillMode, Image.Pad);
         }
 
         // T227: the Screen Saver pane's clock options drive the lock scene.

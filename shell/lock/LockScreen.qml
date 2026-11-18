@@ -4,14 +4,24 @@ import Dragonfruit
 
 // The first-party lock screen (T-12.3a): a pure view the shell controller
 // renders into the compositor's `ext-session-lock-v1` surfaces, one per
-// output, so the locked session covers every screen. Authentication (PAM) and
-// input capture land in T-12.3b/T-12.3c; this slice presents the fail-secure
-// lock and its identity.
+// output. The layout follows the reference lock screen: the live wallpaper
+// fills the output, the date and large time sit at the top center, and the
+// account portrait, password field, and optional power actions sit at the
+// bottom center. Authentication (PAM) and input capture land in
+// T-12.3b/T-12.3c; this slice presents the fail-secure lock and its identity.
 Item {
     id: root
 
-    // The signed-in account shown on the card. The session owner is fixed for
-    // T-12.3a; PAM authentication (T-12.3b) binds the real user.
+    // The wallpaper behind the locked session. The shell pushes the active
+    // Space's source (or the configured fallback), the Space's solid colour,
+    // and the fit mode. An empty source with no colour falls back to the
+    // neutral gradient below.
+    property url wallpaperSource: ""
+    property color wallpaperColor: "transparent"
+    property string wallpaperFit: "fill"
+
+    // The signed-in account shown on the lock scene. The session owner is
+    // fixed for T-12.3a; PAM authentication (T-12.3b) binds the real user.
     property string userName: qsTr("Dragonfruit")
     // Live clock, driven by the shell controller each render.
     property string timeText: ""
@@ -31,6 +41,10 @@ Item {
     property bool showPowerButtons: true
 
     signal powerActionRequested(string action)
+    // The circular enter control inside the password field. The shell owns
+    // the captured password buffer, so the scene only reports the intent.
+    signal submitPasswordRequested()
+
     // Authentication state (T-12.3b). Until then the field is present but
     // inert, so the layout is final.
     property bool authEnabled: false
@@ -41,6 +55,34 @@ Item {
     // itself stays in the shell controller; the scene only draws the mask.
     property int passwordLength: 0
 
+    // The reference layout scales with the output instead of a fixed card.
+    readonly property int timePixelSize: Math.round(Math.max(56,
+        Math.min(root.height * 0.14, root.width * 0.16)))
+    readonly property int datePixelSize: Math.round(Math.max(
+        Theme.primitive.font.sizeLg,
+        Math.min(root.height * 0.024, root.width * 0.03)))
+    readonly property int avatarSize: Math.round(Math.max(64,
+        Math.min(88, root.height * 0.12)))
+    readonly property int fieldWidth: Math.max(0, Math.min(320,
+        root.width - 2 * Theme.primitive.spacing.xl))
+    readonly property string userInitial: root.userName.length > 0
+        ? root.userName.charAt(0).toUpperCase() : "?"
+    // `df_workspace.wallpaper_fit` spells the four modes; map them onto the
+    // QML image fill modes without letting the lock scene re-implement the
+    // compositor's sampling geometry.
+    readonly property int wallpaperFillMode: {
+        switch (root.wallpaperFit) {
+        case "fit":
+            return Image.PreserveAspectFit;
+        case "stretch":
+            return Image.Stretch;
+        case "center":
+            return Image.Pad;
+        default:
+            return Image.PreserveAspectCrop;
+        }
+    }
+
     function passwordMask() {
         var mask = "";
         for (var i = 0; i < root.passwordLength; ++i)
@@ -48,259 +90,382 @@ Item {
         return mask;
     }
 
+    function submitPassword() {
+        if (!root.authEnabled || root.authBusy || root.passwordLength <= 0)
+            return;
+        root.submitPasswordRequested();
+    }
+
+    clip: true
     Accessible.role: Accessible.Pane
     Accessible.name: qsTr("Lock screen")
     Accessible.description: root.message.length > 0 ? root.message
                                                      : qsTr("Session locked.")
 
-    // The dimmed backdrop. The compositor composites this above the desktop,
-    // so it is opaque and hides every window underneath.
+    // The neutral fallback when no wallpaper source or solid colour exists.
     Rectangle {
+        id: wallpaperFallback
         anchors.fill: parent
         gradient: Gradient {
             GradientStop {
                 position: 0.0
-                color: Qt.darker(Theme.color.surfaceSunken, 1.15)
+                color: Theme.primitive.color.neutral900
             }
             GradientStop {
                 position: 1.0
-                color: Theme.color.surfaceSunken
+                color: Theme.primitive.color.neutral950
             }
         }
     }
 
-    // The clock: large, high on the screen, the primary lock-screen anchor.
+    // A Space with no image keeps its solid colour; draw it under the image so
+    // transparent or letterboxed wallpapers still read as the session's own.
+    Rectangle {
+        id: wallpaperColorFill
+        objectName: "lockWallpaperColor"
+        anchors.fill: parent
+        color: root.wallpaperColor
+        visible: root.wallpaperColor.a > 0
+    }
+
+    Image {
+        id: wallpaperImage
+        objectName: "lockWallpaper"
+        // `center` keeps the image at its native size and centres it; every
+        // other mode fills the output and lets the fill mode crop or letterbox.
+        anchors.centerIn: parent
+        width: root.wallpaperFit === "center" ? implicitWidth : root.width
+        height: root.wallpaperFit === "center" ? implicitHeight : root.height
+        source: root.wallpaperSource
+        fillMode: root.wallpaperFillMode
+        asynchronous: false
+        cache: true
+        smooth: true
+        mipmap: true
+        visible: status === Image.Ready
+    }
+
+    // The reference lock screen keeps the wallpaper visible but tames its top
+    // and bottom edges so the white clock and controls stay legible on any
+    // image.
+    Rectangle {
+        id: wallpaperScrim
+        objectName: "lockWallpaperScrim"
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop {
+                position: 0.0
+                color: Qt.rgba(0, 0, 0, 0.72)
+            }
+            GradientStop {
+                position: 0.40
+                color: Qt.rgba(0, 0, 0, 0.32)
+            }
+            GradientStop {
+                position: 0.60
+                color: Qt.rgba(0, 0, 0, 0.12)
+            }
+            GradientStop {
+                position: 1.0
+                color: Qt.rgba(0, 0, 0, 0.60)
+            }
+        }
+    }
+
+    // Top center: date first, then the large time, as in the reference lock
+    // screen. The clock is the primary anchor; the date is the smaller line.
     Column {
         id: clock
         visible: root.showClock
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: Math.max(Theme.primitive.spacing.xxxl,
-                                    Math.round(parent.height * 0.12))
-        spacing: Theme.primitive.spacing.xxs
+                                    Math.round(parent.height * 0.09))
+        spacing: Theme.primitive.spacing.xs
 
-        Text {
-            objectName: "lockClock"
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: root.timeText
-            color: Theme.color.textPrimary
-            font.pixelSize: Math.round(Theme.primitive.font.sizeDisplay * 2.4)
-            font.weight: Theme.primitive.font.weightSemibold
-        }
-        Text {
+        WallpaperLabel {
             objectName: "lockDate"
             visible: root.showDate
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.dateText
-            color: Theme.color.textSecondary
-            font.pixelSize: Theme.primitive.font.sizeXl
+            color: Qt.rgba(1, 1, 1, 0.88)
+            font.pixelSize: root.datePixelSize
             font.weight: Theme.primitive.font.weightMedium
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark
+            shadowOpacity: Theme.controls.wallpaperText.increaseContrastShadowOpacity
+            outlineOpacity: Theme.controls.wallpaperText.increaseContrastOutlineOpacity
         }
-    }
-
-    // The identity card: avatar, name, password field, and status line.
-    Shadow {
-        anchors.fill: card
-        radius: card.radius
-        level: "overlay"
-    }
-
-    Rectangle {
-        id: card
-        objectName: "lockCard"
-        anchors.centerIn: parent
-        width: Math.min(360, parent.width - 2 * Theme.primitive.spacing.xl)
-        height: content.implicitHeight + 2 * Theme.primitive.spacing.xl
-        radius: Theme.primitive.radius.xl
-        color: Theme.color.surfaceElevated
-        border.width: Theme.controls.window.borderWidth
-        border.color: Theme.color.border
-        antialiasing: true
-
-        Column {
-            id: content
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.margins: Theme.primitive.spacing.xl
-            spacing: Theme.primitive.spacing.md
-
-            // The avatar disc with the account's initial.
-            Rectangle {
-                id: avatar
-                objectName: "lockAvatar"
-                visible: root.showUserNameAndPhoto
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 72
-                height: 72
-                radius: width / 2
-                color: Theme.color.accent
-
-                Text {
-                    anchors.centerIn: parent
-                    text: root.userName.length > 0 ? root.userName.charAt(0).toUpperCase() : "?"
-                    color: Theme.color.accentContent
-                    font.pixelSize: Theme.primitive.font.sizeDisplay
-                    font.weight: Theme.primitive.font.weightSemibold
-                }
-            }
-
-            Text {
-                objectName: "lockUserName"
-                visible: root.showUserNameAndPhoto
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: root.userName
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.primitive.font.sizeXl
-                font.weight: Theme.primitive.font.weightSemibold
-            }
-
-            // The password field. T-12.3b wires it to PAM; here it is the
-            // visual contract the compositor's input capture will feed.
-            Rectangle {
-                id: field
-                objectName: "lockPasswordField"
-                width: parent.width
-                height: 34
-                radius: Theme.primitive.radius.md
-                color: Theme.color.controlFill
-                border.width: root.authEnabled ? Theme.controls.window.borderWidth : 0
-                border.color: Theme.color.border
-                antialiasing: true
-
-                Text {
-                    objectName: "lockPasswordPlaceholder"
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.primitive.spacing.md
-                    visible: root.passwordLength === 0
-                    text: root.authBusy ? qsTr("Authenticating…")
-                                        : (root.authEnabled ? qsTr("Enter Password")
-                                                            : qsTr("Press Enter to unlock"))
-                    color: Theme.color.textTertiary
-                    font.pixelSize: Theme.primitive.font.sizeMd
-                }
-
-                // The masked password (T-12.3c): captured keys are shown as
-                // bullets, never as text and never echoed.
-                Text {
-                    objectName: "lockPasswordMask"
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.primitive.spacing.md
-                    visible: root.passwordLength > 0
-                    text: root.passwordMask()
-                    color: Theme.color.textPrimary
-                    font.pixelSize: Theme.primitive.font.sizeMd
-                }
-            }
-
-            Text {
-                objectName: "lockPasswordHint"
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: root.showPasswordHints && root.passwordHint.length > 0
-                text: root.passwordHint
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-                horizontalAlignment: Text.AlignHCenter
-                width: parent.width
-            }
-
-            Text {
-                objectName: "lockMessage"
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: root.message.length > 0
-                text: root.message
-                color: Theme.color.danger
-                font.pixelSize: Theme.primitive.font.sizeSm
-            }
-
-            Text {
-                objectName: "lockScreenMessage"
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: root.showLockMessage && root.lockMessageText.length > 0
-                text: root.lockMessageText
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-                horizontalAlignment: Text.AlignHCenter
-                width: parent.width
-            }
-        }
-    }
-
-    // The lock glyph above the card, so the state reads at a glance.
-    Item {
-        id: glyph
-        objectName: "lockGlyph"
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: card.top
-        anchors.bottomMargin: Theme.primitive.spacing.xl
-        width: 44
-        height: 52
-
-        Rectangle {
-            // The shackle.
+        WallpaperLabel {
+            objectName: "lockClock"
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            width: 34
-            height: 34
-            radius: width / 2
-            color: "transparent"
-            border.width: 5
-            border.color: Theme.color.textSecondary
-            antialiasing: true
-        }
-        Rectangle {
-            // The body, drawn over the shackle's lower half.
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            width: 44
-            height: 34
-            radius: Theme.primitive.radius.md
-            color: Theme.color.textPrimary
-            antialiasing: true
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 6
-                height: 6
-                radius: width / 2
-                color: Theme.color.surfaceElevated
-            }
+            text: root.timeText
+            color: "#ffffff"
+            font.pixelSize: root.timePixelSize
+            font.weight: Theme.primitive.font.weightMedium
+            font.features: ({ "tnum": 1 })
+            font.letterSpacing: -Math.round(root.timePixelSize * 0.02)
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark
+            shadowOpacity: Theme.controls.wallpaperText.increaseContrastShadowOpacity
+            outlineOpacity: Theme.controls.wallpaperText.increaseContrastOutlineOpacity
         }
     }
 
-    // T229a: the reference power row. The shell performs the action through
-    // logind; the scene only reports intent.
-    Row {
-        id: powerRow
-        objectName: "lockPowerRow"
-        visible: root.showPowerButtons
+    // Bottom center: portrait, name, password field, status lines, and the
+    // optional power actions.
+    Column {
+        id: bottomContent
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Math.max(Theme.primitive.spacing.xl,
-                                       Math.round(parent.height * 0.06))
+                                       Math.round(parent.height * 0.055))
         spacing: Theme.primitive.spacing.md
 
-        Button {
-            objectName: "lockSleepButton"
-            text: qsTr("Sleep")
-            accessibleName: qsTr("Sleep")
-            onClicked: root.powerActionRequested("sleep")
+        // The portrait disc with the account's initial.
+        Rectangle {
+            id: avatar
+            objectName: "lockAvatar"
+            visible: root.showUserNameAndPhoto
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: root.avatarSize
+            height: width
+            radius: width / 2
+            color: Theme.color.accent
+            border.width: 2
+            border.color: Qt.rgba(1, 1, 1, 0.42)
+            antialiasing: true
+
+            Text {
+                anchors.centerIn: parent
+                text: root.userInitial
+                color: Theme.color.accentContent
+                font.pixelSize: Math.round(parent.width * 0.42)
+                font.weight: Theme.primitive.font.weightSemibold
+            }
         }
-        Button {
-            objectName: "lockRestartButton"
-            text: qsTr("Restart")
-            accessibleName: qsTr("Restart")
-            onClicked: root.powerActionRequested("restart")
+
+        WallpaperLabel {
+            objectName: "lockUserName"
+            visible: root.showUserNameAndPhoto
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: root.userName
+            color: "#ffffff"
+            font.pixelSize: Theme.primitive.font.sizeXl
+            font.weight: Theme.primitive.font.weightSemibold
+            width: Math.min(implicitWidth,
+                            root.width - 2 * Theme.primitive.spacing.xl)
+            elide: Text.ElideRight
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark
+            shadowOpacity: Theme.controls.wallpaperText.increaseContrastShadowOpacity
+            outlineOpacity: Theme.controls.wallpaperText.increaseContrastOutlineOpacity
         }
-        Button {
-            objectName: "lockShutDownButton"
-            text: qsTr("Shut Down")
-            accessibleName: qsTr("Shut Down")
-            onClicked: root.powerActionRequested("shut-down")
+
+        // The password field: a grey, semi-transparent pill with the circular
+        // enter control fitted inside its right edge. T-12.3b wires it to PAM;
+        // here it is the visual contract the compositor's input capture feeds.
+        Rectangle {
+            id: field
+            objectName: "lockPasswordField"
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: root.fieldWidth
+            height: 44
+            radius: height / 2
+            color: Qt.rgba(0.18, 0.18, 0.20, 0.58)
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, root.authEnabled ? 0.30 : 0.18)
+            antialiasing: true
+
+            Text {
+                objectName: "lockPasswordPlaceholder"
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.primitive.spacing.lg
+                anchors.right: enterButton.left
+                anchors.rightMargin: Theme.primitive.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.passwordLength === 0
+                text: root.authBusy ? qsTr("Authenticating…")
+                                    : (root.authEnabled ? qsTr("Enter Password")
+                                                        : qsTr("Press Enter to unlock"))
+                color: Qt.rgba(1, 1, 1, 0.78)
+                font.pixelSize: Theme.primitive.font.sizeLg
+                elide: Text.ElideRight
+            }
+
+            // The masked password (T-12.3c): captured keys are shown as
+            // bullets, never as text and never echoed.
+            Text {
+                objectName: "lockPasswordMask"
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.primitive.spacing.lg
+                anchors.right: enterButton.left
+                anchors.rightMargin: Theme.primitive.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.passwordLength > 0
+                text: root.passwordMask()
+                color: "#ffffff"
+                font.pixelSize: Theme.primitive.font.sizeLg
+                font.letterSpacing: 2
+                elide: Text.ElideRight
+            }
+
+            Rectangle {
+                id: enterButton
+                objectName: "lockEnterButton"
+                signal clicked()
+
+                readonly property real inset: Math.max(4, Math.round(parent.height * 0.1))
+                anchors.right: parent.right
+                anchors.rightMargin: inset
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.height - 2 * inset
+                height: width
+                radius: width / 2
+                color: enterTap.pressed ? Qt.rgba(1, 1, 1, 0.98)
+                       : enterHover.hovered ? Qt.rgba(1, 1, 1, 0.94)
+                       : Qt.rgba(1, 1, 1, 0.86)
+                border.width: 1
+                border.color: Qt.rgba(0, 0, 0, 0.10)
+                opacity: root.authBusy ? 0.55
+                         : (root.passwordLength > 0 ? 1.0 : 0.82)
+                activeFocusOnTab: true
+                antialiasing: true
+
+                Text {
+                    objectName: "lockEnterGlyph"
+                    anchors.centerIn: parent
+                    text: "\u2192"
+                    color: Theme.primitive.color.neutral900
+                    font.pixelSize: Math.round(parent.height * 0.52)
+                    font.weight: Theme.primitive.font.weightSemibold
+                }
+
+                HoverHandler { id: enterHover }
+                TapHandler {
+                    id: enterTap
+                    onTapped: enterButton.clicked()
+                }
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Unlock")
+                Accessible.onPressAction: enterButton.clicked()
+
+                onClicked: root.submitPassword()
+            }
+        }
+
+        WallpaperLabel {
+            objectName: "lockPasswordHint"
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: root.showPasswordHints && root.passwordHint.length > 0
+            text: root.passwordHint
+            color: Qt.rgba(1, 1, 1, 0.82)
+            font.pixelSize: Theme.primitive.font.sizeSm
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            width: Math.min(root.fieldWidth, root.width - 2 * Theme.primitive.spacing.xl)
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark
+            shadowOpacity: Theme.controls.wallpaperText.increaseContrastShadowOpacity
+            outlineOpacity: Theme.controls.wallpaperText.increaseContrastOutlineOpacity
+        }
+
+        WallpaperLabel {
+            objectName: "lockMessage"
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: root.message.length > 0
+            text: root.message
+            color: "#ffb8c0"
+            font.pixelSize: Theme.primitive.font.sizeSm
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            width: Math.min(root.fieldWidth, root.width - 2 * Theme.primitive.spacing.xl)
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark
+            shadowOpacity: Theme.controls.wallpaperText.increaseContrastShadowOpacity
+            outlineOpacity: Theme.controls.wallpaperText.increaseContrastOutlineOpacity
+        }
+
+        WallpaperLabel {
+            objectName: "lockScreenMessage"
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: root.showLockMessage && root.lockMessageText.length > 0
+            text: root.lockMessageText
+            color: Qt.rgba(1, 1, 1, 0.82)
+            font.pixelSize: Theme.primitive.font.sizeSm
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            width: Math.min(root.fieldWidth, root.width - 2 * Theme.primitive.spacing.xl)
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark
+            shadowOpacity: Theme.controls.wallpaperText.increaseContrastShadowOpacity
+            outlineOpacity: Theme.controls.wallpaperText.increaseContrastOutlineOpacity
+        }
+
+        // T229a: the reference power row. The shell performs the action
+        // through logind; the scene only reports intent.
+        Row {
+            id: powerRow
+            objectName: "lockPowerRow"
+            visible: root.showPowerButtons
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Theme.primitive.spacing.sm
+
+            LockPowerButton {
+                objectName: "lockSleepButton"
+                text: qsTr("Sleep")
+                onClicked: root.powerActionRequested("sleep")
+            }
+            LockPowerButton {
+                objectName: "lockRestartButton"
+                text: qsTr("Restart")
+                onClicked: root.powerActionRequested("restart")
+            }
+            LockPowerButton {
+                objectName: "lockShutDownButton"
+                text: qsTr("Shut Down")
+                onClicked: root.powerActionRequested("shut-down")
+            }
+        }
+    }
+
+    // The lock screen's own action button: a translucent capsule with the
+    // wallpaper shadow treatment, so the power row reads on any background.
+    component LockPowerButton: Item {
+        id: action
+
+        property string text: ""
+        signal clicked()
+
+        width: actionLabel.implicitWidth + 2 * Theme.primitive.spacing.md
+        height: 28
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: action.text
+        Accessible.onPressAction: action.clicked()
+
+        Rectangle {
+            anchors.fill: parent
+            radius: height / 2
+            color: actionTap.pressed ? Qt.rgba(1, 1, 1, 0.24)
+                   : actionHover.hovered ? Qt.rgba(1, 1, 1, 0.16)
+                   : Qt.rgba(0, 0, 0, 0.30)
+            border.width: action.activeFocus ? Theme.controls.focusRing.width : 1
+            border.color: action.activeFocus ? Theme.color.focusRing
+                                             : Qt.rgba(1, 1, 1, 0.20)
+            antialiasing: true
+        }
+
+        WallpaperLabel {
+            id: actionLabel
+            anchors.centerIn: parent
+            text: action.text
+            color: "#ffffff"
+            font.pixelSize: Theme.primitive.font.sizeSm
+            font.weight: Theme.primitive.font.weightMedium
+            shadowColor: Theme.controls.wallpaperText.shadowColorOnDark
+            shadowOpacity: Theme.controls.wallpaperText.increaseContrastShadowOpacity
+            outlineOpacity: Theme.controls.wallpaperText.increaseContrastOutlineOpacity
+        }
+
+        HoverHandler { id: actionHover }
+        TapHandler {
+            id: actionTap
+            onTapped: action.clicked()
         }
     }
 }

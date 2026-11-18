@@ -2059,6 +2059,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_lockItem->setParentItem(m_lockWindow->contentItem());
     connect(lockObject, SIGNAL(powerActionRequested(QString)), this,
             SLOT(onLockPowerAction(QString)));
+    connect(lockObject, SIGNAL(submitPasswordRequested()), this,
+            SLOT(onLockSubmitRequested()));
     bindChromePacing(m_producers.value(m_lockWindow), QStringLiteral("lock"),
                      [this]() { repaintLockSurfaces(); });
     connect(m_protocol, &ShellProtocol::sessionLocked, this, &ShellController::onSessionLocked);
@@ -6614,6 +6616,21 @@ void ShellController::onLockPowerAction(const QString &action)
     performSessionAction(action);
 }
 
+void ShellController::onLockSubmitRequested()
+{
+    // The circular enter control is the pointer equivalent of Return: it
+    // submits the captured buffer and clears the mask. An empty field or an
+    // in-flight PAM attempt is inert, matching `onLockKeyEvent`.
+    if (!m_lockActive || !m_lockItem || m_lockPassword.isEmpty()
+        || m_lockItem->property("authBusy").toBool()) {
+        return;
+    }
+    const QString password = m_lockPassword;
+    m_lockPassword.clear();
+    m_lockItem->setProperty("passwordLength", 0);
+    submitLockPassword(password);
+}
+
 void ShellController::requestDevReturn(){
     // T-12.6b: the "Quit to <previous desktop>" row runs the dev harness's
     // return, which restores the previous default session, disarms autologin,
@@ -6676,6 +6693,14 @@ void ShellController::applyLockData()
     const QString lockMessage = values.value(QStringLiteral("lock.message")).toString();
     const bool showPowerButtons =
         values.value(QStringLiteral("lock.showPowerButtons"), true).toBool();
+    const bool use24Hour =
+        values.value(QStringLiteral("clock.use24Hour"), false).toBool();
+    // The lock screen follows the reference layout: a short date line
+    // ("Tue Nov 17") above a large, leading-zero-free time ("8:06"). The
+    // user's 24-hour choice still applies; the lock scene never shows AM/PM.
+    const QString timeFormat =
+        showSeconds ? (use24Hour ? QStringLiteral("H:mm:ss") : QStringLiteral("h:mm:ss"))
+                    : (use24Hour ? QStringLiteral("H:mm") : QStringLiteral("h:mm"));
     const QDateTime now = QDateTime::currentDateTime();
     m_lockItem->setProperty("showClock", showClock);
     m_lockItem->setProperty("showDate", showDate);
@@ -6686,10 +6711,33 @@ void ShellController::applyLockData()
     m_lockItem->setProperty("showLockMessage", showLockMessage);
     m_lockItem->setProperty("lockMessageText", lockMessage);
     m_lockItem->setProperty("showPowerButtons", showPowerButtons);
-    m_lockItem->setProperty(
-        "timeText",
-        now.toString(showSeconds ? QStringLiteral("HH:mm:ss") : QStringLiteral("HH:mm")));
-    m_lockItem->setProperty("dateText", now.toString(QStringLiteral("dddd d MMMM")));
+    m_lockItem->setProperty("timeText", now.toString(timeFormat));
+    m_lockItem->setProperty("dateText", now.toString(QStringLiteral("ddd MMM d")));
+
+    // The lock surface is opaque, so it must draw the session's own wallpaper
+    // rather than relying on the compositor's desktop behind it. Prefer the
+    // active Space's reported source, then the selection the shell forwarded
+    // before the replay arrived, then the shipped asset. The scene keeps the
+    // Space's solid colour (or a neutral gradient) only when all three miss.
+    QString source = m_protocol ? m_protocol->activeWallpaperSource() : QString();
+    if (source.isEmpty())
+        source = m_wallpaperSettings.effectiveSource();
+    // The same last resort `applyWallpaperPolicy` uses when neither settingsd
+    // nor the provider has resolved a source yet.
+    if (source.isEmpty())
+        source = shippedDefaultWallpaperPath();
+    QUrl wallpaperUrl;
+    if (!source.isEmpty()) {
+        const QUrl parsed(source);
+        wallpaperUrl = parsed.scheme().isEmpty() ? QUrl::fromLocalFile(source) : parsed;
+    }
+    m_lockItem->setProperty("wallpaperSource", wallpaperUrl);
+    const QColor wallpaperColor =
+        m_protocol ? m_protocol->activeWallpaperColor() : QColor();
+    m_lockItem->setProperty("wallpaperColor",
+                            wallpaperColor.isValid() ? wallpaperColor
+                                                     : QColor(Qt::transparent));
+    m_lockItem->setProperty("wallpaperFit", m_wallpaperSettings.fit);
 }
 
 void ShellController::renderLockSurface(quintptr lockSurfaceId)

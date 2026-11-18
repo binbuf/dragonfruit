@@ -226,6 +226,8 @@ private slots:
     void onSessionLocked();
     // T229a: the lock scene's power row.
     void onLockPowerAction(const QString &action);
+    // The lock scene's circular enter control submits the captured buffer.
+    void onLockSubmitRequested();
     void onSessionFinished();
     void onLockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, quint32 serial);
     // T-12.3b: submit the typed password to the PAM helper. Input capture

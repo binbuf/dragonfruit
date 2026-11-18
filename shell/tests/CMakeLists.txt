@@ -612,8 +612,9 @@ set_tests_properties(tst_osd PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Lock-screen tests (T-12.3a): the first-party lock view renders the account,
-# clock, lock glyph, password placeholder, and locked-session accessibility.
+# Lock-screen tests (T-12.3a): the first-party lock view renders the wallpaper,
+# date/time, account portrait, password field, enter control, and locked-session
+# accessibility.
 qt_add_executable(tst_lock
     tst_lock.cpp
 )

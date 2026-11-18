@@ -6116,6 +6116,10 @@ Open source system software</source>
         <source>Sleep</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Unlock</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>LockScreenPane</name>
