@@ -975,6 +975,13 @@ Item {
         function test_t286_status_row_is_live_and_opens_software_update() {
             var shell = makeSized(740, 820);
             waitForRendering(stage);
+            // The updates client fills its view asynchronously; under load the
+            // status row can render before the label arrives. Wait for the
+            // live view instead of racing it (T288 gate flake).
+            tryVerify(function() {
+                return Settings.updates !== undefined
+                        && Settings.updates.label !== undefined;
+            });
             var item = shell.sidebarStatusItem;
             compare(item.status, true);
             compare(item.id, "general/software-update");

@@ -11,6 +11,10 @@ CTEST ?= ctest
 # Parallel ctest level for `qml-test`/`verify-fast`. Four keeps the QML and
 # animation suites from fighting over the CPU; raise it on a quiet host.
 CTEST_JOBS ?= 4
+# Bound each e2e command so a hung compositor or demo test fails in
+# minutes instead of consuming the harness's whole verify budget (T288).
+E2E_TIMEOUT ?= 300
+E2E_DEMO_TIMEOUT ?= 120
 BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
 DEMO_ARGS ?=
@@ -62,7 +66,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test qml-test-serial glass-shader-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast gate-checks \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast verify-settings gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t263-settings-window-capture t264-settings-navigation-capture t265-settings-search-capture t266-settings-components-capture t267-settings-accessibility-capture t268-settings-performance t269-general-capture t270-general-system-capture t271-wifi-bluetooth-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
 	t272-network-capture t272a-network-capability-capture t273-data-panes-capture t274-appearance-capture t275-accessibility-capture t276-desktop-capture t277-quick-settings-menu-bar-capture t278-personalization-capture t279-accounts-security-capture t280-devices-capture t281-linux-specific-capture t285-settings-ia-capture t286-settings-shell-capture t287-settings-general-capture t288-settings-connectivity-capture \
@@ -254,6 +258,13 @@ verify-fast: gate-checks
 	$(MAKE) e2e
 	$(MAKE) qml-test
 
+# The Settings-set per-task verify: its visual-parity tasks are QML-only, so
+# the e2e half (Rust adapters, compositor, headless demo) is redundant. Any
+# task that touches Rust, C++, protocols, or the shell bridge still uses
+# `verify-fast` so those surfaces stay covered.
+verify-settings: gate-checks
+	$(MAKE) qml-test
+
 cargo-test:
 	$(CARGO) test --workspace
 
@@ -270,7 +281,7 @@ cargo-test:
 # zbus from the test thread, so they run single-threaded: parallel blocking
 # connections can starve the shared executor and wedge the gate (T107).
 e2e: build
-	$(CARGO) test -p dragonfruit-compositor \
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-compositor \
 	    --test milestone_e2e \
 	    --test window_conformance \
 	    --test xwayland_conformance \
@@ -288,32 +299,32 @@ e2e: build
 	    --test input_validation \
 	    --test multi_gpu \
 	    --test material_presets
-	$(CARGO) test -p dragonfruit-system-adapters
-	$(CARGO) test -p dragonfruit-networkmanager
-	$(CARGO) test -p dragonfruit-firewall
-	$(CARGO) test -p dragonfruit-audio
-	$(CARGO) test -p dragonfruit-power
-	$(CARGO) test -p dragonfruit-bluetooth
-	$(CARGO) test -p dragonfruit-storage
-	$(CARGO) test -p dragonfruit-input
-	$(CARGO) test -p dragonfruit-overview
-	$(CARGO) test -p dragonfruit-notify-adapter
-	$(CARGO) test -p dragonfruit-lock-adapter
-	$(CARGO) test -p dragonfruit-menubar-adapter
-	$(CARGO) test -p dragonfruit-update-adapter
-	$(CARGO) test -p dragonfruit-account-adapter
-	$(CARGO) test -p dragonfruit-printer-adapter
-	$(CARGO) test -p dragonfruit-privacy-adapter
-	$(CARGO) test -p dragonfruit-accessibility-adapter
-	$(CARGO) test -p dragonfruit-system-status
-	$(CARGO) test -p dragonfruit-settingsd
-	$(CARGO) test -p dragonfruit-files-core
-	$(CARGO) test -p dragonfruit-lock-auth
-	$(CARGO) test -p dragonfruit-session
-	$(CARGO) test -p dragonfruit-app-index
-	$(CARGO) test -p dragonfruit-wallpaperd
-	$(CARGO) test -p xdg-desktop-portal-dragonfruit -- --test-threads=1
-	$(MAKE) demo DEMO_ARGS=--headless
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-system-adapters
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-networkmanager
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-firewall
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-audio
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-power
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-bluetooth
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-storage
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-input
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-overview
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-notify-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-lock-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-menubar-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-update-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-account-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-printer-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-privacy-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-accessibility-adapter
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-system-status
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-settingsd
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-files-core
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-lock-auth
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-session
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-app-index
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-wallpaperd
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p xdg-desktop-portal-dragonfruit -- --test-threads=1
+	timeout -k 10 $(E2E_DEMO_TIMEOUT) $(MAKE) demo DEMO_ARGS=--headless
 
 # T-03.1a: the idle/animation frame budget trace. `make e2e` runs the same
 # test at the short in-suite window; this target sets the acceptance window
