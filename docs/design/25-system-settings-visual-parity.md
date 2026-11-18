@@ -425,6 +425,28 @@ The Wi-Fi “Ask to join” keys are stored-only today; the pane must say so
 rather than implying the shell prompts. The Bluetooth discoverable note is
 only shown while the pane is open and the adapter is discoverable.
 
+**Landed (T288).** Wi-Fi is the mockup intro, the toggle card, the current
+network icon row, Known Networks, Other Networks, the Other… footer, the
+stored-only Ask to Join rows, and the Advanced… footer. Current/known/other
+rows are `SettingsIconRow`s; the scan progress state is `SettingsScanRow`, and
+a real "Scan for networks" action row sits beside it when no scan is running.
+The row action is Connect (the mockup's word). The details sheet owns
+Connect/Disconnect/Forget; Personal Hotspot moved into the Advanced sheet with
+the Linux-only TCP/IP/hardware rows. Bluetooth is the intro, the toggle row,
+the discoverable note (only while the radio is on and the adapter reports
+discoverable), My Devices, Nearby Devices with the searching row, and the
+existing device info/Advanced sheets. Network is one service card (Wi-Fi,
+Firewall) built from `SettingsServiceRow`, an Other Services card of the real
+NetworkManager services, the existing VPN section, and a More footer whose
+popup offers Set Service Order… (a real `autoconnect-priority` sheet) and Add
+Service…. VPN is always visible with its intro, the "No VPN configurations"
+empty state, connection rows when configured, the WireGuard capability row,
+and the Add VPN Configuration… footer. The optional-profile gate is removed
+from `SettingsPanes`/`SettingsMap`. Every rendered row has a map row and a
+search synonym; the four panes keep their structural absence.
+`make t288-settings-connectivity-capture` writes connected/empty/absent stills
+in light and dark.
+
 ### 5.3 Battery and Displays
 
 | Pane | Target |

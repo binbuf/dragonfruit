@@ -304,7 +304,10 @@ QtObject {
                          "NetworkManager", "AccessPoint", "disabled-with-reason", "shipped"),
                 root.row("scan", qsTr("Wi-Fi"), qsTr("Scan for networks"), "button",
                          "NetworkManager", "AccessPoint.RequestScan", "disabled-with-reason", "shipped"),
-                root.row("hidden", qsTr("Wi-Fi"), qsTr("Join hidden network..."), "dialog",
+                // T288: the mockup's Other… footer opens the hidden-network
+                // dialog; the map keeps the descriptive label so search still
+                // finds "hidden network".
+                root.row("hidden", qsTr("Wi-Fi"), qsTr("Join Other Network..."), "dialog",
                          "NetworkManager", "AddAndActivateConnection", "disabled-with-reason", "shipped"),
                 // T271: the shell has no Wi-Fi prompt consumer yet, so these
                 // durable preferences are stored-only and say so in the pane.
@@ -361,7 +364,13 @@ QtObject {
                          false, "firewall adapter (ufw/nftables read; writes prompt with pkexec)"),
                 root.row("addService", qsTr("Network"), qsTr("Add service..."), "sheet",
                          "NetworkManager", "AddConnection", "disabled-with-reason", "shipped",
-                         false, "NetworkManager (Ethernet, Wi-Fi, bridge, bond, VLAN)")
+                         false, "NetworkManager (Ethernet, Wi-Fi, bridge, bond, VLAN)"),
+                // T288: the mockup's More popup and its real service-order
+                // sheet (NetworkManager autoconnect priority).
+                root.row("more", qsTr("Network"), qsTr("More"), "menu",
+                         "NetworkManager", "autoconnect-priority", "disabled-with-reason", "shipped"),
+                root.row("serviceOrder", qsTr("Network"), qsTr("Set service order..."), "sheet",
+                         "NetworkManager", "autoconnect-priority", "disabled-with-reason", "shipped")
             ],
             "vpn": [
                 root.row("vpn", qsTr("VPN"), qsTr("Connections"), "list",

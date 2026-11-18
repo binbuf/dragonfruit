@@ -3,7 +3,7 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Network pane (T225; T272 service list).
+// The Network pane (T225; T272 service list; T288 visual parity).
 //
 // One NetworkManager model serves the Wi-Fi disclosure, the service list and
 // order, the VPN list, and the firewall sheet. The pane never caches a
@@ -12,11 +12,15 @@ import Dragonfruit.Settings
 // (`autoconnect-priority`), and VPN connections; the firewall adapter owns
 // detection and the firewall writes.
 //
+// T288 follows the mockup's structure
+// (docs/design/25-system-settings-visual-parity.md §5.2): one service card
+// with the Wi-Fi and Firewall rows, an Other Services card of the real
+// NetworkManager services, and a More popup with Set Service Order…/Add
+// Service…. Rows use `SettingsServiceRow`. The VPN section, the per-service
+// details sheet, the firewall options sheet, and Add Service stay.
+//
 // T272 keeps the sections independent: a missing NetworkManager does not hide
-// the firewall, and a read-only VPN adapter does not disable it. Every service
-// carries a status dot and a Details sheet (TCP/IP, DNS, search domains,
-// hardware, and the Linux-only rows). The single text-wall Advanced dialog is
-// gone.
+// the firewall, and a read-only VPN adapter does not disable it.
 Item {
     id: root
 
@@ -91,8 +95,12 @@ Item {
 
     // Test surface (tst_settings_network.qml).
     property alias wifiRow: wifiRow
-    property alias firewallGroup: firewallGroup
-    property alias firewallToggle: firewallToggle
+    property alias serviceListGroup: serviceListGroup
+    // T288: Wi-Fi and Firewall are the mockup's two service rows in one card;
+    // the older alias keeps the absence tests anchored to that card.
+    property alias firewallGroup: serviceListGroup
+    property alias firewallRow: firewallRow
+    property alias firewallToggle: firewallRow.serviceSwitch
     property alias firewallOptionsRow: firewallOptionsRow
     property alias firewallDialog: firewallDialog
     property alias servicesGroup: servicesGroup
@@ -100,6 +108,10 @@ Item {
     property alias addServiceRow: addServiceRow
     property alias addServiceDialog: addServiceDialog
     property alias addServiceResult: addServiceResult
+    property alias moreButton: moreButton
+    property alias moreMenu: moreMenu
+    property alias serviceOrderDialog: serviceOrderDialog
+    property alias serviceOrderRepeater: serviceOrderRepeater
     property alias vpnGroup: vpnGroup
     property alias vpnConnectionRepeater: vpnConnectionRepeater
     property alias connectionRepeater: vpnConnectionRepeater
@@ -262,6 +274,28 @@ Item {
         serviceMenu.show();
     }
 
+    // The mockup's service-list glyph: Wi-Fi keeps the Wi-Fi mark, VPN the
+    // shield, and the wired/virtual kinds the network globe.
+    function serviceGlyph(service) {
+        var kind = String((service || {}).kind || "");
+        if (kind === "wifi")
+            return "wifi";
+        if (kind === "vpn" || kind === "wireguard")
+            return "vpn";
+        return "network";
+    }
+
+    function openServiceOrder() {
+        root.moreMenu.hide();
+        serviceOrderDialog.show();
+    }
+
+    function moveService(uuid, delta) {
+        if (!root.ready || root.networkReadOnly || !uuid)
+            return;
+        Settings.moveNetworkService(String(uuid), Number(delta));
+    }
+
     function runServiceAction(action) {
         var service = root.menuService;
         if (service === null || service === undefined)
@@ -396,15 +430,18 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        // ── Wi-Fi disclosure ──────────────────────────────────────────────
+        // ── Service list (Wi-Fi + Firewall) ───────────────────────────────
         SettingsGroup {
+            id: serviceListGroup
+            objectName: "networkServiceList"
             width: parent.width
 
-            SettingsRow {
+            SettingsServiceRow {
                 id: wifiRow
+                objectName: "networkWifiServiceRow"
                 width: parent.width
                 label: qsTr("Wi-Fi")
-                description: {
+                statusText: {
                     if (!root.ready)
                         return qsTr("Unavailable");
                     var ssid = root.view.activeSsid !== undefined
@@ -414,25 +451,24 @@ Item {
                             ? qsTr("Not connected") : qsTr("Off");
                     return qsTr("Connected to %1").arg(ssid);
                 }
+                serviceActive: root.ready && root.view.activeSsid !== undefined
+                               && String(root.view.activeSsid).length > 0
+                serviceGlyph: "wifi"
                 settingsId: "wifi"
                 owner: "NetworkManager"
                 settingsKey: "WirelessEnabled"
                 disclosure: true
                 enabled: root.ready && !root.networkReadOnly
-                showSeparator: false
+                showSeparator: true
                 onDisclosureClicked: root.paneRequested("wifi")
             }
-        }
 
-        // ── Firewall ──────────────────────────────────────────────────────
-        SettingsGroup {
-            id: firewallGroup
-            width: parent.width
-
-            SettingsRow {
+            SettingsServiceRow {
+                id: firewallRow
+                objectName: "networkFirewallRow"
                 width: parent.width
                 label: qsTr("Firewall")
-                description: {
+                statusText: {
                     if (!root.firewallDetected)
                         return qsTr("No firewall detected");
                     var backend = root.firewallBackendLabel;
@@ -442,24 +478,18 @@ Item {
                                            .arg(root.firewallEnabled
                                                 ? qsTr("On") : qsTr("Off"));
                 }
+                serviceActive: root.firewallEnabled
+                serviceGlyph: "privacy"
+                serviceColor: root.firewallEnabled ? Theme.color.accent
+                                                   : Theme.color.textTertiary
+                trailingKind: "switch"
+                switchBound: true
+                switchEnabled: root.firewallWritable
                 settingsId: "firewall"
                 owner: "firewall adapter"
                 settingsKey: "firewall.status"
                 showSeparator: true
-                controlData: Toggle {
-                    id: firewallToggle
-                    objectName: "networkFirewallToggle"
-                    text: ""
-                    accessibleName: qsTr("Firewall")
-                    enabled: root.firewallWritable
-                    onToggled: (checked) => Settings.setFirewallEnabled(checked)
-
-                    Binding {
-                        target: firewallToggle
-                        property: "checked"
-                        value: root.firewallEnabled
-                    }
-                }
+                onSwitchToggled: (checked) => Settings.setFirewallEnabled(checked)
             }
 
             SettingsRow {
@@ -500,49 +530,31 @@ Item {
             Repeater {
                 id: servicesRepeater
                 model: root.otherServices
-                delegate: SettingsRow {
+                delegate: SettingsServiceRow {
                     id: serviceRow
                     required property var modelData
                     required property int index
                     objectName: "networkServiceRow"
                     width: parent.width
                     label: String(serviceRow.modelData.id)
-                    description: qsTr("%1 · %2 · %3")
+                    statusText: qsTr("%1 · %2 · %3")
                         .arg(String(serviceRow.modelData.kindLabel))
                         .arg(String(serviceRow.modelData.stateLabel))
                         .arg(String(serviceRow.modelData.address || qsTr("No address")))
+                    serviceActive: serviceRow.modelData.state === "connected"
+                    serviceGlyph: root.serviceGlyph(serviceRow.modelData)
+                    serviceColor: root.statusColor(root.serviceStatus(
+                        serviceRow.modelData))
                     settingsId: "services"
                     owner: "NetworkManager"
                     settingsKey: "Devices"
                     showSeparator: serviceRow.index < root.otherServices.length - 1
-                    controlData: Row {
-                        spacing: Theme.primitive.spacing.xs
-
-                        Rectangle {
-                            objectName: "networkServiceStatusDot"
-                            width: 8
-                            height: 8
-                            radius: 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: root.statusColor(root.serviceStatus(
-                                serviceRow.modelData))
-                        }
-                        Button {
-                            objectName: "networkServiceDetails"
-                            text: qsTr("Details…")
-                            variant: "ghost"
-                            enabled: root.ready
-                            onClicked: root.openDetails(serviceRow.modelData)
-                        }
-                        Button {
-                            objectName: "networkServiceActions"
-                            text: qsTr("⋯")
-                            variant: "ghost"
-                            enabled: root.ready && !root.networkReadOnly
-                            onClicked: root.openServiceMenu(
-                                serviceRow.modelData, serviceRow)
-                        }
-                    }
+                    disclosure: true
+                    trailingAction: qsTr("⋯")
+                    trailingActionEnabled: root.ready && !root.networkReadOnly
+                    onDisclosureClicked: root.openDetails(serviceRow.modelData)
+                    onTrailingActionClicked: root.openServiceMenu(
+                        serviceRow.modelData, serviceRow)
                 }
             }
 
@@ -571,6 +583,20 @@ Item {
                 trailingAction: qsTr("Add…")
                 enabled: root.ready && !root.networkReadOnly
                 onTrailingActionClicked: root.openAddService()
+            }
+        }
+
+        // ── More footer (mockup) ──────────────────────────────────────────
+        SettingsFooter {
+            id: moreFooter
+            objectName: "networkMoreFooter"
+            width: parent.width
+
+            Button {
+                id: moreButton
+                objectName: "networkMoreButton"
+                text: qsTr("More")
+                onClicked: root.moreMenu.show()
             }
         }
 
@@ -780,6 +806,109 @@ Item {
         objectName: "networkServiceMenu"
         accessibleName: qsTr("Service actions")
         onTriggered: (index, item) => root.runServiceAction(item.action)
+    }
+
+    // ── More menu (mockup: Set Service Order… / Add Service…) ─────────────
+    ContextMenu {
+        id: moreMenu
+        objectName: "networkMoreMenu"
+        accessibleName: qsTr("More network actions")
+        anchorItem: moreButton
+        model: [
+            { label: qsTr("Set Service Order…"), action: "order" },
+            { label: qsTr("Add Service…"), action: "add" }
+        ]
+        onTriggered: (index, item) => {
+            if (item.action === "order")
+                root.openServiceOrder();
+            else if (item.action === "add")
+                root.openAddService();
+        }
+    }
+
+    // ── Service order (real NetworkManager priority writes) ───────────────
+    Dialog {
+        id: serviceOrderDialog
+        objectName: "networkServiceOrderDialog"
+        title: qsTr("Set Service Order")
+        width: root.width
+        height: root.height
+
+        contentData: Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.xs
+
+            Text {
+                width: parent.width
+                text: qsTr("NetworkManager tries services in this order. "
+                           + "Moving a service writes its autoconnect priority.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                id: serviceOrderRepeater
+                model: root.services
+                delegate: Row {
+                    required property var modelData
+                    required property int index
+                    width: parent.width
+                    height: Theme.controls.settingsRow.height
+                    spacing: Theme.primitive.spacing.xs
+
+                    Text {
+                        width: parent.width - orderButtons.width
+                        text: String(modelData.id)
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideRight
+                    }
+
+                    Row {
+                        id: orderButtons
+                        spacing: Theme.primitive.spacing.xxs
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Button {
+                            objectName: "networkServiceOrderUp"
+                            text: qsTr("Up")
+                            variant: "ghost"
+                            enabled: root.ready && !root.networkReadOnly
+                                     && index > 0
+                            onClicked: root.moveService(modelData.uuid, -1)
+                        }
+                        Button {
+                            objectName: "networkServiceOrderDown"
+                            text: qsTr("Down")
+                            variant: "ghost"
+                            enabled: root.ready && !root.networkReadOnly
+                                     && index < root.services.length - 1
+                            onClicked: root.moveService(modelData.uuid, 1)
+                        }
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                visible: !root.ready
+                text: qsTr("NetworkManager is not running, so the service "
+                           + "order cannot be changed.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        buttonsData: Row {
+            spacing: Theme.primitive.spacing.sm
+            Button {
+                text: qsTr("Close")
+                onClicked: serviceOrderDialog.hide()
+            }
+        }
     }
 
     // ── Service details ───────────────────────────────────────────────────

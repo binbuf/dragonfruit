@@ -192,6 +192,13 @@ MockVpnClient::MockVpnClient(QObject *parent)
 void MockVpnClient::setFixture(const QString &mode)
 {
     resetForTest();
+    // T288: the capture/absence fixture for a host with no VPN service. The
+    // view carries no state, so the pane draws its structural absence.
+    if (mode == QLatin1String("absent")) {
+        m_absent = true;
+        rebuild();
+        return;
+    }
     if (mode == QLatin1String("no-plugin") || mode == QLatin1String("no-add"))
         m_plugins.clear();
     if (mode == QLatin1String("no-editor") || mode == QLatin1String("no-add")
@@ -226,6 +233,7 @@ void MockVpnClient::resetForTest()
     m_wireguardNative = true;
     m_editorAvailable = true;
     m_editor = QStringLiteral("nm-connection-editor");
+    m_absent = false;
     m_connections = {
         { QStringLiteral("Work VPN"), QStringLiteral("11111111-1111-1111-1111-111111111111"),
           QStringLiteral("openvpn"), QStringLiteral("OpenVPN"), true, true, false },
@@ -388,6 +396,13 @@ void MockVpnClient::disconnectVpn(const QString &uuid)
 
 void MockVpnClient::rebuild()
 {
+    if (m_absent) {
+        QVariantMap view;
+        view.insert(QStringLiteral("kind"), QStringLiteral("vpn"));
+        m_view = view;
+        emit changed(m_view);
+        return;
+    }
     int connectedCount = 0;
     QString activeUuid;
     QString activeName;

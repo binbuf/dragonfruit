@@ -339,7 +339,9 @@ Item {
                     "My Devices keeps its section when the host is absent");
             compare(pane.nearbyGroup.visible, true,
                     "Nearby Devices keeps its section when the host is absent");
-            compare(pane.discoverableRow.visible, true);
+            // T288: the discoverable note only exists with a live, discoverable
+            // adapter; the section structure itself is the toggle card.
+            compare(pane.discoverableRow.visible, false);
             compare(pane.myDevicesEmpty.visible, true);
             compare(pane.nearbyEmpty.visible, true);
             compare(pane.advancedRow.visible, true);
@@ -842,6 +844,28 @@ Item {
             Settings.refreshVpn();
             Settings.connectVpn("11111111-1111-1111-1111-111111111111");
             Settings.disconnectVpn("11111111-1111-1111-1111-111111111111");
+            compare(Settings.vpnAvailable, false);
+        }
+
+        // T288: the always-visible VPN pane keeps its structure when
+        // NetworkManager is absent: the intro, the absence note, and the
+        // disabled Add footer. The empty state belongs to a live host.
+        function test_vpn_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            var pane = showPane(shell, "vpn");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true);
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.emptyNote.visible, false);
+            compare(pane.addButton.visible, true);
+            compare(pane.addButton.enabled, false);
+            compare(pane.wireguardGroup.visible, true);
+            verify(pane.intro.text.indexOf("VPN configurations") >= 0);
+
+            // A refresh and the writes are safe no-ops with no host.
+            pane.addVpn();
+            compare(pane.addVpnDialog.open, false);
+            Settings.refreshVpn();
             compare(Settings.vpnAvailable, false);
         }
     }

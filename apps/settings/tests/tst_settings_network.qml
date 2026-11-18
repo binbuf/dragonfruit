@@ -123,11 +123,11 @@ Item {
             var pane = paneOf(shell);
             var wired = rowFor(pane, "Wired");
             verify(wired !== null);
-            var dot = findChild(wired, "networkServiceStatusDot");
+            var dot = findChild(wired, "settingsServiceStatusDot");
             verify(dot !== null);
-            compare(dot.color, Theme.color.success);
+            compare(dot.children[0].color, Theme.color.success);
 
-            findChild(wired, "networkServiceDetails").clicked();
+            wired.disclosureClicked();
             tryVerify(function() { return pane.detailsDialog.open === true; });
             compare(pane.detailsService.id, "Wired");
             var labels = pane.detailRows.map(function(entry) { return entry.label; });
@@ -153,7 +153,7 @@ Item {
             var pane = paneOf(shell);
             var wired = rowFor(pane, "Wired");
             verify(wired !== null);
-            compare(findChild(wired, "networkServiceActions") !== null, true);
+            verify(wired.trailingButton !== null);
             pane.openServiceMenu(wired.modelData, wired);
             var actions = pane.serviceMenu.model.map(function(entry) {
                 return entry.action || entry.type;
@@ -416,8 +416,8 @@ Item {
             compare(Settings.network.services[0].connected, true);
         }
 
-        // T272: the optional VPN pane appears in Connectivity only when a
-        // profile exists; Network -> VPN stays available otherwise.
+        // T272/T288: the VPN pane is always visible; Network -> VPN stays as
+        // the in-pane section, and an empty profile list keeps the pane.
         function test_the_optional_vpn_pane_follows_the_profiles() {
             var shell = make();
             var ids = shell.visiblePanes.map(function(entry) { return entry.id; });
@@ -438,16 +438,70 @@ Item {
             vpn.infoDialog.hide();
 
             // T285: VPN is part of the stable 27-entry IA, so an empty
-            // profile list keeps the pane in the sidebar. T288 owns the
-            // pane's empty-state body.
+            // profile list keeps the pane in the sidebar. T288 removed the
+            // optional gate entirely; the pane keeps its empty state.
             Settings.setVpnFixture("empty");
             tryVerify(function() {
                 var visible = shell.visiblePanes.map(function(entry) { return entry.id; });
                 return visible.indexOf("vpn") >= 0;
             });
-            compare(SettingsPanes.optionalVisible(
-                        SettingsPanes.paneById("vpn"),
-                        { connections: [] }), true);
+            compare(SettingsPanes.paneById("vpn").optional, undefined);
+        }
+
+        // T288: the mockup's service card holds the Wi-Fi and Firewall rows;
+        // Wi-Fi discloses the pane and Firewall is the real adapter switch.
+        function test_the_service_card_holds_wifi_and_firewall() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.serviceListGroup.visible, true);
+            compare(pane.wifiRow.objectName, "networkWifiServiceRow");
+            compare(pane.firewallRow.objectName, "networkFirewallRow");
+            compare(pane.wifiRow.serviceActive, true);
+            compare(pane.firewallRow.serviceActive, false);
+            compare(pane.firewallToggle.checked, false);
+
+            var requested = "";
+            pane.paneRequested.connect(function(id) { requested = id; });
+            pane.wifiRow.disclosureClicked();
+            compare(requested, "wifi");
+        }
+
+        // T288: the More popup owns Set Service Order… and Add Service…; the
+        // order sheet writes the real NetworkManager priority.
+        function test_the_more_popup_and_service_order() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.moreButton.text, "More");
+            pane.moreMenu.show();
+            tryVerify(function() { return pane.moreMenu.open === true; });
+            var labels = pane.moreMenu.model.map(function(entry) {
+                return entry.label;
+            });
+            compare(labels.length, 2);
+            verify(labels[0].indexOf("Set Service Order") >= 0);
+            verify(labels[1].indexOf("Add Service") >= 0);
+            pane.moreMenu.hide();
+
+            pane.openServiceOrder();
+            tryVerify(function() { return pane.serviceOrderDialog.open === true; });
+            compare(pane.serviceOrderRepeater.count, Settings.network.services.length);
+            var before = Settings.network.services[0].id;
+            pane.moveService(String(Settings.network.services[0].uuid), 1);
+            tryVerify(function() { return Settings.network.services[1].id === before; });
+            pane.serviceOrderDialog.hide();
+        }
+
+        // T288: every Other Services row is the shared service row.
+        function test_other_services_use_the_shared_service_row() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.servicesRepeater.count > 0);
+            var row = pane.servicesRepeater.itemAt(0);
+            compare(row.objectName, "networkServiceRow");
+            verify(row.trailingButton !== null);
+            row.disclosureClicked();
+            tryVerify(function() { return pane.detailsDialog.open === true; });
+            pane.detailsDialog.hide();
         }
 
         // T272: the pane is measured at the 740x820 window and the service

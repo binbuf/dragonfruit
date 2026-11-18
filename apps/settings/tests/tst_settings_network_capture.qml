@@ -86,10 +86,12 @@ Item {
             waitForRendering(stage);
             grabImage(shell).save("docs/captures/t225-wifi-join.png");
 
-            // 3. Forget a saved network.
+            // 3. Forget a saved network from its details sheet.
             var saved = knownRow(wifi, "dragonfruit");
             verify(saved !== null);
-            findChild(saved, "wifiForgetButton").clicked();
+            findChild(saved, "wifiKnownDetailsButton").clicked();
+            tryVerify(function() { return wifi.detailsDialog.open === true; });
+            wifi.detailsForgetButton.clicked();
             tryVerify(function() {
                 for (var i = 0; i < Settings.wifi.knownNetworks.length; ++i)
                     if (Settings.wifi.knownNetworks[i].ssid === "dragonfruit")

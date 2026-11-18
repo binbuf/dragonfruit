@@ -73,7 +73,7 @@ Item {
             Settings.setVpnFixture("live");
             var vpn = showPane(shell, "vpn");
             compare(vpn.ready, true);
-            vpn.addVpnRow.trailingButton.clicked();
+            vpn.addButton.clicked();
             tryVerify(function() { return vpn.addVpnDialog.open === true; });
             wait(250);
             waitForRendering(stage);
@@ -93,7 +93,7 @@ Item {
             // offered.
             Settings.setVpnFixture("no-editor");
             tryVerify(function() { return Settings.vpn.editorAvailable === false; });
-            vpn.addVpnRow.trailingButton.clicked();
+            vpn.addButton.clicked();
             tryVerify(function() { return vpn.addVpnDialog.open === true; });
             wait(250);
             waitForRendering(stage);

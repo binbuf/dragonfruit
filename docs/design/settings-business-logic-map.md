@@ -83,6 +83,7 @@ app's sidebar may group panes differently, but the catalog is complete.
 | 2 | Wi-Fi | Wi-Fi | Ship | NetworkManager |
 | 3 | Bluetooth | Bluetooth | Ship | BlueZ |
 | 4 | Network | Network | Ship/Adapt | NetworkManager + firewall adapter |
+| 4.1 | — | VPN | Ship/Adapt | NetworkManager VPN (always-visible pane) |
 | 5 | Battery | Battery | Ship | UPower + power-profiles-daemon |
 | 6 | General | General | Ship | `settingsd` + adapters |
 | 6.1 | About | About This System | Ship | host info + distro adapter |
@@ -204,10 +205,10 @@ prompt rows remain live (T271, ADR 0271).
 |---|---|---|---|---|
 | Wi-Fi | Wi-Fi | Toggle | NM `WirelessEnabled` | Enables/disables the radio; disabled when NM absent |
 | Current network | Current network | Info + Details… | NM `ActiveConnection` | SSID, signal, security, IP; the sheet adds last-used, auto-join, metered, IPv6, DNS, proxy, MAC randomization, 802.1X, Forget, Disconnect |
-| Personal Hotspot | Personal Hotspot | Toggle + Create… | NM `802-11-wireless.mode=ap` | Adds and activates an AP-mode connection; Turn Off deactivates it; disabled with a reason when no Wi-Fi device exists |
-| Known Network | Known networks | List + ⋯ | NM `Settings.Connection` | Auto-join, details, forget, disconnect; empty state |
-| Other Networks | Other networks | List + Scan | NM `AccessPoint` / `AccessPoint.RequestScan` | Join, hidden network, real scan; scanning/empty/error rows |
-| Other… | Join hidden network… | Dialog | NM | SSID/security |
+| Personal Hotspot | Personal Hotspot | Toggle + Create… | NM `802-11-wireless.mode=ap` | Adds and activates an AP-mode connection; Turn Off deactivates it; disabled with a reason when no Wi-Fi device exists. T288: lives in the Advanced sheet, not the main flow |
+| Known Network | Known networks | List + ⋯ | NM `Settings.Connection` | Auto-join and Details in the row; connect/disconnect/forget in the sheet; empty state |
+| Other Networks | Other networks | List + Scan | NM `AccessPoint` / `AccessPoint.RequestScan` | Connect, hidden network, real scan; scanning/empty/error rows; `SettingsScanRow` is the progress state |
+| Other… | Join hidden network… | Footer dialog | NM | SSID/security; T288 moves it to the mockup's Other… footer |
 | Ask to join networks | Ask to join networks | Popup | `network.wifi.askToJoin` | **Stored-only**: the shell has no prompt consumer yet; NM autoconnect remains authoritative |
 | Ask to join hotspots | Ask to join hotspots | Popup | `network.wifi.askToJoinHotspots` | **Stored-only**, same reason |
 | Advanced… | Advanced… | Sheet | NM connection settings | Live read of TCP/IP, metered, IPv6, DNS, proxies, MAC randomization, 802.1X, hardware |
@@ -222,9 +223,9 @@ disable and no write is attempted (T271, ADR 0271).
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Bluetooth | Bluetooth | Toggle | BlueZ `Adapter1.Powered` | Radio on/off; turning on starts discovery while the pane is open |
-| Discoverable as… | Discoverable As | Info | BlueZ `Adapter1.Discoverable` | The computer name, only while the pane is open |
-| My Devices | My Devices | List + info | BlueZ `Device1` | Connect/disconnect and an info sheet with address/type/battery/forget |
-| Nearby Devices | Nearby Devices | List | BlueZ discovery | Searching/empty/error |
+| Discoverable as… | Discoverable note | Info | BlueZ `Adapter1.Discoverable` | The computer name; shown only while the pane is open, the radio is on, and the adapter is discoverable |
+| My Devices | My Devices | List + info | BlueZ `Device1` | `SettingsDeviceRow`; connect/disconnect and an info sheet with address/type/battery/forget |
+| Nearby Devices | Nearby Devices | List | BlueZ discovery | `SettingsScanRow` searching state, then empty/error |
 | — | Advanced… | Sheet | BlueZ + `settingsd` | Adapter name, address, discoverable, pairable |
 | — | Quick sheet | Panel | Shell | Same state; Settings… deep link |
 
@@ -236,15 +237,16 @@ Owner: NetworkManager + firewall adapter. Absence: per-service rows show
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Wi-Fi | Wi-Fi | Disclosure | NM | Connected/off; opens Wi-Fi pane |
-| Firewall | Firewall | Toggle + Options | firewall adapter | On/off/options where the backend reports status; `firewalld`/`ufw` unprivileged, `nftables`/`iptables` read-only/delegate; independent of NM |
-| Other Services | Other services | List + status dot | NM devices | Ethernet, bridge, bond, VLAN; green/yellow/red/gray dot |
-| VPN | VPN | Disclosure / optional top-level pane | NM VPN | Native WireGuard is a connection type; plugin Add only with the editor; incomplete profiles say Needs setup; top-level pane when a profile exists |
+| Wi-Fi | Wi-Fi | Service row + disclosure | NM | `SettingsServiceRow`; connected/off status dot; opens the Wi-Fi pane |
+| Firewall | Firewall | Service row + switch | firewall adapter | On/off/options where the backend reports status; `firewalld`/`ufw` unprivileged, `nftables`/`iptables` read-only/delegate; independent of NM |
+| Other Services | Other services | Service rows | NM devices | `SettingsServiceRow`; Ethernet, bridge, bond, VLAN; status dot, Details disclosure, ⋯ actions |
+| VPN | VPN | Section / always-visible pane | NM VPN | Native WireGuard is a connection type; plugin Add only with the editor; incomplete profiles say Needs setup; the top-level VPN pane is always visible (T288) |
 | … | Service actions | Menu | NM | Connect/Disconnect, service order, make inactive, delete, add |
 | Advanced… | Details… | Sheet | NM | TCP/IP, subnet, router, DNS, search domains, IPv6, proxy, hardware, metered, MAC randomization, 802.1X |
 | Locations | Profiles | Popup | NM | Saved connection profiles; adapt macOS Locations |
 | — | Firewall options | Sheet | firewall adapter | Open ports, services, zones/rules, backend |
 | — | Add service… | Sheet | NM | Ethernet, Wi-Fi, bridge, bond, VLAN with validation; VPN is added from the VPN section |
+| — | More / Set Service Order… | Popup + sheet | NM `autoconnect-priority` | T288: the mockup's More popup; the sheet writes real service priority |
 
 **T225 status.** The Wi-Fi and Network panes are shipped. Wi-Fi writes the
 radio, joins (visible/hidden), forgets, autoconnects, scans, disconnects, and
@@ -258,8 +260,7 @@ per-service Details sheets, the actions menu (connect/disconnect, order, make
 inactive, delete, add), and the Add Service sheet for Ethernet/Wi-Fi/VPN/
 bridge/bond/VLAN. The firewall adapter detects firewalld/ufw/nftables; nftables
 is Unavailable, never a fake Off, and the firewall stays usable when NM is
-absent or the VPN adapter is read-only. The optional top-level VPN pane appears
-only when a profile exists; Network → VPN remains otherwise. Every Network/VPN
+absent or the VPN adapter is read-only. Every Network/VPN
 write reports applied/denied/failed/absent. `Profiles` remains planned (a future
 location/profile editor). **T272a status.** Native WireGuard is created as a
 `wireguard` connection (private key, address, one peer, optional DNS/MTU) and is
@@ -269,7 +270,18 @@ Firewall reads are unprivileged where the host exposes them: ufw falls back to
 `systemctl show` + `/etc/ufw/ufw.conf`, nftables to `/etc/nftables.conf`, and
 iptables is named read-only/delegate with `sudo iptables -S`. Only a host with
 no manager says `No firewall detected`. Writes keep `pkexec` and report a
-denial.
+denial. **T288 status.** The four connectivity panes follow
+[`25-system-settings-visual-parity.md`](25-system-settings-visual-parity.md)
+§5.2: Wi-Fi is the mockup intro + toggle + current/Known/Other icon rows with
+`SettingsScanRow`, the Other…/Advanced… footers, and the stored-only Ask to
+Join rows (Personal Hotspot moved into the Advanced sheet); Bluetooth is the
+intro + toggle + conditional discoverable note + My Devices/Nearby Devices;
+Network is one `SettingsServiceRow` card (Wi-Fi, Firewall), Other Services,
+and the More popup with a real Set Service Order sheet; and the VPN pane is
+always visible with its intro, "No VPN configurations" empty state, and Add
+VPN Configuration… footer. The optional-profile gate is gone. The VPN fixture
+grew an `absent` mode so the capture can show the structural absence without a
+second process.
 
 <a id="pane-battery"></a>
 ### 5.4 Battery

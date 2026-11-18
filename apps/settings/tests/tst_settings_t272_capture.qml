@@ -64,7 +64,7 @@ Item {
 
             // Per-service Details sheet.
             var wired = serviceRow(network, "Wired");
-            findChild(wired, "networkServiceDetails").clicked();
+            wired.disclosureClicked();
             tryVerify(function() { return network.detailsDialog.open === true; });
             wait(300);
             waitForRendering(stage);

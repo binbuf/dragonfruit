@@ -4,11 +4,11 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The optional top-level VPN pane (T272, hardened by T272a). The sidebar
-// shows it when NetworkManager reports a profile; Network -> VPN remains the
-// fallback. Add is capability-driven: native WireGuard is not a plugin, a
-// plugin profile is only offered when the editor can finish it, and an
-// incomplete profile is labelled and cannot be presented as ready.
+// The top-level VPN pane (T272, hardened by T272a, always visible in T288).
+// The sidebar always lists it; the empty state and the Add VPN Configuration…
+// footer are the mockup's default. Add is capability-driven: native WireGuard
+// is not a plugin, a plugin profile is only offered when the editor can finish
+// it, and an incomplete profile is labelled and cannot be presented as ready.
 Item {
     id: stage
     width: 740
@@ -68,7 +68,7 @@ Item {
         function test_add_vpn_validates_and_adds() {
             var shell = make();
             var pane = shell.paneBody.item;
-            pane.addVpnRow.trailingButton.clicked();
+            pane.addButton.clicked();
             tryVerify(function() { return pane.addVpnDialog.open === true; });
             findChild(pane, "vpnAddConfirm").clicked();
             verify(findChild(pane, "vpnAddResult").text
@@ -114,7 +114,8 @@ Item {
             tryVerify(function() { return Settings.vpn.plugins.length === 0; });
             compare(Settings.vpn.wireguardNative, true);
             compare(pane.canAdd, true);
-            compare(pane.addVpnRow.trailingAction, "Add\u2026");
+            compare(pane.addButton.text, "Add VPN Configuration…");
+            compare(pane.addButton.enabled, true);
         }
 
         function test_a_host_with_no_add_path_names_the_reason() {
@@ -126,9 +127,10 @@ Item {
                     && Settings.vpn.wireguardNative === false;
             });
             compare(pane.canAdd, false);
-            compare(pane.addVpnRow.trailingAction, "");
-            compare(pane.addVpnRow.enabled, false);
-            verify(pane.addVpnRow.description.indexOf("No NetworkManager VPN plugin") >= 0);
+            compare(pane.addButton.enabled, false);
+            compare(pane.addButton.text, "Add VPN Configuration…");
+            compare(pane.addReasonNote.visible, true);
+            verify(pane.addReasonText.indexOf("No NetworkManager VPN plugin") >= 0);
         }
 
         function test_a_plugin_without_an_editor_is_not_offered() {
@@ -138,7 +140,7 @@ Item {
             tryVerify(function() { return Settings.vpn.editorAvailable === false; });
             // Native WireGuard still works; the plugin entry is not offered.
             compare(pane.canAdd, true);
-            pane.addVpnRow.trailingButton.clicked();
+            pane.addButton.clicked();
             tryVerify(function() { return pane.addVpnDialog.open === true; });
             compare(pane.addVpnDialog.options.length, 1);
             compare(pane.addVpnDialog.options[0].kind, "wireguard");
@@ -163,14 +165,15 @@ Item {
                     && Settings.vpn.wireguardNative === false;
             });
             compare(pane.canAdd, false);
-            verify(pane.addVpnRow.description
+            compare(pane.addReasonNote.visible, true);
+            verify(pane.addReasonText
                    .indexOf("Install nm-connection-editor") >= 0);
         }
 
         function test_native_wireguard_form_creates_a_complete_profile() {
             var shell = make();
             var pane = shell.paneBody.item;
-            pane.addVpnRow.trailingButton.clicked();
+            pane.addButton.clicked();
             tryVerify(function() { return pane.addVpnDialog.open === true; });
             var kind = findChild(pane, "vpnAddKind");
             verify(kind !== null);
@@ -220,6 +223,36 @@ Item {
                 return visible.indexOf("vpn") >= 0;
             });
             verify(SettingsPanes.resolve("vpn").paneId === "vpn");
+            compare(SettingsPanes.paneById("vpn").optional, undefined);
+        }
+
+        // T288: the mockup opens with the intro, the empty state, and the Add
+        // VPN Configuration… footer.
+        function test_the_empty_state_and_add_footer() {
+            var shell = make();
+            var pane = shell.paneBody.item;
+            verify(pane.intro.text.indexOf("VPN configurations") >= 0);
+            compare(pane.emptyNote.visible, false);
+            Settings.setVpnFixture("empty");
+            tryVerify(function() { return pane.connections.length === 0; });
+            compare(pane.emptyNote.visible, true);
+            compare(pane.emptyNote.label, "No VPN configurations");
+            compare(pane.addButton.text, "Add VPN Configuration…");
+            compare(pane.addButton.visible, true);
+            compare(pane.wireguardGroup.visible, true);
+        }
+
+        // T288: a configured host shows the connection rows and details.
+        function test_a_configured_host_lists_connections() {
+            var shell = make();
+            var pane = shell.paneBody.item;
+            compare(pane.emptyNote.visible, false);
+            compare(pane.connectionRepeater.count, 2);
+            var row = pane.connectionRepeater.itemAt(0);
+            findChild(row, "vpnInfoButton").clicked();
+            tryVerify(function() { return pane.infoDialog.open === true; });
+            compare(pane.infoConnection.id, "Work VPN");
+            pane.infoDialog.hide();
         }
     }
 }

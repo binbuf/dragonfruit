@@ -76,9 +76,14 @@ Item {
             compare(pane.knownRepeater.count, 3);
             compare(pane.availableRepeater.count, 3);
             compare(pane.absenceNote.visible, false);
+            // T288: the mockup intro opens the pane and the current row is an
+            // icon row with a category tile.
+            verify(pane.intro.text.indexOf("Set up Wi-Fi") >= 0);
+            verify(pane.currentRow.category !== null);
             var row = knownRow(pane, "dragonfruit");
             verify(row !== null);
-            verify(findChild(row, "wifiForgetButton") !== null);
+            verify(findChild(row, "wifiKnownDetailsButton") !== null);
+            verify(row.category !== null);
         }
 
         function test_the_radio_toggle_writes_once_and_follows_the_view() {
@@ -124,7 +129,9 @@ Item {
             var pane = paneOf(shell);
             var row = knownRow(pane, "dragonfruit");
             verify(row !== null);
-            findChild(row, "wifiForgetButton").clicked();
+            findChild(row, "wifiKnownDetailsButton").clicked();
+            tryVerify(function() { return pane.detailsDialog.open === true; });
+            pane.detailsForgetButton.clicked();
             tryVerify(function() {
                 for (var i = 0; i < Settings.wifi.knownNetworks.length; ++i)
                     if (Settings.wifi.knownNetworks[i].ssid === "dragonfruit")
@@ -137,9 +144,9 @@ Item {
         function test_join_a_hidden_network() {
             var shell = make();
             var pane = paneOf(shell);
-            var hidden = findChild(pane, "wifiHiddenRow");
-            verify(hidden !== null);
-            hidden.trailingButton.clicked();
+            var other = pane.otherButton;
+            verify(other !== null);
+            other.clicked();
             tryVerify(function() { return pane.hiddenDialog.open === true; });
             findChild(pane, "wifiHiddenSsid").text = "lab-network";
             findChild(pane, "wifiHiddenSecret").text = "secret";
@@ -210,7 +217,7 @@ Item {
             compare(pane.knownEmptyRow.visible, true);
             // The hidden-network join is a host write; it disables with the
             // radio and the list controls.
-            compare(findChild(pane, "wifiHiddenRow").enabled, false);
+            compare(pane.otherButton.enabled, false);
             // The settingsd prompt rows stay live.
             verify(pane.askToJoinSelect.enabled);
             Settings.setWifiFixture("live");
@@ -302,7 +309,9 @@ Item {
             var pane = paneOf(shell);
             var row = knownRow(pane, "dragonfruit");
             verify(row !== null);
-            findChild(row, "wifiKnownDisconnect").clicked();
+            findChild(row, "wifiKnownDetailsButton").clicked();
+            tryVerify(function() { return pane.detailsDialog.open === true; });
+            pane.detailsDisconnectButton.clicked();
             tryVerify(function() { return Settings.wifi.activeSsid === ""; });
             compare(pane.activeSsid, "");
         }
@@ -358,6 +367,84 @@ Item {
             tryCompare(pane.askToJoinSelect, "currentIndex", 3);
             Settings.set("network.wifi.askToJoinHotspots", "off");
             tryCompare(pane.askHotspotsSelect, "currentIndex", 0);
+        }
+
+        // T288: the mockup's radio-off state is one note, not a dead list.
+        function test_radio_off_shows_the_note_and_hides_the_lists() {
+            var shell = make();
+            var pane = paneOf(shell);
+            pane.powerToggle.toggle();
+            tryVerify(function() { return pane.radioEnabled === false; });
+            compare(pane.radioOffNote.visible, true);
+            compare(pane.currentGroup.visible, false);
+            compare(pane.knownGroup.visible, false);
+            compare(pane.availableGroup.visible, false);
+            compare(pane.askGroup.visible, false);
+            pane.powerToggle.toggle();
+            tryVerify(function() { return pane.radioEnabled === true; });
+            compare(pane.radioOffNote.visible, false);
+            compare(pane.availableGroup.visible, true);
+        }
+
+        // T288: the ask-to-join rows are stored-only and the pane says so.
+        function test_the_ask_to_join_rows_are_labeled_stored_only() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.askGroup.visible, true);
+            compare(pane.askToJoinSelect.currentIndex, 1);
+            verify(pane.askNote.text.indexOf("Stored only") >= 0);
+            compare(pane.askNote.visible, true);
+        }
+
+        // T288: a scan is a real progress row, not a permanent spinner.
+        function test_the_scan_row_is_a_progress_state() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.scanRow.visible, true);
+            compare(pane.scanningRow.visible, false);
+            Settings.setWifiFixture("scanning");
+            tryVerify(function() { return pane.scanning === true; });
+            compare(pane.scanningRow.visible, true);
+            compare(pane.scanRow.visible, false);
+            verify(pane.spinner !== null);
+            Settings.refreshWifi();
+            tryVerify(function() { return pane.scanning === false; });
+            compare(pane.scanningRow.visible, false);
+            compare(pane.scanRow.visible, true);
+        }
+
+        // T288: Personal Hotspot lives in the Advanced sheet now.
+        function test_personal_hotspot_is_in_the_advanced_sheet() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.hotspotGroup !== null);
+            verify(pane.hotspotRow !== null);
+            pane.advancedDialog.show();
+            tryVerify(function() { return pane.advancedDialog.open === true; });
+            verify(pane.hotspotGroup.parent.parent === pane.advancedDialog.content);
+            compare(pane.hotspotRow.visible, true);
+            pane.advancedDialog.hide();
+        }
+
+        // T288: the details sheet owns connect/forget/disconnect.
+        function test_details_sheet_connects_a_saved_network() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var row = knownRow(pane, "dragonfruit");
+            verify(row !== null);
+            findChild(row, "wifiKnownDetailsButton").clicked();
+            tryVerify(function() { return pane.detailsDialog.open === true; });
+            // The active network offers Disconnect, not Connect.
+            compare(pane.detailsConnectButton.visible, false);
+            compare(pane.detailsDisconnectButton.visible, true);
+            pane.detailsDialog.hide();
+            var other = knownRow(pane, "home-office");
+            verify(other !== null);
+            findChild(other, "wifiKnownDetailsButton").clicked();
+            tryVerify(function() { return pane.detailsDialog.open === true; });
+            compare(pane.detailsConnectButton.visible, true);
+            pane.detailsConnectButton.clicked();
+            tryVerify(function() { return Settings.wifi.activeSsid === "home-office"; });
         }
 
         function test_the_pane_fits_the_measured_window() {

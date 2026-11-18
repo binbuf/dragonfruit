@@ -125,7 +125,7 @@ class MockVpnClient : public VpnClient
 public:
     explicit MockVpnClient(QObject *parent = nullptr);
 
-    bool available() const override { return true; }
+    bool available() const override { return !m_absent; }
     QVariantMap view() const override { return m_view; }
     void refresh() override;
     void connectVpn(const QString &uuid) override;
@@ -166,6 +166,7 @@ private:
     bool m_editorAvailable = true;
     QString m_editor = QStringLiteral("nm-connection-editor");
     bool m_readOnly = false;
+    bool m_absent = false;
     QString m_readOnlyNote;
     QString m_failOperation;
     QString m_failMessage;

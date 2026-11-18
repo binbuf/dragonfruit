@@ -239,8 +239,6 @@ Item {
             var expected = SettingsMap.panes.filter(function(pane) {
                 if (pane.hidden === true)
                     return false;
-                if (pane.optional !== undefined)
-                    return SettingsPanes.optionalVisible(pane, Settings.vpn);
                 return pane.shipped;
             }).map(function(pane) { return pane.id; });
             var actual = shell.visiblePanes.map(function(pane) { return pane.id; });

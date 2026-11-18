@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
-import QtQuick.Shapes
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Wi-Fi pane (T225; T271 completion).
+// The Wi-Fi pane (T225; T271 completion; T288 visual parity).
 //
 // One NetworkManager model serves this pane and the shell's Wi-Fi quick sheet:
 // the `Settings.wifi` view is the same `Wifi` bridge-host projection the menu
@@ -12,11 +11,13 @@ import Dragonfruit.Settings
 // adapter and the host's re-read pushes the new view back. A failed write
 // leaves the view untouched, so every control is bound to the view and reverts.
 //
-// Rows follow the macOS reference (docs/design/24-system-settings.md §4.1):
-// power, the current network with Details…, Personal Hotspot, Known Networks,
-// Other Networks with a real scan/scanning/empty/error state, Join Other
-// Network…, Ask to join networks/hotspots, and Advanced…. The reference's
-// `Learn more…` link and `?` help are omitted project-wide.
+// T288 follows the mockup's section order
+// (docs/design/25-system-settings-visual-parity.md §5.2): intro, the Wi-Fi
+// toggle, the current network, Known Networks, Other Networks (with a real
+// scan row), the Other… footer, the stored-only Ask to Join rows, and the
+// Advanced… footer. Rows use the shared `SettingsIconRow`/`SettingsScanRow`.
+// The personal hotspot, the Linux-only TCP/IP/hardware values, and the
+// advanced settings live in the Advanced sheet, not in the main flow.
 //
 // Absence is structural: the sections, the settingsd rows, and Advanced stay;
 // only the NetworkManager controls disable with a reason (ADR 0262).
@@ -84,21 +85,27 @@ Item {
     }
 
     // Test surface (tst_settings_wifi.qml).
+    property alias intro: intro
     property alias powerGroup: powerGroup
     property alias powerToggle: powerToggle
     property alias currentGroup: currentGroup
     property alias currentRow: currentRow
     property alias knownGroup: knownGroup
     property alias availableGroup: availableGroup
+    property alias askGroup: askGroup
     property alias absenceNote: absenceNote
     property alias readOnlyNoteItem: readOnlyNoteItem
+    property alias radioOffNote: radioOffNote
     property alias knownRepeater: knownRepeater
     property alias availableRepeater: availableRepeater
     property alias joinDialog: joinDialog
     property alias hiddenDialog: hiddenDialog
     property alias detailsDialog: detailsDialog
     property alias advancedDialog: advancedDialog
-    property alias advancedRow: advancedRow
+    property alias advancedRow: advancedButton
+    property alias advancedButton: advancedButton
+    property alias otherButton: otherButton
+    property alias hiddenRow: otherButton
     property alias hotspotDialog: hotspotDialog
     property alias joinSsidField: hiddenSsidField
     property alias joinSecretField: hiddenSecretField
@@ -113,7 +120,7 @@ Item {
     property alias hotspotCreateButton: hotspotCreateButton
     property alias scanRow: scanRow
     property alias scanningRow: scanningRow
-    property alias spinner: spinner
+    property alias spinner: scanningRow.spinner
     property alias emptyRow: emptyRow
     property alias errorRow: errorRow
     property alias unavailableRow: unavailableRow
@@ -122,12 +129,17 @@ Item {
     property alias askNote: askNote
     property alias detailsForgetButton: detailsForgetButton
     property alias detailsDisconnectButton: detailsDisconnectButton
+    property alias detailsConnectButton: detailsConnectButton
     property alias advancedMetered: advancedMetered
     property alias advancedIpv6: advancedIpv6
     property alias advancedDns: advancedDns
     property alias advancedProxy: advancedProxy
     property alias advancedMac: advancedMac
     property alias advancedAuth: advancedAuth
+
+    // The mockup's radio-on flow; a host-absent pane keeps the same sections
+    // so the structure and its reason stay on screen (ADR 0262).
+    readonly property bool showSections: !root.ready || root.radioEnabled
 
     // The network awaiting a password, and the hidden-network form.
     property string pendingSsid: ""
@@ -459,6 +471,15 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
+        // ── Intro (mockup §5.2) ───────────────────────────────────────────
+        SettingsIntro {
+            id: intro
+            objectName: "wifiIntro"
+            width: parent.width
+            text: qsTr("Set up Wi-Fi to wirelessly connect your computer to the "
+                       + "internet. Turn on Wi-Fi, then choose a network to join.")
+        }
+
         // ── Power ─────────────────────────────────────────────────────────
         SettingsGroup {
             id: powerGroup
@@ -503,16 +524,30 @@ Item {
             wrapMode: Text.WordWrap
         }
 
+        // The mockup's radio-off state: one note instead of the network lists.
+        // A host-absent pane keeps the sections below (ADR 0262).
+        Text {
+            id: radioOffNote
+            objectName: "wifiRadioOffNote"
+            width: parent.width
+            visible: root.ready && !root.radioEnabled
+            text: qsTr("Wi-Fi is off. Turn it on to see known and nearby networks.")
+            color: Theme.color.textSecondary
+            font.pixelSize: Theme.primitive.font.sizeSm
+            wrapMode: Text.WordWrap
+        }
+
         // ── Current network ───────────────────────────────────────────────
         SettingsGroup {
             id: currentGroup
             width: parent.width
-            title: qsTr("Current Network")
+            visible: root.showSections
 
-            SettingsRow {
+            SettingsIconRow {
                 id: currentRow
                 objectName: "wifiCurrentRow"
                 width: parent.width
+                category: SettingsPanes.rowStyle("wifi")
                 label: root.activeSsid.length > 0 ? root.activeSsid
                                                   : qsTr("Not Connected")
                 description: root.activeSsid.length > 0
@@ -536,16 +571,18 @@ Item {
             id: knownGroup
             width: parent.width
             title: qsTr("Known Networks")
+            visible: root.showSections
 
             Repeater {
                 id: knownRepeater
                 model: root.ready ? root.knownNetworks : []
-                delegate: SettingsRow {
+                delegate: SettingsIconRow {
                     id: knownRow
                     required property var modelData
                     required property int index
                     objectName: "wifiKnownRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("wifi")
                     label: String(knownRow.modelData.ssid)
                     description: knownRow.modelData.connected === true
                         ? qsTr("Connected")
@@ -581,29 +618,6 @@ Item {
                             enabled: root.ready
                             onClicked: root.showDetails(String(knownRow.modelData.ssid))
                         }
-                        Button {
-                            objectName: "wifiKnownConnect"
-                            visible: knownRow.modelData.connected !== true
-                            text: qsTr("Connect")
-                            enabled: root.radioEnabled && !root.readOnly && root.ready
-                            onClicked: Settings.joinWifi(
-                                String(knownRow.modelData.ssid), "")
-                        }
-                        Button {
-                            objectName: "wifiKnownDisconnect"
-                            visible: knownRow.modelData.connected === true
-                            text: qsTr("Disconnect")
-                            enabled: !root.readOnly && root.ready
-                            onClicked: root.disconnect(
-                                String(knownRow.modelData.uuid))
-                        }
-                        Button {
-                            objectName: "wifiForgetButton"
-                            text: qsTr("Forget")
-                            variant: "ghost"
-                            enabled: !root.readOnly && root.ready
-                            onClicked: root.forget(String(knownRow.modelData.uuid))
-                        }
                     }
                 }
             }
@@ -627,55 +641,14 @@ Item {
             id: availableGroup
             width: parent.width
             title: qsTr("Other Networks")
+            visible: root.showSections
 
-            Row {
+            SettingsScanRow {
                 id: scanningRow
                 objectName: "wifiScanningRow"
                 width: parent.width
-                spacing: Theme.primitive.spacing.sm
                 visible: root.ready && root.radioEnabled && root.scanning
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
-
-                Shape {
-                    id: spinner
-                    objectName: "wifiSpinner"
-                    width: 16
-                    height: 16
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    ShapePath {
-                        strokeColor: Theme.color.accent
-                        strokeWidth: 2
-                        fillColor: "transparent"
-                        capStyle: ShapePath.RoundCap
-
-                        PathAngleArc {
-                            centerX: 8
-                            centerY: 8
-                            radiusX: 6
-                            radiusY: 6
-                            startAngle: 0
-                            sweepAngle: 270
-                        }
-                    }
-
-                    RotationAnimator on rotation {
-                        from: 0
-                        to: 360
-                        duration: 900
-                        loops: Animation.Infinite
-                        running: spinner.visible && !Theme.reducedMotion
-                    }
-                }
-
-                Text {
-                    objectName: "wifiScanningLabel"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Scanning…")
-                    color: Theme.color.textSecondary
-                    font.pixelSize: Theme.primitive.font.sizeSm
-                }
+                scanningText: qsTr("Scanning…")
             }
 
             Text {
@@ -706,17 +679,6 @@ Item {
             }
 
             Text {
-                objectName: "wifiRadioOffRow"
-                width: parent.width
-                visible: root.ready && !root.radioEnabled
-                text: qsTr("Turn on Wi-Fi to see nearby networks.")
-                color: Theme.color.textSecondary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
-            }
-
-            Text {
                 id: emptyRow
                 objectName: "wifiEmptyRow"
                 width: parent.width
@@ -732,17 +694,15 @@ Item {
                 id: availableRepeater
                 model: root.ready && root.radioEnabled && !root.scanning
                     ? root.otherNetworks : []
-                delegate: SettingsRow {
+                delegate: SettingsIconRow {
                     id: networkRow
                     required property var modelData
                     required property int index
                     objectName: "wifiNetworkRow"
                     width: parent.width
+                    category: SettingsPanes.rowStyle("wifi")
                     label: String(networkRow.modelData.ssid)
-                    description: qsTr("%1 · %2 · %3")
-                        .arg(String(networkRow.modelData.security))
-                        .arg(String(networkRow.modelData.band))
-                        .arg(qsTr("%1% signal").arg(Number(networkRow.modelData.strength)))
+                    description: String(networkRow.modelData.security)
                     settingsId: "available"
                     owner: "NetworkManager"
                     settingsKey: "AccessPoint"
@@ -760,7 +720,7 @@ Item {
                         Button {
                             objectName: "wifiJoinButton"
                             visible: networkRow.modelData.active !== true
-                            text: qsTr("Join")
+                            text: qsTr("Connect")
                             enabled: root.radioEnabled && !root.readOnly && root.ready
                             onClicked: root.joinNetwork(String(networkRow.modelData.ssid))
                         }
@@ -772,33 +732,33 @@ Item {
                 id: scanRow
                 objectName: "wifiScanRow"
                 width: parent.width
-                visible: root.ready && root.radioEnabled
+                visible: root.ready && root.radioEnabled && !root.scanning
                 label: qsTr("Scan for networks")
-                description: root.scanning
-                    ? qsTr("A scan is in progress.") : qsTr("Look for nearby networks now.")
+                description: qsTr("Look for nearby networks now.")
                 settingsId: "scan"
                 owner: "NetworkManager"
                 settingsKey: "AccessPoint.RequestScan"
                 trailingAction: qsTr("Scan")
-                showSeparator: true
+                showSeparator: false
                 onTrailingActionClicked: root.scan()
             }
+        }
 
-            SettingsRow {
-                id: hiddenRow
-                objectName: "wifiHiddenRow"
-                width: parent.width
-                label: qsTr("Join Other Network…")
-                description: qsTr("Connect to a hidden network by name.")
-                settingsId: "hidden"
-                owner: "NetworkManager"
-                settingsKey: "AddAndActivateConnection"
-                showSeparator: false
+        // ── Other… footer (hidden-network join) ───────────────────────────
+        SettingsFooter {
+            id: otherFooter
+            objectName: "wifiOtherFooter"
+            width: parent.width
+            visible: root.showSections
+
+            Button {
+                id: otherButton
+                objectName: "wifiOtherButton"
+                text: qsTr("Other…")
                 // The join is a host write: it disables with the other
                 // NetworkManager controls when the daemon is absent/read-only.
                 enabled: root.ready && !root.readOnly
-                trailingAction: qsTr("Join…")
-                onTrailingActionClicked: {
+                onClicked: {
                     root.joinError = "";
                     hiddenSsidField.text = "";
                     hiddenSecretField.text = "";
@@ -807,43 +767,19 @@ Item {
             }
         }
 
-        // ── Personal hotspot ──────────────────────────────────────────────
-        SettingsGroup {
-            id: hotspotGroup
-            width: parent.width
-            title: qsTr("Personal Hotspot")
-
-            SettingsRow {
-                id: hotspotRow
-                objectName: "wifiHotspotRow"
-                width: parent.width
-                label: root.hotspotActive && root.hotspotSsid.length > 0
-                    ? root.hotspotSsid : qsTr("Personal Hotspot")
-                description: !root.hotspotSupported
-                    ? qsTr("No Wi-Fi device supports access-point mode.")
-                    : (root.hotspotActive ? qsTr("On")
-                                          : (root.ready ? qsTr("Off")
-                                                        : qsTr("Unavailable")))
-                settingsId: "hotspot"
-                owner: "NetworkManager"
-                settingsKey: "802-11-wireless.mode=ap"
-                trailingAction: root.hotspotActive ? qsTr("Turn Off") : qsTr("Create…")
-                showSeparator: false
-                enabled: root.ready && !root.readOnly && root.hotspotSupported
-                onTrailingActionClicked: root.toggleHotspot()
-            }
-        }
-
         // ── Prompt policy (settingsd; stored-only) ────────────────────────
         SettingsGroup {
+            id: askGroup
+            objectName: "wifiAskGroup"
             width: parent.width
-            title: qsTr("Ask to Join")
+            visible: root.showSections
 
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Ask to join networks")
-                description: qsTr("Prompt before joining a nearby network. "
-                                   + "NetworkManager's own auto-join still applies.")
+                description: qsTr("Known networks will be joined automatically. "
+                                   + "If no known networks are available, you "
+                                   + "will be notified of available networks.")
                 settingsId: "ask"
                 owner: "settingsd"
                 settingsKey: "network.wifi.askToJoin"
@@ -867,7 +803,9 @@ Item {
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Ask to join hotspots")
-                description: qsTr("Prompt before joining a captive-portal hotspot.")
+                description: qsTr("Allow this computer to automatically discover "
+                                   + "nearby personal hotspots when no Wi-Fi "
+                                   + "network is available.")
                 settingsId: "askHotspots"
                 owner: "settingsd"
                 settingsKey: "network.wifi.askToJoinHotspots"
@@ -892,9 +830,9 @@ Item {
                 id: askNote
                 objectName: "wifiAskNote"
                 width: parent.width
-                text: qsTr("Stored for the shell's prompt policy; the shell has "
-                           + "no Wi-Fi prompt consumer yet, so these rows do not "
-                           + "change NetworkManager's auto-join.")
+                text: qsTr("Stored only: the shell has no Wi-Fi prompt consumer "
+                           + "yet, so these choices are saved but do not change "
+                           + "NetworkManager's auto-join or show a prompt.")
                 color: Theme.color.textTertiary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
@@ -902,22 +840,18 @@ Item {
             }
         }
 
-        // ── Advanced ──────────────────────────────────────────────────────
-        SettingsGroup {
+        // ── Advanced… footer ──────────────────────────────────────────────
+        SettingsFooter {
+            id: advancedFooter
+            objectName: "wifiAdvancedFooter"
             width: parent.width
+            visible: root.showSections
 
-            SettingsRow {
-                id: advancedRow
-                objectName: "wifiAdvancedRow"
-                width: parent.width
-                label: qsTr("Advanced…")
-                description: qsTr("TCP/IP, hardware, and the saved connection.")
-                settingsId: "advanced"
-                owner: "NetworkManager + settingsd"
-                settingsKey: "nm.connection"
-                showSeparator: false
-                trailingAction: qsTr("Open…")
-                onTrailingActionClicked: root.advancedDialog.show()
+            Button {
+                id: advancedButton
+                objectName: "wifiAdvancedButton"
+                text: qsTr("Advanced…")
+                onClicked: root.advancedDialog.show()
             }
         }
 
@@ -1307,6 +1241,15 @@ Item {
         buttonsData: Row {
             spacing: Theme.primitive.spacing.sm
             Button {
+                id: detailsConnectButton
+                objectName: "wifiDetailsConnect"
+                visible: root.knownFor(root.detailsSsid) !== null
+                    && root.detailsSsid !== root.activeSsid
+                text: qsTr("Connect")
+                enabled: root.ready && !root.readOnly && root.radioEnabled
+                onClicked: Settings.joinWifi(String(root.detailsSsid), "")
+            }
+            Button {
                 id: detailsForgetButton
                 objectName: "wifiDetailsForget"
                 visible: root.knownFor(root.detailsSsid) !== null
@@ -1347,6 +1290,34 @@ Item {
         contentData: Column {
             width: parent.width
             spacing: Theme.primitive.spacing.xs
+
+            // T288: Personal Hotspot moves out of the main flow into the
+            // Advanced sheet; it is still the same live NetworkManager write.
+            SettingsGroup {
+                id: hotspotGroup
+                width: parent.width
+                title: qsTr("Personal Hotspot")
+
+                SettingsRow {
+                    id: hotspotRow
+                    objectName: "wifiHotspotRow"
+                    width: parent.width
+                    label: root.hotspotActive && root.hotspotSsid.length > 0
+                        ? root.hotspotSsid : qsTr("Personal Hotspot")
+                    description: !root.hotspotSupported
+                        ? qsTr("No Wi-Fi device supports access-point mode.")
+                        : (root.hotspotActive ? qsTr("On")
+                                              : (root.ready ? qsTr("Off")
+                                                            : qsTr("Unavailable")))
+                    settingsId: "hotspot"
+                    owner: "NetworkManager"
+                    settingsKey: "802-11-wireless.mode=ap"
+                    trailingAction: root.hotspotActive ? qsTr("Turn Off") : qsTr("Create…")
+                    showSeparator: false
+                    enabled: root.ready && !root.readOnly && root.hotspotSupported
+                    onTrailingActionClicked: root.toggleHotspot()
+                }
+            }
 
             Text {
                 objectName: "wifiAdvancedInterface"

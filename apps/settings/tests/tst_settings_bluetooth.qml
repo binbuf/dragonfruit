@@ -61,6 +61,8 @@ Item {
                     "the caption never shows the adapter id");
             compare(pane.caption.visible, true,
                     "the discoverable caption shows while the pane is open and on");
+            // T288: the mockup intro opens the pane.
+            verify(pane.intro.text.indexOf("Connect to accessories") >= 0);
             verify(pane.myDevicesGroup.visible, "My Devices is shown");
             verify(pane.nearbyGroup.visible, "Nearby Devices is shown");
             verify(pane.discoverableRow.visible, "Discoverable As is shown");
@@ -90,8 +92,11 @@ Item {
             compare(pane.knownDevices[0].connected, true);
 
             var info = findChild(pane, "bluetoothInfoButton");
-            verify(info !== null, "a circular info button is present");
-            compare(info.Accessible.role, Accessible.Button);
+            verify(info !== null, "an info action is present");
+            info.clicked();
+            tryVerify(function() { return pane.deviceDialog.open === true; });
+            compare(pane.deviceTitle.text, "WF-1000XM6");
+            pane.deviceDialog.hide();
         }
 
         function test_nearby_devices_show_the_searching_state() {
@@ -133,7 +138,7 @@ Item {
             var pane = paneOf(shell);
             var info = findChild(pane, "bluetoothInfoButton");
             verify(info !== null);
-            mouseClick(info);
+            info.clicked();
             tryVerify(function() { return pane.deviceDialog.open === true; });
             compare(pane.deviceTitle.text, "WF-1000XM6");
             compare(pane.deviceAddress.text.indexOf("AA:BB:CC:DD:EE:FF") >= 0, true);
@@ -152,7 +157,7 @@ Item {
             var pane = paneOf(shell);
             var info = findChild(pane, "bluetoothInfoButton");
             verify(info !== null);
-            mouseClick(info);
+            info.clicked();
             tryVerify(function() { return pane.deviceDialog.open === true; });
             pane.deviceForgetButton.clicked();
             tryVerify(function() {
@@ -186,7 +191,9 @@ Item {
             compare(pane.absenceNote.visible, true);
             compare(pane.myDevicesGroup.visible, true);
             compare(pane.nearbyGroup.visible, true);
-            compare(pane.discoverableRow.visible, true);
+            // T288: the discoverable note is conditional on a live,
+            // discoverable adapter; an absent host keeps the other sections.
+            compare(pane.discoverableRow.visible, false);
             compare(pane.advancedRow.visible, true);
             compare(pane.myDevicesEmpty.visible, true);
             compare(pane.nearbyEmpty.visible, true);
@@ -213,6 +220,35 @@ Item {
             compare(Settings.bluetooth.powered, true, "the view is the truth");
             compare(pane.powerToggle.checked, true, "the toggle reverts");
             compare(pane.writeErrorItem.visible, true);
+        }
+
+        // T288: the device lists use the shared device row and the scan row is
+        // a real progress state.
+        function test_device_rows_and_the_searching_row() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.knownRepeater.count, 2);
+            var row = pane.knownRepeater.itemAt(0);
+            compare(row.objectName, "bluetoothDeviceRow");
+            verify(row.deviceGlyph.length > 0);
+            verify(findChild(row, "bluetoothInfoButton") !== null);
+            compare(pane.searchingRow.objectName, "bluetoothSearchingRow");
+            verify(pane.searchingRow.spinner !== null);
+            Settings.setBluetoothDiscovering(false);
+            waitForRendering(stage);
+            compare(pane.searchingRow.visible, false);
+        }
+
+        // T288: the discoverable note only exists while the pane is open, the
+        // radio is on, and the adapter reports itself discoverable.
+        function test_the_discoverable_note_is_conditional() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.discoverableRow.visible, true);
+            verify(pane.discoverableRow.description.indexOf("workstation") >= 0);
+            pane.powerToggle.toggle();
+            tryVerify(function() { return pane.powered === false; });
+            compare(pane.discoverableRow.visible, false);
         }
 
         function test_the_pane_fits_the_measured_window() {

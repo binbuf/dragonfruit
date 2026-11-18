@@ -3,12 +3,14 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The optional top-level VPN pane (T272).
+// The top-level VPN pane (T272; T288 visual parity).
 //
-// The sidebar shows this pane only when NetworkManager reports at least one
-// VPN profile; otherwise Network → VPN is the only entry point. The pane reads
+// T288 makes the pane always visible: the old optional-profile gate is gone,
+// so an empty host shows the mockup's "No VPN configurations" state and the
+// Add VPN Configuration… footer instead of losing the pane. The pane reads
 // the same one VPN view the Network pane uses, so there is no second model.
-// Connect/disconnect, auto-connect, Add VPN, and Info all report their outcome.
+// Connect/disconnect, auto-connect, Add VPN, and Info all report their
+// outcome. The WireGuard capability row stays below the connection list.
 Item {
     id: root
 
@@ -39,13 +41,39 @@ Item {
     implicitHeight: content.implicitHeight
     width: parent ? parent.width : implicitWidth
 
+    property alias intro: intro
     property alias connectionRepeater: connectionRepeater
-    property alias addVpnRow: addVpnRow
+    property alias connectionsGroup: connectionsGroup
+    property alias wireguardGroup: wireguardGroup
+    property alias addButton: addButton
+    property alias addReasonNote: addReasonNote
     property alias addVpnDialog: addVpnDialog
     property alias infoDialog: infoDialog
     property alias absenceNote: absenceNote
     property alias emptyNote: emptyNote
     property alias writeNote: writeNote
+
+    // Why Add is unavailable, in the same words the old row used. The footer
+    // button stays visible so the pane never loses the mockup action; only
+    // its enabled state and the note change.
+    readonly property string addReasonText: {
+        if (!root.canAdd) {
+            if (root.plugins.length > 0 && !root.editorAvailable)
+                return qsTr("Install %1 to finish plugin profiles.")
+                    .arg(root.editorName.length > 0
+                         ? root.editorName : "nm-connection-editor");
+            return root.addReason.length > 0
+                ? root.addReason
+                : qsTr("No VPN plugin is installed and native WireGuard is "
+                       + "not available.");
+        }
+        if (root.plugins.length > 0 && !root.editorAvailable)
+            return qsTr("Install %1 to finish plugin profiles, or add a "
+                       + "native WireGuard profile.")
+                .arg(root.editorName.length > 0
+                     ? root.editorName : "nm-connection-editor");
+        return "";
+    }
 
     Component.onCompleted: Settings.refreshVpn()
 
@@ -69,6 +97,8 @@ Item {
     }
 
     function addVpn() {
+        if (!root.ready || root.readOnly || !root.canAdd)
+            return;
         addVpnDialog.prepare();
     }
 
@@ -122,41 +152,14 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
-        SettingsGroup {
+        // ── Intro (mockup §5.2) ───────────────────────────────────────────
+        SettingsIntro {
+            id: intro
+            objectName: "vpnIntro"
             width: parent.width
-            title: qsTr("VPN")
-
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Status")
-                description: !root.ready
-                    ? qsTr("Unavailable")
-                    : (root.connectedCount === 0
-                       ? qsTr("Not connected")
-                       : qsTr("Connected to %1").arg(root.activeName))
-                settingsId: "vpn.status"
-                owner: "NetworkManager VPN"
-                settingsKey: "ActiveConnection"
-            }
-
-            SettingsRow {
-                width: parent.width
-                label: qsTr("WireGuard")
-                description: root.wireguardNative
-                    ? qsTr("Native WireGuard profiles connect through "
-                           + "NetworkManager; no plugin is required.")
-                    : qsTr("Native WireGuard is not available on this host.")
-                settingsId: "vpn.wireguard"
-                owner: "NetworkManager VPN"
-                settingsKey: "wireguard"
-                showSeparator: false
-                controlData: Text {
-                    text: root.wireguardNative ? qsTr("Built in")
-                                               : qsTr("Unavailable")
-                    color: Theme.color.textSecondary
-                    font.pixelSize: Theme.primitive.font.sizeSm
-                }
-            }
+            text: qsTr("VPN configurations connect this computer to a private "
+                       + "network. Profiles are owned by the system network "
+                       + "service.")
         }
 
         SettingsGroup {
@@ -258,46 +261,73 @@ Item {
                 objectName: "vpnEmptyNote"
                 width: parent.width
                 visible: root.ready && root.connections.length === 0
-                label: qsTr("No VPN connection is configured.")
-                description: qsTr("Add a VPN below to connect.")
-                showSeparator: root.plugins.length > 0
+                label: qsTr("No VPN configurations")
+                description: qsTr("Add a VPN configuration to connect to a "
+                                   + "private network.")
+                showSeparator: false
             }
 
+            // A present-but-unavailable service keeps the section and names
+            // the missing half (ADR 0262); the group never renders empty.
             SettingsRow {
-                id: addVpnRow
+                objectName: "vpnConnectionsUnavailable"
                 width: parent.width
-                label: qsTr("Add VPN Configuration…")
-                description: {
-                    if (!root.canAdd) {
-                        if (root.plugins.length > 0 && !root.editorAvailable)
-                            return qsTr("Install %1 to finish plugin profiles.")
-                                .arg(root.editorName.length > 0
-                                     ? root.editorName : "nm-connection-editor");
-                        return root.addReason.length > 0
-                            ? root.addReason
-                            : qsTr("No VPN plugin is installed and native "
-                                   + "WireGuard is not available.");
-                    }
-                    if (root.plugins.length > 0 && !root.editorAvailable)
-                        return qsTr("Install %1 to finish plugin profiles, or "
-                                    + "add a native WireGuard profile.")
-                            .arg(root.editorName.length > 0
-                                 ? root.editorName : "nm-connection-editor");
-                    var parts = [];
-                    if (root.wireguardNative)
-                        parts.push(qsTr("WireGuard (native)"));
-                    if (root.plugins.length > 0)
-                        parts.push(qsTr("%1 plugin(s)").arg(root.plugins.length));
-                    return parts.join(qsTr(" · "));
-                }
-                settingsId: "vpn.add"
-                owner: "NetworkManager VPN"
-                settingsKey: "AddConnection"
+                visible: !root.ready
+                label: qsTr("Connections unavailable")
+                description: qsTr("The VPN service is not running.")
                 showSeparator: false
-                trailingAction: root.canAdd ? qsTr("Add…") : ""
-                enabled: root.ready && !root.readOnly && root.canAdd
-                onTrailingActionClicked: root.addVpn()
             }
+        }
+
+        // The mockup's empty state is the pane's default; a configured host
+        // shows the same group with its real connection rows.
+        SettingsGroup {
+            id: wireguardGroup
+            objectName: "vpnWireguardGroup"
+            width: parent.width
+            title: qsTr("WireGuard")
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("WireGuard")
+                description: root.wireguardNative
+                    ? qsTr("Native WireGuard profiles connect through "
+                           + "NetworkManager; no plugin is required.")
+                    : qsTr("Native WireGuard is not available on this host.")
+                settingsId: "vpn.wireguard"
+                owner: "NetworkManager VPN"
+                settingsKey: "wireguard"
+                showSeparator: false
+                controlData: Text {
+                    text: root.wireguardNative ? qsTr("Built in")
+                                               : qsTr("Unavailable")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
+            }
+        }
+
+        // ── Add VPN Configuration… footer ─────────────────────────────────
+        SettingsFooter {
+            id: addFooter
+            objectName: "vpnAddFooter"
+            width: parent.width
+
+            Button {
+                id: addButton
+                objectName: "vpnAddButton"
+                text: qsTr("Add VPN Configuration…")
+                enabled: root.ready && !root.readOnly && root.canAdd
+                onClicked: root.addVpn()
+            }
+        }
+
+        SettingsNote {
+            id: addReasonNote
+            objectName: "vpnAddReason"
+            width: parent.width
+            visible: root.ready && root.addReasonText.length > 0
+            text: root.addReasonText
         }
 
         SettingsGroup {

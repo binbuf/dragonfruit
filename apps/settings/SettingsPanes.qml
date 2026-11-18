@@ -385,29 +385,13 @@ QtObject {
         return entry !== null ? entry.reason : "";
     }
 
-    // Whether an optional catalog entry is visible on this host. Kept for
-    // optional panes; T285's catalog has none (VPN became always visible with
-    // the 27-entry IA).
-    function optionalVisible(pane, vpnView) {
-        if (pane === null || pane.optional === undefined)
-            return true;
-        if (pane.optional === "vpn") {
-            if (vpnView === undefined || vpnView === null
-                    || vpnView.connections === undefined)
-                return false;
-            return vpnView.connections.length > 0;
-        }
-        return true;
-    }
-
-    // The visible sidebar entries: shipped panes (Storage is hidden) plus the
-    // optional navigation links whose host state is present.
+    // T288: there is no optional pane any more. The VPN pane stays visible
+    // with its empty state, so the sidebar is exactly the shipped catalog
+    // minus the hidden General sub-pane entries.
     readonly property var shippedPanes: root.catalog.filter(function(pane) {
         if (pane.hidden === true)
             return false;
-        if (pane.shipped === true || pane.linkTo !== undefined)
-            return root.optionalVisible(pane, Settings.vpn);
-        return false;
+        return pane.shipped === true || pane.linkTo !== undefined;
     })
 
     // Resolve a pane id, alias, or the status-row id to the pane the shell

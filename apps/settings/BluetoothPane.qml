@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
-import QtQuick.Shapes
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Bluetooth pane (T-15.1b; T271 completion).
+// The Bluetooth pane (T-15.1b; T271 completion; T288 visual parity).
 //
 // The pane and the Control Center tile are one functional unit: both read the
 // same BlueZ adapter through the bridge host, and the explicit writes (power,
@@ -13,11 +12,13 @@ import Dragonfruit.Settings
 // starts an inquiry while it is open; turning the radio on starts discovery
 // too. Closing it stops the inquiry.
 //
-// The macOS reference's `?` help button and the `Learn more…` web link are
-// omitted (Apple-only, ADR 0118). The discoverable row names the computer, not
-// the adapter id; the adapter address lives in Advanced. Absence is
-// structural: every group stays and only the host controls disable with a
-// reason (ADR 0262).
+// T288 follows the mockup's section order
+// (docs/design/25-system-settings-visual-parity.md §5.2): intro, the Bluetooth
+// toggle with the discoverable note, My Devices, and Nearby Devices with a
+// real searching row. The discoverable note appears only while the pane is
+// open, the radio is on, and the adapter reports itself discoverable. The
+// device info and Advanced sheets stay. Absence is structural: every group
+// stays and only the host controls disable with a reason (ADR 0262).
 Item {
     id: root
 
@@ -72,17 +73,18 @@ Item {
     }
 
     // Test surface (used by tst_settings_bluetooth.qml).
+    property alias intro: intro
     property alias powerGroup: powerGroup
     property alias powerToggle: powerToggle
-    property alias powerSubtitle: powerSubtitle
-    property alias caption: caption
+    property alias powerSubtitle: powerRow.descriptionText
+    property alias caption: discoverableRow
     property alias absenceNote: absenceNote
     property alias myDevicesGroup: myDevicesGroup
     property alias nearbyGroup: nearbyGroup
     property alias knownRepeater: knownRepeater
     property alias nearbyRepeater: nearbyRepeater
     property alias searchingRow: searchingRow
-    property alias spinner: spinner
+    property alias spinner: searchingRow.spinner
     property alias discoverableRow: discoverableRow
     property alias deviceDialog: deviceDialog
     property alias deviceTitle: deviceTitle
@@ -190,6 +192,17 @@ Item {
             ? String(device.type) : qsTr("Device");
     }
 
+    // The mockup's device tile: the vendored glyph set has keyboard/mouse and
+    // the Bluetooth mark, so audio devices use the Bluetooth tile.
+    function deviceGlyph(type) {
+        var value = String(type || "").toLowerCase();
+        if (value.indexOf("keyboard") >= 0)
+            return "keyboard";
+        if (value.indexOf("mouse") >= 0)
+            return "mouse";
+        return "bluetooth";
+    }
+
     // The pane asks the host for a re-read and starts an inquiry while it is
     // open. Both are no-ops when the host or BlueZ is absent.
     Component.onCompleted: {
@@ -207,95 +220,67 @@ Item {
         width: root.width
         spacing: Theme.primitive.spacing.lg
 
+        // ── Intro (mockup §5.2) ───────────────────────────────────────────
+        SettingsIntro {
+            id: intro
+            objectName: "bluetoothIntro"
+            width: parent.width
+            text: qsTr("Connect to accessories you can use for activities such "
+                       + "as streaming music, typing, and gaming.")
+        }
+
         // ── The Bluetooth toggle card ─────────────────────────────────────
         SettingsGroup {
             id: powerGroup
             width: parent.width
 
-            Item {
+            SettingsRow {
+                id: powerRow
+                objectName: "bluetoothPowerRow"
                 width: parent.width
-                height: Math.max(48, powerRow.implicitHeight)
+                label: qsTr("Bluetooth")
+                description: root.ready
+                    ? (root.discovering ? qsTr("Discovering\u2026")
+                                        : (root.powered ? qsTr("On") : qsTr("Off")))
+                    : (root.failed ? qsTr("Unavailable") : qsTr("Off"))
+                settingsId: "power"
+                owner: "BlueZ"
+                settingsKey: "Adapter1.Powered"
+                // The discoverable note is part of the same card, matching the
+                // mockup. It is a real row so search can land on it, and it is
+                // only shown while the pane is open and the radio is on.
+                showSeparator: root.ready && root.powered
+                               && root.view.discoverable === true
+                controlData: Toggle {
+                    id: powerToggle
+                    objectName: "bluetoothPowerToggle"
+                    text: ""
+                    accessibleName: qsTr("Bluetooth")
+                    enabled: root.ready
+                    onToggled: (checked) => root.setPowered(checked)
 
-                Row {
-                    id: powerRow
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.primitive.spacing.md
-
-                    Rectangle {
-                        width: 40
-                        height: 40
-                        radius: 10
-                        color: root.powered ? Theme.color.accentMuted
-                                            : Theme.color.controlFill
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        Icon {
-                            anchors.centerIn: parent
-                            name: "bluetooth"
-                            size: 22
-                            color: root.powered ? Theme.color.accent
-                                                : Theme.color.textSecondary
-                        }
-                    }
-
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 40 - powerToggle.width
-                               - 2 * Theme.primitive.spacing.md
-                        spacing: Theme.primitive.spacing.xxs
-
-                        Text {
-                            objectName: "bluetoothPowerTitle"
-                            text: qsTr("Bluetooth")
-                            color: Theme.color.textPrimary
-                            font.pixelSize: Theme.controls.button.fontSize
-                            font.weight: Theme.primitive.font.weightMedium
-                        }
-
-                        Text {
-                            id: powerSubtitle
-                            objectName: "bluetoothPowerSubtitle"
-                            width: parent.width
-                            text: root.ready
-                                ? (root.discovering ? qsTr("Discovering\u2026")
-                                                    : (root.powered ? qsTr("On")
-                                                                    : qsTr("Off")))
-                                : (root.failed ? qsTr("Unavailable") : qsTr("Off"))
-                            color: Theme.color.textSecondary
-                            font.pixelSize: Theme.primitive.font.sizeSm
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    Toggle {
-                        id: powerToggle
-                        objectName: "bluetoothPowerToggle"
-                        accessibleName: qsTr("Bluetooth")
-                        enabled: root.ready
-                        anchors.verticalCenter: parent.verticalCenter
-                        onToggled: (checked) => root.setPowered(checked)
-
-                        Binding {
-                            target: powerToggle
-                            property: "checked"
-                            value: root.powered
-                        }
+                    Binding {
+                        target: powerToggle
+                        property: "checked"
+                        value: root.powered
                     }
                 }
             }
 
-            Text {
-                id: caption
-                objectName: "bluetoothDiscoverableCaption"
+            SettingsRow {
+                id: discoverableRow
+                objectName: "bluetoothDiscoverableRow"
                 width: parent.width
                 visible: root.ready && root.powered
-                text: root.discoverableCaption
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-                topPadding: Theme.primitive.spacing.sm
+                         && root.view.discoverable === true
+                label: root.computerName
+                description: root.discoverableCaption
+                               + " " + qsTr("Other devices can find this computer "
+                                            + "while this pane is open.")
+                settingsId: "discoverable"
+                owner: "BlueZ"
+                settingsKey: "Adapter1.Discoverable"
+                showSeparator: false
             }
 
             Text {
@@ -322,25 +307,6 @@ Item {
             }
         }
 
-        // ── Discoverable as ───────────────────────────────────────────────
-        SettingsGroup {
-            id: discoverableRow
-            width: parent.width
-            title: qsTr("Discoverable As")
-
-            SettingsRow {
-                width: parent.width
-                label: root.computerName
-                description: root.ready
-                    ? qsTr("Discoverable while Bluetooth Settings is open.")
-                    : qsTr("Unavailable")
-                settingsId: "discoverable"
-                owner: "BlueZ"
-                settingsKey: "Adapter1.Discoverable"
-                showSeparator: false
-            }
-        }
-
         // ── My Devices ────────────────────────────────────────────────────
         SettingsGroup {
             id: myDevicesGroup
@@ -363,72 +329,28 @@ Item {
             Repeater {
                 id: knownRepeater
                 model: root.ready ? root.knownDevices : []
-                delegate: Item {
+                delegate: SettingsDeviceRow {
                     id: knownRow
                     required property var modelData
+                    required property int index
+                    objectName: "bluetoothDeviceRow"
                     width: parent.width
-                    height: 44
-
-                    Text {
-                        objectName: "bluetoothDeviceName"
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.controls.settingsRow.paddingH
-                        anchors.right: knownState.left
-                        anchors.rightMargin: Theme.primitive.spacing.md
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: knownRow.modelData.name
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        id: knownState
-                        objectName: "bluetoothDeviceState"
-                        anchors.right: infoButton.left
-                        anchors.rightMargin: Theme.primitive.spacing.md
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: knownRow.modelData.connected ? qsTr("Connected")
-                                                           : qsTr("Not Connected")
-                        color: knownRow.modelData.connected ? Theme.color.accent
-                                                            : Theme.color.textSecondary
-                        font.pixelSize: Theme.primitive.font.sizeSm
-                    }
-
-                    Rectangle {
-                        id: infoButton
+                    deviceGlyph: root.deviceGlyph(knownRow.modelData.type)
+                    label: String(knownRow.modelData.name)
+                    statusText: knownRow.modelData.connected
+                        ? qsTr("Connected") : qsTr("Not Connected")
+                    deviceActive: knownRow.modelData.connected === true
+                    settingsId: "paired"
+                    owner: "BlueZ"
+                    settingsKey: "Device1"
+                    showSeparator: knownRow.index < root.knownDevices.length - 1
+                    controlData: Button {
                         objectName: "bluetoothInfoButton"
-                        width: 22
-                        height: 22
-                        radius: 11
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.controls.settingsRow.paddingH
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: "transparent"
-                        border.width: Theme.controls.window.borderWidth
-                        border.color: Theme.color.border
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "i" // df-allow-untranslated: info glyph
-                            color: Theme.color.textSecondary
-                            font.pixelSize: Theme.primitive.font.sizeSm
-                            font.weight: Theme.primitive.font.weightMedium
-                        }
-
-                        Accessible.role: Accessible.Button
-                        Accessible.name: qsTr("Info for %1").arg(knownRow.modelData.name)
-
-                        TapHandler {
-                            onTapped: root.showDeviceInfo(knownRow.modelData.address)
-                        }
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: Theme.controls.window.borderWidth
-                        anchors.bottom: parent.bottom
-                        color: Theme.color.separator
+                        text: qsTr("Info…")
+                        variant: "ghost"
+                        accessibleName: qsTr("Info for %1")
+                            .arg(knownRow.modelData.name)
+                        onClicked: root.showDeviceInfo(knownRow.modelData.address)
                     }
                 }
             }
@@ -440,54 +362,12 @@ Item {
             width: parent.width
             title: qsTr("Nearby Devices")
 
-            Row {
+            SettingsScanRow {
                 id: searchingRow
                 objectName: "bluetoothSearchingRow"
                 width: parent.width
-                spacing: Theme.primitive.spacing.sm
                 visible: root.searching
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
-
-                Shape {
-                    id: spinner
-                    objectName: "bluetoothSpinner"
-                    width: 16
-                    height: 16
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    ShapePath {
-                        strokeColor: Theme.color.accent
-                        strokeWidth: 2
-                        fillColor: "transparent"
-                        capStyle: ShapePath.RoundCap
-
-                        PathAngleArc {
-                            centerX: 8
-                            centerY: 8
-                            radiusX: 6
-                            radiusY: 6
-                            startAngle: 0
-                            sweepAngle: 270
-                        }
-                    }
-
-                    RotationAnimator on rotation {
-                        from: 0
-                        to: 360
-                        duration: 900
-                        loops: Animation.Infinite
-                        running: spinner.visible && !Theme.reducedMotion
-                    }
-                }
-
-                Text {
-                    objectName: "bluetoothSearchingLabel"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Searching\u2026")
-                    color: Theme.color.textSecondary
-                    font.pixelSize: Theme.primitive.font.sizeSm
-                }
+                scanningText: qsTr("Searching…")
             }
 
             Text {
@@ -508,52 +388,33 @@ Item {
             Repeater {
                 id: nearbyRepeater
                 model: root.ready ? root.nearbyDevices : []
-                delegate: Item {
+                delegate: SettingsDeviceRow {
                     id: nearbyRow
                     required property var modelData
+                    required property int index
+                    objectName: "bluetoothNearbyRow"
                     width: parent.width
-                    height: 44
-
-                    Text {
-                        objectName: "bluetoothNearbyName"
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.controls.settingsRow.paddingH
-                        anchors.right: nearbyAction.left
-                        anchors.rightMargin: Theme.primitive.spacing.md
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: nearbyRow.modelData.name
-                        color: Theme.color.textPrimary
-                        font.pixelSize: Theme.controls.button.fontSize
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        id: nearbyAction
+                    deviceGlyph: root.deviceGlyph(nearbyRow.modelData.type)
+                    label: String(nearbyRow.modelData.name)
+                    statusText: nearbyRow.modelData.connected
+                        ? qsTr("Connected") : qsTr("Not Connected")
+                    deviceActive: nearbyRow.modelData.connected === true
+                    settingsId: "nearby"
+                    owner: "BlueZ"
+                    settingsKey: "discovery"
+                    showSeparator: nearbyRow.index < root.nearbyDevices.length - 1
+                    controlData: Button {
                         objectName: "bluetoothNearbyAction"
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.controls.settingsRow.paddingH
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: nearbyRow.modelData.connected ? qsTr("Disconnect")
-                                                            : qsTr("Connect")
-                        color: Theme.color.accent
-                        font.pixelSize: Theme.primitive.font.sizeSm
-                        Accessible.role: Accessible.Button
-                        Accessible.name: nearbyRow.modelData.name + ", " + text
-                        TapHandler {
-                            onTapped: {
-                                if (nearbyRow.modelData.connected)
-                                    root.toggleDevice(nearbyRow.modelData.address, true);
-                                else
-                                    Settings.pairBluetooth(nearbyRow.modelData.address);
-                            }
+                        text: nearbyRow.modelData.connected
+                            ? qsTr("Disconnect") : qsTr("Connect")
+                        variant: "ghost"
+                        accessibleName: nearbyRow.modelData.name + ", " + text
+                        onClicked: {
+                            if (nearbyRow.modelData.connected)
+                                root.toggleDevice(nearbyRow.modelData.address, true);
+                            else
+                                Settings.pairBluetooth(nearbyRow.modelData.address);
                         }
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: Theme.controls.window.borderWidth
-                        anchors.bottom: parent.bottom
-                        color: Theme.color.separator
                     }
                 }
             }

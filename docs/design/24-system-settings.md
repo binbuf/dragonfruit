@@ -578,6 +578,16 @@ it live.
 
 ### 4.1 Wi-Fi — T271
 
+> **Superseded layout (T288).** The owners, keys, and absence rules in
+> §4.1–4.4 still apply, but the Wi-Fi, Bluetooth, Network, and VPN section
+> order is now the mockup's
+> ([`25-system-settings-visual-parity.md`](25-system-settings-visual-parity.md)
+> §5.2): Wi-Fi's intro/toggle/current/Known/Other/Other…/Ask/Advanced flow with
+> Personal Hotspot in the Advanced sheet; Bluetooth's intro/toggle/discoverable
+> note/My Devices/Nearby Devices; Network's Wi-Fi+Firewall service card, Other
+> Services, and More popup; and the always-visible VPN pane with its empty
+> state. The tables below are the pre-T288 inventory.
+
 Owner: NetworkManager. Absence: keep the pane, every section (Current
 Network, Known Networks, Other Networks, Personal Hotspot), the Ask-to-Join
 rows, and Advanced; disable the radio/join/list/hotspot controls with a

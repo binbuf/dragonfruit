@@ -14,8 +14,16 @@ SettingsRow {
     property bool serviceActive: true
     property string serviceGlyph: ""
     property color serviceColor: Theme.color.accent
+    // T288: a pane that owns the switch state (the firewall adapter) binds
+    // `serviceActive` to its live view and handles `switchToggled`. The row
+    // then never writes `serviceActive` itself, so a refused host write
+    // reverts from the view instead of leaving a stale local value.
+    property bool switchBound: false
+    property bool switchEnabled: true
     property alias statusDot: statusDot
     property alias serviceSwitch: serviceSwitch
+
+    signal switchToggled(bool checked)
 
     description: root.statusText
     rowHeight: Theme.controls.settingsRow.iconHeight
@@ -54,6 +62,7 @@ SettingsRow {
 
         Item {
             id: statusDot
+            objectName: "settingsServiceStatusDot"
             visible: root.trailingKind === "dot"
             width: Theme.primitive.spacing.sm
             height: width
@@ -75,9 +84,16 @@ SettingsRow {
             id: serviceSwitch
             visible: root.trailingKind === "switch"
             anchors.centerIn: parent
+            enabled: root.switchEnabled && root.enabled
             checked: root.serviceActive
             rowLabel: root.label
-            onToggled: (checked) => root.serviceActive = checked
+            onToggled: (checked) => {
+                if (root.switchBound) {
+                    root.switchToggled(checked);
+                    return;
+                }
+                root.serviceActive = checked;
+            }
         }
     }
 }

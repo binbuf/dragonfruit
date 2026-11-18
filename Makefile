@@ -65,7 +65,7 @@ endif
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t263-settings-window-capture t264-settings-navigation-capture t265-settings-search-capture t266-settings-components-capture t267-settings-accessibility-capture t268-settings-performance t269-general-capture t270-general-system-capture t271-wifi-bluetooth-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
-	t272-network-capture t272a-network-capability-capture t273-data-panes-capture t274-appearance-capture t275-accessibility-capture t276-desktop-capture t277-quick-settings-menu-bar-capture t278-personalization-capture t279-accounts-security-capture t280-devices-capture t281-linux-specific-capture t285-settings-ia-capture t286-settings-shell-capture t287-settings-general-capture \
+	t272-network-capture t272a-network-capability-capture t273-data-panes-capture t274-appearance-capture t275-accessibility-capture t276-desktop-capture t277-quick-settings-menu-bar-capture t278-personalization-capture t279-accounts-security-capture t280-devices-capture t281-linux-specific-capture t285-settings-ia-capture t286-settings-shell-capture t287-settings-general-capture t288-settings-connectivity-capture \
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare t238-dock-popover-ab t238-dock-popover-ab-native t238-material-regions t238-material-workloads t238-shadow-capture t238-decoration-matrix t238-nested-responsiveness t238-presenter-lifecycle t238-native-acceptance t238-wake-swap-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
@@ -136,6 +136,7 @@ help:
 	@echo "  make t285-settings-ia-capture — T285 reduced 27-entry sidebar, update status row, and alias landings"
 	@echo "  make t286-settings-shell-capture — T286 measured shell 740x820/720x480, sidebar, search stills"
 	@echo "  make t287-settings-general-capture — T287 General big list and every sub-pane, light/dark"
+	@echo "  make t288-settings-connectivity-capture — T288 Wi-Fi/Bluetooth/Network/VPN connected/empty/absent stills"
 	@echo "  make t18-wallpaper-capture — T-18.2 Wallpaper pane stills (fetching skeleton + filled)"
 	@echo "  make t18-absence-matrix — T-18.3 headless absence/state matrix transcript"
 	@echo "  make t15-absence-matrix — T-15.16 headless absent-daemon masking matrix transcript"
@@ -763,6 +764,11 @@ t286-settings-shell-capture: build
 
 t287-settings-general-capture: build
 	bash scripts/capture-t287-settings-general.sh
+
+# T288: the four connectivity panes in their connected, empty, and absent
+# states, light/dark. Headless with the in-process fixtures.
+t288-settings-connectivity-capture: build
+	bash scripts/capture-t288-settings-connectivity.sh
 
 # T-18.2: the Wallpaper-pane capture. Needs a host Wayland session, `spectacle`,
 # Pillow, `gdbus`, the built tree and `cargo build -p dragonfruit-wallpaperd`;
