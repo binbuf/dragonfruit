@@ -251,6 +251,16 @@ context menus (`ContextMenu`) — use one row anatomy, implemented once in
   move to the sibling top-level menu, and printable keys drive a 700 ms
   type-ahead buffer.
 
+`MenuLevels` owns selection, hover dwell, and the open submenu path for
+both `MenuBarMenu` and `ContextMenu`. Selection follows a stable row key
+through live reorders. If the row becomes disabled or disappears, selection
+moves to the nearest enabled row. A removed, disabled, or repurposed opener
+retires its submenu branch. The deferred reconciliation ends with the
+menu's lifetime. Menu rows still use repeaters within a bounded viewport.
+Large exported menus can therefore incur work for rows outside the viewport.
+See [ADR 0294](adr/0294-shell-popup-frame-lifecycle.md) and
+[performance priorities](STATUS.md#9-chrome-performance-priorities).
+
 ### Shortcut hints
 
 `ShortcutHint` is the one renderer for a row's `shortcut` field. It never

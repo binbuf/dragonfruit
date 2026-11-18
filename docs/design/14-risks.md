@@ -24,29 +24,21 @@ compositor into a finished desktop. This is exactly why we reuse the entire
 Linux plumbing layer and spend the engineering budget on the pieces users
 actually perceive as *our* desktop.
 
-## Current engineering risks (2026-11)
+## Current engineering risks
 
-These are the risks the audit found in the actual tree, ordered by leverage.
-The gap register in [STATUS.md](STATUS.md) carries the evidence and proposed
-units.
-
-| Risk | Why it is material | Current mitigation |
+| Risk | Current boundary | Remaining exposure |
 |---|---|---|
-| **Shell chrome transport** — offscreen QML → `grabWindow()` → `wl_shm`, no buffer scale or frame callback | Every Dock/menu/popover frame pays a full readback + copy; chrome is soft on fractional-scale outputs; this is the biggest threat to the "premium" claim | P0 unit: physical-scale rendering, buffer pool, frame callbacks, no full-window re-render |
-| **Fixed 60 Hz scheduling** — animation clock, timer, and degrade budget all 16 ms | 120/144/240 Hz panels miss deadlines or degrade against the wrong budget; VRR is not represented | P0 unit: per-output refresh deadline and VRR-aware budget |
-| **No native visual evidence** — DRM capture explicitly fails | Nested captures cannot prove the material/HiDPI/cursor path users see | P0 unit: trusted KMS readback or external capture procedure |
-| **Files feature gap** — no tabs/New Window/copy/move/undo/progress/Open With/menu model | The Finder design promises operations the UI does not expose; users hit the gap immediately | P1 Files-completeness track |
-| **Compatibility closure** — DBusMenu clicks, hide verbs, XDnD, `_NET_FRAME_EXTENTS` | These are the classic "Linux desktop jank" moments; the architecture already has the models | P1 compatibility-closure track |
-| **Session power/idle** — About/power actions are stubs; no idle service or logind suspend backend | A desktop that cannot reliably lock/suspend/log out is not a daily driver | P1 session-completion track |
-| **Multi-GPU/rotated material** — sampled path disabled, feather fallback | Hybrid laptops and rotated displays lose the signature material | P2; never sample across GPUs |
-| **Persistent-chrome quality floor** — Dock/menu bar can reach `Minimal` | The most visible surfaces can lose the material under load | P2 policy + cheaper 4K blur |
-| **Packaging/hardware rail** — packages are placeholders; driver matrix/perf OPEN | No installable, verifiable product without them | Hardware rail + real packaging work |
-| **Shell accessibility/IME** — chrome not on AT-SPI; no shipped input-method process | Screen-reader and CJK users cannot rely on the desktop even though apps are accessible | P2: bridge shell chrome, integrate an existing IME |
-| **Total-experience scope** — Settings rows without owners, incomplete menu-bar extras, Dock behaviour/motion gaps, Overview paging, app-switcher modes, Search/Stage/tiling/Preview design-only, HUDs/sound/cursor partial, cross-distro adapters/packaging incomplete | A desktop can render beautifully and still feel unfinished because the click tree, labels, states, or settings are wrong | Track 22 (T209–T262): capture the reference, map every Settings row, complete the surfaces, validate on Fedora/Ubuntu/Debian/Arch |
+| Chrome input and presentation | Physical-scale frames, DMA-BUF and pooled shared-memory paths, per-scene producers and guarded popup commits | Shared GUI-thread work, large menu models, strip-gated popup pacing and fallback readback can still raise tail latency. |
+| Mixed refresh, scale and adaptive sync | The compositor tracks per-output presentation deadlines and adapts when DRM reports a usable adaptive-sync range. | Shared shell raster scale and popup placement need mixed-output coverage. |
+| Native performance and fullscreen | Earlier captures cover native primary-plane material on a single output. The compositor reports scanout candidates separately from actual scanout. | The current menu workload lacks native latency acceptance. Driver fallbacks, cursor and overlay planes, and actual direct scanout require verification. |
+| Shell recovery | The compositor preserves the session when the shell exits, and the supervisor starts a new shell. | A shared GUI-thread hang or shell crash affects both strips. Faster recovery and independent fault containment need separate evidence. |
+| Multi-GPU and rotated displays | The sampled material path has a single-GPU, normal-transform boundary. | Supported fallback behavior and the visual floor need hardware validation. |
+| Compatibility and usability | Compatibility layers, menu projections and per-component keyboard behavior are implemented. | Titlebar menu labels, desktop accessibility, input methods and other product gaps remain in the status register. |
 
-The documentation risk is now managed by the rule in
-[STATUS.md](STATUS.md): a topic doc describes the target, STATUS records the
-delta, and a claim without a test/capture/ADR is a documentation bug.
+The [ranked performance gaps](STATUS.md#9-chrome-performance-priorities)
+link each risk to an acceptance condition. The
+[evidence contract](evidence-and-acceptance.md#54-chrome-performance) defines
+the native timing and workload requirements.
 
 ## Project risks
 

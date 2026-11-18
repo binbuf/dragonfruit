@@ -302,12 +302,7 @@ Item {
                 !== root.submenuHighlightedIndex)
             levels.setHighlight(1, root.submenuHighlightedIndex);
     }
-    onModelChanged: Qt.callLater(root.reconcileLevels)
-    onEntriesChanged: root.reconcileLevels()
-    function reconcileLevels() {
-        if (levels)
-            levels.reconcile();
-    }
+    onEntriesChanged: levels.reconcile(true)
 
     function openMenu() {
         popup.show();

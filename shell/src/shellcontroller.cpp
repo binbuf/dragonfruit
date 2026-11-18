@@ -878,8 +878,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
     connect(m_item, SIGNAL(statusItemActivated(QString)), this,
             SLOT(onStatusItemActivated(QString)));
-    connect(m_item, SIGNAL(appMenuOpened(int)), this, SLOT(onAppMenuOpened(int)));
-    connect(m_item, SIGNAL(appMenuClosed()), this, SLOT(onAppMenuClosed()));
+    connect(m_item, SIGNAL(popupOpened()), this, SLOT(onMenuBarPopupOpened()));
+    connect(m_item, SIGNAL(popupClosed()), this, SLOT(onMenuBarPopupClosed()));
     connect(m_item, SIGNAL(keyboardFocusReleaseRequested()), this,
             SLOT(onMenuBarKeyboardFocusReleaseRequested()));
     connect(m_item, SIGNAL(dropdownSurfaceRegionsChanged()),
@@ -892,6 +892,21 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // compositor's wl_surface.frame callback paces the next one.
     bindChromePacing(m_producers.value(m_window), QStringLiteral("menubar"),
                      [this]() { render(); });
+
+    m_menuBarPopupExitTimer = new QTimer(this);
+    m_menuBarPopupExitTimer->setSingleShot(true);
+    m_menuBarPopupExitTimer->setInterval(210); // Allow the 183 ms exit to finish.
+    connect(m_menuBarPopupExitTimer, &QTimer::timeout, this, [this]() {
+        ++m_menuBarPopupGeneration;
+        m_popupWidth = 0;
+        m_popupHeight = 0;
+        m_protocol->hidePopup();
+        scheduleRender();
+        if (m_menuRefreshDeferred) {
+            m_menuRefreshDeferred = false;
+            applyFocusedApp();
+        }
+    });
     // T238 popup targets: release the warm menu-bar popup allocation after the
     // interaction session ends instead of holding it until the next menu.
     m_menuBarPopupReleaseTimer = new QTimer(this);
@@ -1030,8 +1045,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_item, SIGNAL(muteToggleRequested()), this, SLOT(onMuteToggleRequested()));
     connect(m_item, SIGNAL(statusMenuRefreshRequested(QString)), this,
             SLOT(onStatusMenuRefreshRequested(QString)));
-    connect(m_item, SIGNAL(statusMenuOpened()), this, SLOT(onStatusMenuOpened()));
-    connect(m_item, SIGNAL(statusMenuClosed()), this, SLOT(onStatusMenuClosed()));
     // T202: the Bluetooth status menu shares the Control Center tile's one
     // action policy and bridge-host slots.
     connect(m_item, SIGNAL(bluetoothPowerToggleRequested(bool)), this,
@@ -3224,7 +3237,7 @@ void ShellController::refreshTrayItems()
             m_trayMenuInFlight = false;
             m_trayMenuRefreshPending = false;
             if (m_item)
-                QMetaObject::invokeMethod(m_item, "closeMenus");
+                QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, false));
         }
         if (!m_trayItems.isEmpty() || !m_trayMenuCache.isEmpty()) {
             m_trayItems.clear();
@@ -3325,7 +3338,7 @@ void ShellController::applyTrayItems(quint64 generation, const QList<TrayItem> &
         m_trayMenuInFlight = false;
         m_trayMenuRefreshPending = false;
         if (m_item)
-            QMetaObject::invokeMethod(m_item, "closeMenus");
+            QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, false));
     }
     if (!changed)
         return;
@@ -3336,8 +3349,10 @@ void ShellController::applyTrayItems(quint64 generation, const QList<TrayItem> &
 
 void ShellController::openTrayMenu(const QString &name)
 {
-    if (!m_item)
+    if (!m_item || name.isEmpty())
         return;
+    // Close the previous tray session before assigning the new exporter.
+    QMetaObject::invokeMethod(m_item, "closeTrayMenu", Q_ARG(QVariant, true));
     ++m_trayMenuGeneration;
     m_trayMenuName = name;
     m_trayMenuOwner.clear();
@@ -3356,8 +3371,6 @@ void ShellController::openTrayMenu(const QString &name)
                                         ? cached.value()
                                         : QVariantList{});
     QMetaObject::invokeMethod(m_item, "openTrayMenu", Q_ARG(QVariant, name));
-    m_menuOpen = true;
-    schedulePopupGeometry();
     requestTrayMenuRefresh();
 }
 
@@ -3403,7 +3416,7 @@ void ShellController::applyTrayMenu(const QString &name, const QString &owner,
                 m_trayMenuRefreshPending = false;
                 m_trayMenuCache.remove(name);
                 if (m_item)
-                    QMetaObject::invokeMethod(m_item, "closeMenus");
+                    QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, false));
                 return;
             }
         }
@@ -3440,15 +3453,10 @@ void ShellController::cancelTrayRecovery()
 
 void ShellController::onTrayMenuTriggered(const QString &service, int id)
 {
-    if (id < 0) {
-        m_menuOpen = false;
-        updatePopupGeometry();
+    if (id < 0 || service != m_trayMenuName)
         return;
-    }
     const QString owner = m_trayMenuOwner;
     const quint64 generation = m_trayMenuGeneration;
-    m_menuOpen = false;
-    updatePopupGeometry();
     // Deliver off the scene thread: the exporter may be slow or unresponsive,
     // and the popup must close immediately either way.
     m_trayInteractiveWorker.start([this, service, owner, id, generation]() {
@@ -3474,8 +3482,6 @@ void ShellController::onTrayMenuTriggered(const QString &service, int id)
 
 void ShellController::onTrayMenuClosed()
 {
-    m_menuOpen = false;
-    m_popupGeometryPending = false;
     // Closing invalidates the menu session immediately: input interception is
     // dropped now and any late menu reply is discarded by generation.
     ++m_trayMenuGeneration;
@@ -3483,17 +3489,6 @@ void ShellController::onTrayMenuClosed()
     m_trayMenuOwner.clear();
     m_trayMenuInFlight = false;
     m_trayMenuRefreshPending = false;
-    // The logical menu is closed immediately: stop intercepting clicks. The
-    // material regions stay until the visual exit has finished (the QML card
-    // fades for 183 ms); `updatePopupGeometry` clears them at 210 ms. Clearing
-    // them here would turn the tail into a flat tint and read as a material
-    // pop-off.
-    if (m_protocol)
-        m_protocol->setPopupInputActive(false);
-    QTimer::singleShot(210, this, [this]() {
-        if (!m_menuOpen)
-            updatePopupGeometry();
-    });
 }
 
 void ShellController::onTrayChanged()
@@ -3507,26 +3502,6 @@ void ShellController::onTrayMenuChanged(const QString &name, qulonglong generati
     if (!m_menuOpen || name.isEmpty() || name != m_trayMenuName)
         return;
     requestTrayMenuRefresh();
-}
-
-void ShellController::onStatusMenuOpened()
-{
-    m_menuOpen = true;
-    schedulePopupGeometry();
-}
-
-void ShellController::onStatusMenuClosed()
-{
-    m_menuOpen = false;
-    m_popupGeometryPending = false;
-    // Keep the material for the measured 183 ms exit tail; only input closes
-    // immediately. `updatePopupGeometry` clears the regions at 210 ms.
-    if (m_protocol)
-        m_protocol->setPopupInputActive(false);
-    QTimer::singleShot(210, this, [this]() {
-        if (!m_menuOpen)
-            updatePopupGeometry();
-    });
 }
 
 void ShellController::onStatusMenuRefreshRequested(const QString &itemId)
@@ -3682,10 +3657,11 @@ void ShellController::refreshSystemMenu()
 
 void ShellController::applyFocusedApp()
 {
+    const quintptr windowId = m_protocol ? m_protocol->focusedWindowId() : 0;
+    const bool windowChanged = windowId != m_focusedWindowId;
+    m_focusedWindowId = windowId;
     if (!m_item)
         return;
-    if (m_protocol)
-        m_focusedWindowId = m_protocol->focusedWindowId();
     const QString rawId = m_appId;
     const DesktopEntry entry = m_index.resolve(rawId);
     const bool hasDisplayName = entry.valid && !entry.name.isEmpty();
@@ -3693,12 +3669,15 @@ void ShellController::applyFocusedApp()
         : hasDisplayName ? entry.name : displayNameForIdentity(rawId);
     const QString canonicalId = entry.valid && !entry.id.isEmpty() ? entry.id : rawId;
     const QString brokerId = canonicalId;
-    const bool focusChanged = m_item->property("appId").toString() != rawId;
-    if (!focusChanged && !hasDisplayName && !rawId.isEmpty()
+    const bool appChanged = m_item->property("appId").toString() != rawId;
+    const bool focusChanged = appChanged || windowChanged;
+    if (!appChanged && !hasDisplayName && !rawId.isEmpty()
         && !m_item->property("appName").toString().isEmpty())
         name = m_item->property("appName").toString();
-    if (focusChanged)
-        QMetaObject::invokeMethod(m_item, "closeMenus");
+    if (focusChanged) {
+        invalidateMenuGeneration();
+        QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, false));
+    }
     m_item->setProperty("appId", rawId);
     m_item->setProperty("appName", name);
     if (focusChanged || m_appliedApplicationMenu.isEmpty()) {
@@ -3853,6 +3832,7 @@ void ShellController::applyFocusedApp()
                     m_menuRefreshDeferred = true;
                     return;
                 }
+                m_menuRefreshDeferred = false;
                 m_dbusMenuWindowId = dbusWindow;
                 // T-14.2b: remember exactly which native publication this
                 // rendered menu came from. Activation echoes the owner and
@@ -4232,16 +4212,21 @@ bool ShellController::routeDbusMenuAction(const QString &action)
                    << "(registration" << target << ")";
         return false;
     }
-    const bool delivered = m_appIndexClient.windowMenuEvent(QString::number(target), id);
-    if (!delivered) {
-        qWarning() << "shell: DBusMenu click was not accepted for window"
-                   << target << "item" << id;
-        return false;
-    }
-    qInfo() << "shell: DBusMenu click" << id << "delivered to window" << target;
-    // A click can change the menu (checked rows, dynamic recent items), so
-    // re-read the focused model on the next event-loop turn.
-    QTimer::singleShot(0, this, &ShellController::applyFocusedApp);
+    // Exporter latency must not block chrome input or presentation.
+    auto *watcher = new QDBusPendingCallWatcher(
+        m_appIndexClient.windowMenuEvent(target, id), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, target, id, appId = m_appId, windowId = m_focusedWindowId]
+            (QDBusPendingCallWatcher *call) {
+                const QDBusPendingReply<bool> reply = *call;
+                if (reply.isError() || !reply.value()) {
+                    qWarning() << "shell: DBusMenu click was not accepted for window"
+                               << target << "item" << id;
+                } else if (appId == m_appId && windowId == m_focusedWindowId) {
+                    applyFocusedApp();
+                }
+                call->deleteLater();
+            });
     return true;
 }
 
@@ -4285,8 +4270,8 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
     // T230: focus is the route from the compositor's app identity to the
     // DBusMenu registration; `applyFocusedApp` resolves the registration and
     // re-keys its bridge model under the canonical desktop id.
-    m_focusedWindowId = m_protocol ? m_protocol->focusedWindowId() : 0;
-    qInfo() << "shell: focus" << appId << title << "window" << m_focusedWindowId;
+    qInfo() << "shell: focus" << appId << title << "window"
+            << (m_protocol ? m_protocol->focusedWindowId() : 0);
     // FR-4: attention stops when the app's window gains focus.
     clearAttention(appId);
     // Track recency for the suggested entries (`dock.showRecentApps`, T-10
@@ -4300,11 +4285,6 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
         if (m_dockConfig.showRecentApps)
             rebuildDockEntries();
     }
-    refreshSystemMenu();
-    // T-14.2b: the previous app's publication cannot activate the new focus.
-    // Invalidate immediately; the resolver below publishes the new owner and
-    // generation when it lands.
-    invalidateMenuGeneration();
     applyFocusedApp();
     scheduleRender();
 }
@@ -4327,8 +4307,8 @@ void ShellController::showNotificationCenter()
     // the Control Center, the Applications drawer and Mission Control rather
     // than stacking transient overlays.
     if (m_item) {
-        QMetaObject::invokeMethod(m_item, "closeMenus");
-        QMetaObject::invokeMethod(m_item, "closeStatusMenu");
+        QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, false));
+        QMetaObject::invokeMethod(m_item, "closeStatusMenu", Q_ARG(QVariant, false));
     }
     if (m_controlCenterOpen)
         hideControlCenter();
@@ -7248,35 +7228,23 @@ void ShellController::onClockTick()
     scheduleRender();
 }
 
-void ShellController::onAppMenuOpened(int)
+void ShellController::onMenuBarPopupOpened()
 {
+    ++m_menuBarPopupGeneration;
+    m_menuBarPopupExitTimer->stop();
     m_menuOpen = true;
+    m_protocol->dismissPopupInput();
     schedulePopupGeometry();
-    // The popup's fade/scale-in is QML-driven; the scene-graph hook commits
-    // every frame it renders (FR-14).
 }
 
-void ShellController::onAppMenuClosed()
+void ShellController::onMenuBarPopupClosed()
 {
+    ++m_menuBarPopupGeneration;
     m_menuOpen = false;
     m_popupGeometryPending = false;
-    // The logical menu and input close now; the material regions stay for the
-    // measured 183 ms visual tail. `updatePopupGeometry` clears them at 210 ms,
-    // so the close fade keeps the frost/rim instead of falling back to a flat
-    // tint.
-    if (m_protocol)
-        m_protocol->setPopupInputActive(false);
-    // The overlay keeps rendering the visual tail so a reopen/retarget can
-    // take over before the timer expires.
-    QTimer::singleShot(210, this, [this]() {
-        if (!m_menuOpen) {
-            updatePopupGeometry();
-            if (m_menuRefreshDeferred) {
-                m_menuRefreshDeferred = false;
-                applyFocusedApp();
-            }
-        }
-    });
+    m_protocol->dismissPopupInput();
+    m_menuBarPopupExitTimer->start();
+    scheduleRender();
 }
 
 void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVariant &item)
@@ -7582,28 +7550,10 @@ void ShellController::schedulePopupGeometry()
     });
 }
 
-void ShellController::updatePopupGeometry()
-{
-    // This call owns the geometry: an older deferred request must not apply a
-    // stale open rectangle after the explicit close.
-    m_popupGeometryPending = false;
-    applyPopupGeometry();
-    scheduleRender();
-}
-
 void ShellController::applyPopupGeometry()
 {
-    if (!m_item) {
+    if (!m_item || !m_menuOpen)
         return;
-    }
-    if (!m_menuOpen) {
-        m_popupWidth = 0;
-        m_popupHeight = 0;
-        m_protocol->setPopupInputActive(false);
-        m_protocol->clearPopupPanelRegions();
-        m_protocol->hidePopup();
-        return;
-    }
     // The open dropdown's rectangle in window coordinates. The popup QML
     // overflows the bar item; the shell reveals it through the overlay
     // surface placed at exactly this rectangle.
@@ -7672,11 +7622,6 @@ void ShellController::onKeyboardFocused(bool focused)
 {
     if (m_item)
         m_item->setProperty("shellFocused", focused);
-    // The Dock surface holds keyboard focus while a context menu or window
-    // chooser is open (OnDemand); a click-away or focus loss dismisses the
-    // popover (T-10 section 13).
-    if (!focused && m_dockItem)
-        QMetaObject::invokeMethod(m_dockItem, "closePopovers");
     // The Control Center panel is dismissed by a click-away. Focus may move
     // from the bar to the panel in the same dispatch (a click on a tile), so
     // defer the check one event-loop turn: if the panel then holds keyboard,
@@ -7768,7 +7713,7 @@ void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface,
     }
     QPointF logical(x, y);
     if (surface == ShellProtocol::PointerSurface::DockPopup)
-        logical += QPointF(m_dockPopoverX, m_dockPopoverY);
+        logical += m_protocol->dockPopupOrigin();
     if (surface == ShellProtocol::PointerSurface::Dock
         || surface == ShellProtocol::PointerSurface::DockPopup) {
         logical += QPointF(m_dockItemOffsetX, m_dockItemOffsetY);
@@ -7867,11 +7812,9 @@ void ShellController::onKeyEvent(quint32 key, bool pressed, quint32 modifiers)
         hideNotificationCenter(QStringLiteral("escape"));
         return;
     }
-    // An open Dock popover or Dock keyboard focus owns the keys (navigation,
-    // Escape; T-10 sections 13/20); otherwise the menu bar does.
-    if (m_dockWindow && m_dockItem
-            && (m_dockKeyboardFocused
-                || m_dockItem->property("popoverOpen").toBool())) {
+    // A hover-open Dock chooser can coexist with Menu Bar keyboard focus.
+    // Route keys to the compositor's focus owner.
+    if (m_dockWindow && m_dockKeyboardFocused) {
         sendChromeKeyEvent(m_dockWindow, key, pressed, modifiers);
         scheduleDockRender();
     } else {
@@ -7895,6 +7838,7 @@ void ShellController::onDockKeyboardFocused(bool focused)
         if (m_dockWindow)
             m_dockItem->forceActiveFocus();
     } else {
+        QMetaObject::invokeMethod(m_dockItem, "closePopovers");
         QMetaObject::invokeMethod(m_dockItem, "endKeyboardNavigation");
     }
     scheduleDockRender();
@@ -9949,12 +9893,14 @@ void ShellController::onDockPopupPointerMoved(qreal x, qreal y)
 {
     // Popover-local -> Dock-scene-local; `onDockPointerMoved` adds the scene
     // offset for the offscreen window.
-    onDockPointerMoved(x + m_dockPopoverX, y + m_dockPopoverY);
+    const QPoint origin = m_protocol->dockPopupOrigin();
+    onDockPointerMoved(x + origin.x(), y + origin.y());
 }
 
 void ShellController::onDockPopupPointerButton(qreal x, qreal y, quint32 button, bool pressed)
 {
-    onDockPointerButton(x + m_dockPopoverX, y + m_dockPopoverY, button, pressed);
+    const QPoint origin = m_protocol->dockPopupOrigin();
+    onDockPointerButton(x + origin.x(), y + origin.y(), button, pressed);
 }
 
 void ShellController::onDockPopupPointerLeft()
@@ -10524,8 +10470,8 @@ void ShellController::showAppsDrawer()
     if (m_controlCenterOpen)
         hideControlCenter();
     if (m_item) {
-        QMetaObject::invokeMethod(m_item, "closeMenus");
-        QMetaObject::invokeMethod(m_item, "closeStatusMenu");
+        QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, false));
+        QMetaObject::invokeMethod(m_item, "closeStatusMenu", Q_ARG(QVariant, false));
     }
     if (m_overviewActive && m_protocol)
         m_protocol->exitMissionControl();
@@ -11043,8 +10989,11 @@ void ShellController::onDockPinnedOrderChanged(const QVariant &desktopIds)
 
 void ShellController::onDockPopoverChanged()
 {
+    ++m_dockPopupGeneration;
     const bool open = m_dockItem
         && m_dockItem->property("popoverOpen").toBool();
+    if (!open && m_dockPopoverWasOpen)
+        m_protocol->dismissDockPopupInput();
     if (open && !m_dockPopoverWasOpen) {
         if (m_dockPopoverTraceId != 0)
             ChromeStats::instance().endTrace(m_dockPopoverTraceId,
@@ -11993,7 +11942,8 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
             deferChromeProducer(producer);
         } else {
             for (const ChromeSceneTarget &target : targets) {
-                if (target.commitShm && target.commitShm(image)) {
+                if ((!target.isCurrent || target.isCurrent())
+                    && target.commitShm && target.commitShm(image)) {
                     anyCommitted = true;
                     noteSurfacePath(target.label, QStringLiteral("shm"));
                 }
@@ -12010,12 +11960,19 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
 
 bool ShellController::commitReadyChromeScene(
     GpuChromeFrameProducer *gpu, int view,
-    const QList<ChromeSceneTarget> &targets, bool *deferred)
+    QList<ChromeSceneTarget> targets, bool *deferred)
 {
     if (deferred)
         *deferred = false;
-    if (!gpu || targets.isEmpty())
+    if (!gpu)
         return false;
+    targets.removeIf([](const ChromeSceneTarget &target) {
+        return target.isCurrent && !target.isCurrent();
+    });
+    if (targets.isEmpty()) {
+        gpu->abandonReadyFrame(view);
+        return false;
+    }
 
     ChromeFrameProducer *producer = gpu;
     const bool traceDock = gpu == m_producers.value(m_dockWindow)
@@ -12269,6 +12226,8 @@ void ShellController::onChromeScaleChanged(qreal scale)
     if (qFuzzyCompare(m_chromeScale, safe))
         return;
     m_chromeScale = safe;
+    ++m_dockPopupGeneration;
+    ++m_menuBarPopupGeneration;
     // A new scale retires the ring and remaps the viewport: the strip has no
     // partial-damage baseline at the new size.
     invalidateDockDamage();
@@ -12530,8 +12489,9 @@ void ShellController::renderDock()
     // y=0 is the Dock surface top and scene x=0 its left. A bottom popover
     // sits above the bar (bottom margin); a vertical Dock's popover sits beside
     // the bar (left/right margin) at the entry's scene y (T-10 section 5).
-    m_dockPopoverX = px;
-    m_dockPopoverY = py;
+    const auto popupIsCurrent = [this, generation = m_dockPopupGeneration]() {
+        return generation == m_dockPopupGeneration;
+    };
     QSize popupTargetSize;
     if (hasPopover) {
         int top = 0;
@@ -12560,7 +12520,7 @@ void ShellController::renderDock()
         m_protocol->setDockPopupPanelRegions(
             m_dockItem->property("activePopoverSurfaceRegions").toList());
         m_protocol->setDockPopupInputActive(popoverInputActive);
-        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph, QRect());
+        m_protocol->setDockPopupGeometry(top, right, bottom, left, popover);
         if (independentPopup) {
             // The popup view is sized by its content (grow-only for this
             // interaction session) instead of growing the strip scene. The
@@ -12583,14 +12543,12 @@ void ShellController::renderDock()
             const QRect popupRect(renderLeft + px, renderTop + py, pw, ph);
             const QRect popupSource = chromeBufferRect(popupRect);
             targets.append({QStringLiteral("dock-popup"), QSize(pw, ph), popupSource,
-                            [this, pw, ph, popupSource](const QImage &image) {
-                                return m_protocol->commitDockPopupImage(
-                                    image, QSize(pw, ph), popupSource);
-                            }});
+         [this, pw, ph, popupSource](const QImage &image) {
+             return m_protocol->commitDockPopupImage(
+                 image, QSize(pw, ph), popupSource);
+         }, 0, popupIsCurrent});
         }
     } else {
-        m_protocol->clearDockPopupPanelRegions();
-        m_protocol->setDockPopupInputActive(false);
         m_protocol->hideDockPopup();
         if (independentPopup) {
             m_dockPopupBudget.update(QSize(), outputSize, interactionActive,
@@ -12648,7 +12606,7 @@ void ShellController::renderDock()
              [this, contentWidth, contentHeight, popupSource](const QImage &image) {
                  return m_protocol->commitDockPopupImage(
                      image, QSize(contentWidth, contentHeight), popupSource);
-             }});
+             }, 0, popupIsCurrent});
         bool popupDeferred = false;
         commitChromeScene(m_dockWindow, popupTargets, &popupDeferred,
                           GpuChromeFrameProducer::PopupView);
@@ -12715,6 +12673,9 @@ void ShellController::render()
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
+    const auto popupIsCurrent = [this, generation = m_menuBarPopupGeneration]() {
+        return generation == m_menuBarPopupGeneration;
+    };
     auto *gpuProducer =
         qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_window));
     const PopupTargetMode mode = popupTargetMode();
@@ -12778,10 +12739,10 @@ void ShellController::render()
         const QRect popupSource = chromeBufferRect(popupRect);
         targets.append({QStringLiteral("menubar-popup"),
                         QSize(m_popupWidth, m_popupHeight), popupSource,
-                        [this, popupSource](const QImage &image) {
+                        [this, size = popupRect.size(), popupSource](const QImage &image) {
                             return m_protocol->commitPopupImage(
-                                image, QSize(m_popupWidth, m_popupHeight), popupSource);
-                        }});
+                                image, size, popupSource);
+                        }, 0, popupIsCurrent});
     } else if (independentPopup) {
         m_menuBarPopupBudget.update(QSize(), outputSize, false,
                                     monotonicNs() / 1'000'000);
@@ -12814,7 +12775,7 @@ void ShellController::render()
              [this, contentWidth, contentHeight, popupSource](const QImage &image) {
                  return m_protocol->commitPopupImage(
                      image, QSize(contentWidth, contentHeight), popupSource);
-             }});
+             }, 0, popupIsCurrent});
         commitChromeScene(m_window, popupTargets, nullptr,
                           GpuChromeFrameProducer::PopupView);
         m_item->setX(0);

@@ -10,6 +10,7 @@ numbered records.
 | Document | What it answers |
 |---|---|
 | [STATUS.md](STATUS.md) | **What is actually implemented**, what is partial, what is design-only, and the current gap/roadmap register |
+| [Chrome performance priorities](STATUS.md#9-chrome-performance-priorities) | Ranked Dock, Menu Bar, and menu gaps with the evidence needed to close them |
 | [00-overview.md](00-overview.md) | Product thesis, accepted compromises, non-goals |
 | [01-architecture.md](01-architecture.md) | Process model, ownership boundary, state ownership, IPC, repository layout |
 | [02-compositor.md](02-compositor.md) | Compositor backends, input, renderer/effects, window model, protocols |
@@ -32,17 +33,14 @@ numbered records.
 | [distro-adapter-contract.md](distro-adapter-contract.md) | Cross-distro adapter traits, command matrix, dependency sets, mock, and probe (T221) |
 | [interface-naming-and-licensing.md](interface-naming-and-licensing.md) | Generic names, original assets, third-party substitutions |
 | [motion-and-feedback.md](motion-and-feedback.md) | Motion language, HUDs, sound, cursor |
-| [evidence-and-acceptance.md](evidence-and-acceptance.md) | Capture, measurement, and acceptance process |
+| [evidence-and-acceptance.md](evidence-and-acceptance.md) | Capture, measurement, and acceptance process, including the native chrome performance gate |
 | [experience-schema.md](experience-schema.md) | Machine-readable surface/state/axis/evidence manifest and per-surface thresholds |
 | [14-risks.md](14-risks.md) | Risks, hard limits, IP constraints |
-| [architecture-audit-native-rendering.md](architecture-audit-native-rendering.md) | The native DRM/material/shell-transport audit and its implementation record |
-| [advisor-briefing.md](advisor-briefing.md) | Historical context pack; superseded where it conflicts with STATUS/audit |
 
-The track documents in [tracks/](tracks/) are the design references for the
-T-01…T-22 slices. They describe the target at the time the track was cut; use
-`STATUS.md` for the current state. Track 22 (v0.2.0) is the total-experience
-track: [tracks/22-total-experience-parity.md](tracks/22-total-experience-parity.md);
-its executable task set is [tasks/0.2.0/](../tasks/0.2.0/README.md).
+The [whole-desktop design](22-total-experience.md) defines the cross-component
+target. See the [current status register](STATUS.md) for implementation and
+hardware evidence, and the [v0.2.0 task index](../tasks/0.2.0/README.md) for
+delivery units.
 
 ## Reading rules
 

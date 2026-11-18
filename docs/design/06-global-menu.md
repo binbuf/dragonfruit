@@ -210,9 +210,10 @@ owner, generation, action identity, and enabled state before forwarding to
 publisher emits the action to its QML dispatcher and returns its boolean
 result, so an unhandled command is rejected rather than reported as accepted.
 Shell-owned lifecycle verbs still use their compositor or app-index paths. A
-focus change invalidates the generation, a publisher exit withdraws its model,
-and a broker restart clears the generation while the publisher re-publishes its
-cached model. Contract frozen in ADR
+change of focused app or window invalidates the previous generation. A
+title-only update can refresh the model for the same owner. A publisher
+exit withdraws its model. A broker restart clears the generation and the
+publisher re-publishes its cached model. See ADR
 [0284](adr/0284-application-menu-action-delivery.md).
 
 ## Implementation note (T-14.3)
@@ -228,9 +229,13 @@ design-system menu row shape, so the shell renders a tray item's menu with the
 same `ContextMenu` component as every other menu, and a click is forwarded as
 the DBusMenu `Event(id, "clicked")`. The shell joins third-party items to the
 one status row (`tray:<name>` plus a file-backed `iconSource`), never a separate
-tray strip. Live `NewIcon`/attention signals are not subscribed yet (the shell
-re-reads on a short timer); icon animation polish is deferred. Contract frozen
-in ADR [0097](adr/0097-statusnotifier-tray-host-and-dbusmenu-projection.md).
+tray strip. The shell listens for inventory and menu changes, keeps the last
+usable menu snapshot while a worker refreshes it, and uses bounded backoff
+after inventory failures. An owner change closes the affected menu and
+invalidates outstanding replies. The inventory and interactive menu calls use
+separate workers. See
+[ADR 0097](adr/0097-statusnotifier-tray-host-and-dbusmenu-projection.md) and
+the [shell integration](../../shell/src/shellcontroller.cpp).
 
 ## Implementation note (T-14.4)
 
@@ -250,9 +255,13 @@ the broker with the new additive `PublishDbusMenu(appId, model)`, which stores
 it at `Tier::DbusMenu`; `Withdraw` clears it again, and a disconnected owner is
 pruned via `NameOwnerChanged`. `org.dragonfruit.AppIndex1` additionally exposes
 `AppMenuWindows`/`WindowMenu`/`WindowMenuEvent` for local queries and clicks.
-T230 wires the shell to that surface: `FocusWindow(windowId, appId)` re-keys a
-standard registration to the canonical desktop id and re-publishes it, the bar
-reads a fresh `WindowMenu` at open time, and a click calls `WindowMenuEvent`.
+The shell uses `FocusWindow(windowId, appId)` to re-key a standard registration
+to the canonical desktop id. A single worker coalesces focus and model changes
+and resolves the latest snapshot, including an exporter refresh for bridged
+menus. A late result is discarded after the focus snapshot changes. The shell
+defers app-projection replacement while a Menu Bar popup is open. A click
+dispatches `WindowMenuEvent` asynchronously and refreshes the model when the
+reply is accepted and the same window still owns focus.
 Contract frozen in ADR [0098](adr/0098-dbusmenu-bridge-in-app-index.md); the
 completion decisions are in ADR
 [0240](adr/0240-menu-bar-focus-dbusmenu-and-hide-verbs.md).

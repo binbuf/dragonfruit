@@ -48,6 +48,8 @@ Item {
         SignalSpy { id: mcSpy; signalName: "missionControlRequested" }
         SignalSpy { id: openedSpy; signalName: "appMenuOpened" }
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
+        SignalSpy { id: popupOpenedSpy; signalName: "popupOpened" }
+        SignalSpy { id: popupClosedSpy; signalName: "popupClosed" }
         SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
         SignalSpy { id: traySpy; signalName: "trayMenuTriggered" }
         SignalSpy { id: keyboardReleaseSpy; signalName: "keyboardFocusReleaseRequested" }
@@ -647,7 +649,7 @@ Item {
                     wide.statusRowEntries.length);
 
             var narrow = make(menuBarComponent, {
-                width: 420, statusItems: t233Status()
+                width: 320, statusItems: t233Status()
             });
             verify(narrow.statusHasOverflow,
                    "a narrow bar moves extras into overflow");
@@ -668,7 +670,7 @@ Item {
             // A notch is a safe-area inset, not a hit target: it reduces the
             // budget and therefore can only move more items to overflow.
             var notched = make(menuBarComponent, {
-                width: 420, notchWidth: 120, statusItems: t233Status()
+                width: 320, notchWidth: 120, statusItems: t233Status()
             });
             verify(notched.measuredStatusCapacity <= narrow.measuredStatusCapacity,
                    "the notch reduces the measured status budget");
@@ -2144,6 +2146,67 @@ Item {
             waitForRendering(stage);
             compare(bar.openMenuIndex, -1);
             compare(bar.appMenuAt(1).title, "Files");
+        }
+
+        function test_switching_popup_families_releases_the_previous_owner() {
+            var bar = make(menuBarComponent, {
+                width: 700,
+                appMenuModel: sampleModel(),
+                statusOverflowCapacity: 4,
+                statusItems: [
+                    { id: "tray:one", accessibleName: "Tray One", thirdParty: true },
+                    { id: "tray:two", accessibleName: "Tray Two", thirdParty: true }
+                ],
+                trayMenu: [{ id: 1, label: "Show" }]
+            });
+            popupOpenedSpy.target = bar;
+            popupClosedSpy.target = bar;
+            popupOpenedSpy.clear();
+            popupClosedSpy.clear();
+            var calendar = findChild(bar, "dateTimePanel").popup;
+            bar.openStatusMenu("clock");
+            verify(calendar.open);
+
+            // Actual title clicks go through the delegate, independently of
+            // the programmatic opening helper used for keyboard navigation.
+            var title = bar.appMenuAt(2);
+            mouseClick(title, title.width / 2, title.height / 2);
+            verify(title.open);
+            verify(!calendar.open);
+            compare(bar.openStatusItem, "");
+
+            bar.openTrayMenu("one");
+            verify(bar.trayMenuOpen);
+            verify(!title.open);
+            bar.openOverflowMenu();
+            verify(bar.overflowMenuOpen);
+            verify(!bar.trayMenuOpen);
+            bar.closeOverflowMenu();
+            compare(popupOpenedSpy.count, 4);
+            compare(popupClosedSpy.count, 4);
+        }
+
+        function test_refreshing_rows_keeps_the_open_title_and_submenu() {
+            var bar = make(menuBarComponent, {
+                appMenuModel: [{ title: "Actions", items: [
+                    { id: "more", label: "More", type: "submenu",
+                      submenu: [{ id: "child", label: "Child" }] }
+                ] }]
+            });
+            var title = bar.appMenuAt(2);
+            bar.openMenu(2);
+            title.openSubmenu(0);
+            compare(title.menuDepth, 2);
+            bar.appMenuModel = [{ title: "Actions", items: [
+                { id: "new", label: "New" },
+                { id: "more", label: "More", type: "submenu",
+                  submenu: [{ id: "child", label: "Updated child" }] }
+            ] }];
+            waitForRendering(stage);
+            compare(bar.appMenuAt(2), title);
+            verify(title.open);
+            compare(title.menuDepth, 2);
+            compare(title.openSubmenuIndex, 1);
         }
 
         function test_focus_loss_dismisses_open_menu() {

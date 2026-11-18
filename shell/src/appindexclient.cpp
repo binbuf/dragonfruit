@@ -5,6 +5,7 @@
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusPendingCall>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -228,11 +229,11 @@ QVariantList AppIndexClient::windowMenu(const QString &windowId) const
     return parseMenus(call(QStringLiteral("WindowMenu"), {id}));
 }
 
-bool AppIndexClient::windowMenuEvent(const QString &windowId, int id) const
+QDBusPendingCall AppIndexClient::windowMenuEvent(quint32 windowId, int id) const
 {
-    bool ok = false;
-    const uint window = windowId.toUInt(&ok);
-    if (!ok)
-        return false;
-    return callBool(QStringLiteral("WindowMenuEvent"), {window, id});
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QString::fromLatin1(kService), QString::fromLatin1(kPath),
+        QString::fromLatin1(kInterface), QStringLiteral("WindowMenuEvent"));
+    message.setArguments({windowId, id});
+    return QDBusConnection::sessionBus().asyncCall(message, kCallTimeoutMs);
 }

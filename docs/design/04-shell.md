@@ -2,10 +2,17 @@
 
 ## Summary
 
-The shell is a Qt Quick process (or set of processes) rendering the always-
+The shell is a Qt Quick process rendering the always-
 visible desktop chrome: menu bar, Dock, Control Center, notification center,
 and OSD. It talks to the compositor over private, versioned Wayland protocols
 and to system services over D-Bus.
+
+The session supervisor restarts the shell independently of the compositor.
+The Dock and Menu Bar each have a render producer and Wayland surfaces, and
+both share the shell's GUI thread and restart boundary. The menu broker runs
+as a separate service. The shell resolves exported menus and sends their
+actions asynchronously so a slow exporter cannot hold up chrome input and
+presentation.
 
 Components:
 
@@ -28,10 +35,9 @@ client content: during a workspace switch, client surfaces shrink or slide
 while the chrome follows its own animation curves, which is what makes the
 transitions read as one system.
 
-Visual and interaction reference for these surfaces (menu bar, system menu,
-Dock, Control Center quick-settings sheets, Spotlight, About This System):
-[macos-ui-inventory.md](../reference/macos-ui-inventory.md) — distilled from
-local-only macOS screenshots that never ship.
+The [whole-desktop design](22-total-experience.md) and
+[evidence contract](evidence-and-acceptance.md) define the visual and
+interaction targets for these surfaces.
 
 > **v0.2.0 total-experience target.** The whole-shell behaviour, state, motion,
 > and ownership contract is [22-total-experience.md](22-total-experience.md);
@@ -39,79 +45,46 @@ local-only macOS screenshots that never ship.
 > [v0.2.0/ROADMAP.md](../v0.2.0/ROADMAP.md). This document remains the
 > component-level design; the new document adds the completeness bar.
 
-**Known presentation limits (2026-11).** The shell owns the chrome transport
-itself. It selects a QPA only for the Qt-side GL context: `wayland` when the
-GPU rail is requested and a host Wayland display exists, otherwise `offscreen`.
-Since T-21.1c every chrome surface renders through one `ChromeFrameProducer`
-(`QQuickRenderControl` into a ping-pong `QImage` pair, one render per requested
-frame) and commits through a per-surface three-buffer `wl_shm` pool. A commit
-copies the source rectangle once, damages only the changed pixel bounding box,
-and is skipped when nothing changed; `wl_surface.frame` callbacks pace the next
-QML render, with a counted 100 ms safety tick for a compositor that never
-answers. This keeps the shell independent of the Qt Wayland platform plugin and
-removes the old `grabWindow()` double render and per-commit allocation. T-21.1b
-fixed the fractional-scale softness: the shell binds
-`wp_fractional_scale_manager_v1`/`wp_viewporter`, renders the QML scene at the
-preferred physical resolution while keeping layout in logical units, uses
-`wl_surface.set_buffer_scale` for exact integers and a `wp_viewport` for
-fractional scales, and keeps reserved zones, panel rects, and input regions
-logical ([ADR 0192](adr/0192-chrome-scale-physical-buffer-and-viewport.md)).
-The remaining transport work is the GPU/dmabuf path (T186); the pooled shm path
-is its fallback ([ADR 0191](adr/0191-chrome-transport-render-control-and-shm-fallback.md),
-[ADR 0193](adr/0193-chrome-frame-producer-pooled-shm-pacing.md)). T-21.1d's
-first slice added a read-only `zwp_linux_dmabuf_v1`/EGL capability probe and a
-`GpuChromeFrameProducer` render-control/FBO skeleton behind the T185 producer
-([ADR 0194](adr/0194-gpu-chrome-probe-and-render-control-spike.md)). T186b
-adds the GPU-first Dock transport: unless `DRAGONFRUIT_CHROME_GPU` is
-`0`/`off`/`false`, and with a host `WAYLAND_DISPLAY`, the shell uses the
-Wayland QPA for the Qt GL context only,
-renders every chrome scene through the GPU producer, and exports the Dock's
-FBO as a dmabuf (EGLImage + `eglExportDMABUFImageMESA`, exact
-FourCC/modifier from the compositor feedback, `y_invert` for the GL origin).
-`ShellProtocol::commitDmabufTo()` commits one reusable buffer through the
-Dock's viewporter source rect; the other surfaces still read back and use the
-T185 shm pool. Any export/format/viewporter/import failure falls back to shm
-and is reported as `gpu=shm gpu_reason=<token>` in `chrome stats`
-([ADR 0195](adr/0195-dmabuf-export-and-single-buffer-dock-commit.md)). T186c
-turns that one buffer into a bounded three-slot per-surface ring: each slot
-owns an FBO/export and a reusable `wl_buffer`, `wl_buffer.release` returns the
-slot, and a resize/format change retires the old generation until its release.
-The producer waits on a GL fence before the compositor samples the buffer;
-only implicit dma-buf sync is available (the compositor advertises no
-`linux-drm-syncobj-v1`), so the GL fence plus the driver's implicit dma-fence
-is the sync contract. Ring exhaustion commits the last complete frame through
-shm for that frame and retries on release; hard export/import/format failures
-abandon the rail. Both carry a `gpu_reason`; the surface never goes black
-([ADR 0196](adr/0196-dmabuf-ring-release-reuse-and-sync.md)). T186d rolls the
-same commit path out to the menu bar/popup, Dock popover, Mission Control,
-switcher, banner, Control Center, OSD, chooser, screenshot, ScreenCast,
-polkit, Applications drawer, and lock surfaces. A shared scene (bar + popup,
-Dock + popover) commits one exported frame to both surfaces and holds the
-producer slot until the last release; with independent popup targets the strip
-and popup have separate rings and commit one frame each
-([ADR 0286](adr/0286-content-sized-popup-render-targets.md)). Each commit
-damages only the change region the frame reports, intersected with that
-target's crop, and an unchanged target sends nothing
-([ADR 0288](adr/0288-conservative-per-surface-damage-on-the-gpu-path.md)). If a
-surface cannot express the commit, its view uses the T185 shm path. `chrome
-stats` reports per-surface
-`path=dmabuf|shm`, `gpu_reason`, live buffer counts, reuse, and `copy_bytes`;
-a successful dmabuf frame has zero copies
-([ADR 0197](adr/0197-gpu-chrome-rollout-and-per-surface-stats.md)). The default
-rail stays off until T192/T193 accept it. The compositor still offers only
-implicit dma-buf sync: a shared scene under load can fill its three-slot ring
-(`ring-exhausted`) or record a `sync-timeout`, both counted shm fallbacks;
-explicit sync is the T192/T193 boundary. Per-output
-shell scenes with different scales on one desktop remain a follow-up; a chrome
-surface shares one scale. The T-21.1c close-out also retired the old
-`FrameCommitGate` double-render workaround: no runtime path used it after the
-`ChromeFrameProducer` conversion. On a host that does not present the nested
-window at 60 Hz the counted 100 ms safety tick keeps the shell live; that is
-visible as `fallback_renders` in `chrome stats` and is a host limitation, not a
-transport fallback. The close-out lock smoke test used the system menu because
-the synthetic input harness on that host did not set the Meta modifier for the
-`Cmd+Ctrl+Q` chord; the lock surface itself mapped and accepted typed keys
-(`docs/captures/t21-chrome-lock.png`).
+### Chrome transport
+
+The shell owns its private display connection and uses a render-control
+producer for each chrome scene. GPU transport is requested by default. If
+available, it renders at physical resolution into a bounded three-slot
+DMA-BUF ring per view. Completion is polled without waiting in the normal
+submit path. The shell commits completed frames in order and retains each
+buffer until every surface using it releases it. Synchronization relies on
+the producer's GL fence and the driver's implicit buffer synchronization.
+Transient ring exhaustion or fence timeouts can defer a frame. If a view
+cannot use DMA-BUF, the shell can commit through the pooled shared-memory
+path. A hard failure can disable the affected surface or the GPU rail,
+depending on where it occurs.
+
+On the software path, the producer renders into a ping-pong image pair.
+Each surface reuses a three-buffer shared-memory pool and copies the changed
+portion needed by the chosen buffer. Both transports can skip unchanged
+commits. The window-grab fallback still exists when render control cannot
+initialize. Per-surface statistics report the active path, fallback reason,
+copy bytes, damage area, buffer imports and release holds. See
+[ADR 0193](adr/0193-chrome-frame-producer-pooled-shm-pacing.md),
+[ADR 0197](adr/0197-gpu-chrome-rollout-and-per-surface-stats.md), and
+[ADR 0288](adr/0288-conservative-per-surface-damage-on-the-gpu-path.md).
+
+The shell renders at the selected output's scale while keeping layout and
+input in logical coordinates. Integer scales use buffer scale. Fractional
+scales use viewporter geometry. The Menu Bar can appear on multiple outputs
+from one shell scene, so one rendered scale can still serve outputs with
+different pixel densities. The Dock and Menu Bar currently share the
+controller's chrome scale. See
+[ADR 0192](adr/0192-chrome-scale-physical-buffer-and-viewport.md).
+
+The Dock and Menu Bar coalesce dirty work against the strip's
+`wl_surface.frame` callback. Independent GPU popup views isolate target size
+and buffer lifetime. The strip and popup still share the scene and producer
+pacer. A 100 ms recovery timer covers delayed callbacks or deferred work.
+Callback and recovery counts provide pacing diagnostics. Native
+presentation timing comes from the compositor's DRM trace. See
+[compositor timing](02-compositor.md#input-latency-and-direct-scanout-t-031b)
+and [performance priorities](STATUS.md#9-chrome-performance-priorities).
 
 **Chrome materials (T-20.3).** Every one of these surfaces is
 [a compositor-material surface](../design/02-compositor.md#backdrop-blur-pass-t-042),
@@ -210,8 +183,16 @@ unchanged produces no frame, and a pending popup rectangle is applied in the
 same paced frame that commits its content. Closing a menu still drops input
 interception immediately.
 
-An open dropdown is rendered into its own content-sized view rather than
-growing the bar scene ([ADR 0286](adr/0286-content-sized-popup-render-targets.md)).
+The Dock and Menu Bar stage popup placement, pointer origin, material
+regions, and input with the matching content commit. A logical close submits
+an empty input region immediately and keeps the visual exit attached until
+it finishes. A superseded popup drops its queued GPU frames while a shared
+frame can still update the strip. Unmapping clears the previous-buffer
+comparison so reopening the same popup always attaches a buffer. See
+[ADR 0294](adr/0294-shell-popup-frame-lifecycle.md).
+
+In the default GPU mode, an open dropdown renders into its own content-sized
+view ([ADR 0286](adr/0286-content-sized-popup-render-targets.md)).
 The bar target stays at the strip/veil height, the popup target is the
 dropdown content clamped to the output, and the two have separate dma-buf
 rings. The popup target is grow-only for one open session and warm for 750 ms
@@ -740,8 +721,9 @@ Launch and attention bounce phases are pushed as an
 `entry id -> { phase, attention }` map (`bouncePhases`) every committed frame;
 the Repeater model is never
 reassigned for a bounce, so delegates are not recreated and hover/press state
-survives. The 16 ms tick only advances the map and stops the moment both
-clocks are empty, so the settled Dock contributes zero wakeups. While a
+survives. Frame callbacks sample the monotonic phases, and a refresh-aware recovery
+timer advances an active clock if no callback arrives. Launch, attention
+and minimize-reaction motion stop requesting frames when settled. While a
 popover or hover label is visible, the shell sizes the Dock scene to the
 resting strip plus only the part of the overlay that extends past it, bounded
 by the output work area (`dockSceneMargins`). The margins are grow-only for
@@ -899,7 +881,7 @@ message and a **Try Again** button that reruns the operation without re-opening
 the menu.
 
 The operation belongs to the controller, not to its card
-([reliability §7](proposals/dock-interaction-and-reliability.md)). The
+([ADR 0106](adr/0106-async-trash-empty-seam.md)). The
 card may close when another popup opens; the Trash tile keeps a small busy ring
 and its accessible name says "emptying" while the work continues, while its
 tooltip stays just "Trash". The Trash menu

@@ -1560,6 +1560,26 @@ TestCase {
         compare(triggeredSpy.signalArguments[0][1].id, "deep");
     }
 
+    function test_context_menu_closes_a_disabled_submenu_on_refresh() {
+        var child = [{ id: "child", label: "Child" }];
+        var cm = make(contextMenuComponent, {
+            model: [
+                { id: "more", label: "More", type: "submenu", submenu: child },
+                { id: "next", label: "Next" }
+            ]
+        });
+        cm.showAt(10, 10);
+        cm.openSubmenu(0);
+        compare(cm.menuDepth, 2);
+        cm.model = [
+            { id: "more", label: "More", type: "submenu", submenu: child, enabled: false },
+            { id: "next", label: "Next" }
+        ];
+        tryCompare(cm, "menuDepth", 1);
+        tryCompare(cm, "openSubmenuIndex", -1);
+        tryCompare(cm, "highlightedIndex", 1);
+    }
+
     // Task 5: a live update that inserts, replaces, or removes the pressed
     // row must not run the command that took its place.
     function test_context_menu_press_does_not_run_a_replacement_row() {

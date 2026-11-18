@@ -184,13 +184,12 @@ ladder.
   `DrmCompositor` does not send them itself, so this is what keeps Qt, GTK,
   Chromium, and Electron clients painting instead of stalling after their
   first buffer.
-- VRR/adaptive-sync and night light (per-output gamma ramps) are **design
-  targets, not shipped behavior**. The private output protocol carries
-  `set_vrr`/`set_night_light`, but the compositor currently accepts and
-  acknowledges them without applying anything, and the Displays pane exposes
-  neither (see [STATUS.md](STATUS.md) G-13). The intended owner remains the
-  compositor, like everything else about outputs
-  (see [08-settings.md](08-settings.md)).
+- The DRM backend enables adaptive sync on supported outputs when it can
+  do so without a modeset. The per-output clock adapts to measured
+  intervals when the backend supplies an active range. The private
+  `set_vrr` and `set_night_light` requests are acknowledged without applying
+  user policy. Night light and user-configurable adaptive sync remain open.
+  See [STATUS.md](STATUS.md) (G-13).
 - Multi-GPU: render on the primary node, import GBM buffers across devices,
   and fall back automatically when a GPU disappears — device *loss* is part
   of the hotplug story, not just display hotplug (see
@@ -203,19 +202,12 @@ ladder.
   feather stack. The flat desktop (no material) runs on any renderer the
   compositor can start. The recommended baseline is repeated in
   [12-packaging.md](12-packaging.md) for the shipped session.
-- **Known presentation limits (2026-11).** The shell is a separate Qt Quick
-  process on the offscreen QPA; it reads each chrome surface back with
-  `QImage::grabWindow()`, copies it into a fresh `wl_shm` buffer, and does not
-  set a buffer scale or consume `wl_surface.frame` callbacks. This is on the
-  critical path for every Dock/menu/popover frame, and it upscales chrome on
-  fractional-scale outputs. The compositor's animation clock and degrade
-  budget now follow the fastest active output's refresh period (T-21.2a), but
-  per-output presentation deadlines and VRR awareness remain. The shell
-  transport and the remaining refresh work are recorded as P0 gaps in
-  [STATUS.md](STATUS.md) (G-01/G-02); they are not evidence that the current
-  material path is cheap enough on real hardware.
-- Performance budgets are targets, not hopes — see
-  [ROADMAP.md](../ROADMAP.md).
+- The shell submits paced, physical-scale chrome frames through DMA-BUF
+  when supported and has a pooled shared-memory path. The compositor tracks
+  each output's presentation deadline. Output-specific shell rendering and
+  native percentile acceptance across mixed refresh and scale remain open.
+  See [shell transport](04-shell.md#chrome-transport) and
+  [performance priorities](STATUS.md#9-chrome-performance-priorities).
 
 ## Event loop
 
@@ -285,9 +277,9 @@ interval outside it falls back to the nominal mode period. One interval never
 turns VRR on. DRM installs the state from `DrmCompositor::vrr_supported` /
 `vrr_enabled`; nested and headless report `unsupported`. `presentation stats`
 and `frame request` append `vrr`, the accepted interval, and the range. Chrome
-frame callbacks are sent on every presented output frame and on the no-damage
-callback path, so the shell's QML pacing uses the same presentation timestamp
-as windows.
+frame callbacks are sent on the output's repaint path and can also be sent
+on a no-damage frame. The shell uses them to pace QML work. Native
+presentation statistics use the DRM completion timestamp.
 
 #### Idle and animation frame trace (T-03.1a)
 
@@ -323,29 +315,24 @@ the transport mix (`path`), copy count/bytes (`copies`, `copy_bytes`),
 `dmabuf_fallbacks`, and `dmabuf_sync_timeouts`, with the same fields per
 surface on `chrome surface`.
 
-#### Input-to-photon latency and direct scanout (T-03.1b)
+#### Input latency and direct scanout (T-03.1b)
 
-The same trace carries two more instruments. `instrument::LatencyInstrument`
-measures **input-to-photon latency**: `input::process_input_event` stamps the
-earliest input since the last presented frame, and the presenting backend
-samples the delta at nested `render::post_repaint`, headless
-`render::post_repaint_headless`, or DRM `backend::drm::render_surface`. An
-input older than 250 ms when a frame presents is discarded rather than
-credited, so a no-damage pointer move cannot inflate a later redraw. The
-render-stats line appends `latency_us_last`, `latency_us_max`,
-`latency_samples` and `latency_dropped` after `client_wakeups` (append-only,
-ADR 0009); `scripts/latency-trace.sh` records the nested raw samples with
-`query latency`. `instrument::ScanoutCounter` is the **direct-scanout counter
-template**: a read-only snapshot of `direct_scanouts`/`frames_rendered`/
-`frames_skipped_no_damage` that the DRM rail snapshots before/after a
-condition to prove `direct_scanouts` engages for an unobstructed fullscreen
-client and not otherwise (`scanout stats`, `query scanout`). See
-[ADR 0010](adr/0010-latency-and-scanout-instruments.md). The DRM rail also
-records a per-output `presentation stats` line from the actual vblank interval
-(p50/p95/p99, `missed`, `budget_us`, `refresh_hz`, `source`), so a 60 Hz
-animation on a 144 Hz panel can be judged against the real deadline instead of
-the CPU render duration
-(implementation note in the [native-rendering audit](architecture-audit-native-rendering.md#92-no-presentation-interval-or-dropped-frame-instrument-implemented)).
+The synthetic-input trace tracks time from input receipt to a backend
+repaint endpoint and discards input older than 250 ms. The trace can identify
+stalls and regressions. A local-menu latency measurement must correlate the
+interaction and the first frame carrying the changed surface with the native
+DRM presentation event. A shell frame callback is an opportunity to render
+again. The callback, a buffer commit, and nested submit completion are
+different endpoints from native vblank, and vblank is a proxy for visible
+presentation. See [evidence and acceptance](evidence-and-acceptance.md#54-chrome-performance).
+
+The DRM trace reports per-output presentation intervals and missed deadlines.
+Its direct-scanout counter advances when the primary plane takes a client
+buffer. Candidate counts describe eligibility and can rise without a
+successful direct scanout. Report candidates and actual scanout separately
+for an unobstructed fullscreen client and after chrome returns. See
+[ADR 0010](adr/0010-latency-and-scanout-instruments.md) and
+[ADR 0210](adr/0210-fullscreen-chrome-suppression-and-scanout-counters.md).
 
 #### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore; T-02.3 zoom/fullscreen; T-02.4a close; T-02.4b interrupt)
 
@@ -1367,7 +1354,7 @@ non-file drag is refused). The remaining connection/runtime half — the bridge
 window, atom interning, `XdndSelection` transfer, and the `start_dnd` call — is
 recorded as an explicit gap; see
 [ADR 0099](adr/0099-xdnd-bridge-model-and-documented-gap.md) and the T-17 note
-in [17-premium-gate.md](tracks/17-premium-gate.md).
+in [ADR 0179](adr/0179-t17-premium-gate-sign-off.md).
 
 ### Implementation note (T-14.6a)
 

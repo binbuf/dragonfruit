@@ -310,23 +310,24 @@ Rectangle {
     // --- Interaction state ------------------------------------------------
     property int openMenuIndex: -1
     property int hoverMenuIndex: -1
+    readonly property var activeStatusPopup: openStatusItem === "wifi" ? wifiMenuPopup
+        : openStatusItem === "volume" ? volumeMenuPopup
+        : openStatusItem === "battery" ? batteryMenuPopup
+        : openStatusItem === "bluetooth" ? bluetoothMenuPopup
+        : openStatusItem === "clock" ? dateTimePanel : null
 
     // Geometry of the open dropdown in window coordinates. The shell process
     // renders the popup into a separate `overlay` chrome surface placed at
     // this rectangle, so the transient menu composites above fullscreen
     // windows while the bar keeps its own `top` surface and reserved zone.
     readonly property var _dropdownRect: {
-        if (openStatusItem !== "") {
-            var statusPopup = openStatusItem === "wifi" ? wifiMenuPopup
-                            : (openStatusItem === "volume" ? volumeMenuPopup
-                            : (openStatusItem === "battery" ? batteryMenuPopup
-                            : (openStatusItem === "bluetooth" ? bluetoothMenuPopup
-                            : (openStatusItem === "clock" ? dateTimePanel : null))));
-            if (statusPopup && statusPopup.popup.open) {
-                var statusOrigin = statusPopup.mapToItem(menuBar, statusPopup.popup.x,
-                                                         statusPopup.popup.y);
+        if (activeStatusPopup) {
+            var statusPopup = activeStatusPopup.popup;
+            if (statusPopup.open) {
+                var statusOrigin = activeStatusPopup.mapToItem(menuBar, statusPopup.x,
+                                                               statusPopup.y);
                 return { x: statusOrigin.x, y: statusOrigin.y,
-                         w: statusPopup.popup.width, h: statusPopup.popup.height };
+                         w: statusPopup.width, h: statusPopup.height };
             }
         }
         if (overflowMenuOpen && overflowContextMenu.open) {
@@ -377,19 +378,10 @@ Rectangle {
     }
     readonly property var dropdownRegions: {
         var out = [];
-        if (openStatusItem !== "") {
-            var popup = openStatusItem === "wifi" ? wifiMenuPopup.popup
-                      : (openStatusItem === "volume" ? volumeMenuPopup.popup
-                      : (openStatusItem === "battery" ? batteryMenuPopup.popup
-                      : (openStatusItem === "bluetooth" ? bluetoothMenuPopup.popup
-                      : (openStatusItem === "clock" ? dateTimePanel.popup : null))));
-            if (popup && popup.open) {
-                var owner = openStatusItem === "wifi" ? wifiMenuPopup
-                          : (openStatusItem === "volume" ? volumeMenuPopup
-                          : (openStatusItem === "battery" ? batteryMenuPopup
-                          : (openStatusItem === "bluetooth" ? bluetoothMenuPopup
-                          : dateTimePanel)));
-                var p = owner.mapToItem(menuBar, popup.x, popup.y);
+        if (activeStatusPopup) {
+            var popup = activeStatusPopup.popup;
+            if (popup.open) {
+                var p = activeStatusPopup.mapToItem(menuBar, popup.x, popup.y);
                 var r = Theme.controls.contextMenu.radius;
                 out.push({ key: "menu", preset: "statusMenu",
                            x: p.x, y: p.y, w: popup.width, h: popup.height,
@@ -474,6 +466,8 @@ Rectangle {
     signal appMenuTriggered(int menuIndex, int itemIndex, var item)
     signal appMenuOpened(int menuIndex)
     signal appMenuClosed()
+    signal popupOpened()
+    signal popupClosed()
     signal statusItemActivated(string itemId)
     // A row of an open StatusNotifier tray menu was chosen; the shell forwards
     // it to the owning item's DBusMenu (T-14.3).
@@ -679,23 +673,14 @@ Rectangle {
     function openMenu(index) {
         if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)
             return;
-        var previous = openMenuIndex;
-        openMenuIndex = index;
-        if (menuBar.keyboardFocused)
-            menuBar.keyboardMenuIndex = index;
-        if (previous >= 0) {
-            var previousItem = menuRepeater.itemAt(previous);
-            if (previousItem)
-                previousItem.closeMenu(true);
-        }
         var item = menuRepeater.itemAt(index);
         if (item)
             item.openMenu();
     }
 
-    function closeMenus() {
-        closeTrayMenu();
-        closeOverflowMenu();
+    function closeMenus(immediate) {
+        closeTrayMenu(immediate);
+        closeOverflowMenu(immediate);
         var index = openMenuIndex;
         openMenuIndex = -1;
         hoverMenuIndex = -1;
@@ -706,8 +691,9 @@ Rectangle {
         if (index >= 0) {
             var item = menuRepeater.itemAt(index);
             if (item)
-                item.closeMenu();
+                item.closeMenu(immediate === true);
             appMenuClosed();
+            popupClosed();
         }
     }
 
@@ -775,23 +761,25 @@ Rectangle {
     function openTrayMenu(service) {
         if (!service || service.length === 0)
             return;
+        closeMenus(true);
+        closeStatusMenu(true);
         trayMenuService = service;
-        closeMenus();
-        closeStatusMenu();
         trayMenuOpen = true;
         var slot = trayItemFor(service);
         var menuWidth = Math.max(trayContextMenu.width, Theme.controls.contextMenu.minWidth);
         var anchorX = slot ? slot.mapToItem(menuBar, slot.width, 0).x : menuBar.width;
         var left = Math.max(0, Math.min(menuBar.width - menuWidth, anchorX - menuWidth));
         trayContextMenu.showAt(left, menuBar.height);
+        popupOpened();
     }
 
-    function closeTrayMenu() {
+    function closeTrayMenu(immediate) {
         if (!trayMenuOpen)
             return;
         trayMenuOpen = false;
-        trayContextMenu.hide();
+        trayContextMenu.hide(immediate === true);
         trayMenuClosed();
+        popupClosed();
     }
 
     // Open the popover for a status item. A hidden item (daemon absent, or a
@@ -815,42 +803,34 @@ Rectangle {
                     && data.profilesAvailable !== true)
                 return;
         }
-        closeMenus();
-        closeStatusMenu();
+        closeMenus(true);
+        closeStatusMenu(true);
         openStatusItem = id;
-        if (id === "wifi")
-            wifiMenuPopup.open = true;
-        else if (id === "volume")
-            volumeMenuPopup.open = true;
-        else if (id === "battery")
-            batteryMenuPopup.open = true;
-        else if (id === "bluetooth")
-            bluetoothMenuPopup.open = true;
-        else
-            dateTimePanel.open = true;
+        activeStatusPopup.open = true;
         statusMenuRefreshRequested(id);
         statusMenuOpened();
+        popupOpened();
     }
 
-    function closeStatusMenu() {
+    function closeStatusMenu(immediate) {
         // `openStatusItem` is the single owner of "a status popover is open".
         // Guarding on it (not on the popups) makes the re-entrant call from a
         // popup's own `closed` signal a no-op instead of double-emitting.
         if (openStatusItem === "")
             return;
+        var popup = activeStatusPopup.popup;
         openStatusItem = "";
-        wifiMenuPopup.open = false;
-        volumeMenuPopup.open = false;
-        batteryMenuPopup.open = false;
-        bluetoothMenuPopup.open = false;
+        popup.hide(immediate === true);
         statusMenuClosed();
+        popupClosed();
         // Keep the status ring on the item that opened the popover when the
         // bar owns keyboard entry; a pointer dismissal clears it.
         if (!keyboardFocused)
             keyboardStatusIndex = -1;
         // Return keyboard focus to the bar so the arrow keys keep driving the
         // status row after a popover closes.
-        forceActiveFocus();
+        if (openMenuIndex < 0)
+            forceActiveFocus();
     }
 
     // One activation path for every registry entry (T231). The item's
@@ -907,9 +887,8 @@ Rectangle {
     function openOverflowMenu() {
         if (!statusRegistry.hasOverflow)
             return;
-        closeMenus();
-        closeStatusMenu();
-        closeTrayMenu();
+        closeMenus(true);
+        closeStatusMenu(true);
         overflowMenuEntries = statusRegistry.overflowItems;
         overflowMenu = _overflowRows();
         overflowMenuOpen = true;
@@ -920,13 +899,15 @@ Rectangle {
         var left = Math.max(0, Math.min(menuBar.width - menuWidth,
                                       anchorX - menuWidth));
         overflowContextMenu.showAt(left, menuBar.height);
+        popupOpened();
     }
 
-    function closeOverflowMenu() {
+    function closeOverflowMenu(immediate) {
         if (!overflowMenuOpen)
             return;
         overflowMenuOpen = false;
-        overflowContextMenu.hide();
+        overflowContextMenu.hide(immediate === true);
+        popupClosed();
     }
 
     function toggleOverflowMenu() {
@@ -1125,15 +1106,20 @@ Rectangle {
     // application, and closes if that application exports no menu (FR-3).
     function setFocusedApp(name, id, menuModel) {
         var wasOpen = openMenuIndex;
+        var previous = appMenuAt(wasOpen);
+        openMenuIndex = -1;
+        if (previous)
+            previous.closeMenu(true);
         appName = name;
         appId = id;
         appMenuModel = menuModel || [];
         if (wasOpen >= 0) {
-            openMenuIndex = -1;
             if (wasOpen < topLevelMenus.length)
                 openMenu(wasOpen);
-            else
-                closeMenus();
+            else {
+                appMenuClosed();
+                popupClosed();
+            }
         }
     }
 
@@ -1257,11 +1243,18 @@ Rectangle {
         Repeater {
             id: menuRepeater
             objectName: "menuRepeater"
-            model: menuBar.topLevelMenus
+            // Keep the title and popup alive when its rows refresh. An array
+            // model resets every delegate even for a single changed row.
+            model: menuBar.topLevelMenus.length
+            onItemRemoved: (index, item) => {
+                if (menuBar.openMenuIndex === index)
+                    menuBar.closeMenus();
+            }
 
             delegate: MenuBarMenu {
-                required property var modelData
+                id: menuTitle
                 required property int index
+                readonly property var modelData: menuBar.topLevelMenus[index] || {}
 
                 // Tab reaches the titles while the bar owns keyboard entry.
                 // Outside that mode the offscreen window must not auto-focus
@@ -1284,19 +1277,26 @@ Rectangle {
                 onTriggered: (itemIndex, item) => menuBar.appMenuTriggered(index, itemIndex, item)
                 onMenuSwitchRequested: (delta) => menuBar.moveMenuSelection(index, delta)
                 onOpened: {
+                    var previous = menuBar.appMenuAt(menuBar.openMenuIndex);
                     menuBar.openMenuIndex = index;
+                    if (previous && previous !== menuTitle)
+                        previous.closeMenu(true);
+                    menuBar.closeStatusMenu(true);
+                    menuBar.closeTrayMenu(true);
+                    menuBar.closeOverflowMenu(true);
+                    popup.forceActiveFocus();
                     menuBar.keyboardMenuIndex = index;
                     menuBar.appMenuOpened(index);
+                    menuBar.popupOpened();
                 }
                 onClosed: {
                     if (menuBar.openMenuIndex === index) {
                         menuBar.openMenuIndex = -1;
                         menuBar.appMenuClosed();
+                        menuBar.popupClosed();
+                        if (menuBar.keyboardFocused)
+                            menuBar.focusTitle(index);
                     }
-                    // Escape from a dropdown unwinds one level at a time and
-                    // returns the ring to the invoking title.
-                    if (menuBar.keyboardFocused)
-                        menuBar.focusTitle(index);
                 }
 
                 HoverHandler {

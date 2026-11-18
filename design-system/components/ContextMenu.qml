@@ -281,21 +281,20 @@ Item {
             levels.setHighlight(1, root.submenuHighlightedIndex);
         Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
     }
-    onModelChanged: Qt.callLater(root.reconcileLevels)
-    onEntriesChanged: root.reconcileLevels()
-    function reconcileLevels() {
-        if (levels)
-            levels.reconcile();
-    }
+    onEntriesChanged: levels.reconcile(true)
 
     function show() {
         root.adoptOverlay();
         root.placeAtAnchor();
         root.open = true;
     }
-    function hide() {
+    function hide(immediate) {
         levels.closeFrom(0);
         root.open = false;
+        if (immediate === true) {
+            opacityAnimation.complete();
+            scaleAnimation.complete();
+        }
     }
     // Place a pointer-opened menu at a point and clamp it into the host
     // rectangle. Anchored menus are placed by `placeAtAnchor()` instead.
@@ -545,6 +544,7 @@ Item {
 
     Behavior on opacity {
         NumberAnimation {
+            id: opacityAnimation
             duration: root.open ? Theme.motion.menuOpen.duration : Theme.motion.menuClose.duration
             easing.type: Easing.Bezier
             easing.bezierCurve: root.open ? Theme.motion.menuOpen.curve : Theme.motion.menuClose.curve
@@ -552,6 +552,7 @@ Item {
     }
     Behavior on scale {
         NumberAnimation {
+            id: scaleAnimation
             duration: root.open ? Theme.motion.menuOpen.duration : Theme.motion.menuClose.duration
             easing.type: Easing.Bezier
             easing.bezierCurve: root.open ? Theme.motion.menuOpen.curve : Theme.motion.menuClose.curve

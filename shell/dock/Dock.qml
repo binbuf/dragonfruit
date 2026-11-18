@@ -3539,25 +3539,17 @@ Rectangle {
     // rect. The shell renders it into the Dock's `overlay` surface. A menu
     // with an open submenu reports the union of both panels so the nested
     // panel is not clipped (`ContextMenu.contentRect`).
+    // Prefer the open card and keep the departing card's geometry and
+    // material through its exit while the protocol drops its input.
+    readonly property var visualPopover: {
+        var popovers = [entryMenu, windowChooser, stackPopover, appPicker,
+                        overflowPopover, trashEmptyPopover];
+        return popovers.find(function(popup) { return popup && popup.open; })
+            || popovers.find(function(popup) { return popup && popup.visible; })
+            || null;
+    }
     readonly property var activePopoverRect: {
-        // An `open` popover owns the overlay. A closing popover can still be
-        // `visible` for its fade tail; if it were preferred, opening a second
-        // popover would keep committing the old one's rect until the fade
-        // ended, leaving the new popover invisible. Fall back to the visible
-        // tail only when nothing is open (so the close animation is captured).
-        var popup = entryMenu.open ? entryMenu
-                 : (windowChooser.open ? windowChooser
-                 : (stackPopover.open ? stackPopover
-                 : (appPicker.open ? appPicker
-                 : (overflowPopover.open ? overflowPopover
-                 : (trashEmptyPopover.open ? trashEmptyPopover
-                 : (entryMenu.visible ? entryMenu
-                 : (windowChooser.visible ? windowChooser
-                 : (stackPopover.visible ? stackPopover
-                 : (appPicker.visible ? appPicker
-                 : (overflowPopover.visible ? overflowPopover
-                 : (trashEmptyPopover.visible ? trashEmptyPopover
-                 : null)))))))))));
+        var popup = visualPopover;
         if (!popup || popup.width <= 0 || popup.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         // Use the untransformed rect: the popover scales *down* while opening
@@ -3581,17 +3573,17 @@ Rectangle {
     // A submenu is a separate card. Blurring the bounding union paints an
     // unwanted glass slab through the gap and below the shorter panel.
     readonly property var activePopoverSurfaceRegions: {
-        if (!popoverInputActive)
+        var rect = activePopoverRect;
+        if (rect.w <= 0 || rect.h <= 0)
             return [];
         var regions;
-        if (entryMenu.open) {
+        if (visualPopover === entryMenu) {
             regions = entryMenu.regions.map(function(region) {
                 return Object.assign({}, region, {
                     x: entryMenu.x + region.x, y: entryMenu.y + region.y
                 });
             });
         } else {
-            var rect = activePopoverRect;
             var radius = activePopoverRadius;
             regions = [{ key: "menu", preset: activePopoverPreset,
                          x: rect.x, y: rect.y, w: rect.w, h: rect.h,
@@ -3606,9 +3598,7 @@ Rectangle {
     }
     // A popover accepts pointer input only while logically open; the visible
     // close tail must not intercept clicks (T202).
-    readonly property bool popoverInputActive:
-        entryMenu.open || windowChooser.open || stackPopover.open
-        || appPicker.open || overflowPopover.open || trashEmptyPopover.open
+    readonly property bool popoverInputActive: popoverOpen
 
     // The hover label's rectangle in Dock-scene coordinates, or an empty rect
     // (T-14.7i). It rides the same popover/headroom path as a menu so a bottom

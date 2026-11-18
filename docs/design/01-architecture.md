@@ -83,7 +83,7 @@ the compositor is special:
 | Compositor | Rust / Smithay | Seat, DRM/KMS, input (via logind) | Crash ends the session by design; the display manager returns the user to a login screen |
 | Shell (menu bar, Dock, Control Center, notification banners, OSD) | Qt Quick | Wayland client of the compositor | systemd restarts it; windows and the session keep running |
 | `settingsd` | Rust | User session bus | Restartable; clients re-read cached state on reappearance |
-| `menu-broker` | Rust | User session bus | Restartable; menu bar falls back to app-name display |
+| `menu-broker` | Rust | User session bus | Restartable. The shell retains its fixed system and application menus during broker loss. |
 | `app-index` | Rust | User session bus | Restartable; consumers re-query on reappearance |
 | `wallpaperd` | Rust | User session bus + cache | Restartable; the shipped default keeps first run independent of the network |
 | `system-status` + adapters | Rust | User session bus | Restartable; every absent daemon is a supported state |
@@ -98,6 +98,21 @@ Only the compositor touches the seat, DRM/KMS, or raw input. Everything else
 is an ordinary user-session process speaking D-Bus or our private Wayland
 protocols. Privileged operations are delegated to system services behind
 polkit — nothing of ours runs as root.
+
+### Shell fault containment
+
+The Dock, Menu Bar, and other shell scenes share one process and GUI thread.
+Separate Wayland surfaces and render targets give each strip its own buffer
+lifetime and damage tracking. A shell crash still removes all of its
+surfaces. The compositor retains windows, workspaces and session lock state
+and can accept a fresh shell while the session supervisor restarts it.
+
+The compositor owns focus and output placement policy. The shell owns
+interaction and layout within its surfaces. The menu broker and app index
+own exported menu data. Menu export and action delivery cross the service
+boundary asynchronously so that service latency does not stall chrome.
+The remaining runtime and recovery priorities are tracked in
+[STATUS.md](STATUS.md#9-chrome-performance-priorities).
 
 ## State ownership
 

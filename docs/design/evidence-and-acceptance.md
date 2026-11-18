@@ -152,7 +152,8 @@ A task is agent-done when:
 - [ ] The scoped behaviour is implemented.
 - [ ] The headless tests are in `make e2e` and green.
 - [ ] `make check`/`make soak` are unchanged.
-- [ ] The capture/measurement artifact is committed or an `OPEN` row exists.
+- [ ] The design record identifies the evidence and rerun command or carries
+      an `OPEN` row. Generated captures and traces stay local.
 - [ ] The task's `## Hand-off` records what landed, what deviated, and what the
       next task must know.
 - [ ] Docs touched in the same change.
@@ -183,6 +184,38 @@ A release is accepted when:
 - [ ] The human sign-off has watched the release demo and compared it to the
       design docs and capture goldens.
 - [ ] `STATUS.md`, `ROADMAP.md`, and the design docs are reconciled.
+
+### 5.4 Chrome performance
+
+For the Dock, Menu Bar, and shell popups, measure from the input event to
+the first native presentation containing the changed surface. Use a
+monotonic clock and correlate the input, surface commit and DRM presentation
+by interaction and frame identity. Report input-to-commit, commit-to-present,
+and input-to-present separately. Report p50, p95 and p99, sample counts,
+missed presentation deadlines, CPU and GPU time, copy bytes, buffer
+retention, transport fallbacks, and idle wakeups.
+
+The initial target for a warm local-menu open is p95 within two refresh
+intervals. Use half a refresh interval as the initial shell CPU budget for
+p95 during sustained interaction. At 144 Hz those targets are about 13.9 ms
+and 3.5 ms. They are design targets pending calibration on the supported
+native devices. Measure cold open, shell restart, and exporter refresh
+separately. After the UI settles, distinguish expected clock updates from
+repeated rendering, buffer churn, recovery wakes, or polling.
+
+Exercise at least 100 cold and warm open/close or switch cycles for each
+tested menu family. Include submenus, immediate reopen, click-away,
+auto-hide and a concurrent window workload. Cover 60/120/144 Hz and
+1×/1.5×/2× across the matrix, including mixed outputs, fractional
+scale, adaptive sync when supported, and the shared-memory fallback.
+Check focus, placement, and stale popup frames alongside timing.
+
+The native popup comparison and native material workload are starting
+points for the hardware run. Extend them to cover the Menu Bar and
+context-menu families. Keep captures and traces local under repository
+rules and record the result and evidence class in the relevant design
+status. See [native popup comparison](../../scripts/t238-dock-popover-ab-native.sh)
+and [native workload acceptance](../../scripts/t238-native-acceptance.sh).
 
 ## 6. Tolerances
 
@@ -243,15 +276,16 @@ docs/design/
   ...design docs...
 ```
 
-Dragonfruit captures are **our implementation**, not macOS reference images.
-Never commit Apple screenshots to Dragonfruit.
+Generated implementation captures and traces stay in ignored paths.
+The evidence record names the workload, revision, result, and rerun command.
 
 ## 8. Native vs nested
 
 | Evidence | What it proves | What it does not prove |
 |---|---|---|
-| Nested capture | QML/layout/motion logic | DRM path, HiDPI sharpness, cursor |
+| Nested capture | QML, layout, motion, and host transport behavior | Native DRM timing, scanout planes, or native mixed-output behavior |
 | Headless test | state machine, input routing | visual quality |
+| Native DRM presentation trace | hardware presentation intervals and interaction-to-vblank with frame correlation | panel response time or visible content without frame correlation |
 | DRM readback | native pixels on the tested GPU | other GPUs, HDR, multi-GPU |
 | External photo | cursor/overlay planes | exact colour |
 

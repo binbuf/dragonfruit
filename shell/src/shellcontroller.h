@@ -344,8 +344,8 @@ private slots:
     void onTrayMenuClosed();
     // Wi-Fi and volume popovers (T-07.5a): the bar's gestures become bridge
     // host calls, and the host's views become the model's state.
-    void onStatusMenuOpened();
-    void onStatusMenuClosed();
+    void onMenuBarPopupOpened();
+    void onMenuBarPopupClosed();
     void onStatusMenuRefreshRequested(const QString &itemId);
     void onWifiJoinRequested(const QString &ssid, const QString &secret);
     void onVolumeSetRequested(double volume);
@@ -364,8 +364,6 @@ private slots:
     void onVpnState(const QByteArray &json);
     void onStatusReport(const QByteArray &json);
     void onClockTick();
-    void onAppMenuOpened(int index);
-    void onAppMenuClosed();
     void onAppMenuTriggered(int menuIndex, int itemIndex, const QVariant &item);
     void onPointerMoved(qreal x, qreal y);
     void onPointerButton(qreal x, qreal y, quint32 button, bool pressed);
@@ -654,6 +652,8 @@ private:
         // Non-zero for a lock surface, which is addressed by the opaque id
         // from `lockSurfaceConfigured` rather than a label lookup.
         quintptr lockSurfaceId = 0;
+        // A popup frame can finish after its owner closes or switches.
+        std::function<bool()> isCurrent = {};
     };
     bool commitChromeScene(QQuickWindow *window,
                            const QList<ChromeSceneTarget> &targets,
@@ -680,7 +680,7 @@ private:
     // submitted describe its geometry; committing them keeps submission order
     // even though rendering no longer waits for the fence.
     bool commitReadyChromeScene(GpuChromeFrameProducer *gpu, int view,
-                                const QList<ChromeSceneTarget> &targets,
+                                QList<ChromeSceneTarget> targets,
                                 bool *deferred = nullptr);
     void onChromeGpuFrameReady(GpuChromeFrameProducer *gpu, int view);
     void onChromeGpuFrameFailed(GpuChromeFrameProducer *gpu, int view,
@@ -1034,13 +1034,7 @@ private:
     // Force the launch state to neutral (no focus ring, no hover) and commit
     // it, so the first visible frame is not a transient highlight.
     void settleInitialState();
-    // Read the open dropdown's rectangle from the bar and place (or hide) the
-    // overlay popup surface accordingly.
-    void updatePopupGeometry();
-    // The geometry-only half of `updatePopupGeometry()`: apply the current QML
-    // rectangle to the protocol without requesting a frame. `render()` calls
-    // this for a pending update so the rectangle and its content share one
-    // paced frame.
+    // Stage the open dropdown's geometry for its next rendered frame.
     void applyPopupGeometry();
     // Mark the menu-bar producer dirty. The producer's pacer renders on the
     // next eligible presentation (or the next event-loop turn when no frame
@@ -1591,8 +1585,7 @@ private:
     // Dock) the bar without leaving the buffer.
     int m_dockItemOffsetX = 0;
     int m_dockItemOffsetY = 0;
-    int m_dockPopoverX = 0;
-    int m_dockPopoverY = 0;
+    quint64 m_dockPopupGeneration = 0;
     // Content-sized scene margins for the current overlay interaction session
     // (reliability §12). The budget grows as a popover or hover label needs
     // space and is released when the pointer, keyboard focus, and overlay all
@@ -1626,6 +1619,8 @@ private:
     bool m_menuBarKeyboardFocused = false;
     // The open dropdown's window-space rectangle (valid while a menu is open).
     bool m_popupGeometryPending = false;
+    QTimer *m_menuBarPopupExitTimer = nullptr;
+    quint64 m_menuBarPopupGeneration = 0;
     int m_popupX = 0;
     int m_popupY = 0;
     int m_popupWidth = 0;

@@ -2,7 +2,7 @@
 // Client for `org.dragonfruit.AppIndex1` (T-14.1a).
 //
 // The shell queries app-index for application identity and themed icons; it
-// never scans `.desktop` directories itself. Every call is blocking and
+// never scans `.desktop` directories itself. Index reads are blocking and
 // returns exactly what the service's flat JSON view carries. When the service
 // is absent every call is a no-op miss, so a session without app-index
 // degrades to the Dock's legacy local index rather than failing.
@@ -13,6 +13,8 @@
 #include <QList>
 #include <QString>
 #include <QVariantList>
+
+class QDBusPendingCall;
 
 // One window registered with `com.canonical.AppMenu.Registrar`, as app-index's
 // `AppMenuWindows` view carries it (T-14.4/T230).
@@ -82,7 +84,7 @@ public:
 
     // T230: forward a projected `dbusmenu:<id>` click to the owning app as
     // `Event(id, "clicked")`. Returns whether the owner accepted it.
-    bool windowMenuEvent(const QString &windowId, int id) const;
+    QDBusPendingCall windowMenuEvent(quint32 windowId, int id) const;
 
 private:
     QString call(const QString &method, const QList<QVariant> &arguments) const;

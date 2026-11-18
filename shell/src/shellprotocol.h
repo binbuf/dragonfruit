@@ -122,8 +122,7 @@ public:
     // unmaps it. Unlike the bar it reserves no zone and never takes keyboard.
     bool createPopupSurface();
 
-    // Place the popup layer surface at window coordinates `(x, y)` sized
-    // `(width, height)`. The compositor answers with a fresh `configure`.
+    // Stage placement for the next content commit.
     bool setPopupGeometry(int x, int y, int width, int height);
 
     // T202: declare the popup's independently keyed material regions with the
@@ -131,10 +130,10 @@ public:
     // overscan; an empty list clears the material. The region requests are
     // commit-latched by the compositor.
     void setPopupPanelRegions(const QVariantList &regions);
-    void clearPopupPanelRegions();
     // The popup surface accepts pointer input only while a menu is logically
     // open; the closing animation must not intercept clicks.
     void setPopupInputActive(bool active);
+    void dismissPopupInput();
 
     // Attach `image` to the popup surface and commit. The image must be
     // ARGB32(_Premultiplied). `logicalSize` is the surface contract; the image
@@ -167,19 +166,15 @@ public:
     // (`exclusive_zone = -1`), and starts unmapped.
     bool createDockPopupSurface(DockPosition position);
 
-    // Place the Dock popup with margins (top, right, bottom, left) inset from
-    // the popup's anchored edges and size `(width, height)`. The shell
-    // computes the margins from the popover's Dock-scene rectangle and the
-    // Dock's position (T-10 section 5). The compositor answers with a fresh
-    // `dockPopupConfigured`. The surface-local panel is applied with the
-    // popup's next frame. An empty panel leaves a tooltip without a backdrop.
-    bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height,
-                              const QRect &panel);
+    // Stage the Dock popup placement in margins from its anchored edges.
+    bool setDockPopupGeometry(int top, int right, int bottom, int left,
+                              const QRect &sceneRect);
+    QPoint dockPopupOrigin() const { return m_dockPopupFrame.origin; }
     // T202: one detached-menu material region for the active Dock popover,
     // plus the same open-only input contract as the menu-bar popup.
     void setDockPopupPanelRegions(const QVariantList &regions);
-    void clearDockPopupPanelRegions();
     void setDockPopupInputActive(bool active);
+    void dismissDockPopupInput();
 
     // Attach `image` to the Dock popup surface and commit.
     bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize(),
@@ -1153,6 +1148,23 @@ private:
                   const QSize &logicalSize = QSize(),
                   const QRect &sourceRect = QRect());
     bool applyDockSurfaceGeometry(wl_surface *surface);
+    struct PopupFrameGeometry {
+        std::optional<uint32_t> anchor;
+        std::array<int, 6> placement{}; // top, right, bottom, left, width, height
+        QPoint origin;
+        QVariantList regions;
+        bool inputActive = false;
+        bool operator==(const PopupFrameGeometry &) const = default;
+    };
+    struct PopupFrameState {
+        PopupFrameGeometry next;
+        std::optional<PopupFrameGeometry> committed;
+        QPoint origin;
+    };
+    bool applyPopupSurfaceGeometry(wl_surface *surface);
+    void dismissPopupInput(wl_surface *surface, PopupFrameState &frame);
+    bool hidePopupSurface(wl_surface *surface, df_layer_surface *layer,
+                          PopupFrameState &frame, bool &mapped);
     // Commit pending menu-bar material metadata on a damage-free frame.
     bool applyMenuBarSurfaceGeometry(wl_surface *surface);
     ShellSurfaceBuffer *surfaceBuffer(wl_surface *surface);
@@ -1445,8 +1457,7 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     uint32_t m_menuBarAutoHide = 2; // full-screen; see df_layer_surface.auto_hide_mode
     wl_surface *m_popupSurface = nullptr;
     df_layer_surface *m_popupLayer = nullptr;
-    std::optional<QRect> m_popupGeometry;
-    std::optional<QVariantList> m_popupPanelRegions;
+    PopupFrameState m_popupFrame;
     wl_surface *m_dockSurface = nullptr;
     df_layer_surface *m_dockLayer = nullptr;
     bool m_dockMapped = false;
@@ -1459,15 +1470,10 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // The Dock's transient popover surface (context menus, window chooser).
     wl_surface *m_dockPopupSurface = nullptr;
     df_layer_surface *m_dockPopupLayer = nullptr;
-    std::optional<std::array<int, 6>> m_dockPopupGeometry;
-    std::optional<QVariantList> m_dockPopupPanelRegions;
+    PopupFrameState m_dockPopupFrame;
     bool m_dockPopupMapped = false;
-    std::optional<QRect> m_nextDockPopupPanel;
-    std::optional<QRect> m_committedDockPopupPanel;
     // Window-space origin of the popup surface, used to translate pointer
     // coordinates delivered relative to the popup into window coordinates.
-    int m_popupX = 0;
-    int m_popupY = 0;
     bool m_popupMapped = false;
     // True while the pointer is over the popup surface, so its surface-local
     // coordinates are translated into window coordinates.

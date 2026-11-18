@@ -443,16 +443,8 @@ bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
 {
     if (!m_popupLayer || !m_popupSurface)
         return false;
-    const QRect geometry(x, y, width, height);
-    if (m_popupGeometry == geometry)
-        return true;
-    m_popupGeometry = geometry;
-    m_popupX = x;
-    m_popupY = y;
-    df_layer_surface_set_margin(m_popupLayer, y, 0, 0, x);
-    df_layer_surface_set_size(m_popupLayer, width, height);
-    if (m_display)
-        wl_display_flush(m_display);
+    m_popupFrame.next.placement = {y, 0, 0, x, width, height};
+    m_popupFrame.next.origin = QPoint(x, y);
     return true;
 }
 
@@ -486,57 +478,28 @@ static void setMenuPanelRegions(df_layer_surface *layer, const QVariantList &reg
 
 void ShellProtocol::setPopupPanelRegions(const QVariantList &regions)
 {
-    if (!m_popupLayer || m_popupPanelRegions == regions)
-        return;
-    setMenuPanelRegions(m_popupLayer, regions);
-    m_popupPanelRegions = regions;
-}
-
-void ShellProtocol::clearPopupPanelRegions()
-{
-    setPopupPanelRegions({});
+    m_popupFrame.next.regions = regions;
 }
 
 void ShellProtocol::setPopupInputActive(bool active)
 {
-    if (!m_popupSurface || !m_compositor)
-        return;
-    if (active) {
-        wl_surface_set_input_region(m_popupSurface, nullptr);
-        return;
-    }
-    wl_region *region = wl_compositor_create_region(m_compositor);
-    if (!region)
-        return;
-    wl_surface_set_input_region(m_popupSurface, region);
-    wl_region_destroy(region);
+    m_popupFrame.next.inputActive = active;
+}
+
+void ShellProtocol::dismissPopupInput()
+{
+    dismissPopupInput(m_popupSurface, m_popupFrame);
 }
 
 bool ShellProtocol::commitPopupImage(const QImage &image, const QSize &logicalSize,
                                      const QRect &sourceRect)
 {
-    if (!m_popupSurface)
-        return false;
-    if (!commitTo(m_popupSurface, image, logicalSize, sourceRect))
-        return false;
-    m_popupMapped = true;
-    return true;
+    return commitTo(m_popupSurface, image, logicalSize, sourceRect);
 }
 
 bool ShellProtocol::hidePopup()
 {
-    if (!m_popupSurface || !m_popupLayer)
-        return false;
-    if (!m_popupMapped)
-        return true;
-    cancelPendingFrame(QStringLiteral("menubar-popup"));
-    wl_surface_attach(m_popupSurface, nullptr, 0, 0);
-    wl_surface_commit(m_popupSurface);
-    resetSurfaceScale(m_popupSurface);
-    m_popupMapped = false;
-    if (m_display)
-        wl_display_flush(m_display);
-    return true;
+    return hidePopupSurface(m_popupSurface, m_popupLayer, m_popupFrame, m_popupMapped);
 }
 
 bool ShellProtocol::commitImage(const QImage &image, const QSize &logicalSize,
@@ -1981,7 +1944,7 @@ bool ShellProtocol::configureDockSurface(DockPosition position, int thickness, i
     // Keep the popover overlay anchored to the same edge if it already exists,
     // so a live `dock.position` change does not leave it hugging the old edge.
     if (m_dockPopupLayer)
-        df_layer_surface_set_anchor(m_dockPopupLayer, dockPopupAnchor(position));
+        m_dockPopupFrame.next.anchor = dockPopupAnchor(position);
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -2162,7 +2125,7 @@ ShellProtocol::DmabufCommitResult ShellProtocol::commitDmabufTo(
 
     applyDmabufScale(surface, logicalSize, source, frame.size);
     const bool surfaceGeometryChanged = applyDockSurfaceGeometry(surface)
-        | applyMenuBarSurfaceGeometry(surface);
+        | applyMenuBarSurfaceGeometry(surface) | applyPopupSurfaceGeometry(surface);
 
     if (damage.isEmpty()) {
         // The target already shows these pixels. Commit only the surface state
@@ -2431,14 +2394,6 @@ bool ShellProtocol::applyMenuBarSurfaceGeometry(wl_surface *surface)
 
 bool ShellProtocol::applyDockSurfaceGeometry(wl_surface *surface)
 {
-    if (surface == m_dockPopupSurface && m_nextDockPopupPanel
-        && m_nextDockPopupPanel != m_committedDockPopupPanel) {
-        const QRect &panel = *m_nextDockPopupPanel;
-        df_layer_surface_set_panel_rect(m_dockPopupLayer, panel.x(), panel.y(),
-                                       panel.width(), panel.height());
-        m_committedDockPopupPanel = panel;
-        return true;
-    }
     if (surface != m_dockSurface || !m_nextDockGeometry)
         return false;
     const DockFrameGeometry &next = *m_nextDockGeometry;
@@ -2462,6 +2417,94 @@ bool ShellProtocol::applyDockSurfaceGeometry(wl_surface *surface)
                                          next.panel.width(), next.panel.height());
     m_committedDockGeometry = next;
     return inputChanged || panelChanged;
+}
+
+static void setPopupPointerInput(wl_compositor *compositor, wl_surface *surface,
+                                 bool active)
+{
+    if (active) {
+        wl_surface_set_input_region(surface, nullptr);
+        return;
+    }
+    wl_region *region = wl_compositor_create_region(compositor);
+    if (!region)
+        return;
+    wl_surface_set_input_region(surface, region);
+    wl_region_destroy(region);
+}
+
+bool ShellProtocol::applyPopupSurfaceGeometry(wl_surface *surface)
+{
+    PopupFrameState *frame = nullptr;
+    df_layer_surface *layer = nullptr;
+    if (surface == m_popupSurface) {
+        frame = &m_popupFrame;
+        layer = m_popupLayer;
+    } else if (surface == m_dockPopupSurface) {
+        frame = &m_dockPopupFrame;
+        layer = m_dockPopupLayer;
+    }
+    if (!layer || frame->committed == frame->next)
+        return false;
+
+    const auto &next = frame->next;
+    const auto &previous = frame->committed;
+    if (next.anchor && (!previous || previous->anchor != next.anchor))
+        df_layer_surface_set_anchor(layer, *next.anchor);
+    if (!previous || previous->placement != next.placement) {
+        const auto &[top, right, bottom, left, width, height] = next.placement;
+        df_layer_surface_set_margin(layer, top, right, bottom, left);
+        df_layer_surface_set_size(layer, width, height);
+    }
+    if (!previous || previous->regions != next.regions)
+        setMenuPanelRegions(layer, next.regions);
+    if (!previous || previous->inputActive != next.inputActive)
+        setPopupPointerInput(m_compositor, surface, next.inputActive);
+    frame->origin = next.origin;
+    frame->committed = next;
+    return true;
+}
+
+void ShellProtocol::dismissPopupInput(wl_surface *surface, PopupFrameState &frame)
+{
+    frame.next.inputActive = false;
+    if (!surface || !frame.committed || !frame.committed->inputActive)
+        return;
+    // Commit only the empty input region. Staged geometry and material
+    // belong to the next content frame, while the attached image can fade.
+    setPopupPointerInput(m_compositor, surface, false);
+    wl_surface_commit(surface);
+    wl_display_flush(m_display);
+    frame.committed->inputActive = false;
+}
+
+bool ShellProtocol::hidePopupSurface(wl_surface *surface, df_layer_surface *layer,
+                                     PopupFrameState &frame, bool &mapped)
+{
+    if (!surface || !layer)
+        return false;
+    frame.next.inputActive = false;
+    frame.next.regions.clear();
+    if (!mapped)
+        return true;
+    cancelPendingFrame(surfaceLabel(surface));
+    if (frame.committed && frame.committed->inputActive)
+        setPopupPointerInput(m_compositor, surface, false);
+    df_layer_surface_clear_panel_regions(layer);
+    resetSurfaceScale(surface);
+    wl_surface_attach(surface, nullptr, 0, 0);
+    wl_surface_commit(surface);
+    wl_display_flush(m_display);
+    mapped = false;
+    frame.committed.reset();
+    // Both paths must attach a buffer on the first frame after an unmap,
+    // even if a reopened menu is byte-for-byte identical to its last frame.
+    if (auto *buffer = surfaceBuffer(surface)) {
+        buffer->lastImage = QImage();
+        buffer->lastSourceRect = QRect();
+        buffer->dmabufCommitted = false;
+    }
+    return true;
 }
 
 bool ShellProtocol::createDockPopupSurface(DockPosition position)
@@ -2494,79 +2537,42 @@ bool ShellProtocol::createDockPopupSurface(DockPosition position)
     return true;
 }
 
-bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int left, int width,
-                                         int height, const QRect &panel)
+bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int left,
+                                         const QRect &sceneRect)
 {
     if (!m_dockPopupLayer || !m_dockPopupSurface)
         return false;
-    m_nextDockPopupPanel = panel;
-    // Hover repaints do not change layout. Avoid reconfiguring the overlay
-    // and rebuilding its material metadata for every highlight/animation frame.
-    const std::array<int, 6> geometry{top, right, bottom, left, width, height};
-    if (m_dockPopupGeometry == geometry)
-        return true;
-    m_dockPopupGeometry = geometry;
-    // set_margin(top, right, bottom, left)
-    df_layer_surface_set_margin(m_dockPopupLayer, top, right, bottom, left);
-    df_layer_surface_set_size(m_dockPopupLayer, width, height);
-    if (m_display)
-        wl_display_flush(m_display);
+    m_dockPopupFrame.next.placement =
+        {top, right, bottom, left, sceneRect.width(), sceneRect.height()};
+    m_dockPopupFrame.next.origin = sceneRect.topLeft();
     return true;
 }
 
 void ShellProtocol::setDockPopupPanelRegions(const QVariantList &regions)
 {
-    if (!m_dockPopupLayer || m_dockPopupPanelRegions == regions)
-        return;
-    setMenuPanelRegions(m_dockPopupLayer, regions);
-    m_dockPopupPanelRegions = regions;
-}
-
-void ShellProtocol::clearDockPopupPanelRegions()
-{
-    setDockPopupPanelRegions({});
+    m_dockPopupFrame.next.regions = regions;
 }
 
 void ShellProtocol::setDockPopupInputActive(bool active)
 {
-    if (!m_dockPopupSurface || !m_compositor)
-        return;
-    if (active) {
-        wl_surface_set_input_region(m_dockPopupSurface, nullptr);
-        return;
-    }
-    wl_region *region = wl_compositor_create_region(m_compositor);
-    if (!region)
-        return;
-    wl_surface_set_input_region(m_dockPopupSurface, region);
-    wl_region_destroy(region);
+    m_dockPopupFrame.next.inputActive = active;
+}
+
+void ShellProtocol::dismissDockPopupInput()
+{
+    dismissPopupInput(m_dockPopupSurface, m_dockPopupFrame);
 }
 
 bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize,
                                          const QRect &sourceRect)
 {
-    if (!m_dockPopupSurface)
-        return false;
-    if (!commitTo(m_dockPopupSurface, image, logicalSize, sourceRect))
-        return false;
-    m_dockPopupMapped = true;
-    return true;
+    return commitTo(m_dockPopupSurface, image, logicalSize, sourceRect);
 }
 
 bool ShellProtocol::hideDockPopup()
 {
-    if (!m_dockPopupSurface || !m_dockPopupLayer)
-        return false;
-    if (!m_dockPopupMapped)
-        return true;
-    cancelPendingFrame(QStringLiteral("dock-popup"));
-    wl_surface_attach(m_dockPopupSurface, nullptr, 0, 0);
-    wl_surface_commit(m_dockPopupSurface);
-    resetSurfaceScale(m_dockPopupSurface);
-    m_dockPopupMapped = false;
-    if (m_display)
-        wl_display_flush(m_display);
-    return true;
+    return hidePopupSurface(m_dockPopupSurface, m_dockPopupLayer, m_dockPopupFrame,
+                            m_dockPopupMapped);
 }
 
 void ShellProtocol::activateApp(const QString &appId)
@@ -2931,8 +2937,9 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     if (damage.isEmpty() && !buffer->lastImage.isNull()) {
         // Reuse the attached buffer. Input or plate geometry can change even
         // when the pixels match, so commit that state on its own.
-        if (applyDockSurfaceGeometry(surface)
-                || applyMenuBarSurfaceGeometry(surface)) {
+        const bool geometryChanged = applyDockSurfaceGeometry(surface)
+            | applyMenuBarSurfaceGeometry(surface) | applyPopupSurfaceGeometry(surface);
+        if (geometryChanged) {
             wl_surface_commit(surface);
             wl_display_flush(m_display);
         }
@@ -2988,12 +2995,18 @@ bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image,
     wl_surface_damage_buffer(surface, damage.x(), damage.y(),
                              damage.width(), damage.height());
     applyDockSurfaceGeometry(surface);
+    applyPopupSurfaceGeometry(surface);
     wl_surface_commit(surface);
     wl_display_flush(m_display);
     if (surface == m_surface)
         m_menuBarPanelDirty = false;
     buffer->lastImage = frame;
     buffer->lastSourceRect = source;
+    buffer->dmabufCommitted = false;
+    if (surface == m_popupSurface)
+        m_popupMapped = true;
+    else if (surface == m_dockPopupSurface)
+        m_dockPopupMapped = true;
     if (statsEnabled) {
         // `commit_us` is measured from the render completion to the surface
         // commit; the fallback covers a commit with no preceding render.
@@ -3725,8 +3738,7 @@ void ShellProtocol::teardown()
     m_popupSurface = nullptr;
     m_popupMapped = false;
     m_dockLayer = nullptr;
-    m_popupGeometry.reset();
-    m_popupPanelRegions.reset();
+    m_popupFrame = {};
     m_dockSurface = nullptr;
     m_dockMapped = false;
     m_nextDockGeometry.reset();
@@ -3734,10 +3746,7 @@ void ShellProtocol::teardown()
     m_dockPopupLayer = nullptr;
     m_dockPopupSurface = nullptr;
     m_dockPopupMapped = false;
-    m_nextDockPopupPanel.reset();
-    m_dockPopupGeometry.reset();
-    m_dockPopupPanelRegions.reset();
-    m_committedDockPopupPanel.reset();
+    m_dockPopupFrame = {};
     m_overviewLayer = nullptr;
     m_overviewSurface = nullptr;
     m_overviewMapped = false;
@@ -4664,8 +4673,8 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         emit self->lockPointerMoved(lockId, self->m_pointerX, self->m_pointerY);
         return;
     }
-    self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
-    self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupFrame.origin.x() : 0);
+    self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupFrame.origin.y() : 0);
     if (self->m_pointerOnAppsDrawer) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -4818,8 +4827,8 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
                                     self->m_pointerY);
         return;
     }
-    self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
-    self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupFrame.origin.x() : 0);
+    self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupFrame.origin.y() : 0);
     if (self->m_pointerOnAppsDrawer) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);

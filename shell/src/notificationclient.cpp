@@ -10,6 +10,7 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
+#include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #endif
@@ -21,6 +22,7 @@ namespace {
 const QString kService = QStringLiteral("org.freedesktop.Notifications");
 const QString kPath = QStringLiteral("/org/freedesktop/Notifications");
 const QString kInterface = QStringLiteral("org.dragonfruit.Notifications1");
+constexpr int kReadTimeoutMs = 2000;
 
 } // namespace
 
@@ -71,18 +73,18 @@ void DbusNotificationClient::call(const QString &method, const QVariantList &arg
                                   ReplySignal replySignal)
 {
 #if defined(QT_DBUS_LIB)
-    auto *call = new QDBusInterface(m_service, m_path, m_interface,
-                                    QDBusConnection::sessionBus(), this);
-    if (!call->isValid()) {
-        call->deleteLater();
-        m_available = false;
-        emit availableChanged(false);
+    if (!m_available)
         return;
-    }
+    // QDBusInterface introspects synchronously, even before an async method
+    // call. Optional notification reads must not delay the first chrome frame.
+    QDBusMessage request = QDBusMessage::createMethodCall(
+        m_service, m_path, m_interface, method);
+    request.setArguments(arguments);
+    request.setAutoStartService(false);
     QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(
-        call->asyncCallWithArgumentList(method, arguments), this);
+        QDBusConnection::sessionBus().asyncCall(request, kReadTimeoutMs), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, replySignal, call]() {
+            [this, watcher, replySignal]() {
                 const QDBusPendingReply<QString> reply = *watcher;
                 if (reply.isValid()) {
                     (this->*replySignal)(reply.value().toUtf8());
@@ -90,7 +92,6 @@ void DbusNotificationClient::call(const QString &method, const QVariantList &arg
                     qWarning() << "dragonfruit-shell: notification call failed:"
                                << watcher->reply().errorMessage();
                 }
-                call->deleteLater();
                 watcher->deleteLater();
             });
 #else

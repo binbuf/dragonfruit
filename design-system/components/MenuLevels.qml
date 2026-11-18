@@ -54,9 +54,10 @@ QtObject {
         for (var level = 0; level < root.openPath.length; ++level) {
             var entries = root.normalizeList(out[level]);
             var at = root.indexOfKey(entries, root.openPath[level]);
-            if (at < 0)
+            var opener = entries[at];
+            if (!opener || !opener.enabled || opener.type !== "submenu")
                 break;
-            out.push(entries[at].submenu || []);
+            out.push(opener.submenu);
         }
         return out;
     }
@@ -452,7 +453,7 @@ QtObject {
     // surviving enabled row so the selection never points at a different
     // command.
     property bool reconciling: false
-    function reconcile() {
+    function reconcile(deferInvalidPath) {
         if (root.reconciling)
             return;
         root.reconciling = true;
@@ -466,8 +467,18 @@ QtObject {
         var indicesChanged = false;
         for (var level = 0; level < maxLevel; ++level) {
             var list = entries[level] || [];
+            var opener = level < path.length ? list[root.indexOfKey(list, path[level])]
+                                            : null;
             if (level < path.length
-                    && root.indexOfKey(list, path[level]) < 0) {
+                    && (!opener || !opener.enabled || opener.type !== "submenu")) {
+                // The entries-change handler may still be evaluating the
+                // path binding. Let the model timer remove an invalid branch.
+                if (deferInvalidPath === true) {
+                    root.reconciling = false;
+                    return;
+                }
+                if (root.pendingLevel >= level)
+                    root.cancelPending();
                 path = path.slice(0, level);
                 keys = keys.slice(0, level + 1);
                 indices = indices.slice(0, level + 1);
@@ -484,7 +495,7 @@ QtObject {
             }
             var key = keys[level];
             var at = root.indexOfKey(list, key);
-            if (at < 0) {
+            if (!root.isSelectable(list[at])) {
                 if (key === "" && indices[level] < 0)
                     continue;
                 at = root.nearestSelectable(list, indices[level] >= 0
@@ -504,9 +515,7 @@ QtObject {
             keysChanged = true;
             indicesChanged = true;
         }
-        // Only touch the array the update actually changed. Reassigning the
-        // open path during a model refresh would re-enter `levelModels` while
-        // that binding is evaluating and produce a false binding loop.
+        // Only touch the arrays the update actually changed.
         if (pathChanged)
             root.openPath = path;
         if (keysChanged)
@@ -526,6 +535,14 @@ QtObject {
             y += list[i].type === "separator" ? padding : rowHeight;
         }
         return y;
+    }
+
+    // The owner can be destroyed when a top-level menu disappears.
+    // Keep the deferred reconciliation tied to the menu's lifetime.
+    onModelChanged: reconcileTimer.restart()
+    property Timer reconcileTimer: Timer {
+        interval: 0
+        onTriggered: root.reconcile()
     }
 
     property Timer dwellTimer: Timer {
