@@ -65,7 +65,7 @@ export RUSTFLAGS := $(RUSTFLAGS) -L $(DF_DEVROOT)
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test qml-test-serial glass-shader-test \
+.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test qml-test-serial glass-shader-test t238-native-build t238-native-round-trip \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast verify-settings gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t263-settings-window-capture t264-settings-navigation-capture t265-settings-search-capture t266-settings-components-capture t267-settings-accessibility-capture t268-settings-performance t269-general-capture t270-general-system-capture t271-wifi-bluetooth-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
@@ -105,6 +105,7 @@ help:
 	@echo "  make t238-nested-responsiveness — T238 minimized/backgrounded/occluded nested probe"
 	@echo "  make t238-presenter-lifecycle — T238 minimize/restore, resize, EGL fault, disconnect, shutdown"
 	@echo "  make t238-native-acceptance — T238 free-seat 4K/144 spans vs split-deco acceptance"
+	@echo "  make t238-native-round-trip — log out, run T238 on DRM, and restore graphical login"
 	@echo "  make t238-wake-swap-audit — T238 protocol trace of wake-only swaps and host cost"
 	@echo "  make multi-gpu-validation — T-03.4 multi-GPU import/fallback validation"
 	@echo "  make drm-soak — T-03.4 100-cycle teardown soak + one DRM session cycle"
@@ -538,9 +539,14 @@ t238-presenter-lifecycle: build
 
 # T238 native acceptance: free DRM seat only. Writes an explicit OPEN artifact
 # when the live session owns DRM master.
-t238-native-acceptance: build
-	cargo build --release -p dragonfruit-compositor
+t238-native-acceptance: build t238-native-build
 	bash scripts/t238-native-acceptance.sh
+
+t238-native-build: cmake-build
+	$(CARGO) build --release -p dragonfruit-compositor
+
+t238-native-round-trip:
+	bash scripts/t238-native-round-trip.sh $(NATIVE_ARGS)
 
 # T238 wake-only swap audit: a Wayland proxy records whether no-damage swaps
 # commit a buffer and full-surface damage, and measures the host CPU cost.

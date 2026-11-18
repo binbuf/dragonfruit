@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "desktopentry.h"
 
-#include "appindexclient.h"
 
 #include <QDir>
 #include <QStandardPaths>
@@ -130,11 +129,6 @@ void expandToken(const QString &token, const DesktopEntry &entry, const QStringL
 }
 
 } // namespace
-
-void DesktopEntryIndex::loadFromAppIndex(const AppIndexClient &client)
-{
-    loadFromRecords(client.enumerate());
-}
 
 void DesktopEntryIndex::loadFromRecords(const QList<DesktopEntry> &entries)
 {

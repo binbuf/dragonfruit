@@ -400,7 +400,6 @@ private slots:
     void onDockAppPickerRequested();
     void onDockAppPinToggled(const QString &desktopId, bool pinned);
     // app-index's coalesced `Changed` signal (T-14.1c): reload the corpus.
-    void onAppIndexChanged(const QString &interests);
     // app-index's change-driven tray signals (T-14.3): the item set/property
     // view changed, or one item's projected menu changed.
     void onTrayChanged();
@@ -536,7 +535,7 @@ private:
     // app-index in parallel, so `connectAppIndex()` also watches the
     // well-known name and re-syncs when the service appears or restarts.
     void connectAppIndex();
-    void syncAppIndex();
+    void applyAppIndexCatalog();
     // T-18.1b: subscribe to `org.dragonfruit.Wallpaper1`'s source properties
     // (with restart resync) so the shipped default and the fetched fallback
     // reach the compositor even when settingsd is absent.
@@ -1430,15 +1429,8 @@ private:
     // T-10 section 17); fed by focus changes, capped and de-duplicated.
     QStringList m_recentAppIds;
 
-    // The Dock's identity cache, loaded from `org.dragonfruit.AppIndex1`
-    // (T-14.1a); the local `.desktop` scan was retired in T-14.7.
-    DesktopEntryIndex m_index;
-    // The live app-index client (T-14.7e). The Add Application picker reads the
-    // corpus through it and, when the service is up, subscribes to its
-    // coalesced `Changed` signal so an install/uninstall while the picker is
-    // open stays fresh.
+    AppIndexCatalog m_appIndexCatalog;
     AppIndexClient m_appIndexClient;
-    bool m_appIndexSubscribed = false;
     // The global-menu broker (T-14.2a): the shell pushes focus/window state
     // and reads the resolved fixed + exported menus (T-14.7).
     QThreadPool m_menuWorker;

@@ -13,8 +13,10 @@ Usage:
 """
 import argparse
 import importlib.util
+from itertools import product
 import json
 import os
+from pathlib import Path
 import re
 import signal
 import socket
@@ -198,21 +200,20 @@ def parse_decorations(synth):
     return windows
 
 
-def output_sizes(synth):
+def output_geometry(synth):
     for line in synth.query("query scale"):
         match = re.search(
-            r"scale output \S+ physical=(\d+)x(\d+) logical=(\d+)x(\d+)", line
+            r"scale output (\S+) physical=(\d+)x(\d+) logical=(\d+)x(\d+)", line
         )
         if match:
-            physical = (int(match.group(1)), int(match.group(2)))
-            logical = (int(match.group(3)), int(match.group(4)))
-            return physical, logical
+            name, width, height, logical_width, logical_height = match.groups()
+            return name, (int(width), int(height)), (int(logical_width), int(logical_height))
     return None
 
 
 def output_logical_size(synth):
-    sizes = output_sizes(synth)
-    return sizes[1] if sizes else None
+    geometry = output_geometry(synth)
+    return geometry[2] if geometry else None
 
 
 def drag_window(synth, window, logical, duration_s):
@@ -303,23 +304,49 @@ def scheme_pulse(synth, duration_s):
 
 
 def run_workload(args, synth, display):
-    sizes = output_sizes(synth)
-    if sizes is None:
+    geometry = output_geometry(synth)
+    if geometry is None:
+        output = None
         physical, logical = (1920, 1200), (1920, 1200)
     else:
-        physical, logical = sizes
+        output, physical, logical = geometry
     windows = parse_decorations(synth)
     floating = [window for window in windows if window["ssd"] and window["state"] == "floating"]
     target = floating[0] if floating else (windows[0] if windows else None)
     before = {window["id"]: window for window in windows}
     effective = True
     if args.workload == "scroll":
-        spawn_scroll(display, args.duration)
-        # Input-driven scroll on top of the client's own repaint.
-        end = time.monotonic() + args.duration
-        while time.monotonic() < end:
-            synth.send("axis 0 12")
-            time.sleep(1.0 / 60.0)
+        child = spawn_scroll(display, args.duration + 3)
+        try:
+            deadline = time.monotonic() + 2
+            scroll_window = None
+            while child.poll() is None and time.monotonic() < deadline:
+                scroll_window = next(
+                    (window for window in parse_decorations(synth)
+                     if window["id"] not in before),
+                    None,
+                )
+                if scroll_window:
+                    break
+                time.sleep(0.05)
+            effective = scroll_window is not None
+            if effective:
+                x, y, width, height = scroll_window["content"]
+                synth.send(f"motion-abs {(x + width / 2) / logical[0]:.6f} "
+                           f"{(y + height / 2) / logical[1]:.6f}")
+                end = time.monotonic() + args.duration
+                while child.poll() is None and time.monotonic() < end:
+                    synth.send("axis 0 12")
+                    time.sleep(1.0 / 60.0)
+                effective = child.poll() is None
+        finally:
+            if child.poll() is None:
+                child.terminate()
+            try:
+                child.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
     elif args.workload == "drag":
         if target is None:
             effective = False
@@ -370,6 +397,7 @@ def run_workload(args, synth, display):
     if args.workload in ("drag", "resize") and not geometry_changed:
         effective = False
     return {
+        "output": output,
         "effective": effective,
         "geometry_changed": geometry_changed,
         "window_count": len(after),
@@ -433,10 +461,12 @@ def run(args):
     sampler = RssSampler(args.compositor_pid)
     sampler.start()
     scene_before = scene_epoch(synth)
+    trace_offset = os.path.getsize(args.compositor_log)
     started = time.monotonic()
     try:
         workload = run_workload(args, synth, args.display)
         elapsed = time.monotonic() - started
+        trace_end = os.path.getsize(args.compositor_log)
         # Snapshot before tearing the workload windows down, so post-workload
         # frames cannot dominate the element count.
         time.sleep(0.3)
@@ -502,6 +532,30 @@ def run(args):
         AB.last_line(compositor_text, "superseded ages (SIGUSR1-1):")
     )
     latency = AB.numeric_fields(AB.last_line(compositor_text, "latency stats (SIGUSR1-1):"))
+    with open(args.compositor_log, "rb") as log_file:
+        log_file.seek(trace_offset)
+        workload_trace = log_file.read(trace_end - trace_offset).decode(errors="replace")
+    output = workload["output"]
+    output_events = sorted(
+        (event for event in AB.parse_dftrace(workload_trace)
+         if event["event"] == "present" and event["output"] == output),
+        key=lambda event: event["frame"],
+    )
+    hardware_times = [
+        int(stamp) for event in output_events
+        if AB.field(event["detail"], "clock") == "hardware"
+        and (stamp := AB.field(event["detail"], "mono_us")) is not None
+    ]
+    hardware_intervals = [
+        later - earlier for earlier, later in zip(hardware_times, hardware_times[1:])
+    ]
+    hardware_timing = AB.timing(hardware_intervals)
+    hardware_timing["min"] = min(hardware_intervals, default=0)
+    presentation = {}
+    for line in compositor_text.splitlines():
+        if "presentation stats (SIGUSR1-1):" in line and AB.field(line, "output") == output:
+            presentation = AB.numeric_fields(line)
+            presentation["source"] = AB.field(line, "source")
     presents = [
         event
         for event in AB.parse_dftrace(trace_text)
@@ -525,6 +579,7 @@ def run(args):
         "pinned_tier": args.pin_tier,
         "physical_size": workload["physical_size"],
         "logical_size": workload["logical_size"],
+        "output": output,
         "dirty_pct": dirty_pct,
         "frames_rendered": rendered,
         "frames_skipped": skipped,
@@ -551,6 +606,12 @@ def run(args):
         "superseded_newer_p95_us": superseded.get("newer_p95_us", 0),
         "presentation_feedback_sent": accounting.get("feedback_sent", 0),
         "presentation_source": source_match.group(1) if source_match else None,
+        "output_presentation": presentation,
+        "workload_hardware_vblanks": len(hardware_times),
+        "workload_hardware_interval_us": hardware_timing,
+        "workload_estimated_vblanks": sum(
+            AB.field(event["detail"], "clock") == "estimate" for event in output_events
+        ),
         "latency": latency,
         "latency_last_us": latency.get("last_us", 0),
         "latency_max_us": latency.get("max_us", 0),
@@ -863,6 +924,62 @@ def summary(paths):
     )
 
 
+def native_gate(directory, trials):
+    """Require an effective 4K/144 workload and real hardware timestamps."""
+    incomplete = False
+    over_budget = False
+    print("4K/144 Hz native workload checks")
+    combinations = product((2, 10, 30), ("split", "split-deco"),
+                           ("drag", "scroll"), range(1, trials + 1))
+    for windows, arm, workload, trial in combinations:
+        name = "report.json" if trials == 1 else f"report-t{trial}.json"
+        path = directory / f"windows-{windows}" / arm / workload / name
+        label = f"{windows} windows / {arm} / {workload} / trial {trial}"
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            print(f"OPEN {label}: {error}")
+            incomplete = True
+            continue
+        presentation = report.get("output_presentation", {})
+        hardware = report.get("workload_hardware_interval_us", {})
+        timing = report.get("compositor", {}).get("frame_timing", {})
+        latency = report.get("latency", {})
+        blockers = []
+        if not report.get("effective") or report.get("window_count", 0) < windows:
+            blockers.append("workload or requested window count was not reached")
+        if (report.get("physical_size") != [3840, 2160]
+                or presentation.get("source") != "mode"
+                or not 143 <= presentation.get("refresh_hz", 0) <= 145):
+            blockers.append("output was not in a native 4K/144 Hz mode")
+        if (report.get("presentation_source") != "drm-vblank"
+                or report.get("workload_hardware_vblanks", 0) < 100
+                or report.get("workload_estimated_vblanks", 0) > 0
+                or hardware.get("samples", 0) < 99
+                or hardware.get("min", 0) <= 0):
+            blockers.append("insufficient hardware vblank evidence")
+        if (timing.get("samples", 0) < 100 or not timing.get("p95_us")
+                or not timing.get("p99_us") or not presentation.get("budget_us")):
+            blockers.append("insufficient frame timing evidence")
+        if not latency.get("samples"):
+            blockers.append("no input latency samples")
+        if blockers:
+            print(f"OPEN {label}: " + ", ".join(blockers))
+            incomplete = True
+            continue
+        budget = presentation["budget_us"]
+        failed = (max(timing["p95_us"], timing["p99_us"]) > budget
+                  or latency.get("dropped", 0) > 0)
+        over_budget |= failed
+        print(f"{'FAIL' if failed else 'PASS'} {label}: "
+              f"frame p95/p99 {timing['p95_us']}/{timing['p99_us']} us "
+              f"(budget {budget} us), vblank p95/p99 "
+              f"{hardware['p95']}/{hardware['p99']} us, "
+              f"missed {presentation.get('missed', 0)}, "
+              f"input dropped {latency.get('dropped', 0)}")
+    return 1 if over_budget else 2 if incomplete else 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -889,10 +1006,17 @@ def main():
 
     summary_parser = sub.add_parser("summary")
     summary_parser.add_argument("reports", nargs="+")
+    gate_parser = sub.add_parser("native-gate")
+    gate_parser.add_argument("directory", type=Path)
+    gate_parser.add_argument("--trials", required=True, type=int)
 
     args = parser.parse_args()
     if args.command == "run":
         return run(args)
+    if args.command == "native-gate":
+        if args.trials < 1:
+            parser.error("--trials must be positive")
+        return native_gate(args.directory, args.trials)
     summary(args.reports)
     return 0
 

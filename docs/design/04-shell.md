@@ -14,6 +14,13 @@ as a separate service. The shell resolves exported menus and sends their
 actions asynchronously so a slow exporter cannot hold up chrome input and
 presentation.
 
+The Dock, application picker, and Applications drawer share one installed-app
+catalog. A bounded worker subscribes to the current service owner, reads and
+indexes its snapshot, and publishes changed results on the GUI thread. The
+shell retains the last complete catalog through a service restart or a failed
+read. Opening a view can request a refresh while displaying cached rows.
+See [ADR 0086](adr/0086-app-index-identity-ownership.md).
+
 Components:
 
 ```text

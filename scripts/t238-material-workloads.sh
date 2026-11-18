@@ -63,7 +63,11 @@ T21_COMPOSITOR_BIN="${COMPOSITOR_BIN:-$T21_ROOT/target/$PROFILE/dragonfruit-comp
 export T21_COMPOSITOR_BIN
 
 t21_capture_init "t238-material-workloads"
-t21_require_host "$OUT_DIR/open.txt" "T238 material workload comparison"
+if [ "$BACKEND" = "drm" ]; then
+    : "${XDG_RUNTIME_DIR:?the DRM workload needs a runtime directory}"
+else
+    t21_require_host "$OUT_DIR/open.txt" "T238 material workload comparison"
+fi
 t21_require_exec "$T21_SHELL_BIN" "run make build"
 t21_require_exec "$T21_COMPOSITOR_BIN" "run make build"
 command -v python3 >/dev/null 2>&1 || {
@@ -80,7 +84,11 @@ COMMIT="$(git -C "$T21_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 export DRAGONFRUIT_GPU_TIMING=1
 export DRAGONFRUIT_FRAME_TRACE=1
-export DRAGONFRUIT_REFRESH_HZ=144
+if [ "$BACKEND" = "drm" ]; then
+    unset DRAGONFRUIT_REFRESH_HZ
+else
+    export DRAGONFRUIT_REFRESH_HZ=144
+fi
 export SDL_VIDEODRIVER=x11
 
 arm_env() {
@@ -147,24 +155,26 @@ run_pair() {
     local arm="$1" workload="$2" trial="$3"
     local dir="$OUT_DIR/$arm/$workload"
     mkdir -p "$dir"
-    local report="$dir/report.json"
+    local suffix=''
     if [ "$TRIALS" -gt 1 ]; then
-        report="$dir/report-t$trial.json"
+        suffix="-t$trial"
     fi
+    local report="$dir/report$suffix.json"
+    local compositor_log="$dir/compositor$suffix.txt" shell_log="$dir/shell$suffix.txt" hang_log="$dir/hang$suffix.txt"
     arm_env "$arm"
-    echo "t238-material-workloads: $arm / $workload (duration=${DURATION}s)"
-    t21_start_compositor "$BACKEND" "$dir/compositor.txt"
+    echo "t238-material-workloads: $arm / $workload / trial $trial (duration=${DURATION}s)"
+    t21_start_compositor "$BACKEND" "$compositor_log"
     # A nested compositor that stops presenting its window starves its event
     # loop: the synthetic socket and SIGUSR1 are never serviced. Detect the
     # queued datagrams and capture the evidence instead of hanging.
     python3 scripts/benchmark-watchdog.py \
         --pid "$T21_COMPOSITOR_PID" \
         --synth "$T21_SYNTH" \
-        --log "$dir/compositor.txt" \
-        --out "$dir/hang.txt" \
+        --log "$compositor_log" \
+        --out "$hang_log" \
         --timeout "$WATCHDOG_TIMEOUT" &
     local watchdog=$!
-    t21_start_shell "$dir/shell.txt" \
+    t21_start_shell "$shell_log" \
         QT_QPA_PLATFORM=wayland \
         QML_IMPORT_PATH="$T21_ROOT/build/qml" \
         DRAGONFRUIT_CHROME_STATS=1 \
@@ -175,7 +185,7 @@ run_pair() {
         sleep 0.1
     done
     if [ ! -s "$display_file" ]; then
-        echo "t238-material-workloads: no Xwayland DISPLAY hand-off for $arm/$workload" >&2
+        echo "t238-material-workloads: no Xwayland DISPLAY hand-off for $arm/$workload; see $compositor_log" >&2
         t21_stop_shell
         t21_stop_compositor
         return 1
@@ -196,8 +206,8 @@ run_pair() {
         --display "$display" \
         --shell-pid "$T21_SHELL_PID" \
         --compositor-pid "$T21_COMPOSITOR_PID" \
-        --shell-log "$dir/shell.txt" \
-        --compositor-log "$dir/compositor.txt" \
+        --shell-log "$shell_log" \
+        --compositor-log "$compositor_log" \
         --out "$report" \
         --label "$arm-$workload" \
         --arm "$arm" \
@@ -212,8 +222,8 @@ run_pair() {
     kill "$watchdog" 2>/dev/null || true
     wait "$watchdog" 2>/dev/null || true
     t21_stop_compositor
-    if [ -s "$dir/hang.txt" ]; then
-        echo "t238-material-workloads: compositor hang in $arm/$workload; see $dir/hang.txt" >&2
+    if [ -s "$hang_log" ]; then
+        echo "t238-material-workloads: compositor hang in $arm/$workload; see $hang_log" >&2
         return 1
     fi
 }

@@ -6,12 +6,13 @@
 # On a host with a free DRM seat this compares span decorations (`split`)
 # against `split-deco` (shadow + titlebar shaders) at 4K/144 Hz for 2, 10, and
 # 30 windows, with real vblank presentation intervals, input latency, frame
-# p95/p99, CPU/GPU timings, and RSS. It also launches two transient user
-# services to verify the systemd app-isolation path.
+# p95/p99, CPU/GPU timings, and RSS. A verdict requires evidence for every
+# trial. The systemd app-isolation check has its own reported verdict.
 #
 # With no free seat it writes an explicit OPEN artifact (the same boundary as
 # `make drm-bringup` / `make t21-direct-scanout-native`) and exits 0. The
-# artifact records the exact commands to run on a released seat.
+# artifact records the exact commands to run on a released seat. Once
+# trials run, an over-budget result exits 1 and incomplete evidence exits 2.
 #
 # Outputs:
 #   docs/captures/t238-native-acceptance.txt       (free seat)
@@ -128,8 +129,7 @@ if [ "$probe_rc" -ne 0 ]; then
         echo "  * real vblank presentation p95/p99 (not swap completion)"
         echo "  * frame p95/p99 under the 6.944 ms 144 Hz budget"
         echo "  * input latency samples with no dropped input"
-        echo "  * no RSS growth across the trials"
-        echo "  * split-deco at least as good as split on every workload"
+        echo "Compare per-arm timings and RSS across trials in the workload reports."
         echo
         echo "The successful artifact is $OUT_TRACE."
     } >"$OUT_OPEN"
@@ -139,9 +139,10 @@ if [ "$probe_rc" -ne 0 ]; then
 fi
 
 mkdir -p "$OUT_DIR"
-rm -rf "$OUT_DIR"/*
+run_dir="$(mktemp -d "$OUT_DIR/run.XXXXXX")"
 echo "t238-native-acceptance: free DRM seat; running 4K/144 trials"
 
+workload_failed=0
 for windows in 2 10 30; do
     BACKEND=drm \
     COMPOSITOR_BIN="$COMPOSITOR" \
@@ -153,14 +154,23 @@ for windows in 2 10 30; do
     WARMUP="$SETTLE" \
     PIN_TIER=full \
     SHUFFLE=1 \
-    OUT_DIR="$OUT_DIR/windows-$windows" \
+    OUT_DIR="$run_dir/windows-$windows" \
         ./scripts/t238-material-workloads.sh \
-        >"$OUT_DIR/windows-$windows.log" 2>&1
+        >"$run_dir/windows-$windows.log" 2>&1 || workload_failed=1
 done
 
-# Two transient user services with unique units: the same app launched twice
-# must be independently stoppable. This is the live counterpart of the
-# dockcore unit-uniqueness test.
+gate_exit=0
+python3 scripts/t238-material-workloads-driver.py native-gate "$run_dir" \
+    --trials "$TRIALS" >"$run_dir/gate.txt" || gate_exit=$?
+if [ "$gate_exit" -eq 1 ]; then
+    result="FAIL (frame budget exceeded or input samples dropped)"
+elif [ "$gate_exit" -ne 0 ] || [ "$workload_failed" -eq 1 ]; then
+    result="OPEN (native workload evidence incomplete)"
+    gate_exit=2
+else
+    result="PASS (all native workload checks passed)"
+fi
+
 mkdir -p "$(dirname "$OUT_TRACE")"
 {
     echo "T238 — controlled native acceptance"
@@ -168,17 +178,22 @@ mkdir -p "$(dirname "$OUT_TRACE")"
     echo
     echo "recorded: $recorded"
     echo "host:     $host"
-    echo "result:   PASS (seat accepted master)"
+    echo "result:   $result"
+    echo "reports:  $run_dir"
     echo
     echo "DRM master probe:"
     echo "$seat_summary"
     echo
     echo "Trials: duration=${DURATION}s trials=${TRIALS} windows=2,10,30 arms=split,split-deco"
     echo
+    cat "$run_dir/gate.txt"
+    echo
     for windows in 2 10 30; do
         echo "--- windows=$windows ---"
-        sed -n '1,80p' "$OUT_DIR/windows-$windows/report.md" 2>/dev/null || \
-            echo "(no report.md)"
+        if ! sed -n '1,80p' "$run_dir/windows-$windows/report.md" 2>/dev/null; then
+            echo "(no report.md; workload log follows)"
+            tail -40 "$run_dir/windows-$windows.log" 2>/dev/null || true
+        fi
         echo
     done
     echo "--- systemd app isolation ---"
@@ -186,6 +201,7 @@ mkdir -p "$(dirname "$OUT_TRACE")"
     echo "systemd multi-instance result: $([ "$systemd_ok" = "1" ] && echo PASS || echo OPEN)"
 } >"$OUT_TRACE"
 
-echo "t238-native-acceptance: wrote $OUT_TRACE"
+echo "t238-native-acceptance: $result; wrote $OUT_TRACE"
 echo "t238-native-acceptance: systemd multi-instance $([ "$systemd_ok" = "1" ] && echo PASS || echo OPEN)"
 [ "$systemd_ok" = "1" ] || echo "t238-native-acceptance: rerun the systemd check on a host with a user manager" >&2
+exit "$gate_exit"

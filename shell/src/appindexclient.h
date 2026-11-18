@@ -2,15 +2,16 @@
 // Client for `org.dragonfruit.AppIndex1` (T-14.1a).
 //
 // The shell queries app-index for application identity and themed icons; it
-// never scans `.desktop` directories itself. Index reads are blocking and
-// returns exactly what the service's flat JSON view carries. When the service
-// is absent every call is a no-op miss, so a session without app-index
-// degrades to the Dock's legacy local index rather than failing.
+// never scans `.desktop` directories itself. The catalog loads and decodes
+// installed records on a worker. Window-menu resolution runs on the caller's
+// menu worker.
 #pragma once
 
 #include "desktopentry.h"
 
 #include <QList>
+#include <QObject>
+#include <QThreadPool>
 #include <QString>
 #include <QVariantList>
 
@@ -54,17 +55,6 @@ public:
     DesktopEntry resolveWindow(const QString &appId, const QString &instance,
                                const QString &wmClass) const;
 
-    // Every installed record, or an empty list when the service is absent.
-    QList<DesktopEntry> enumerate() const;
-
-    // Register this process for app-index's coalesced `Changed` signal
-    // (T-14.1c). `interests` is a comma-separated set of `identity`,
-    // `recency`, and `icons` (empty/`all` = everything). Returns the
-    // canonical interest string, or an empty string when the service is
-    // absent. The caller owns the `Changed` signal connection on the same
-    // D-Bus connection.
-    QString subscribe(const QString &interests = QStringLiteral("identity")) const;
-
     // Resolve an icon name to a themed file path for `size` (default: the
     // service's record size, 256). Empty when no theme provides it.
     QString iconPath(const QString &name, int size = 256) const;
@@ -91,4 +81,40 @@ private:
     bool callBool(const QString &method, const QList<QVariant> &arguments) const;
     static DesktopEntry parseRecord(const QString &json);
     static QVariantList parseMenus(const QString &json);
+};
+
+// The last complete identity snapshot shared by the Dock, picker and drawer.
+// One worker reads the current service owner. Changes arriving during a read
+// request at most one follow-up, and a restarted owner gets a fresh subscription.
+class AppIndexCatalog : public QObject
+{
+    Q_OBJECT
+public:
+    explicit AppIndexCatalog(QObject *parent = nullptr);
+    ~AppIndexCatalog() override;
+
+    void start();
+    void refresh();
+    void refreshIfNeeded();
+    bool available() const { return !m_owner.isEmpty(); }
+    const DesktopEntryIndex &index() const { return m_index; }
+
+signals:
+    void ownerChanged();
+    void catalogChanged();
+
+private slots:
+    void onChanged(const QString &interests);
+
+private:
+    void setOwner(const QString &owner);
+
+    DesktopEntryIndex m_index;
+    QThreadPool m_worker;
+    QString m_owner;
+    quint64 m_ownerRevision = 0;
+    bool m_subscribed = false;
+    bool m_hasCurrentSnapshot = false;
+    bool m_refreshInFlight = false;
+    bool m_refreshPending = false;
 };

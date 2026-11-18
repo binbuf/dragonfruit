@@ -729,6 +729,15 @@ Item {
             compare(measure.itemAt(4).measuredWidth, 0,
                     "an unavailable slot measures zero");
             compare(bar.statusItemFor("hidden").implicitWidth, 0);
+
+            var source = findChild(bar, "menuBarClockSource");
+            var clock = bar.statusItemFor("clock");
+            for (var minute of [1, 11, 18, 38, 59]) {
+                source.now = new Date(2026, 10, 18, 13, minute);
+                waitForRendering(stage);
+                fuzzyCompare(measure.itemAt(3).measuredWidth, clock.implicitWidth,
+                             0.01, "clock measurement at minute " + minute);
+            }
         }
 
         // T9: the visible clock and the measurement path read one shared

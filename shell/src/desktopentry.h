@@ -2,7 +2,7 @@
 // The Dock's application-entry cache and launcher.
 //
 // Identity is owned by `org.dragonfruit.AppIndex1` (T-14.1a, ADR 0086): the
-// cache is loaded from `AppIndexClient::enumerate()` and never scans or parses
+// cache is loaded from the application catalog and never scans or parses
 // `.desktop` files itself (the interim resolver was retired in T-14.7). What
 // remains here is the record shape the Dock renders, the in-memory lookup the
 // pure merge model uses, and the launcher (`buildLaunchCommand` /
@@ -28,20 +28,13 @@ struct DesktopEntry {
     bool terminal = false;
     bool noDisplay = false;
     bool valid = false;
+    bool operator==(const DesktopEntry &) const = default;
 };
-
-class AppIndexClient;
 
 class DesktopEntryIndex
 {
 public:
     DesktopEntryIndex() = default;
-
-    // Populate from `org.dragonfruit.AppIndex1` (T-14.1a): the service is the
-    // single owner of identity and themed icons. Clears any previous content
-    // and inserts every enumerated record. When the service is absent the
-    // call is a no-op and the cache stays empty (the Dock renders no entries).
-    void loadFromAppIndex(const AppIndexClient &client);
 
     // Insert a set of records (from app-index) into the lookup tables. Pure;
     // exposed so the loader is unit-tested without a live bus.

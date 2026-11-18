@@ -217,6 +217,20 @@ rules and record the result and evidence class in the relevant design
 status. See [native popup comparison](../../scripts/t238-dock-popover-ab-native.sh)
 and [native workload acceptance](../../scripts/t238-native-acceptance.sh).
 
+The native material workload requires the current 4K/144 Hz DRM mode,
+effective workloads at the requested window counts, and hardware vblank
+timestamps collected during the workload. Its report separates incomplete
+evidence from an exceeded frame budget or dropped input. This gate measures
+drag and scroll. Popup input-to-present correlation remains a separate
+acceptance row.
+
+On an active Dragonfruit desktop, `make t238-native-round-trip` builds the
+benchmark, ends the desktop session through its user target, runs the native
+workloads on a dedicated logind console, and restores graphical login. Use
+`NATIVE_ARGS=--dry-run` to check the session or `NATIVE_ARGS=--smoke` to run a
+short setup check. Each run keeps its summary, startup errors, and raw trial
+reports under the ignored `docs/captures/t238-native-round-trip/` directory.
+
 ## 6. Tolerances
 
 Starting points; refine in the implementing task. The resolved per-surface

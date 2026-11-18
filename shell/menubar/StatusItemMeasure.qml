@@ -8,9 +8,8 @@ import Dragonfruit
 // clock, a tray label, or a themed icon moves the right number of items into
 // overflow. The old measurement row instantiated a complete `StatusItem` per
 // entry — including a second `MenuBarClock` with its own boundary timer and
-// the full hover/tap/tooltip tree. This object keeps only the parts that
-// affect width: the same `TextMetrics` typography and the same token spacing
-// the visible `StatusItem` uses.
+// the full hover/tap/tooltip tree. Hidden Text items use the visible labels'
+// implicit layout width and typography without the wallpaper effects.
 //
 // It is an `Item` so a `Repeater` can own it, but it is invisible, has no
 // input handlers, and paints nothing. `measuredWidth` is the contract:
@@ -44,18 +43,18 @@ Item {
     readonly property string clockDateText:
         root.clockSource ? root.clockSource.dateText : ""
 
-    TextMetrics {
+    Text {
         id: labelMetrics
         font.pixelSize: Theme.controls.menuBar.fontSize
         text: root.label
     }
-    TextMetrics {
+    Text {
         id: clockDateMetrics
         font.pixelSize: Theme.controls.menuBar.fontSize
         font.features: ({ "tnum": 1 })
         text: root.clockDateText
     }
-    TextMetrics {
+    Text {
         id: clockTimeMetrics
         font.pixelSize: Theme.controls.menuBar.fontSize
         font.features: ({ "tnum": 1 })
@@ -77,10 +76,10 @@ Item {
             var clockWidth = 0;
             var clockParts = 0;
             if (root.showDate) {
-                clockWidth += clockDateMetrics.advanceWidth;
+                clockWidth += clockDateMetrics.implicitWidth;
                 clockParts++;
             }
-            clockWidth += clockTimeMetrics.advanceWidth;
+            clockWidth += clockTimeMetrics.implicitWidth;
             clockParts++;
             if (clockParts > 1)
                 clockWidth += Theme.controls.menuBar.clockGap;
@@ -92,7 +91,7 @@ Item {
         if (root.label.length > 0) {
             if (width > 0)
                 width += Theme.controls.menuBar.labelGap;
-            width += labelMetrics.advanceWidth;
+            width += labelMetrics.implicitWidth;
         }
         return width + padding;
     }

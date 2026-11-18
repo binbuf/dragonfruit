@@ -909,7 +909,7 @@ fn device_added(
     state
         .loop_handle
         .insert_source(notifier, move |event, metadata, state| match event {
-            DrmEvent::VBlank(crtc) => frame_finish(state, node, crtc, metadata),
+            DrmEvent::VBlank(crtc) => frame_finish(state, node, crtc, metadata, false),
             DrmEvent::Error(error) => {
                 eprintln!("dragonfruit-compositor: drm event error: {error:?}");
             }
@@ -1243,6 +1243,7 @@ fn frame_finish(
     dev_id: DrmNode,
     crtc: crtc::Handle,
     metadata: &mut Option<DrmEventMetadata>,
+    estimated_timestamp: bool,
 ) {
     let Some(shared) = drm_shared_slot() else {
         return;
@@ -1285,16 +1286,13 @@ fn frame_finish(
         .map(|metadata| metadata.sequence)
         .unwrap_or(0);
 
-    let (clock, flags) = if let Some(tp) = tp {
-        (
-            tp.into(),
-            wp_presentation_feedback::Kind::Vsync
-                | wp_presentation_feedback::Kind::HwClock
-                | wp_presentation_feedback::Kind::HwCompletion,
-        )
-    } else {
-        (state.clock.now(), wp_presentation_feedback::Kind::Vsync)
-    };
+    let clock = tp.map_or_else(|| state.clock.now(), Into::into);
+    let hardware_timestamp = tp.is_some() && !estimated_timestamp;
+    let mut flags = wp_presentation_feedback::Kind::Vsync;
+    if hardware_timestamp {
+        flags |=
+            wp_presentation_feedback::Kind::HwClock | wp_presentation_feedback::Kind::HwCompletion;
+    }
 
     // Guard against displays reporting vblank faster than the mode
     // implies (broken timestamps): throttle to the next expected vblank.
@@ -1317,7 +1315,7 @@ fn frame_finish(
                 match state.loop_handle.insert_source(
                     Timer::from_duration(remaining),
                     move |_, _, state| {
-                        frame_finish(state, dev_id, crtc, &mut Some(throttled_metadata));
+                        frame_finish(state, dev_id, crtc, &mut Some(throttled_metadata), true);
                         TimeoutAction::Drop
                     },
                 ) {
@@ -1367,13 +1365,22 @@ fn frame_finish(
             // monotonic vblank timestamp when the event carried one, or the
             // compositor clock fallback above.
             if user_data.is_some() {
-                state.note_presentation(&output_name, Duration::from(clock));
+                let presented_at = Duration::from(clock);
+                state.note_presentation(&output_name, presented_at);
                 // Actual vblank presentation, not the queue call. The shell's
                 // `wl_surface.frame` callback is sent after `queue_frame`, so
                 // this trace is the honest presentation endpoint.
                 crate::trace::log(
                     "present",
-                    &format!("frame={queued_frame} output={output_name} drm"),
+                    &format!(
+                        "frame={queued_frame} output={output_name} drm clock={} mono_us={}",
+                        if hardware_timestamp {
+                            "hardware"
+                        } else {
+                            "estimate"
+                        },
+                        presented_at.as_micros()
+                    ),
                 );
                 if let Some(interval) = presentation_interval {
                     let refresh = state.refresh_for_output(&output_name);

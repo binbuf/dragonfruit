@@ -728,9 +728,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         // pins; when the daemon later appears, its `dock.pinned` wins.
         seedDefaultDockPins();
     }
-    // Load the app-index corpus now if it is already up, and watch the
-    // well-known name so a later start (or a restart) re-syncs the Dock,
-    // picker, and drawer instead of leaving the startup race visible.
+    // Start the catalog read before creating the chrome. The first frame
+    // can use persisted pins while the optional identity service responds.
     connectAppIndex();
     // T-14.2b: observe the broker's publication changes and service-owner
     // changes so a publish, a crashed publisher, or a broker restart reaches
@@ -2526,11 +2525,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             QString appDesktopId;
             if (!apps.isEmpty())
                 appDesktopId = apps.first().toMap().value(QStringLiteral("desktopId")).toString();
-            DesktopEntry identity = m_index.byId(appDesktopId);
+            DesktopEntry identity = m_appIndexCatalog.index().byId(appDesktopId);
             if (!identity.valid)
-                identity = m_index.resolve(appDesktopId);
+                identity = m_appIndexCatalog.index().resolve(appDesktopId);
             if (!identity.valid) {
-                for (const DesktopEntry &entry : m_index.entries()) {
+                for (const DesktopEntry &entry : m_appIndexCatalog.index().entries()) {
                     if (entry.valid) {
                         identity = entry;
                         break;
@@ -2645,7 +2644,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                     != QLatin1String("temporary"))
                     continue;
                 appId = row.value(QStringLiteral("appId")).toString();
-                const DesktopEntry resolved = m_index.resolve(appId);
+                const DesktopEntry resolved = m_appIndexCatalog.index().resolve(appId);
                 desktopId = resolved.valid ? resolved.id : QString();
                 break;
             }
@@ -3225,7 +3224,7 @@ void ShellController::applyStatusMenuData()
 void ShellController::refreshTrayItems()
 {
     cancelTrayRecovery();
-    if (!m_trayClient.available()) {
+    if (!m_appIndexCatalog.available()) {
         ++m_trayInventoryGeneration;
         m_trayRefreshInFlight = false;
         m_trayRefreshPending = false;
@@ -3643,16 +3642,16 @@ void ShellController::refreshSystemMenu()
     for (const QString &appId : std::as_const(m_recentAppIds)) {
         if (recent.size() >= limit)
             break;
-        const DesktopEntry entry = m_index.resolve(appId);
+        const DesktopEntry entry = m_appIndexCatalog.index().resolve(appId);
         if (!entry.valid || entry.id.isEmpty() || seen.contains(entry.id))
             continue;
         seen.insert(entry.id);
         recent.append(QVariantMap{{QStringLiteral("desktopId"), entry.id},
                                   {QStringLiteral("name"), entry.name}});
     }
-    m_item->setProperty(
-        "systemMenuItems",
-        ShellMenus::systemMenu(m_systemUserName, m_devReturnDesktop, recent));
+    const QVariantList menu = ShellMenus::systemMenu(m_systemUserName, m_devReturnDesktop, recent);
+    if (m_item->property("systemMenuItems").toList() != menu)
+        m_item->setProperty("systemMenuItems", menu);
 }
 
 void ShellController::applyFocusedApp()
@@ -3663,7 +3662,7 @@ void ShellController::applyFocusedApp()
     if (!m_item)
         return;
     const QString rawId = m_appId;
-    const DesktopEntry entry = m_index.resolve(rawId);
+    const DesktopEntry entry = m_appIndexCatalog.index().resolve(rawId);
     const bool hasDisplayName = entry.valid && !entry.name.isEmpty();
     QString name = rawId.isEmpty() ? QStringLiteral("Files")
         : hasDisplayName ? entry.name : displayNameForIdentity(rawId);
@@ -4035,7 +4034,7 @@ void ShellController::pruneDockLaunchRecords()
         if (appId.isEmpty())
             continue;
         live.insert(appId);
-        const DesktopEntry resolved = m_index.resolve(appId);
+        const DesktopEntry resolved = m_appIndexCatalog.index().resolve(appId);
         if (resolved.valid)
             live.insert(resolved.id);
     }
@@ -4058,7 +4057,7 @@ QString ShellController::dockLaunchKeyForEntry(const QVariantMap &entry) const
     QString desktopId = entry.value(QStringLiteral("desktopId")).toString();
     if (desktopId.isEmpty()) {
         const DesktopEntry resolved =
-            m_index.resolve(entry.value(QStringLiteral("appId")).toString());
+            m_appIndexCatalog.index().resolve(entry.value(QStringLiteral("appId")).toString());
         if (resolved.valid)
             desktopId = resolved.id;
     }
@@ -4100,7 +4099,7 @@ void ShellController::stopDockLaunchUnits(const QString &desktopId,
                 records.retainUnit(unit);
                 qWarning() << "shell: Force Quit could not stop managed unit"
                            << unit;
-                const QString name = m_index.byId(desktopId).name;
+                const QString name = m_appIndexCatalog.index().byId(desktopId).name;
                 raiseDockNotice(
                     m_notificationClient,
                     tr("Could not force quit %1").arg(
@@ -4130,7 +4129,7 @@ void ShellController::forceQuitDockApp(const QString &appId, const QString &desk
         return;
     QString desktopId = desktopIdIn;
     if (desktopId.isEmpty()) {
-        const DesktopEntry resolved = m_index.resolve(appId);
+        const DesktopEntry resolved = m_appIndexCatalog.index().resolve(appId);
         if (resolved.valid)
             desktopId = resolved.id;
     }
@@ -7316,7 +7315,7 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
     } else if (action == QLatin1String("about-system")) {
         // The Settings executable owns both About surfaces. Launch its
         // utility-window entry point; More Info reveals the canonical page.
-        const DesktopEntry entry = m_index.byId(QStringLiteral("org.dragonfruit.Settings.desktop"));
+        const DesktopEntry entry = m_appIndexCatalog.index().byId(QStringLiteral("org.dragonfruit.Settings.desktop"));
         QStringList argv = DesktopEntryIndex::buildLaunchCommand(entry, QStringList());
         if (!argv.isEmpty()) {
             argv << QStringLiteral("--about-system");
@@ -7376,7 +7375,7 @@ bool ShellController::activateApplicationAction(const QString &action, const QVa
     // A focus change invalidates the resolved generation immediately; a late
     // accelerator for the old app must not reach the new one.
     if (!m_appId.isEmpty() && m_menuAppId != m_appId) {
-        const DesktopEntry entry = m_index.resolve(m_appId);
+        const DesktopEntry entry = m_appIndexCatalog.index().resolve(m_appId);
         const QString canonicalId = entry.valid && !entry.id.isEmpty() ? entry.id : m_appId;
         if (m_menuAppId != canonicalId) {
             qInfo() << "shell: ignoring app action" << action
@@ -7476,7 +7475,7 @@ void ShellController::onMenuBrokerChanged(const QString &reason, const QString &
         || reason == QLatin1String("system-accelerators"))
         return;
     if (!appId.isEmpty()) {
-        const DesktopEntry entry = m_index.resolve(m_appId);
+        const DesktopEntry entry = m_appIndexCatalog.index().resolve(m_appId);
         const QString canonicalId =
             entry.valid && !entry.id.isEmpty() ? entry.id : m_appId;
         if (appId != m_appId && appId != m_menuAppId && appId != canonicalId)
@@ -7912,9 +7911,9 @@ void ShellController::onDockExternalDragPayload(bool payloadIsApp, const QString
         // Resolve the app alias through app-index so the ghost shows the real
         // name and themed icon; a failure degrades to the raw identity
         // (legacy/10-dock.md FR-7), never a crash.
-        DesktopEntry entry = m_index.byId(desktopId);
+        DesktopEntry entry = m_appIndexCatalog.index().byId(desktopId);
         if (!entry.valid)
-            entry = m_index.resolve(desktopId);
+            entry = m_appIndexCatalog.index().resolve(desktopId);
         name = entry.valid ? entry.name : desktopId;
         iconPath = entry.valid ? entry.iconPath : QString();
         count = 1;
@@ -8038,9 +8037,9 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
         } else {
             // Duplicate detection is by identity, not raw string: a raw app
             // alias may resolve to an already-pinned `.desktop` id.
-            DesktopEntry resolved = m_index.byId(id);
+            DesktopEntry resolved = m_appIndexCatalog.index().byId(id);
             if (!resolved.valid)
-                resolved = m_index.resolve(id);
+                resolved = m_appIndexCatalog.index().resolve(id);
             const QString resolvedId = resolved.valid ? resolved.id : QString();
             if (dockPinnedContains(m_dockConfig.pinned, id, resolvedId)) {
                 flashDuplicatePin(resolvedId.isEmpty() ? id : resolvedId);
@@ -8398,13 +8397,13 @@ void ShellController::seedDefaultDockPins()
         m_defaultPinsSeeded = true;
         return;
     }
-    const QStringList defaults = resolveDefaultDockPins(m_index);
+    const QStringList defaults = resolveDefaultDockPins(m_appIndexCatalog.index());
     if (defaults.isEmpty()) {
         // An empty corpus means app-index has not answered yet (the shell and
         // the service start in parallel); leave the seed armed so the
         // registration resync can resolve the defaults. Once a real corpus
         // has no default apps, there is nothing to retry.
-        if (!m_index.isEmpty())
+        if (!m_appIndexCatalog.index().isEmpty())
             m_defaultPinsSeeded = true;
         return;
     }
@@ -8685,11 +8684,6 @@ void ShellController::connectAppIndex()
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected())
         return;
-    // The coalesced `Changed` signal is registered once and follows the
-    // well-known name across service restarts (the settingsd client uses the
-    // same pattern). It is safe to register before app-index owns the name.
-    bus.connect(kAppIndexService, kAppIndexPath, kAppIndexInterface,
-                QStringLiteral("Changed"), this, SLOT(onAppIndexChanged(QString)));
     // T-14.3: the tray set/property view and one item's projected menu are
     // change-driven. The signals follow the well-known name across service
     // restarts, so a stable tray contributes no recurring read.
@@ -8698,50 +8692,28 @@ void ShellController::connectAppIndex()
     bus.connect(kAppIndexService, kAppIndexPath, kAppIndexInterface,
                 QStringLiteral("TrayMenuChanged"), this,
                 SLOT(onTrayMenuChanged(QString,qulonglong)));
-    auto *watcher = new QDBusServiceWatcher(
-        kAppIndexService, bus,
-        QDBusServiceWatcher::WatchForRegistration
-            | QDBusServiceWatcher::WatchForUnregistration,
-        this);
-    connect(watcher, &QDBusServiceWatcher::serviceRegistered, this,
-            [this](const QString &) { syncAppIndex(); });
-    connect(watcher, &QDBusServiceWatcher::serviceUnregistered, this,
-            [this](const QString &) {
-                // Drop the subscription so the next owner gets a fresh one.
-                // Keep the last corpus while the service restarts so the Dock
-                // does not lose its icons for the gap.
-                m_appIndexSubscribed = false;
-                syncAppIndex();
-            });
-    syncAppIndex();
+    connect(&m_appIndexCatalog, &AppIndexCatalog::ownerChanged, this, [this]() {
+        const bool available = m_appIndexCatalog.available()
+            || !m_appIndexCatalog.index().isEmpty();
+        if (m_dockItem)
+            m_dockItem->setProperty("appIndexAvailable", available);
+        if (m_appsDrawerItem && !m_appsDrawerFixture)
+            m_appsDrawerItem->setProperty("available", available);
+        refreshTrayItems();
+    });
+    connect(&m_appIndexCatalog, &AppIndexCatalog::catalogChanged,
+            this, &ShellController::applyAppIndexCatalog);
+    m_appIndexCatalog.start();
 }
 
-void ShellController::syncAppIndex()
+void ShellController::applyAppIndexCatalog()
 {
-    const bool available = m_appIndexClient.available();
-    if (available) {
-        // Subscribe before the snapshot so a change that lands between the
-        // two cannot be missed; the reload then has the latest corpus.
-        if (!m_appIndexSubscribed)
-            m_appIndexSubscribed =
-                !m_appIndexClient.subscribe(QStringLiteral("identity")).isEmpty();
-        m_index.loadFromAppIndex(m_appIndexClient);
-        seedDefaultDockPins();
-    } else {
-        m_appIndexSubscribed = false;
-    }
-    // T230: identity is now available, so resolve the recent app ids to names
-    // for the system menu's Recent Items submenu.
-    refreshSystemMenu();
-    if (m_dockItem) {
-        rebuildDockEntries();
-        refreshAppPicker(false);
-        if (m_appsDrawerOpen)
-            refreshAppsDrawer(false);
-    }
-    // A service restart or removal changes the tray owner too; the refresh
-    // clears the bar when app-index is gone and re-seeds it when it returns.
-    refreshTrayItems();
+    seedDefaultDockPins();
+    applyFocusedApp();
+    rebuildDockEntries();
+    refreshAppPicker(false);
+    if (m_appsDrawerOpen)
+        refreshAppsDrawer(false);
 }
 
 void ShellController::connectWallpaperProvider()
@@ -8980,7 +8952,7 @@ void ShellController::onDockStateChanged(const QVariantList &entries)
         if (map.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
             continue;
         const DesktopEntry resolved =
-            m_index.resolve(map.value(QStringLiteral("appId")).toString());
+            m_appIndexCatalog.index().resolve(map.value(QStringLiteral("appId")).toString());
         if (resolved.valid) {
             if (m_launchStates.remove(resolved.id))
                 launchedApps.append(map.value(QStringLiteral("appId")).toString());
@@ -9036,7 +9008,7 @@ void ShellController::rebuildDockEntries()
         }
     }
     m_dockAllEntries = buildDockEntries(
-        m_dockConfig.pinned, m_index, running, m_launchStates,
+        m_dockConfig.pinned, m_appIndexCatalog.index(), running, m_launchStates,
         dockRecentIds(m_dockConfig, m_recentAppIds));
     // The Applications launcher (T-19.2 follow-up) is a permanent Dock tile:
     // it is not part of the user-orderable `dock.pinned` set and cannot be
@@ -9106,10 +9078,10 @@ void ShellController::refreshAppPicker(bool reloadCorpus)
 {
     if (!m_dockItem)
         return;
-    if (reloadCorpus && !m_appIndexSubscribed)
-        m_index.loadFromAppIndex(m_appIndexClient);
+    if (reloadCorpus)
+        m_appIndexCatalog.refreshIfNeeded();
 
-    const QList<AppPickerRow> rows = buildAppPickerList(m_index.entries(), m_dockConfig.pinned);
+    const QList<AppPickerRow> rows = buildAppPickerList(m_appIndexCatalog.index().entries(), m_dockConfig.pinned);
     QVariantList list;
     list.reserve(rows.size());
     for (const AppPickerRow &row : rows) {
@@ -9120,8 +9092,10 @@ void ShellController::refreshAppPicker(bool reloadCorpus)
             {QStringLiteral("pinned"), row.pinned},
         });
     }
-    m_dockItem->setProperty("appPickerItems", list);
-    m_dockItem->setProperty("appIndexAvailable", m_appIndexClient.available());
+    if (m_dockItem->property("appPickerItems").toList() != list)
+        m_dockItem->setProperty("appPickerItems", list);
+    m_dockItem->setProperty("appIndexAvailable",
+                            m_appIndexCatalog.available() || !m_appIndexCatalog.index().isEmpty());
     scheduleDockRender();
 }
 
@@ -9145,20 +9119,6 @@ void ShellController::onDockAppPinToggled(const QString &desktopId, bool pinned)
     m_dockTiles.clear();
     rebuildDockEntries();
     refreshAppPicker(false);
-}
-
-void ShellController::onAppIndexChanged(const QString &interests)
-{
-    Q_UNUSED(interests);
-    // An install/uninstall/update (T-14.1c) can change the picker's corpus and
-    // the Dock's identity resolution; reload both.
-    m_index.loadFromAppIndex(m_appIndexClient);
-    rebuildDockEntries();
-    refreshAppPicker(false);
-    // An install/uninstall while the drawer is open refreshes its grid live
-    // (T-19.2); when it is closed the next open re-reads anyway.
-    if (m_appsDrawerOpen)
-        refreshAppsDrawer(false);
 }
 
 // The T-10 section 5.1 overflow clamp: given the full entry list and the
@@ -9547,7 +9507,7 @@ void ShellController::sendLaunchOrigin(const QString &desktopId)
     const QRect tile = m_dockTiles.rectFor(desktopId);
     if (!tile.isValid() || tile.width() <= 0 || tile.height() <= 0)
         return;
-    const DesktopEntry entry = m_index.byId(desktopId);
+    const DesktopEntry entry = m_appIndexCatalog.index().byId(desktopId);
     const QString appId = dockLaunchAppId(entry);
     if (appId.isEmpty()) {
         // No compositor-visible key could be resolved: keep the centered
@@ -9586,7 +9546,7 @@ void ShellController::onActivationResult(const QString &appId, bool found)
     // The compositor found no window for the app. If the Dock knows the
     // installed entry, launch it (the app exited between the projection and
     // the click); otherwise make the failure visible.
-    const DesktopEntry entry = m_index.byId(desktopId);
+    const DesktopEntry entry = m_appIndexCatalog.index().byId(desktopId);
     const bool launchable = DesktopEntryIndex::isLaunchable(entry);
     switch (dockActivationFallback(found, launchable)) {
     case DockActivationFallback::None:
@@ -9610,9 +9570,9 @@ void ShellController::launchFiles(const QString &argument)
     // (T-10.6c). The design's `org.dragonfruit.Files1` service name is the
     // D-Bus activation target; the installed `.desktop` carries its `%U`
     // argument seam until the running-instance API (T-18) lands.
-    DesktopEntry files = m_index.byId(QStringLiteral("org.dragonfruit.Files.desktop"));
+    DesktopEntry files = m_appIndexCatalog.index().byId(QStringLiteral("org.dragonfruit.Files.desktop"));
     if (!files.valid)
-        files = m_index.resolve(QStringLiteral("org.dragonfruit.Files"));
+        files = m_appIndexCatalog.index().resolve(QStringLiteral("org.dragonfruit.Files"));
     if (!DesktopEntryIndex::isLaunchable(files)) {
         qWarning() << "shell: Files is not installed (T-10.6c):" << argument;
         return;
@@ -9645,9 +9605,9 @@ void ShellController::showDockAppInFiles(const QString &desktopId, const QString
 {
     // Resolve the app to reveal. A pinned entry carries the desktop id; a
     // running temporary entry may only carry the compositor app id.
-    DesktopEntry app = m_index.byId(desktopId);
+    DesktopEntry app = m_appIndexCatalog.index().byId(desktopId);
     if (!app.valid)
-        app = m_index.resolve(appId);
+        app = m_appIndexCatalog.index().resolve(appId);
     if (!DesktopEntryIndex::isLaunchable(app)) {
         qWarning() << "shell: Show in Files: cannot resolve app" << desktopId << appId;
         return;
@@ -9672,7 +9632,7 @@ void ShellController::openApp(const QString &desktopId)
     // application "Settings…", and any future first-party item): focus the
     // running window if the app is already open, otherwise launch it from its
     // cached app-index record.
-    const AppOpenPlan plan = planAppOpen(m_index, m_runningEntries, desktopId);
+    const AppOpenPlan plan = planAppOpen(m_appIndexCatalog.index(), m_runningEntries, desktopId);
     if (!plan.resolved) {
         qWarning() << "shell: cannot open app; no usable .desktop entry:" << desktopId;
         return;
@@ -9702,14 +9662,14 @@ void ShellController::openSettingsDeepLink(const QString &url)
         message << url;
         bus.send(message);
         const AppOpenPlan plan =
-            planAppOpen(m_index, m_runningEntries,
+            planAppOpen(m_appIndexCatalog.index(), m_runningEntries,
                         QStringLiteral("org.dragonfruit.Settings.desktop"));
         if (plan.resolved && plan.running && m_protocol)
             activateAppOrFallback(plan.appId, plan.desktopId);
         return;
     }
     const DesktopEntry entry =
-        m_index.byId(QStringLiteral("org.dragonfruit.Settings.desktop"));
+        m_appIndexCatalog.index().byId(QStringLiteral("org.dragonfruit.Settings.desktop"));
     if (!DesktopEntryIndex::isLaunchable(entry)) {
         qWarning() << "shell: cannot open Settings deep link; no usable entry";
         return;
@@ -9726,7 +9686,7 @@ void ShellController::openSettingsDeepLink(const QString &url)
 
 void ShellController::launchDockAppWithFiles(const QString &desktopId, const QStringList &files)
 {
-    const DesktopEntry entry = m_index.byId(desktopId);
+    const DesktopEntry entry = m_appIndexCatalog.index().byId(desktopId);
     if (!DesktopEntryIndex::isLaunchable(entry)) {
         failDockLaunch(desktopId, QStringLiteral("no usable .desktop entry"));
         return;
@@ -9770,7 +9730,7 @@ void ShellController::failDockLaunch(const QString &desktopId, const QString &re
     m_launchDeadlines.remove(desktopId);
     // The failed mark is transient; the durable record is the notification
     // (T-11.1b replaces T-10's badge-only notice).
-    raiseDockLaunchFailure(m_notificationClient, m_index.byId(desktopId).name, reason);
+    raiseDockLaunchFailure(m_notificationClient, m_appIndexCatalog.index().byId(desktopId).name, reason);
     rebuildDockEntries();
     scheduleLaunchStateClear(desktopId);
 }
@@ -9811,7 +9771,7 @@ void ShellController::onDockLaunchTick()
                 changed = true;
                 qWarning() << "shell: Dock launch timed out for" << desktopId
                            << "(no window mapped)";
-                raiseDockLaunchFailure(m_notificationClient, m_index.byId(desktopId).name,
+                raiseDockLaunchFailure(m_notificationClient, m_appIndexCatalog.index().byId(desktopId).name,
                                        QStringLiteral("The app did not open in time."));
                 scheduleLaunchStateClear(desktopId);
             }
@@ -10535,18 +10495,17 @@ void ShellController::onAppsDrawerRefreshRequested()
 {
     if (!m_appsDrawerOpen)
         return;
-    m_index.loadFromAppIndex(m_appIndexClient);
-    refreshAppsDrawer(false);
+    m_appIndexCatalog.refresh();
 }
 
 void ShellController::refreshAppsDrawer(bool reloadCorpus)
 {
     if (!m_appsDrawerItem)
         return;
-    if (reloadCorpus && !m_appIndexSubscribed)
-        m_index.loadFromAppIndex(m_appIndexClient);
+    if (reloadCorpus)
+        m_appIndexCatalog.refreshIfNeeded();
 
-    QList<DesktopEntry> entries = m_index.entries();
+    QList<DesktopEntry> entries = m_appIndexCatalog.index().entries();
     if (m_appsDrawerFixture) {
         // Capture-only synthetic corpus: a broad mix of names and categories
         // so the live check exercises sorting, pills, and the icon fallback.
@@ -10601,7 +10560,8 @@ void ShellController::refreshAppsDrawer(bool reloadCorpus)
     // open. Only publish a genuinely different projection.
     if (m_appsDrawerItem->property("apps").toList() != list)
         m_appsDrawerItem->setProperty("apps", list);
-    const bool available = m_appsDrawerFixture || m_appIndexClient.available();
+    const bool available = m_appsDrawerFixture || m_appIndexCatalog.available()
+        || !m_appIndexCatalog.index().isEmpty();
     if (m_appsDrawerItem->property("available").toBool() != available)
         m_appsDrawerItem->setProperty("available", available);
     if (m_appsDrawerItem->property("active").toBool() != m_appsDrawerOpen)

@@ -366,6 +366,13 @@ target_link_libraries(tst_settingsclient PRIVATE
 
 find_program(DBUS_RUN_SESSION dbus-run-session)
 if(DBUS_RUN_SESSION)
+    qt_add_executable(tst_appindexcatalog tst_appindexcatalog.cpp)
+    target_link_libraries(tst_appindexcatalog PRIVATE
+        Qt6::Test Qt6::DBus dragonfruit-shell-dockcore
+    )
+    add_test(NAME tst_appindexcatalog
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_appindexcatalog>
+    )
     add_test(
         NAME tst_settingsclient
         COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_settingsclient>

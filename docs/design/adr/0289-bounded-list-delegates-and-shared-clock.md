@@ -36,10 +36,10 @@ tree just to read an implicit width. The visible clock ran the same timer again.
   follows the selected `path` and the picker follows the selected `desktopId`
   across a live update or a filter change, falling back to the nearest surviving
   row when the identity disappears.
-- **Measure status slots passively.** `StatusItemMeasure` reads only the same
-  token spacing and `TextMetrics` typography as `StatusItem` (including the
-  clock's tabular numerals). It is invisible, has no input handlers, and owns no
-  clock.
+- **Measure status slots passively.** `StatusItemMeasure` uses the same token
+  spacing and implicit text layout widths as `StatusItem`, including the
+  clock's tabular numerals. The measuring items are invisible and carry
+  no input handlers, clock, or wallpaper effects.
 - **Share one clock source.** `MenuBar` owns one `MenuBarClock`; the visible
   clock slot and the measurement probe read its formatted text. A status slot
   no longer embeds a clock, so an idle bar has one boundary wakeup.

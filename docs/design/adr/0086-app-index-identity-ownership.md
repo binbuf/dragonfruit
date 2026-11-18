@@ -58,3 +58,13 @@ policy forwarder.
 - The shell's local `.desktop` scan and launch-command code still exists for
   launch semantics and as the fallback; T-14.7 deletes it once the launch
   API lands.
+
+## Amendment — asynchronous shell catalog
+
+The shell reads and builds its desktop-entry index on one worker. It
+subscribes before enumerating, addresses both calls to the current unique
+bus owner, and schedules one follow-up when change notifications arrive
+during a read. A replaced owner's reply is discarded. Failed replies leave
+the last usable catalog in place, while a valid empty result clears it.
+Unchanged snapshots do not rebuild shell projections. The Dock, picker, and
+drawer can open from this cache while the service is responding.
