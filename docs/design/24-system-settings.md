@@ -749,6 +749,14 @@ owners. A Linux-only Power Adapter group reports the live source and says the
 charge threshold is not reported. GiB labels are consistent with Storage and
 About. `make t273-data-panes-capture` writes live/empty/absence stills.
 
+**Superseded in part by T289.** The mockup order now governs this pane: Low
+Power Mode and Battery Health first, then the range control, the live
+status pill, the `SettingsChart` Battery Level chart, and an Options… footer
+sheet. The Charging row is folded into the pill; the Options group, Power
+Adapter rows, and Power Settings link live in the Options… sheet. See
+[25-system-settings-visual-parity.md](25-system-settings-visual-parity.md)
+§5.3. The ownership table above is unchanged.
+
 ### 4.5 Storage — T273 (General → Storage)
 
 Owner: UDisks2 + filesystem usage. Absence: keep the chart and the settings
@@ -1504,6 +1512,16 @@ advanced area, so brightness and rotation are not duplicated. With no output
 the preview and title say `No display`, the absence note explains it, and the
 settingsd controls stay live. Refresh shows the real current rate and disables
 mode switching with its OPEN reason.
+
+**Superseded in part by T289.** The mockup order now governs this pane: the
+display icon row (with the per-output sheet behind its chevron), Resolution
+radios with real logical sizes and a scaling note, Brightness/auto-brightness/
+Ambient color/Preset/Refresh rate, the conditional projector section, and
+Advanced…/Night Light… sheets. Arrangement, Rotation, Color Profile (as the
+Preset row), Use as, and the advanced rows moved into the Advanced… sheet; the
+large preview art was removed. The ownership table above is unchanged; see
+[25-system-settings-visual-parity.md](25-system-settings-visual-parity.md)
+§5.3.
 
 ### 4.23 Wallpaper — T278
 

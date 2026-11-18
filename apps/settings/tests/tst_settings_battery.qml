@@ -4,12 +4,13 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Battery-pane tests (T-15.6b). Headless with `DF_SETTINGS_FIXTURE` and
-// `DF_BATTERY_FIXTURE` (see CMakeLists.txt), so the `Settings` singleton serves
-// a deterministic in-process battery adapter with no bus. The cases cover the
-// Low Power Mode profile picker round-tripping through the adapter, the
-// Battery Health/Charging info rows, the Usage History range switch, and the
-// absence note.
+// Battery-pane tests (T-15.6b; mockup order T289). Headless with
+// `DF_SETTINGS_FIXTURE` and `DF_BATTERY_FIXTURE` (see CMakeLists.txt), so the
+// `Settings` singleton serves a deterministic in-process battery adapter with
+// no bus. The cases cover the Low Power Mode profile picker round-tripping
+// through the adapter, Battery Health with Show Detail, the live charge-status
+// pill, the range/`SettingsChart` history block, the Options… sheet, the
+// absence states, and that every rendered row has a map row.
 Item {
     id: stage
     width: 740
@@ -52,7 +53,22 @@ Item {
             return pane;
         }
 
-        function test_pane_opens_with_the_battery_and_profiles() {
+        // Every rendered row with a `settingsId` must resolve in the map. The
+        // sheet is walked too: a dialog re-parents to the window overlay, so it
+        // is no longer in the pane's own child list.
+        function collectRows(item, out) {
+            if (!item || item.children === undefined)
+                return out;
+            if (item.settingsId !== undefined && item.label !== undefined
+                    && String(item.settingsId).length > 0)
+                out.push(item);
+            var children = item.children;
+            for (var i = 0; i < children.length; ++i)
+                collectRows(children[i], out);
+            return out;
+        }
+
+        function test_pane_opens_with_the_battery_profiles_and_health() {
             var shell = make();
             compare(shell.currentPaneId, "battery");
             var pane = paneOf(shell);
@@ -68,6 +84,8 @@ Item {
             compare(pane.profileSelect.currentIndex, 1);
             compare(pane.profileSelect.currentLabel, "Balanced");
             compare(pane.absenceNote.visible, false);
+            compare(pane.optionsButton.text, "Options…");
+            compare(pane.optionsDialog.open, false);
         }
 
         function test_profile_picker_round_trips_through_the_adapter() {
@@ -94,21 +112,30 @@ Item {
             compare(pane.profileSelect.currentIndex, 0);
         }
 
-        function test_info_rows_expand_their_details() {
+        function test_battery_health_shows_its_detail() {
             var shell = make();
             var pane = paneOf(shell);
 
             compare(pane.healthDetail.visible, false);
             compare(pane.healthDetail.text, "Capacity 96% of design \u00b7 112 cycles");
+            compare(pane.healthInfoButton.text, "Show Detail");
             pane.healthInfoButton.activate();
             compare(pane.healthInfoOpen, true);
             compare(pane.healthDetail.visible, true);
+            pane.healthInfoButton.activate();
+            compare(pane.healthDetail.visible, false);
+        }
 
-            compare(pane.chargingDetail.visible, false);
-            verify(pane.chargingDetail.text.indexOf("2 h") >= 0,
-                   "the discharging estimate uses time-to-empty");
-            pane.chargingInfoButton.activate();
-            compare(pane.chargingDetail.visible, true);
+        function test_status_pill_uses_the_real_upower_state() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.statusPill.visible);
+            compare(pane.statusPillText.text, "On Battery");
+            verify(pane.statusDetail.visible);
+            verify(pane.statusDetail.text.indexOf("2 h") >= 0,
+                   "the pill's second line uses the time-to-empty estimate: "
+                   + pane.statusDetail.text);
+            verify(pane.statusPill.height > 0 && pane.statusPill.width > 0);
         }
 
         function test_usage_history_chart_uses_the_real_sampler() {
@@ -119,11 +146,18 @@ Item {
             verify(pane.historyHasData);
             verify(pane.batteryChart.visible);
             compare(pane.historyEmpty.visible, false);
-            verify(pane.batteryChart.caption.indexOf("last 24 hours") >= 0);
+            verify(pane.batteryChartCaption.text.indexOf("last 24 hours") >= 0);
+            compare(pane.chartValues.length, 8);
+            fuzzyCompare(pane.chartValues[7], 0.71, 0.0001);
+            compare(pane.chartAxisLabels.length, 5);
+            compare(pane.chartAxisLabels[0], "24 h ago");
 
             pane.rangeControl.activateIndex(1);
             compare(pane.historyRange, 1);
-            verify(pane.batteryChart.caption.indexOf("last 10 days") >= 0);
+            compare(Settings.values["power.historyRange"], 1);
+            verify(pane.batteryChartCaption.text.indexOf("last 10 days") >= 0);
+            compare(pane.chartAxisLabels[0], "10 d ago");
+
             verify(pane.screenOnRow.visible);
             verify(pane.screenOnRow.description.indexOf("does not report") >= 0);
         }
@@ -135,6 +169,7 @@ Item {
             compare(pane.historyCount, 0);
             compare(pane.historyHasData, false);
             compare(pane.batteryChart.visible, false);
+            compare(pane.batteryChartCaption.text, "");
             verify(pane.historyEmpty.visible);
             verify(pane.historyEmpty.height > 0);
             verify(pane.historyEmptyReason.indexOf("No battery history") >= 0);
@@ -144,9 +179,12 @@ Item {
             shell.destroy();
         }
 
-        function test_the_options_and_power_adapter_sections() {
+        function test_the_options_sheet_holds_the_policy_and_adapter_rows() {
             var shell = make();
             var pane = paneOf(shell);
+            pane.optionsButton.clicked();
+            tryCompare(pane.optionsDialog, "open", true);
+
             verify(pane.optionsGroup.visible);
             compare(pane.dimOnBatteryToggle.checked, false);
             pane.dimOnBatteryToggle.toggle();
@@ -156,8 +194,11 @@ Item {
             compare(Settings.values["power.preventSleep"], true);
             compare(pane.wakeForNetworkToggle.enabled, false);
             compare(pane.optimizeVideoToggle.enabled, false);
+
             verify(pane.adapterGroup.visible);
             compare(pane.adapterStateText.text, "On battery");
+            verify(pane.powerSettingsGroup.visible);
+            pane.optionsDialog.hide();
         }
 
         function test_absence_keeps_the_structure_and_options_live() {
@@ -167,9 +208,21 @@ Item {
             compare(Settings.batteryAvailable, false);
             verify(pane.absenceNote.visible);
             verify(pane.batteryAbsenceNote.visible);
-            verify(pane.optionsGroup.visible);
-            verify(pane.powerSettingsGroup.visible);
             compare(pane.batteryChart.visible, false);
+            compare(pane.statusRow.visible, false);
+
+            // The settingsd policy is not a host read: the sheet and its rows
+            // stay live with UPower absent.
+            pane.optionsButton.clicked();
+            tryCompare(pane.optionsDialog, "open", true);
+            verify(pane.optionsGroup.visible);
+            compare(pane.showPercentageToggle.checked, false);
+            pane.showPercentageToggle.toggle();
+            compare(Settings.values["power.showPercentage"], true);
+            compare(pane.adapterGroup.visible, false,
+                    "the Power Adapter reads UPower and is hidden when absent");
+            verify(pane.powerSettingsGroup.visible);
+            pane.optionsDialog.hide();
             Settings.setBatteryFixture("present");
             shell.destroy();
         }
@@ -177,7 +230,9 @@ Item {
         function test_battery_options_and_power_settings_link() {
             var shell = make();
             var pane = paneOf(shell);
-            verify(pane.optionsGroup.visible);
+            pane.optionsButton.clicked();
+            tryCompare(pane.optionsDialog, "open", true);
+
             compare(pane.showPercentageToggle.checked, false);
             pane.showPercentageToggle.toggle();
             compare(Settings.values["power.showPercentage"], true);
@@ -189,6 +244,22 @@ Item {
             verify(pane.powerSettingsGroup.visible);
             pane.openLockScreenButton.clicked();
             tryVerify(function() { return shell.currentPaneId === "lock-screen"; });
+            compare(pane.optionsDialog.open, false);
+        }
+
+        function test_every_rendered_row_has_a_shipped_map_row() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var rows = collectRows(pane, []);
+            collectRows(pane.optionsDialog, rows);
+            verify(rows.length >= 10, "walked " + rows.length + " rows");
+            for (var i = 0; i < rows.length; ++i) {
+                var id = String(rows[i].settingsId);
+                var mapRow = SettingsMap.rowFor("battery", id);
+                verify(mapRow !== null,
+                       "rendered row '" + id + "' must have a map row");
+                compare(mapRow.state, "shipped", id);
+            }
         }
 
         function test_absence_note_hides_when_the_service_is_present() {

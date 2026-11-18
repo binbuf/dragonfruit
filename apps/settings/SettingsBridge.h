@@ -522,13 +522,16 @@ public:
     // `QGuiApplication::screens()`; `DF_DISPLAY_FIXTURE` selects a
     // deterministic one/two-output (or absent) list for tests and captures.
     // Each entry is `{id, name, width, height, refreshRate, primary,
-    // manufacturer, model}`; `width`/`height` are logical pixels.
+    // manufacturer, model, projector}`; `width`/`height` are logical pixels.
+    // `projector` is the host's TV/projector signal: the live path reads the
+    // screen name/model/manufacturer (the only EDID-derived text Qt exposes),
+    // never a hardcoded output list.
     Q_PROPERTY(int displayOutputsRevision READ displayOutputsRevision
                    NOTIFY displayOutputsChanged)
     Q_INVOKABLE QVariantList displayOutputs() const;
     int displayOutputsRevision() const { return m_displayOutputsRevision; }
-    // Test/capture seam (`DF_DISPLAY_FIXTURE` only): `single`, `dual`, or
-    // `absent`. A no-op without the fixture environment.
+    // Test/capture seam (`DF_DISPLAY_FIXTURE` only): `single`, `dual`,
+    // `projector`, or `absent`. A no-op without the fixture environment.
     Q_INVOKABLE void setDisplayFixture(const QString &mode);
     // T274: the icon/widget-style provider. The list is the host's installed
     // icon themes (a directory with an `index.theme`), with `Default` first.

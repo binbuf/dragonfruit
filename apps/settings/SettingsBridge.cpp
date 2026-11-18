@@ -49,6 +49,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QTimer>
 #include <QUrl>
 
@@ -221,6 +222,7 @@ SettingsBridge::SettingsBridge(QObject *parent)
     if (qEnvironmentVariableIsSet("DF_DISPLAY_FIXTURE")) {
         const QString requested = qEnvironmentVariable("DF_DISPLAY_FIXTURE");
         if (requested == QLatin1String("dual")
+                || requested == QLatin1String("projector")
                 || requested == QLatin1String("absent"))
             m_displayFixtureMode = requested;
     }
@@ -1135,6 +1137,24 @@ void SettingsBridge::watchDisplayScreen(QScreen *screen)
                     emit displayOutputsChanged(); });
 }
 
+// The host's TV/projector signal. Qt exposes no connector type, so the one
+// EDID-derived text a QScreen carries (name, model, manufacturer) is matched
+// against the words a TV or projector reports. A display that does not say so
+// is not a projector: the Displays pane shows its absence row rather than
+// guessing.
+static bool screenLooksLikeProjector(const QScreen *screen)
+{
+    if (!screen)
+        return false;
+    const QString text = QStringList{ screen->name(), screen->model(),
+                                      screen->manufacturer() }
+                             .join(QLatin1Char(' '));
+    static const QRegularExpression pattern(
+        QStringLiteral("\\b(tv|television|projector|beamer)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    return pattern.match(text).hasMatch();
+}
+
 QVariantList SettingsBridge::displayOutputs() const
 {
     // T273: the Displays pane's per-output list is the real platform list, not
@@ -1156,6 +1176,7 @@ QVariantList SettingsBridge::displayOutputs() const
         builtIn.insert(QStringLiteral("primary"), true);
         builtIn.insert(QStringLiteral("manufacturer"), QStringLiteral("Dragonfruit"));
         builtIn.insert(QStringLiteral("model"), QStringLiteral("Built-in HiDPI Display"));
+        builtIn.insert(QStringLiteral("projector"), false);
         outputs.append(builtIn);
         if (m_displayFixtureMode == QLatin1String("dual")) {
             QVariantMap studio;
@@ -1167,7 +1188,20 @@ QVariantList SettingsBridge::displayOutputs() const
             studio.insert(QStringLiteral("primary"), false);
             studio.insert(QStringLiteral("manufacturer"), QStringLiteral("Example"));
             studio.insert(QStringLiteral("model"), QStringLiteral("Example Panel"));
+            studio.insert(QStringLiteral("projector"), false);
             outputs.append(studio);
+        } else if (m_displayFixtureMode == QLatin1String("projector")) {
+            QVariantMap tv;
+            tv.insert(QStringLiteral("id"), QStringLiteral("projector"));
+            tv.insert(QStringLiteral("name"), QStringLiteral("Living Room TV"));
+            tv.insert(QStringLiteral("width"), 1920);
+            tv.insert(QStringLiteral("height"), 1080);
+            tv.insert(QStringLiteral("refreshRate"), 60.0);
+            tv.insert(QStringLiteral("primary"), false);
+            tv.insert(QStringLiteral("manufacturer"), QStringLiteral("Example"));
+            tv.insert(QStringLiteral("model"), QStringLiteral("Example Television"));
+            tv.insert(QStringLiteral("projector"), true);
+            outputs.append(tv);
         }
         return outputs;
     }
@@ -1195,6 +1229,7 @@ QVariantList SettingsBridge::displayOutputs() const
         entry.insert(QStringLiteral("primary"), screen == primary);
         entry.insert(QStringLiteral("manufacturer"), screen->manufacturer());
         entry.insert(QStringLiteral("model"), screen->model());
+        entry.insert(QStringLiteral("projector"), screenLooksLikeProjector(screen));
         outputs.append(entry);
     }
     return outputs;
@@ -1205,6 +1240,7 @@ void SettingsBridge::setDisplayFixture(const QString &mode)
     if (!qEnvironmentVariableIsSet("DF_DISPLAY_FIXTURE"))
         return;
     m_displayFixtureMode = mode == QLatin1String("dual")
+            || mode == QLatin1String("projector")
             || mode == QLatin1String("absent")
         ? mode : QStringLiteral("single");
     ++m_displayOutputsRevision;

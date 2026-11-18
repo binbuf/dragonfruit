@@ -303,13 +303,12 @@ Item {
         function test_displays_pane_stays_live_without_a_daemon() {
             var shell = make();
             var pane = showPane(shell, "displays");
-            compare(pane.tileItems.length, 5);
-            for (var i = 0; i < pane.tileItems.length; ++i)
-                verify(pane.tileItems[i].enabled, "resolution tile " + i + " must stay enabled");
+            compare(pane.resolutionRadios.count, 3);
+            verify(pane.resolutionRadios.count > 0);
             verify(pane.rotationSelect.enabled);
 
-            pane.tileItems[0].choose(); // Larger Text
-            verify(Math.abs(Settings.values["display.scale"] - 1.5) < 0.001);
+            pane.resolutionRadios.select(0); // Large -> 1.25
+            verify(Math.abs(Settings.values["display.scale"] - 1.25) < 0.001);
             pane.rotationSelect.activateIndex(2); // 180°
             compare(Settings.values["display.rotation"], "180");
         }

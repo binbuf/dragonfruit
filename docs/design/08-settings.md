@@ -81,12 +81,12 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 |---|---|
 | Wi-Fi, Network | NetworkManager (Wi-Fi, services, VPN connections) + the firewall adapter (firewalld/ufw/nftables) ([adr/0146](adr/0146-network-advanced-vpn-adapter.md), [adr/0147](adr/0147-network-advanced-vpn-pane-and-tile.md), [adr/0234](adr/0234-network-panes-model-order-firewall.md)) |
 | Bluetooth | BlueZ |
-| Battery | UPower + power-profiles-daemon where present |
+| Battery | UPower + power-profiles-daemon where present; T289 renders the mockup order (Low Power Mode, Battery Health + Show Detail, the `power.historyRange` range control, the live UPower status pill, the `SettingsChart` Battery Level chart, and an Options… sheet with the real `power.*` policy, Power Adapter, and Lock Screen rows) ([adr/0293](adr/0293-battery-displays-pane-adaptations.md)) |
 | General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
 | Appearance | `settingsd` (design-system themes, dark/light, accent, highlight, sidebar icon size, wallpaper tint, scroll bars, attached-menu transparency, motion link) ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
 | Accessibility | live AT-SPI read + `settingsd` + compositor + delegates — five-section pane: read-only screen-reader/bridge status plus `Open Orca`, Display accommodations (`increaseContrast`, `reduceTransparency`, `differentiateWithoutColor`, `textSize`), the compositor magnifier (`magnifier`, `magnifierZoom`, `magnifierMode`), Motion (`reduceMotion`, `dimFlashingLights`), Read & Speak and the hearing/motor/speech delegates, and the recorded `accessibility.shortcut` ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0276](adr/0276-accessibility-pane-accommodations.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor; the full Dock group, Desktop & Stage Manager (`desktop.showItems` live), Widgets, Windows, Mission Control links, and the default-browser delegate; T242/T245b/T243 rows are disabled with a reason (T276) |
-| Displays | Compositor output API + the real platform output list — **shipped:** per-output name/preview/selector, scale, rotation, brightness, and the reported refresh; **capability-gated:** Use as, auto-brightness, adaptive color, refresh switching, arrangement, Night Light (toggle/schedule/temperature), color profile, TV mode, HDR, VRR, and overscan are disabled with an OPEN reason until the compositor/colord/sensor half exists. One table (`displaycapabilities`) drives both the pane and the advanced sheet ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0274](adr/0274-data-panes-sampler-and-capability-rows.md)) |
+| Displays | Compositor output API + the real platform output list — **shipped:** the display icon row and per-output sheet, Resolution radios over the real logical sizes, the scaling note, brightness, and rotation (in the Advanced… sheet); **capability-gated:** Use as, auto-brightness, Ambient color (adaptive color), refresh switching, arrangement, Night Light (toggle/schedule/temperature), Preset (color profile), projector mode, HDR, VRR, and overscan are disabled with an OPEN reason until the compositor/colord/sensor half exists. One table (`displaycapabilities`) drives both the pane and the advanced sheet; the projector section appears only when the host marks a TV/projector output ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0274](adr/0274-data-panes-sampler-and-capability-rows.md), [adr/0293](adr/0293-battery-displays-pane-adaptations.md)) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures; Screen Saver… navigates to the Screen Saver pane and Clock Appearance… opens real clock controls ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md), [adr/0279](adr/0279-personalization-apply-and-stored-policy.md)) |
 | Menu Bar | `settingsd` → shell |
 | Search | `settingsd` durable preferences → the T246 search service; the pane ships categories, indexed locations, shortcut, web search, and menu-bar visibility, while indexing status/rebuild are disabled with the service absent |
@@ -416,6 +416,22 @@ refresh, and per-output selector; the capability table gains an `area` and is
 the one source for every disabled row, and the advanced sheet no longer
 duplicates brightness or rotation. `make t273-data-panes-capture` writes
 live/empty/absence stills in light and dark.
+
+T289 applies the mockup's visual order to both data panes. Battery is Low
+Power Mode and Battery Health, the `power.historyRange` segmented range, the
+live UPower status pill (with the real charge estimate), the `SettingsChart`
+Battery Level chart, and an Options… sheet that owns the `power.*` policy,
+the Power Adapter rows, and the Lock Screen link. Displays is the display
+icon row, Resolution radios (the five real scale steps with their logical
+sizes), the scaling note, Brightness, automatic brightness, Ambient color,
+Preset, Refresh rate, the conditional projector section, and
+Advanced…/Night Light… sheets; the large preview art is gone and Arrangement,
+Rotation, Use as, and the advanced rows live in the Advanced… sheet. The
+bridge adds one output field, `projector`, from the EDID-derived
+name/model/manufacturer text Qt exposes (with `DF_DISPLAY_FIXTURE=projector`
+as the deterministic seam), so the projector section never guesses. No new
+settings keys. `make t289-settings-battery-displays-capture` writes the
+present/sheet/projector/absent stills in light and dark.
 
 ### The T280 device/input completion
 

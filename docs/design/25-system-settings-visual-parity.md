@@ -458,6 +458,39 @@ in light and dark.
 adaptive color. “Projector mode” uses the existing “When connected to TV” row;
 if the host has no TV/projector signal, the row is an absence row with a reason.
 
+**Landed (T289).** Battery is the mockup order: Low Power Mode (the real
+power-profiles `Select`), Battery Health with a `Show Detail` action, the
+Last 24 Hours / Last 10 Days `SegmentedControl` bound to
+`power.historyRange`, the live charge-status pill (UPower's charge state plus
+the real time-to-empty/time-to-full estimate), the `SettingsChart` Battery
+Level chart with 100/50/0 % and range-labelled axes, and the Options… footer.
+The old separate Charging row is folded into the pill; UPower exposes no
+last-update timestamp, so the pill's second line is the estimate rather than
+the mockup's example clock time. The Options… sheet holds the real `power.*`
+policy rows, the Linux-only Power Adapter values, and the Lock Screen link;
+they stay live when UPower is absent. “Last charged to 100%” and Screen On
+Usage remain honest not-available rows.
+
+Displays is the mockup order: a `SettingsIconRow` display row (the real output
+name plus its logical `W × H (scale) · Hz`, chevron into the per-output sheet),
+stacked `SettingsRadioGroup` resolution radios with real logical sizes,
+“Show all resolutions” (a view filter over the five scale steps, not a new
+key), the scaling note, Brightness, automatic brightness, Ambient color
+(adaptive color), Preset (the color-profile path), Refresh rate (the real
+current rate plus the disabled switching reason), the “When connected to a
+projector” section, and Advanced…/Night Light… footers. The large preview art
+is gone: the mockup's display row is the identity, and the per-output sheet
+keeps the real selector. Arrangement, Rotation, Color Profile (as Preset),
+Use as, and the advanced capability rows live in the Advanced… sheet; Night
+Light's three rows live in the Night Light… sheet. The projector section is
+the capability-gated `Projector mode` row only when the bridge marks an output
+as a TV/projector; otherwise it is an absence row with the reason. The bridge
+marks it from the EDID-derived name/model/manufacturer text Qt exposes
+(`DF_DISPLAY_FIXTURE=projector` is the deterministic seam), never from a
+hardcoded output list. `make t289-settings-battery-displays-capture` writes
+both panes' present, sheet-open, projector, and absent stills in light and
+dark.
+
 ### 5.4 Appearance
 
 | Mockup block | Target |

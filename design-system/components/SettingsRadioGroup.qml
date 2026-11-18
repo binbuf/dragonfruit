@@ -12,6 +12,9 @@ FocusScope {
     property var options: []
     property int currentIndex: -1
     property bool inline: false
+    // T289: the group's setting name for AT-SPI. The default keeps the
+    // generic component usable; a pane names its own group.
+    property string accessibleName: qsTr("Options")
     property alias repeater: repeater
 
     signal activated(int index)
@@ -184,5 +187,5 @@ FocusScope {
     }
 
     Accessible.role: Accessible.Grouping
-    Accessible.name: qsTr("Options")
+    Accessible.name: root.accessibleName
 }
