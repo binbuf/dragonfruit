@@ -68,6 +68,23 @@ Item {
             return tile;
         }
 
+        function iconStyleTile(pane, index) {
+            var tile = pane.iconStyleTileRepeater.itemAt(index);
+            verify(tile, "the icon-style tile at index " + index + " must exist");
+            return tile;
+        }
+
+        function collectGroups(item, out) {
+            if (item === null || item === undefined)
+                return out;
+            if (item.sectionId !== undefined && item.titleText !== undefined)
+                out.push(item);
+            var children = item.children;
+            for (var i = 0; i < children.length; ++i)
+                collectGroups(children[i], out);
+            return out;
+        }
+
         function test_pane_opens_with_the_wired_controls() {
             var shell = make();
             compare(shell.currentPaneId, "appearance");
@@ -77,6 +94,9 @@ Item {
             compare(schemeTile(pane, 0).selected, false);
             compare(schemeTile(pane, 1).selected, false);
             compare(pane.accentRepeater.count, 6);
+            compare(pane.iconStyleTileRepeater.count, 4);
+            compare(pane.highlightSelect.currentLabel, "Default");
+            compare(pane.folderColorSelect.currentLabel, "Automatic");
             compare(Settings.values["appearance.colorScheme"], "auto");
         }
 
@@ -86,7 +106,45 @@ Item {
             // T290a: the pane that actually loaded must come from the source
             // tree. A stale build copy or a stale compiled resource fails here
             // instead of silently testing the previous pane.
-            compare(pane.sourceRevision, "t290c");
+            compare(pane.sourceRevision, "t290d");
+        }
+
+        function test_theme_card_holds_the_four_controls_in_order() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            compare(pane.themeGroup.sectionId, "Theme");
+            compare(pane.themeGroup.title, "Theme");
+
+            // One card, in the mockup order: accent, Text highlight, icon
+            // style, Folder color, then the sidebar icon size row (T290e
+            // moves that one to Windows).
+            var rows = pane.themeGroup.rows.children;
+            compare(rows.length, 5);
+            verify(rows[0] === pane.accentRow);
+            verify(rows[1] === pane.highlightRow);
+            verify(rows[2] === pane.iconStyleRow);
+            verify(rows[3] === pane.folderColorRow);
+            verify(rows[4] === pane.sidebarIconSizeRow);
+            compare(pane.accentRow.settingsKey, "appearance.accent");
+            compare(pane.highlightRow.settingsKey, "appearance.highlight");
+            compare(pane.iconStyleRow.settingsKey, "appearance.iconStyle");
+            compare(pane.folderColorRow.settingsKey, "appearance.folderColor");
+            compare(pane.sidebarIconSizeRow.settingsKey,
+                    "appearance.sidebarIconSize");
+
+            // The old two cards are gone, not merely renamed.
+            var groups = collectGroups(pane, []);
+            var hasTheme = false;
+            for (var i = 0; i < groups.length; ++i) {
+                verify(groups[i].sectionId !== "Color",
+                       "the Color card must be merged into Theme");
+                verify(groups[i].sectionId !== "Icon & widget style",
+                       "the icon/style card must be merged into Theme");
+                if (groups[i] === pane.themeGroup)
+                    hasTheme = true;
+            }
+            verify(hasTheme, "the Theme group must be part of the pane");
         }
 
         function test_scheme_row_handle_reaches_the_tile_row() {
@@ -353,22 +411,28 @@ Item {
         function test_row_controls_are_right_aligned() {
             var shell = make();
             var pane = paneOf(shell);
-            verify(pane.schemeRow.control.x + pane.schemeRow.control.width
-                       > pane.schemeRow.width * 0.8,
-                   "the scheme control must sit at the right, right edge="
-                   + (pane.schemeRow.control.x + pane.schemeRow.control.width)
-                   + " row.width=" + pane.schemeRow.width);
-            verify(pane.accentRow.control.x + pane.accentRow.control.width
-                       > pane.accentRow.width * 0.8,
-                   "the accent control must sit at the right, right edge="
-                   + (pane.accentRow.control.x + pane.accentRow.control.width)
-                   + " row.width=" + pane.accentRow.width);
+            var rows = [pane.schemeRow, pane.accentRow, pane.highlightRow,
+                        pane.iconStyleRow, pane.folderColorRow];
+            for (var r = 0; r < rows.length; ++r) {
+                verify(rows[r].control.x + rows[r].control.width
+                           > rows[r].width * 0.8,
+                       "the control must sit at the right, right edge="
+                       + (rows[r].control.x + rows[r].control.width)
+                       + " row.width=" + rows[r].width);
+            }
             verify(pane.schemeTiles.width > 0);
             compare(pane.schemeTileRepeater.count, 3);
             for (var i = 0; i < pane.schemeTileRepeater.count; ++i) {
                 var tile = schemeTile(pane, i);
                 verify(tile.x + tile.width <= pane.schemeTiles.width + 0.5,
                        "tile " + i + " must stay inside the tile row");
+            }
+            compare(pane.iconStyleTileRepeater.count, 4);
+            for (var t = 0; t < pane.iconStyleTileRepeater.count; ++t) {
+                var styleTile = iconStyleTile(pane, t);
+                verify(styleTile.x + styleTile.width
+                           <= pane.iconStyleTiles.width + 0.5,
+                       "icon-style tile " + t + " must stay inside the tile row");
             }
             verify(pane.accentRepeater.count === 6);
         }
@@ -385,7 +449,8 @@ Item {
             tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
             waitForRendering(stage);
             var pane = paneOf(shell);
-            var rows = [pane.schemeRow, pane.accentRow];
+            var rows = [pane.schemeRow, pane.accentRow, pane.highlightRow,
+                        pane.iconStyleRow, pane.folderColorRow];
             for (var i = 0; i < rows.length; ++i) {
                 var row = rows[i];
                 var control = row.control;
@@ -397,7 +462,7 @@ Item {
                        + (row.x + row.width) + " window=" + shell.width);
             }
 
-            // The tile row is taller than a stock row and its three thumbnails
+            // The tile rows are taller than a stock row and their thumbnails
             // must stay inside the control slot at 640×640.
             verify(pane.schemeRow.height > Theme.controls.settingsRow.height * 2,
                    "the scheme row must grow for the tile thumbnails");
@@ -409,74 +474,104 @@ Item {
                        "tile " + t + " must stay inside the tile row");
                 verify(tile.height > 0);
             }
+            verify(pane.iconStyleRow.height > Theme.controls.settingsRow.height * 2,
+                   "the icon-style row must grow for the tile thumbnails");
+            compare(pane.iconStyleTileRepeater.count, 4);
+            for (var s = 0; s < pane.iconStyleTileRepeater.count; ++s) {
+                var styleTile = iconStyleTile(pane, s);
+                verify(styleTile.x >= 0
+                       && styleTile.x + styleTile.width
+                          <= pane.iconStyleTiles.width + 0.5,
+                       "icon-style tile " + s + " must stay inside the tile row");
+                verify(styleTile.height > 0);
+            }
         }
 
         // -- T227: the remaining Appearance rows --------------------------------
 
-        function test_highlight_swatches_apply_live_and_converge() {
+        function test_highlight_popup_applies_live_and_converges() {
             var shell = make();
             var pane = paneOf(shell);
-            compare(pane.highlightRepeater.count, 6);
-            verify(pane.highlightRepeater.itemAt(0).selected); // Default
 
-            pane.highlightRepeater.itemAt(1).choose(); // Violet
+            compare(pane.highlightSelectPopup.optionCount, 6);
+            compare(pane.highlightSelect.currentLabel, "Default");
+
+            // The popup is the single control: it shows the current swatch and
+            // writes only when a palette entry is chosen.
+            pane.highlightSelect.open();
+            waitForRendering(stage);
+            verify(pane.highlightSelect.opened);
+            var violet = pane.highlightSelect.optionAt(1);
+            verify(violet);
+            violet.activate();
             compare(Settings.values["appearance.highlight"], "#b3a1ff");
             compare(Theme.highlightOverride, "#b3a1ff");
             verify(Qt.colorEqual(Theme.color.selection, "#b3a1ff"));
-            verify(pane.highlightRepeater.itemAt(1).selected);
+            tryVerify(function() {
+                return pane.highlightSelect.currentLabel === "Violet";
+            });
+            verify(Qt.colorEqual(pane.highlightSelect.swatchColor, "#b3a1ff"));
+            compare(pane.highlightSelect.opened, false);
 
+            // An external write converges the label and swatch.
             Settings.set("appearance.highlight", "#7fd6a4");
-            tryVerify(function() { return pane.highlightRepeater.itemAt(3).selected; });
+            tryVerify(function() {
+                return pane.highlightSelect.currentLabel === "Green";
+            });
             verify(Qt.colorEqual(Theme.color.selection, "#7fd6a4"));
 
+            // A custom hex set elsewhere is shown, never cleared.
+            Settings.set("appearance.highlight", "#123456");
+            tryVerify(function() {
+                return pane.highlightSelect.currentLabel === "#123456";
+            });
+            compare(Settings.values["appearance.highlight"], "#123456");
+            verify(Qt.colorEqual(pane.highlightSelect.swatchColor, "#123456"));
+
             Settings.set("appearance.highlight", "");
-            tryVerify(function() { return pane.highlightRepeater.itemAt(0).selected; });
+            tryVerify(function() {
+                return pane.highlightSelect.currentLabel === "Default";
+            });
             compare(Theme.highlightOverride, "");
         }
 
-        function test_custom_highlight_picker_applies_and_validates() {
+        function test_folder_color_popup_applies_and_converges() {
             var shell = make();
             var pane = paneOf(shell);
-            pane.highlightPopup.show();
-            waitForRendering(stage);
-            pane.highlightInput.text = "#123456";
-            pane.highlightInput.applyCustom();
-            compare(Settings.values["appearance.highlight"], "#123456");
-            compare(Theme.highlightOverride, "#123456");
-            verify(Qt.colorEqual(Theme.color.selection, "#123456"));
 
-            pane.highlightPopup.show();
-            pane.highlightInput.text = "#nope";
-            pane.highlightInput.applyCustom();
-            compare(Settings.values["appearance.highlight"], "#123456");
-        }
-
-        function test_folder_color_applies_and_converges() {
-            var shell = make();
-            var pane = paneOf(shell);
-            compare(pane.folderColorRepeater.count, 6);
+            compare(pane.folderColorSelectPopup.optionCount, 6);
+            compare(pane.folderColorSelect.currentLabel, "Automatic");
             compare(Theme.hasFolderColor, false);
 
-            pane.folderColorRepeater.itemAt(1).choose(); // Blue
+            pane.folderColorSelect.open();
+            waitForRendering(stage);
+            pane.folderColorSelect.chooseIndex(1); // Blue
             compare(Settings.values["appearance.folderColor"], "#4a7dff");
             compare(Theme.folderColor, "#4a7dff");
             compare(Theme.hasFolderColor, true);
             verify(Qt.colorEqual(Theme.folderColorColor, "#4a7dff"));
-            verify(pane.folderColorRepeater.itemAt(1).selected);
+            tryVerify(function() {
+                return pane.folderColorSelect.currentLabel === "Blue";
+            });
 
-            pane.folderColorPopup.show();
-            waitForRendering(stage);
-            pane.folderColorInput.text = "#2bb673";
-            pane.folderColorInput.applyCustom();
-            compare(Settings.values["appearance.folderColor"], "#2bb673");
-            compare(Theme.folderColor, "#2bb673");
+            // A custom hex set elsewhere is shown, never cleared.
+            Settings.set("appearance.folderColor", "#123456");
+            tryVerify(function() {
+                return pane.folderColorSelect.currentLabel === "#123456";
+            });
+            compare(Settings.values["appearance.folderColor"], "#123456");
+            compare(Theme.folderColor, "#123456");
 
-            pane.folderColorRepeater.itemAt(0).choose(); // Automatic
+            pane.folderColorSelect.open();
+            pane.folderColorSelect.chooseIndex(0); // Automatic
             compare(Settings.values["appearance.folderColor"], "");
             compare(Theme.hasFolderColor, false);
+            tryVerify(function() {
+                return pane.folderColorSelect.currentLabel === "Automatic";
+            });
         }
 
-        function test_icon_style_and_theme_use_the_host_provider() {
+        function test_icon_style_tiles_write_and_reject() {
             var shell = make();
             var pane = paneOf(shell);
 
@@ -484,30 +579,69 @@ Item {
             // first, Dark to the matching variant, Clear/Tinted to nothing.
             compare(Settings.iconThemes().length, 4);
             verify(pane.iconStyleRow.enabled);
-            compare(pane.iconStyleControl.entries.length, 4);
-            verify(pane.iconStyleControl.entries[0].enabled);
-            verify(pane.iconStyleControl.entries[1].enabled);
-            verify(!pane.iconStyleControl.entries[2].enabled);
-            verify(!pane.iconStyleControl.entries[3].enabled);
+            compare(pane.iconStyleTileRepeater.count, 4);
 
-            pane.iconStyleControl.activateIndex(1); // Dark
+            var defaultTile = iconStyleTile(pane, 0);
+            var darkTile = iconStyleTile(pane, 1);
+            var clearTile = iconStyleTile(pane, 2);
+            var tintedTile = iconStyleTile(pane, 3);
+            verify(defaultTile.available);
+            verify(darkTile.available);
+            verify(!clearTile.available);
+            verify(!tintedTile.available);
+            verify(defaultTile.selected);
+            compare(defaultTile.Accessible.role, Accessible.RadioButton);
+            verify(clearTile.Accessible.description.indexOf("Clear") >= 0);
+
+            darkTile.clicked();
             compare(Settings.values["appearance.iconStyle"], "dark");
             compare(Settings.effectiveIconTheme(), "Plain Dark");
+            tryVerify(function() { return darkTile.selected; });
+            compare(defaultTile.selected, false);
 
-            // A disabled style is rejected with its reason, not written.
-            pane.iconStyleControl.activateIndex(2); // Clear
+            // A style the provider cannot map is rejected with its reason and
+            // is not written.
+            clearTile.clicked();
             compare(Settings.values["appearance.iconStyle"], "dark");
             verify(pane.iconStyleRejectedReason.indexOf("Clear") >= 0);
             verify(pane.iconStyleRow.description.indexOf("Clear") >= 0);
 
-            // An explicit theme wins over the style mapping.
+            // Choosing an available style clears the stale rejection reason.
+            darkTile.clicked();
+            compare(Settings.values["appearance.iconStyle"], "dark");
+            compare(pane.iconStyleRejectedReason, "");
+            verify(pane.iconStyleRow.description.indexOf("No Clear icon theme") < 0);
+
+            // An external write converges the selected ring.
+            Settings.set("appearance.iconStyle", "default");
+            tryVerify(function() { return defaultTile.selected; });
+            compare(darkTile.selected, false);
+            compare(defaultTile.Accessible.checked, true);
+
+            // An explicit theme still wins over the style mapping.
             pane.iconThemeSelect.activateIndex(3); // High Contrast
             compare(Settings.values["appearance.iconTheme"], "High Contrast");
             compare(Settings.effectiveIconTheme(), "High Contrast");
 
             Settings.set("appearance.iconTheme", "");
-            compare(Settings.effectiveIconTheme(), "Plain Dark");
+            compare(Settings.effectiveIconTheme(), "Plain");
         }
+
+        function test_icon_style_tiles_move_with_the_arrow_keys() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var defaultTile = iconStyleTile(pane, 0);
+
+            defaultTile.forceActiveFocus();
+            keyClick(Qt.Key_Right);
+            compare(Settings.values["appearance.iconStyle"], "dark");
+            tryVerify(function() { return iconStyleTile(pane, 1).selected; });
+
+            keyClick(Qt.Key_Left);
+            compare(Settings.values["appearance.iconStyle"], "default");
+            tryVerify(function() { return defaultTile.selected; });
+        }
+
 
         function test_icon_and_cursor_rows_disable_without_a_provider() {
             var shell = make();
@@ -522,6 +656,10 @@ Item {
             verify(!pane.cursorThemeRow.enabled);
             verify(pane.iconStyleRow.description.indexOf("No icon theme") >= 0);
             verify(pane.cursorThemeRow.description.indexOf("No cursor theme") >= 0);
+            for (var i = 0; i < pane.iconStyleTileRepeater.count; ++i) {
+                verify(!iconStyleTile(pane, i).available,
+                       "every style is unavailable without a provider");
+            }
 
             Settings.setIconThemeFixture("present");
             Settings.setCursorThemeFixture("present");

@@ -117,6 +117,53 @@ Item {
             compare(SettingsMap.rowsFor("appearance").length > 0, true);
         }
 
+        // T290d: the accent, Text highlight, icon style, folder color, and
+        // sidebar icon size rows are one Theme section with their real control
+        // kinds. Sidebar icon size reports Theme until T290e moves it.
+        function test_appearance_theme_rows_use_the_theme_section() {
+            var accent = SettingsMap.rowFor("appearance", "accent");
+            verify(accent !== null);
+            compare(accent.section, "Theme");
+            compare(accent.label, "Accent color");
+            compare(accent.control, "swatches");
+            compare(accent.key, "appearance.accent");
+
+            var highlight = SettingsMap.rowFor("appearance", "highlight");
+            verify(highlight !== null);
+            compare(highlight.section, "Theme");
+            compare(highlight.label, "Text highlight color");
+            compare(highlight.control, "popup");
+            compare(highlight.key, "appearance.highlight");
+
+            var iconStyle = SettingsMap.rowFor("appearance", "iconStyle");
+            verify(iconStyle !== null);
+            compare(iconStyle.section, "Theme");
+            compare(iconStyle.label, "Icon & widget style");
+            compare(iconStyle.control, "tiles");
+            compare(iconStyle.key, "appearance.iconStyle");
+            compare(iconStyle.state, "shipped");
+
+            var folderColor = SettingsMap.rowFor("appearance", "folderColor");
+            verify(folderColor !== null);
+            compare(folderColor.section, "Theme");
+            compare(folderColor.label, "Folder color");
+            compare(folderColor.control, "popup");
+            compare(folderColor.key, "appearance.folderColor");
+
+            var sidebar = SettingsMap.rowFor("appearance", "sidebarIconSize");
+            verify(sidebar !== null);
+            compare(sidebar.section, "Theme");
+            compare(sidebar.control, "popup");
+            compare(sidebar.key, "appearance.sidebarIconSize");
+
+            // The old section names are gone from the map, not duplicated.
+            var rows = SettingsMap.rowsFor("appearance");
+            for (var i = 0; i < rows.length; ++i) {
+                verify(rows[i].section !== "Color");
+                verify(rows[i].section !== "Icon & widget style");
+            }
+        }
+
         // -- Every visible row has an owner/key/absence path -------------------
 
         function test_every_visible_row_has_an_owner() {

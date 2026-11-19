@@ -7,11 +7,16 @@ import Dragonfruit.Settings
 //
 //   Appearance              Light / Dark / Auto
 //   Glass                   the rendered attached-menu preview + tint slider
-//   Color                   accent + highlight (swatches, multicolor, custom)
-//   Icon & widget style     icon style, folder color, sidebar icon size
+//   Theme                   accent swatches, Text highlight popup, icon-style
+//                           tiles, Folder color popup, sidebar icon size
 //   Windows and scroll bars wallpaper tint, scroll bars, track click,
 //                           motion link
 //   Desktop integration     the Linux-only icon/cursor/window rows
+//
+// T290d: the old `Color` and `Icon & widget style` cards are one `Theme` card
+// in the mockup order. The accent keeps its swatch row and custom-hex popup;
+// highlight and folder color are one swatch popup each; icon style is four
+// `SettingsModeTile`s over the four `appearance.iconStyle` values.
 //
 // Every settingsd-backed row is a `SettingsKeyRow`, so a rejected write
 // reverts its control and shows the owner's message inline. A row with no
@@ -238,7 +243,7 @@ Item {
     // so a pane served from a stale compiled resource fails
     // `tst_settings_appearance` instead of silently passing. A stale build copy
     // is caught separately by `tst_settings_qml_copy_sync`.
-    readonly property string sourceRevision: "t290c"
+    readonly property string sourceRevision: "t290d"
 
     // Test/capture accessor (T290a). Tests and captures reach a control
     // through a pane-body property or alias like this one, never through an id
@@ -249,20 +254,20 @@ Item {
     property alias schemeTileRepeater: schemeTileRepeater
 
     property alias schemeRow: schemeRow
+    property alias themeGroup: themeGroup
     property alias accentRepeater: accentRepeater
     property alias accentRow: accentRow
     property alias accentPopup: accentPopup
     property alias accentInput: accentPopup.input
-    property alias highlightRepeater: highlightRepeater
     property alias highlightRow: highlightRow
-    property alias highlightPopup: highlightPopup
-    property alias highlightInput: highlightPopup.input
-    property alias folderColorRepeater: folderColorRepeater
-    property alias folderColorRow: folderColorRow
-    property alias folderColorPopup: folderColorPopup
-    property alias folderColorInput: folderColorPopup.input
+    property alias highlightSelect: highlightSelect
+    property alias highlightSelectPopup: highlightChoicePopup
+    property alias iconStyleTiles: iconStyleTiles
+    property alias iconStyleTileRepeater: iconStyleTileRepeater
     property alias iconStyleRow: iconStyleRow
-    property alias iconStyleControl: iconStyleControl
+    property alias folderColorRow: folderColorRow
+    property alias folderColorSelect: folderColorSelect
+    property alias folderColorSelectPopup: folderColorChoicePopup
     property alias iconThemeRow: iconThemeRow
     property alias iconThemeSelect: iconThemeSelect
     property alias cursorThemeRow: cursorThemeRow
@@ -345,6 +350,42 @@ Item {
                                 : Theme.color.accent;
     }
 
+    // T290d: the four icon-style tiles share the same capped control slot as
+    // the scheme row. Size each tile from the row (never from `parent.width`
+    // inside a Row) and let the row derive its height from the tiles.
+    readonly property real iconStyleTileWidth: {
+        var count = Math.max(1, root.iconStyleOptions.length);
+        var available = iconStyleRow.width * 0.6
+                - (count - 1) * Theme.primitive.spacing.sm;
+        var perTile = available / count;
+        return Math.max(44, Math.min(Theme.controls.settingsModeTile.width,
+                                   perTile));
+    }
+    readonly property real iconStyleTileRowHeight:
+        iconStyleTiles.implicitHeight + 2 * Theme.primitive.spacing.sm
+
+    // The tile thumbnails are the design-system palette: Default is the light
+    // plate with the live accent, Dark the dark plate, Clear the transparent
+    // plate, Tinted the accent wash. They are the four `appearance.iconStyle`
+    // values, never the installed theme list.
+    function iconStylePreviewFill(value) {
+        if (value === "dark")
+            return Theme.primitive.color.neutral900;
+        if (value === "clear")
+            return Theme.primitive.color.neutral0;
+        if (value === "tinted")
+            return Theme.color.accentMuted;
+        return Theme.primitive.color.neutral100;
+    }
+
+    function iconStylePreviewAccent(value) {
+        if (value === "dark")
+            return Theme.primitive.color.azure400;
+        if (value === "clear")
+            return Theme.primitive.color.neutral400;
+        return Theme.color.accent;
+    }
+
     function isHexColor(text) {
         return /^#[0-9a-fA-F]{6}$/.test((text || "").trim());
     }
@@ -359,6 +400,27 @@ Item {
 
     function iconStyleIndex() {
         return root.optionIndex(root.iconStyleOptions, root.currentIconStyle, 0);
+    }
+
+    // Left/Right move to the next available style, matching the segmented
+    // control this replaces. Unavailable styles are skipped, not written.
+    function iconStyleMove(delta, fromIndex) {
+        var count = root.iconStyleOptions.length;
+        if (count === 0)
+            return;
+        var index = fromIndex;
+        for (var step = 0; step < count; ++step) {
+            index = (index + delta + count) % count;
+            var option = root.iconStyleOptions[index];
+            if (option && option.enabled !== false) {
+                var tile = iconStyleTileRepeater.itemAt(index);
+                if (tile)
+                    tile.forceActiveFocus();
+                root.iconStyleRejectedReason = "";
+                Settings.set("appearance.iconStyle", String(option.value));
+                return;
+            }
+        }
     }
 
     Column {
@@ -618,12 +680,16 @@ Item {
             }
         }
 
-        // macOS groups the two colour rows in one card. The highlight is a
-        // first-class custom colour, not a fixed enum (T274).
+        // T290d: one Theme card in the mockup order. The accent keeps its
+        // swatch row and custom-hex popup (the one colour with a custom entry
+        // point); highlight and folder color are one swatch popup each; icon
+        // style is four tiles over the four `appearance.iconStyle` values.
+        // Sidebar icon size stays at the end of this card until T290e.
         SettingsGroup {
+            id: themeGroup
             width: parent.width
-            title: qsTr("Color")
-            sectionId: "Color"
+            title: qsTr("Theme")
+            sectionId: "Theme"
 
             SettingsKeyRow {
                 id: accentRow
@@ -659,42 +725,22 @@ Item {
             SettingsKeyRow {
                 id: highlightRow
                 width: parent.width
-                label: qsTr("Highlight color")
+                label: qsTr("Text highlight color") + root.labelSuffix
                 settingsId: "highlight"
                 owner: "settingsd + shell"
                 settingsKey: "appearance.highlight"
                 description: qsTr("The selection wash in search fields and pickers. "
                                   + "Default follows the active color scheme.")
-                showSeparator: false
 
-                controlData: Row {
-                    spacing: Theme.primitive.spacing.sm
-
-                    Repeater {
-                        id: highlightRepeater
-                        model: root.highlightPalette
-                        delegate: ColorSwatch {
-                            currentValue: root.currentHighlight
-                            fallbackColor: Theme.color.selection
-                            onChosen: (value) => Settings.set("appearance.highlight", value)
-                        }
-                    }
-
-                    Button {
-                        id: customHighlightButton
-                        text: qsTr("Custom…")
-                        accessibleName: qsTr("Custom highlight color")
-                        onClicked: highlightPopup.open ? highlightPopup.hide()
-                                                       : highlightPopup.show()
-                    }
+                // One popup that shows the current swatch, not a swatch row
+                // plus a button. A custom hex set elsewhere is shown as its
+                // hex label and is never cleared by the popup.
+                controlData: ColorSelectButton {
+                    id: highlightSelect
+                    accessibleLabel: qsTr("Text highlight color")
+                    popup: highlightChoicePopup
                 }
             }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: qsTr("Icon & widget style")
-            sectionId: "Icon & widget style"
 
             SettingsKeyRow {
                 id: iconStyleRow
@@ -711,47 +757,88 @@ Item {
                        : (root.iconStyleUnavailable.length > 0
                           ? qsTr("Maps to an installed icon theme. ") + root.iconStyleUnavailable
                           : qsTr("Maps to an installed icon theme.")))
+                // The tiles are taller than the 33 pt row. Derive the height
+                // from the control instead of `fixedRowHeight`.
+                rowHeight: root.iconStyleTileRowHeight
 
-                controlData: SegmentedControl {
-                    id: iconStyleControl
-                    model: root.iconStyleOptions
-                    onActivated: (index) => Settings.set(
-                                    "appearance.iconStyle",
-                                    String(root.iconStyleOptions[index].value))
-                    onRejected: (index, reason) => root.iconStyleRejectedReason = reason
+                controlData: Row {
+                    id: iconStyleTiles
+                    spacing: Theme.primitive.spacing.sm
+
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: qsTr("Icon & widget style")
+
+                    Repeater {
+                        id: iconStyleTileRepeater
+                        model: root.iconStyleOptions
+
+                        delegate: SettingsModeTile {
+                            required property var modelData
+                            required property int index
+
+                            // A style the provider cannot map to a theme stays
+                            // visible and dimmed. It is still a click target so
+                            // the rejection reason reaches the row description,
+                            // exactly like the segmented control it replaces.
+                            readonly property bool available:
+                                modelData.enabled !== false
+
+                            width: root.iconStyleTileWidth
+                            label: modelData.label
+                            previewFill: root.iconStylePreviewFill(modelData.value)
+                            previewAccent: root.iconStylePreviewAccent(modelData.value)
+                            selected: root.currentIconStyle === modelData.value
+                            opacity: available ? 1.0 : 0.45
+                            Accessible.description:
+                                available ? "" : String(modelData.reason || "")
+                            onClicked: {
+                                if (!available) {
+                                    root.iconStyleRejectedReason =
+                                        String(modelData.reason
+                                               || qsTr("%1 is unavailable on this system.")
+                                                      .arg(modelData.label));
+                                    return;
+                                }
+                                root.iconStyleRejectedReason = "";
+                                Settings.set("appearance.iconStyle",
+                                             String(modelData.value));
+                            }
+                        }
+                    }
+
+                    Keys.onPressed: (event) => {
+                        if (event.key !== Qt.Key_Left
+                                && event.key !== Qt.Key_Right)
+                            return;
+                        var delta = event.key === Qt.Key_Right ? 1 : -1;
+                        var index = root.iconStyleIndex();
+                        for (var i = 0; i < iconStyleTileRepeater.count; ++i) {
+                            var tile = iconStyleTileRepeater.itemAt(i);
+                            if (tile && tile.activeFocus) {
+                                index = i;
+                                break;
+                            }
+                        }
+                        root.iconStyleMove(delta, index);
+                        event.accepted = true;
+                    }
                 }
             }
 
             SettingsKeyRow {
                 id: folderColorRow
                 width: parent.width
-                label: qsTr("Folder color")
+                label: qsTr("Folder color") + root.labelSuffix
                 settingsId: "folderColor"
                 owner: "settingsd + Files"
                 settingsKey: "appearance.folderColor"
                 description: qsTr("Tints the plain folder icon in Files and the Dock. "
                                   + "Automatic keeps the shipped folder artwork.")
 
-                controlData: Row {
-                    spacing: Theme.primitive.spacing.sm
-
-                    Repeater {
-                        id: folderColorRepeater
-                        model: root.folderPalette
-                        delegate: ColorSwatch {
-                            currentValue: root.currentFolderColor
-                            fallbackColor: Theme.color.textSecondary
-                            onChosen: (value) => Settings.set("appearance.folderColor", value)
-                        }
-                    }
-
-                    Button {
-                        id: customFolderButton
-                        text: qsTr("Custom…")
-                        accessibleName: qsTr("Custom folder color")
-                        onClicked: folderColorPopup.open ? folderColorPopup.hide()
-                                                        : folderColorPopup.show()
-                    }
+                controlData: ColorSelectButton {
+                    id: folderColorSelect
+                    accessibleLabel: qsTr("Folder color")
+                    popup: folderColorChoicePopup
                 }
             }
 
@@ -1019,11 +1106,6 @@ Item {
                                 root.currentScrollBarClick, 0)
     }
     Binding {
-        target: iconStyleControl
-        property: "currentIndex"
-        value: root.iconStyleIndex()
-    }
-    Binding {
         target: iconThemeSelect
         property: "currentIndex"
         value: root.optionIndex(root.iconThemeOptions, root.currentIconTheme, 0)
@@ -1145,20 +1227,329 @@ Item {
         onApplied: (value) => Settings.set("appearance.accent", value)
     }
 
-    ColorPickerPopup {
-        id: highlightPopup
-        anchorItem: customHighlightButton
-        initial: root.currentHighlight
-        accessibleName: qsTr("Custom highlight color")
-        onApplied: (value) => Settings.set("appearance.highlight", value)
+    // T290d: the two single-colour popups. Each owns the palette, shows the
+    // current value as a swatch and label on its trigger, and writes the key
+    // only when an option is chosen. An externally-set custom hex is shown as
+    // its hex label and never cleared.
+    ColorChoicePopup {
+        id: highlightChoicePopup
+        anchorItem: highlightSelect
+        palette: root.highlightPalette
+        currentValue: root.currentHighlight
+        fallbackColor: Theme.color.selection
+        accessibleName: qsTr("Text highlight color")
+        onChosen: (value) => Settings.set("appearance.highlight", value)
     }
 
-    ColorPickerPopup {
-        id: folderColorPopup
-        anchorItem: customFolderButton
-        initial: root.currentFolderColor
-        accessibleName: qsTr("Custom folder color")
-        onApplied: (value) => Settings.set("appearance.folderColor", value)
+    ColorChoicePopup {
+        id: folderColorChoicePopup
+        anchorItem: folderColorSelect
+        palette: root.folderPalette
+        currentValue: root.currentFolderColor
+        fallbackColor: Theme.color.textSecondary
+        accessibleName: qsTr("Folder color")
+        onChosen: (value) => Settings.set("appearance.folderColor", value)
+    }
+
+    // The trigger for a single-colour popup: current swatch, current label,
+    // and a chevron. It is a pane-local control, not a fork of `Select`: the
+    // value is a colour and the open surface is the swatch palette above.
+    component ColorSelectButton: Item {
+        id: trigger
+
+        property string accessibleLabel: ""
+        property var popup: null
+
+        readonly property string currentLabel:
+            trigger.popup ? String(trigger.popup.currentLabel) : ""
+        readonly property color swatchColor:
+            trigger.popup ? trigger.popup.currentSwatchColor
+                          : Theme.color.controlFill
+        readonly property bool opened:
+            trigger.popup ? trigger.popup.open === true : false
+
+        implicitWidth: Math.max(Theme.controls.select.minWidth,
+                                Theme.controls.select.paddingH + swatch.width
+                                + Theme.primitive.spacing.sm
+                                + labelText.implicitWidth
+                                + Theme.primitive.spacing.sm
+                                + chevron.width
+                                + Theme.controls.select.paddingH)
+        implicitHeight: Theme.controls.select.height
+        activeFocusOnTab: true
+
+        function toggle() {
+            if (!trigger.popup)
+                return;
+            if (trigger.popup.open)
+                trigger.popup.hide();
+            else
+                trigger.popup.show();
+        }
+
+        function open() {
+            if (trigger.popup)
+                trigger.popup.show();
+        }
+
+        function close() {
+            if (trigger.popup)
+                trigger.popup.hide();
+        }
+
+        function optionAt(index) {
+            return trigger.popup ? trigger.popup.optionAt(index) : null;
+        }
+
+        function chooseIndex(index) {
+            if (trigger.popup)
+                trigger.popup.chooseIndex(index);
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controls.select.radius
+            color: selectHover.hovered ? Theme.color.controlHover
+                                       : Theme.color.controlFill
+            border.width: Theme.controls.window.borderWidth
+            border.color: Theme.color.border
+            antialiasing: true
+        }
+
+        Rectangle {
+            id: swatch
+            width: 14
+            height: 14
+            radius: width / 2
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.controls.select.paddingH
+            anchors.verticalCenter: parent.verticalCenter
+            color: trigger.swatchColor
+            border.width: Theme.controls.window.borderWidth
+            border.color: Theme.color.border
+            antialiasing: true
+        }
+
+        Text {
+            id: labelText
+            anchors.left: swatch.right
+            anchors.leftMargin: Theme.primitive.spacing.sm
+            anchors.right: chevron.left
+            anchors.rightMargin: Theme.primitive.spacing.sm
+            anchors.verticalCenter: parent.verticalCenter
+            text: trigger.currentLabel
+            color: Theme.color.textPrimary
+            elide: Text.ElideRight
+            font.pixelSize: Theme.controls.button.fontSize
+        }
+
+        TablerIcon {
+            id: chevron
+            name: "chevron-down"
+            size: Theme.controls.select.chevronSize
+            color: Theme.color.textTertiary
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.controls.select.paddingH
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
+        HoverHandler { id: selectHover }
+
+        TapHandler {
+            onTapped: trigger.toggle()
+        }
+
+        FocusRing {
+            target: trigger
+            cornerRadius: Theme.controls.select.radius
+            shown: trigger.activeFocus
+        }
+
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter || event.key === Qt.Key_Down) {
+                trigger.toggle();
+                event.accepted = true;
+            }
+        }
+
+        Accessible.role: Accessible.ComboBox
+        Accessible.name: trigger.accessibleLabel
+        Accessible.description: qsTr("Current value %1")
+                                 .arg(trigger.currentLabel)
+        Accessible.focusable: true
+        Accessible.onPressAction: trigger.toggle()
+    }
+
+    // The palette surface behind a `ColorSelectButton`. One row per palette
+    // entry, each a real radio button; the current entry carries the check.
+    component ColorChoicePopup: Popup {
+        id: chooser
+
+        property var palette: []
+        property string currentValue: ""
+        property color fallbackColor: Theme.color.selection
+
+        readonly property var currentEntry: {
+            for (var i = 0; i < chooser.palette.length; ++i) {
+                if (String(chooser.palette[i].value) === chooser.currentValue)
+                    return chooser.palette[i];
+            }
+            return null;
+        }
+        readonly property string currentLabel: {
+            if (chooser.currentEntry)
+                return String(chooser.currentEntry.label);
+            if (chooser.currentValue.length > 0)
+                return chooser.currentValue;
+            return chooser.palette.length > 0
+                    ? String(chooser.palette[0].label) : "";
+        }
+        readonly property color currentSwatchColor: {
+            if (chooser.currentEntry
+                    && String(chooser.currentEntry.value) !== "")
+                return String(chooser.currentEntry.value);
+            if (!chooser.currentEntry
+                    && root.isHexColor(chooser.currentValue))
+                return chooser.currentValue;
+            return chooser.fallbackColor;
+        }
+        readonly property int optionCount: optionRepeater.count
+
+        signal chosen(string value)
+
+        anchorItem: null
+        preferredWidth: 220
+        accessibleName: qsTr("Color")
+
+        function optionAt(index) {
+            return optionRepeater.itemAt(index);
+        }
+
+        function chooseIndex(index) {
+            var entry = chooser.palette[index];
+            if (!entry)
+                return;
+            chooser.chosen(String(entry.value));
+            chooser.hide();
+        }
+
+        Column {
+            width: parent.width
+            spacing: Theme.primitive.spacing.xxs
+
+            Repeater {
+                id: optionRepeater
+                model: chooser.palette
+
+                delegate: ColorOption {
+                    currentValue: chooser.currentValue
+                    fallbackColor: chooser.fallbackColor
+                    onChosen: (value) => {
+                        chooser.chosen(value);
+                        chooser.hide();
+                    }
+                }
+            }
+        }
+    }
+
+    // One row in the colour popup: swatch, label, and the current check.
+    component ColorOption: Item {
+        id: option
+
+        required property var modelData
+        property string currentValue: ""
+        property color fallbackColor: Theme.color.selection
+
+        readonly property bool selected:
+            String(option.currentValue) === String(option.modelData.value)
+        readonly property color swatchColor:
+            String(option.modelData.value) === "" ? option.fallbackColor
+                                                  : String(option.modelData.value)
+
+        signal chosen(string value)
+
+        width: parent ? parent.width : 0
+        height: Theme.controls.settingsRow.height
+        activeFocusOnTab: true
+
+        function activate() {
+            option.chosen(String(option.modelData.value));
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.primitive.radius.sm
+            color: option.selected ? Theme.color.accentMuted
+                   : optionHover.hovered ? Theme.color.controlHover
+                                         : "transparent"
+            antialiasing: true
+        }
+
+        Rectangle {
+            id: optionSwatch
+            width: 14
+            height: 14
+            radius: width / 2
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.primitive.spacing.sm
+            anchors.verticalCenter: parent.verticalCenter
+            color: option.swatchColor
+            border.width: Theme.controls.window.borderWidth
+            border.color: Theme.color.border
+            antialiasing: true
+        }
+
+        Text {
+            anchors.left: optionSwatch.right
+            anchors.leftMargin: Theme.primitive.spacing.sm
+            anchors.right: checkGlyph.left
+            anchors.rightMargin: Theme.primitive.spacing.xs
+            anchors.verticalCenter: parent.verticalCenter
+            text: option.modelData.label
+            color: Theme.color.textPrimary
+            elide: Text.ElideRight
+            font.pixelSize: Theme.controls.button.fontSize
+        }
+
+        TablerIcon {
+            id: checkGlyph
+            name: "check"
+            size: Theme.controls.select.chevronSize
+            color: Theme.color.accent
+            visible: option.selected
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.primitive.spacing.sm
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
+        HoverHandler { id: optionHover }
+
+        TapHandler {
+            onTapped: option.activate()
+        }
+
+        FocusRing {
+            target: option
+            cornerRadius: Theme.primitive.radius.sm
+            shown: option.activeFocus
+        }
+
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter) {
+                option.activate();
+                event.accepted = true;
+            }
+        }
+
+        Accessible.role: Accessible.RadioButton
+        Accessible.name: option.modelData.label
+        Accessible.checkable: true
+        Accessible.checked: option.selected
+        Accessible.focusable: true
+        Accessible.onPressAction: option.activate()
     }
 
     // One color choice. Selected state follows the settings value, so an

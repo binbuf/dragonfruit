@@ -178,10 +178,20 @@ Item {
             compare(dark[0].kind, "pane");
             compare(dark[0].paneId, "appearance");
 
+            // T290d: the Appearance pane now has a Theme section, so an exact
+            // "theme" query lands on that section (and deep-links to its first
+            // row) while the pane stays in the same result group.
             var theme = SettingsSearch.search("theme");
             verify(theme.length > 0);
-            compare(theme[0].kind, "pane");
             compare(theme[0].paneId, "appearance");
+            compare(theme[0].kind, "section");
+            compare(theme[0].label, "Theme");
+            var themePane = false;
+            for (var t = 0; t < theme.length; ++t) {
+                if (theme[t].kind === "pane" && theme[t].paneId === "appearance")
+                    themePane = true;
+            }
+            verify(themePane, "the Appearance pane must remain a 'theme' result");
 
             var size = SettingsSearch.search("size");
             verify(size.length > 0);
@@ -233,6 +243,36 @@ Item {
                        + "' must reach appearance/transparency");
             }
         }
+
+        // T290d: the Theme rows are findable by their labels and the words
+        // users use for them.
+        function test_appearance_theme_rows_are_searchable() {
+            var cases = [
+                { terms: ["accent"], row: "accent" },
+                { terms: ["text highlight", "selection color", "highlight"],
+                  row: "highlight" },
+                { terms: ["icon style", "widget style"], row: "iconStyle" },
+                { terms: ["folder color", "folder tint"], row: "folderColor" }
+            ];
+            for (var c = 0; c < cases.length; ++c) {
+                for (var t = 0; t < cases[c].terms.length; ++t) {
+                    var results = SettingsSearch.search(cases[c].terms[t]);
+                    var found = false;
+                    for (var i = 0; i < results.length; ++i) {
+                        if (results[i].paneId === "appearance"
+                                && String(results[i].deepLink)
+                                   === "settings://pane/appearance/row/"
+                                      + cases[c].row) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    verify(found, "search for '" + cases[c].terms[t]
+                           + "' must reach appearance/" + cases[c].row);
+                }
+            }
+        }
+
 
         function test_synonyms_and_help_text_are_indexed() {
             var bluez = SettingsSearch.search("bluez");
