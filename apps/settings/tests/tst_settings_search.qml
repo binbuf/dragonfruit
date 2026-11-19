@@ -194,6 +194,26 @@ Item {
             compare(SettingsSearch.search("no-such-setting").length, 0);
         }
 
+        // T290b: the Appearance tiles are searchable by their three values,
+        // not only by the old "light mode"/"dark mode" phrases.
+        function test_appearance_scheme_finds_light_dark_and_auto() {
+            var terms = ["light", "dark", "auto"];
+            for (var t = 0; t < terms.length; ++t) {
+                var results = SettingsSearch.search(terms[t]);
+                var found = false;
+                for (var i = 0; i < results.length; ++i) {
+                    if (results[i].paneId === "appearance"
+                            && String(results[i].deepLink)
+                               === "settings://pane/appearance/row/scheme") {
+                        found = true;
+                        break;
+                    }
+                }
+                verify(found, "search for '" + terms[t]
+                       + "' must reach appearance/scheme");
+            }
+        }
+
         function test_synonyms_and_help_text_are_indexed() {
             var bluez = SettingsSearch.search("bluez");
             verify(bluez.length > 0);

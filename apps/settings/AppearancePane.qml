@@ -245,15 +245,16 @@ Item {
     // so a pane served from a stale compiled resource fails
     // `tst_settings_appearance` instead of silently passing. A stale build copy
     // is caught separately by `tst_settings_qml_copy_sync`.
-    readonly property string sourceRevision: "t290a"
+    readonly property string sourceRevision: "t290b"
 
     // Test/capture accessor (T290a). Tests and captures reach a control
     // through a pane-body property or alias like this one, never through an id
     // declared inside an inline `component` (those are not reachable through
     // the instance).
     readonly property Item schemeRowHandle: schemeRow
+    readonly property Item schemeTiles: schemeTilesRow
+    property alias schemeTileRepeater: schemeTileRepeater
 
-    property alias schemeControl: schemeControl
     property alias schemeRow: schemeRow
     property alias accentRepeater: accentRepeater
     property alias accentRow: accentRow
@@ -308,15 +309,50 @@ Item {
     // its right-hand controls. A standalone instance keeps the implicit width.
     width: parent ? parent.width : implicitWidth
 
+    // T290b: the live scheme key is the single source of truth for the tile
+    // ring. An external settingsd write and a tile click both read this.
+    readonly property string currentScheme:
+        Settings.values["appearance.colorScheme"] || "auto"
+
     // Index of the active scheme in the reference order; unknown/auto falls to
-    // the Auto segment.
+    // the Auto tile.
     function schemeIndex() {
-        var current = Settings.values["appearance.colorScheme"] || "auto";
         for (var i = 0; i < root.schemeOptions.length; ++i) {
-            if (root.schemeOptions[i].value === current)
+            if (root.schemeOptions[i].value === root.currentScheme)
                 return i;
         }
         return root.schemeOptions.length - 1;
+    }
+
+    // The three tiles share the control slot, which is capped at 60% of the
+    // row. Derive one tile width from the row (never from `parent.width`
+    // inside a layout) so all three stay inside the card at 640×640 and at
+    // the measured 740×820 window. The token width is the upper bound.
+    readonly property real schemeTileWidth: {
+        var available = schemeRow.width * 0.6
+                - 2 * Theme.primitive.spacing.sm;
+        var perTile = available / root.schemeOptions.length;
+        return Math.max(48, Math.min(Theme.controls.settingsModeTile.width,
+                                   perTile));
+    }
+    readonly property real schemeTileRowHeight:
+        schemeTilesRow.implicitHeight + 2 * Theme.primitive.spacing.sm
+
+    // The thumbnails use the design-system neutral tokens, not the mockup's
+    // CSS hex values: Light is the lightest plate, Dark the darkest, Auto
+    // follows the live scheme's muted surface.
+    function schemePreviewFill(value) {
+        if (value === "light")
+            return Theme.primitive.color.neutral0;
+        if (value === "dark")
+            return Theme.primitive.color.neutral900;
+        return Theme.dark ? Theme.primitive.color.neutral800
+                          : Theme.primitive.color.neutral50;
+    }
+
+    function schemePreviewAccent(value) {
+        return value === "dark" ? Theme.primitive.color.azure400
+                                : Theme.color.accent;
     }
 
     function isHexColor(text) {
@@ -353,12 +389,63 @@ Item {
                 owner: "settingsd + compositor"
                 settingsKey: "appearance.colorScheme"
                 showSeparator: false
+                // The tile row is taller than the 33 pt token. Deriving the
+                // row height from the control keeps the group body and the
+                // centered label in step without `fixedRowHeight`.
+                rowHeight: root.schemeTileRowHeight
 
-                controlData: SegmentedControl {
-                    id: schemeControl
-                    model: root.schemeOptions.map(function(option) { return option.label; })
-                    onActivated: (index) => Settings.set("appearance.colorScheme",
-                                                         root.schemeOptions[index].value)
+                controlData: Row {
+                    id: schemeTilesRow
+                    spacing: Theme.primitive.spacing.sm
+
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: qsTr("Appearance")
+
+                    Repeater {
+                        id: schemeTileRepeater
+                        model: root.schemeOptions
+
+                        delegate: SettingsModeTile {
+                            required property var modelData
+                            required property int index
+
+                            width: root.schemeTileWidth
+                            label: modelData.label
+                            previewFill: root.schemePreviewFill(modelData.value)
+                            previewAccent: root.schemePreviewAccent(modelData.value)
+                            selected: root.currentScheme === modelData.value
+                            onClicked: Settings.set("appearance.colorScheme",
+                                                    modelData.value)
+                        }
+                    }
+
+                    // Left/Right are the radio-group movement keys. The tiles
+                    // are already Tab stops; this also matches the shared
+                    // SettingsRadioGroup behavior. The tile accepts
+                    // Return/Enter/Space itself, so only arrows reach here.
+                    Keys.onPressed: (event) => {
+                        if (event.key !== Qt.Key_Left
+                                && event.key !== Qt.Key_Right)
+                            return;
+                        var delta = event.key === Qt.Key_Right ? 1 : -1;
+                        var index = root.schemeIndex();
+                        for (var i = 0; i < schemeTileRepeater.count; ++i) {
+                            var candidate = schemeTileRepeater.itemAt(i);
+                            if (candidate && candidate.activeFocus) {
+                                index = i;
+                                break;
+                            }
+                        }
+                        var next = Math.max(0, Math.min(
+                            root.schemeOptions.length - 1, index + delta));
+                        var tile = schemeTileRepeater.itemAt(next);
+                        if (tile) {
+                            tile.forceActiveFocus();
+                            Settings.set("appearance.colorScheme",
+                                         root.schemeOptions[next].value);
+                        }
+                        event.accepted = true;
+                    }
                 }
             }
         }
@@ -999,15 +1086,6 @@ Item {
         interval: 60
         repeat: false
         onTriggered: root.flushTransparency()
-    }
-
-    // Two-way binding for the scheme selector: the control writes on activation,
-    // and this keeps it in step with `Settings.values` (a user edit and an
-    // external settingsd change converge without a restart).
-    Binding {
-        target: schemeControl
-        property: "currentIndex"
-        value: root.schemeIndex()
     }
 
     // External settingsd changes converge into the knob, but an in-flight drag

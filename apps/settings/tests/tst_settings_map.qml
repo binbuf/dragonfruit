@@ -92,6 +92,18 @@ Item {
             }
         }
 
+        // T290b: the Appearance mode row is three visual tiles, not the old
+        // segmented control. The section/label/key stay as the map contract.
+        function test_appearance_scheme_row_is_a_tile_control() {
+            var row = SettingsMap.rowFor("appearance", "scheme");
+            verify(row !== null);
+            compare(row.control, "tiles");
+            compare(row.section, "Appearance");
+            compare(row.label, "Appearance");
+            compare(row.key, "appearance.colorScheme");
+            compare(row.state, "shipped");
+        }
+
         // -- Every visible row has an owner/key/absence path -------------------
 
         function test_every_visible_row_has_an_owner() {

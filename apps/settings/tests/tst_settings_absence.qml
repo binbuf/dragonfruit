@@ -217,15 +217,16 @@ Item {
         function test_appearance_pane_stays_live_without_a_daemon() {
             var shell = make();
             var pane = showPane(shell, "appearance");
-            verify(pane.schemeControl.enabled);
+            compare(pane.schemeTileRepeater.count, 3);
+            verify(pane.schemeTileRepeater.itemAt(0).enabled);
             compare(pane.accentRepeater.count, 6);
             verify(pane.accentRepeater.itemAt(0).enabled);
 
             // A write lands in the in-memory store even with no daemon.
-            pane.schemeControl.activateIndex(1); // dark
+            pane.schemeTileRepeater.itemAt(1).clicked(); // dark
             compare(Settings.values["appearance.colorScheme"], "dark");
             compare(Theme.dark, true);
-            pane.schemeControl.activateIndex(0); // light
+            pane.schemeTileRepeater.itemAt(0).clicked(); // light
             compare(Settings.values["appearance.colorScheme"], "light");
             // This headless software scene has no sampled pass; pin the
             // legacy preview so the slider's resolver is deterministic.

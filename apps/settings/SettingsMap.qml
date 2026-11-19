@@ -596,7 +596,7 @@ QtObject {
                          "UDisks2", "storage.drives", "disabled-with-reason", "shipped")
             ],
             "appearance": [
-                root.row("scheme", qsTr("Appearance"), qsTr("Appearance"), "segmented",
+                root.row("scheme", qsTr("Appearance"), qsTr("Appearance"), "tiles",
                          "settingsd + compositor", "appearance.colorScheme", "live-on-defaults", "shipped"),
                 root.row("accent", qsTr("Color"), qsTr("Accent color"), "swatches",
                          "settingsd", "appearance.accent", "live-on-defaults", "shipped"),

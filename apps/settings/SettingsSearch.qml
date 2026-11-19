@@ -98,8 +98,8 @@ QtObject {
     // different word. Keyed by `<paneId>/<rowId>`; map rows without an entry
     // still index their label, section, owner, key, and control.
     readonly property var rowSynonyms: ({
-        "appearance/scheme": ["theme", "dark mode", "light mode", "auto",
-                              "color scheme"],
+        "appearance/scheme": ["theme", "dark mode", "light mode", "dark",
+                              "light", "auto", "color scheme"],
         "appearance/accent": ["highlight color", "tint", "color"],
         "appearance/transparency": ["attached menu transparency", "glass",
                                     "opacity"],

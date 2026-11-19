@@ -62,11 +62,20 @@ Item {
             return pane;
         }
 
+        function schemeTile(pane, index) {
+            var tile = pane.schemeTileRepeater.itemAt(index);
+            verify(tile, "the scheme tile at index " + index + " must exist");
+            return tile;
+        }
+
         function test_pane_opens_with_the_wired_controls() {
             var shell = make();
             compare(shell.currentPaneId, "appearance");
             var pane = paneOf(shell);
-            compare(pane.schemeControl.currentIndex, 2); // auto
+            compare(pane.schemeTileRepeater.count, 3);
+            compare(schemeTile(pane, 2).selected, true); // auto
+            compare(schemeTile(pane, 0).selected, false);
+            compare(schemeTile(pane, 1).selected, false);
             compare(pane.accentRepeater.count, 6);
             compare(Settings.values["appearance.colorScheme"], "auto");
         }
@@ -77,10 +86,10 @@ Item {
             // T290a: the pane that actually loaded must come from the source
             // tree. A stale build copy or a stale compiled resource fails here
             // instead of silently testing the previous pane.
-            compare(pane.sourceRevision, "t290a");
+            compare(pane.sourceRevision, "t290b");
         }
 
-        function test_scheme_row_handle_reaches_the_control() {
+        function test_scheme_row_handle_reaches_the_tile_row() {
             var shell = make();
             var pane = paneOf(shell);
 
@@ -91,28 +100,105 @@ Item {
             verify(handle);
             var control = handle.control.children[0];
             verify(control);
-            compare(control.currentIndex, 2); // auto
+            verify(control === pane.schemeTiles);
+            compare(pane.schemeTileRepeater.count, 3);
+            compare(schemeTile(pane, 2).selected, true); // auto
 
-            control.activateIndex(1); // dark
+            var dark = schemeTile(pane, 1);
+            mouseClick(dark, dark.width / 2, dark.height / 2);
             compare(Settings.values["appearance.colorScheme"], "dark");
             compare(Theme.dark, true);
+            tryVerify(function() { return dark.selected; });
         }
 
-        function test_scheme_selection_applies_live() {
+        function test_scheme_tiles_apply_live_on_click() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var light = schemeTile(pane, 0);
+            var dark = schemeTile(pane, 1);
+            var auto = schemeTile(pane, 2);
+
+            mouseClick(dark, dark.width / 2, dark.height / 2);
+            compare(Settings.values["appearance.colorScheme"], "dark");
+            compare(Theme.dark, true);
+            tryVerify(function() { return dark.selected; });
+            compare(light.selected, false);
+
+            mouseClick(light, light.width / 2, light.height / 2);
+            compare(Settings.values["appearance.colorScheme"], "light");
+            compare(Theme.dark, false);
+            tryVerify(function() { return light.selected; });
+            compare(dark.selected, false);
+
+            mouseClick(auto, auto.width / 2, auto.height / 2);
+            compare(Settings.values["appearance.colorScheme"], "auto");
+            tryVerify(function() { return auto.selected; });
+            compare(light.selected, false);
+        }
+
+        function test_scheme_tiles_follow_an_external_change() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var light = schemeTile(pane, 0);
+            var dark = schemeTile(pane, 1);
+            var auto = schemeTile(pane, 2);
+
+            Settings.set("appearance.colorScheme", "dark");
+            tryVerify(function() { return dark.selected; });
+            compare(light.selected, false);
+            compare(auto.selected, false);
+            compare(dark.Accessible.checked, true);
+
+            Settings.set("appearance.colorScheme", "light");
+            tryVerify(function() { return light.selected; });
+            compare(dark.selected, false);
+            compare(dark.Accessible.checked, false);
+            compare(light.Accessible.checked, true);
+
+            Settings.set("appearance.colorScheme", "auto");
+            tryVerify(function() { return auto.selected; });
+            compare(light.selected, false);
+            compare(auto.Accessible.checked, true);
+        }
+
+        function test_scheme_tiles_select_from_the_keyboard() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var light = schemeTile(pane, 0);
+            var dark = schemeTile(pane, 1);
+            var auto = schemeTile(pane, 2);
+
+            light.forceActiveFocus();
+            keyClick(Qt.Key_Space);
+            compare(Settings.values["appearance.colorScheme"], "light");
+            tryVerify(function() { return light.selected; });
+
+            dark.forceActiveFocus();
+            keyClick(Qt.Key_Return);
+            compare(Settings.values["appearance.colorScheme"], "dark");
+            tryVerify(function() { return dark.selected; });
+
+            // Left/Right are the radio-group movement keys.
+            keyClick(Qt.Key_Right);
+            compare(Settings.values["appearance.colorScheme"], "auto");
+            tryVerify(function() { return auto.selected; });
+            keyClick(Qt.Key_Left);
+            compare(Settings.values["appearance.colorScheme"], "dark");
+            tryVerify(function() { return dark.selected; });
+        }
+
+        function test_scheme_tiles_are_one_radio_group() {
             var shell = make();
             var pane = paneOf(shell);
 
-            pane.schemeControl.activateIndex(1); // dark
-            compare(Settings.values["appearance.colorScheme"], "dark");
-            compare(Theme.dark, true);
-            compare(pane.schemeControl.currentIndex, 1);
-
-            pane.schemeControl.activateIndex(0); // light
-            compare(Settings.values["appearance.colorScheme"], "light");
-            compare(Theme.dark, false);
-
-            pane.schemeControl.activateIndex(2); // auto
-            compare(Settings.values["appearance.colorScheme"], "auto");
+            compare(pane.schemeTiles.Accessible.role, Accessible.Grouping);
+            compare(pane.schemeTiles.Accessible.name, "Appearance");
+            for (var i = 0; i < pane.schemeTileRepeater.count; ++i) {
+                var tile = schemeTile(pane, i);
+                compare(tile.Accessible.role, Accessible.RadioButton);
+                compare(tile.Accessible.checkable, true);
+                compare(tile.Accessible.checked, tile.selected);
+            }
         }
 
         function test_accent_swatch_applies_live() {
@@ -272,7 +358,13 @@ Item {
                    "the accent control must sit at the right, right edge="
                    + (pane.accentRow.control.x + pane.accentRow.control.width)
                    + " row.width=" + pane.accentRow.width);
-            verify(pane.schemeControl.width > 0);
+            verify(pane.schemeTiles.width > 0);
+            compare(pane.schemeTileRepeater.count, 3);
+            for (var i = 0; i < pane.schemeTileRepeater.count; ++i) {
+                var tile = schemeTile(pane, i);
+                verify(tile.x + tile.width <= pane.schemeTiles.width + 0.5,
+                       "tile " + i + " must stay inside the tile row");
+            }
             verify(pane.accentRepeater.count === 6);
         }
 
@@ -298,6 +390,19 @@ Item {
                 verify(row.x + row.width <= shell.width,
                        "row must fit inside the window: right="
                        + (row.x + row.width) + " window=" + shell.width);
+            }
+
+            // The tile row is taller than a stock row and its three thumbnails
+            // must stay inside the control slot at 640×640.
+            verify(pane.schemeRow.height > Theme.controls.settingsRow.height * 2,
+                   "the scheme row must grow for the tile thumbnails");
+            compare(pane.schemeTileRepeater.count, 3);
+            for (var t = 0; t < pane.schemeTileRepeater.count; ++t) {
+                var tile = schemeTile(pane, t);
+                verify(tile.x >= 0
+                       && tile.x + tile.width <= pane.schemeTiles.width + 0.5,
+                       "tile " + t + " must stay inside the tile row");
+                verify(tile.height > 0);
             }
         }
 
