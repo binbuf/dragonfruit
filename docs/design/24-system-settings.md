@@ -978,6 +978,15 @@ the host-absent state in light/dark; the live Wayland walk is T284's.
 
 ### 4.7 Appearance — T274
 
+> **Superseded 2026-11-19 by T290a–T290g.** The landed Appearance IA is
+> [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md)
+> §5.4 and [ADR 0296](adr/0296-appearance-pane-adaptations.md) (task split:
+> [plan/ROADMAP.md](../tasks/system-settings-2/plan/ROADMAP.md)): six cards plus
+> a footer, three mode tiles, one Glass preview, one Theme card, the Windows
+> card, two scroll-bar radio cards, and the six Linux-only rows in an Advanced
+> Appearance sheet. The T274 text below is kept as history; the keys, owners,
+> and consumers it names are unchanged.
+
 Owner: settingsd + compositor/design system. Absence: live on defaults.
 
 T274 consolidates the pane into six cards (Appearance, Color, Icon & widget
@@ -1779,11 +1788,11 @@ The rules:
 | Desktop | Global app menu | Menu Bar → Menu Bar | `globalMenu` | `settingsd` | `menu.global` | shell/MenuBar, services/menu-broker | live-on-defaults | T276 |
 | Overview | Workspace count | Overview → Workspaces | `workspaceCount` | `settingsd` | `workspaces.count` | compositor/workspace model, shell | live-on-defaults | T276 |
 | Overview | Workspaces per display | Overview → Overview | `perDisplay` | compositor | `overview.perDisplay` | compositor/workspace model | read-only | T276 |
-| Appearance | Icon theme | Appearance → Desktop integration | `iconTheme` | `settingsd` + icon provider | `appearance.iconTheme` | shell/app-index icon lookup, Settings icon provider | disabled-with-reason | T274 |
-| Appearance | Cursor theme | Appearance → Desktop integration | `cursorTheme` | `settingsd` + compositor | `appearance.cursorTheme` | compositor cursor, next session | disabled-with-reason | T274 |
-| Appearance | Cursor size | Appearance → Desktop integration | `cursorSize` | `settingsd` + compositor | `appearance.cursorSize` | compositor cursor, next session | disabled-with-reason | T274 |
-| Appearance | Window control layout | Appearance → Desktop integration | `windowControls` | compositor/window decoration | `appearance.windowControls` | compositor decoration (traffic lights stay left) | disabled-with-reason | T274 |
-| Appearance | Material, performance, rollout | Appearance → Desktop integration | `material` | shell/design-system Glass | `appearance.material` | Glass GPU budget / rollout policy | disabled-with-reason | T274 |
+| Appearance | Icon theme | Appearance → Advanced Appearance | `iconTheme` | `settingsd` + icon provider | `appearance.iconTheme` | shell/app-index icon lookup, Settings icon provider | disabled-with-reason | T274 |
+| Appearance | Cursor theme | Appearance → Advanced Appearance | `cursorTheme` | `settingsd` + compositor | `appearance.cursorTheme` | compositor cursor, next session | disabled-with-reason | T274 |
+| Appearance | Cursor size | Appearance → Advanced Appearance | `cursorSize` | `settingsd` + compositor | `appearance.cursorSize` | compositor cursor, next session | disabled-with-reason | T274 |
+| Appearance | Window control layout | Appearance → Advanced Appearance | `windowControls` | compositor/window decoration | `appearance.windowControls` | compositor decoration (traffic lights stay left) | disabled-with-reason | T274 |
+| Appearance | Material, performance, rollout | Appearance → Advanced Appearance | `material` | shell/design-system Glass | `appearance.material` | Glass GPU budget / rollout policy | disabled-with-reason | T274 |
 | Displays | Per-output configuration | Displays → Displays | `perOutput` | platform outputs | `display.perOutput` | compositor/output | live-on-defaults | T273 |
 | Displays | Night light | Displays → Displays | `nightLight` | compositor | `display.nightLight` | compositor/output (pipeline absent) | disabled-with-reason | T273 |
 | Displays | Night light schedule | Displays → Displays | `nightLightSchedule` | compositor | `display.nightLight.schedule` | compositor/output (pipeline absent) | disabled-with-reason | T273 |

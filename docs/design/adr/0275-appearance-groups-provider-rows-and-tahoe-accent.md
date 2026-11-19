@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | accepted |
+| **Status** | accepted; the card layout and Preview group are superseded by [ADR 0296](0296-appearance-pane-adaptations.md) (T290), keys/owners unchanged |
 | **Date** | 2026-11-15 |
 | **Task** | T274 |
 | **Supersedes** | — |

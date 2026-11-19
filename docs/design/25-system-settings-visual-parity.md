@@ -497,18 +497,37 @@ dark.
 |---|---|
 | Appearance | Three visual mode tiles (Light/Dark/Auto), not a segmented control |
 | Glass | The rendered glass preview + tint slider; keep `appearance.transparency` and state its attached-menu scope honestly |
-| Theme | Accent swatches + Text highlight popup; icon-style tiles + Folder color popup |
+| Theme | Accent swatches (+ custom hex) + Text highlight popup; four icon-style tiles + Folder color popup |
 | Windows | Sidebar icon size popup; Tint window background with wallpaper color toggle |
 | Show scroll bars | Stacked radios |
 | Click in the scroll bar to | Stacked radios |
-| Footer | More in Accessibility Settings… |
+| Footer | Advanced Appearance… and More in Accessibility Settings… |
+
+The Glass preview is 120 pt (the mockup's is 198 pt) and is the rendered
+`Glass.resolve("menuAttached", …)` output, not a second formula.
+`appearance.transparency` is the attached-menu tint only: it does not re-tint
+the Dock, the menu bar, or windows, and the row description says so. A global
+glass-tint key is a later task with its own consumer.
+
+The four icon-style tiles are `appearance.iconStyle` (Default/Dark/Clear/
+Tinted), mapped through the installed-theme provider. The installed icon theme
+stays in the Advanced Appearance sheet as `appearance.iconTheme`, and an
+explicit theme wins over the style mapping. Text highlight and Folder color are
+single swatch popups over the design-system palette; the custom `#rrggbb`
+entry point is accent-only. The sidebar icon size row lives in the Windows
+card; the two scroll-bar controls are stacked `SettingsRadioGroup`s whose
+option labels may elide at 640 px.
 
 The Linux-only Appearance rows (icon theme, cursor theme, cursor size, window
 control layout, material effects, accent from wallpaper) stay reachable in an
 **Advanced Appearance…** sheet. They have real owners and must not disappear,
-but the main pane follows the mockup.
+but the main pane follows the mockup. The footer's second action opens
+Accessibility → Display; the pane does not duplicate an Accessibility row.
 
 The separate Preview group is removed; the Glass preview is the preview.
+`make t290-settings-appearance-capture` writes the pane, modes, Glass, both
+colour popups, the Advanced sheet, and the reduce-transparency/
+increase-contrast states in light and dark.
 
 ### 5.5 Accessibility
 
@@ -768,7 +787,7 @@ before the task is marked done.
 | T287 | General | [287-t-24.1c-settings-general.md](../tasks/system-settings-2/287-t-24.1c-settings-general.md) |
 | T288 | Wi-Fi, Bluetooth, Network, VPN | [288-t-24.1d-settings-connectivity.md](../tasks/system-settings-2/288-t-24.1d-settings-connectivity.md) |
 | T289 | Battery, Displays | [289-t-24.1e-settings-battery-displays.md](../tasks/system-settings-2/289-t-24.1e-settings-battery-displays.md) |
-| T290a–T290g | Appearance (existing split, unchanged; T290g ADR is 0296) | [plan/ROADMAP.md](../tasks/system-settings-2/plan/ROADMAP.md) |
+| T290a–T290g | Appearance: build/test seam (a), mode tiles (b), Glass preview/tint (c), Theme card (d), Windows/scroll radios (e), Advanced sheet/footer (f), capture/scale/docs/ADR 0296 (g) | [plan/ROADMAP.md](../tasks/system-settings-2/plan/ROADMAP.md) |
 | T291a | Accessibility list and Vision | [291a-accessibility-vision.md](../tasks/system-settings-2/291a-accessibility-vision.md) |
 | T291b | Accessibility Physical and Motor | [291b-accessibility-physical-motor.md](../tasks/system-settings-2/291b-accessibility-physical-motor.md) |
 | T291c | Accessibility Hearing | [291c-accessibility-hearing.md](../tasks/system-settings-2/291c-accessibility-hearing.md) |

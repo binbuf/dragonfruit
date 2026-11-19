@@ -483,31 +483,43 @@ defaults; no error banner.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Light/Dark/Auto | Appearance | Segmented | existing: `appearance.colorScheme` | Live theme; auto follows host style |
-| Accent color | Accent color | Swatches + custom | existing: `appearance.accent` | Live; Multicolor (empty) or any `#rrggbb` |
-| Highlight color | Highlight color | Swatches + custom | `appearance.highlight` | Selection wash; live |
-| Icon & widget style | Icon & widget style | Segmented | `appearance.iconStyle` | Provider-gated; disabled with the reason when no installed theme matches |
-| Folder color | Folder color | Swatches + custom | `appearance.folderColor` | Files/Theme folder glyph; Automatic keeps the artwork |
+| Light/Dark/Auto | Appearance | Tiles | existing: `appearance.colorScheme` | Live theme; auto follows host style |
+| Accent color | Accent color | Swatches + custom hex | existing: `appearance.accent` | Live; Multicolor (empty) or any `#rrggbb` |
+| Highlight color | Text highlight color | Swatch popup | `appearance.highlight` | Selection wash; live; design-system palette only |
+| Icon & widget style | Icon & widget style | Tiles | `appearance.iconStyle` | Provider-gated; disabled with the reason when no installed theme matches |
+| Folder color | Folder color | Swatch popup | `appearance.folderColor` | Files/Theme folder glyph; Automatic keeps the artwork; design-system palette only |
 | Sidebar icon size | Sidebar icon size | Popup | `appearance.sidebarIconSize` | Small/medium/large |
-| Allow wallpaper tinting | Wallpaper tinting | Toggle | `appearance.wallpaperTint` | Materials adapt to wallpaper |
-| Liquid Glass | Transparency | Slider | existing: `appearance.transparency` | 0..1; measured 0.5255 midpoint; disabled under Reduce Transparency |
-| Show scroll bars | Show scroll bars | Popup | `appearance.scrollBars` | Automatic/when-scrolling/always, visually distinct |
-| Click in the scroll bar to | Click in the scroll bar to | Popup | `appearance.scrollBarClick` | Jump to spot or next page |
-| — | Motion | Link | `accessibility.reduceMotion` | Deep link to Accessibility |
-| — | Icon theme | Popup | `appearance.iconTheme` | Installed-theme provider; explicit theme wins over the style |
-| — | Cursor theme / size | Popup + slider | `appearance.cursorTheme`, `appearance.cursorSize` | Provider-gated; applied at the next session start |
-| — | Window control layout | Popup | `appearance.windowControls` | Disabled with reason; traffic lights stay left |
-| — | Material effects | Popup | `appearance.material` | Disabled with reason; Glass budget owns the tier |
-| — | Accent from wallpaper | Toggle | `appearance.accentFromWallpaper` | Disabled with reason; needs the wallpaper sampler |
-| — | Preview | Live render | Theme + `Glass.resolve` | Scheme/accent/highlight/folder/material in one place |
+| Allow wallpaper tinting | Tint window background with wallpaper color | Toggle | `appearance.wallpaperTint` | Materials adapt to wallpaper |
+| Liquid Glass | Glass tint | Slider | existing: `appearance.transparency` | 0..1; attached menus only; measured 0.5255 midpoint; disabled under Reduce Transparency |
+| Show scroll bars | Show scroll bars | Stacked radio | `appearance.scrollBars` | Automatic/when-scrolling/always, visually distinct |
+| Click in the scroll bar to | Click in the scroll bar to | Stacked radio | `appearance.scrollBarClick` | Jump to spot or next page |
+| — | Icon theme | Popup (Advanced Appearance) | `appearance.iconTheme` | Installed-theme provider; explicit theme wins over the style |
+| — | Cursor theme / size | Popup + slider (Advanced Appearance) | `appearance.cursorTheme`, `appearance.cursorSize` | Provider-gated; applied at the next session start |
+| — | Window control layout | Popup (Advanced Appearance) | `appearance.windowControls` | Disabled with reason; traffic lights stay left |
+| — | Material effects | Popup (Advanced Appearance) | `appearance.material` | Disabled with reason; Glass budget owns the tier |
+| — | Accent from wallpaper | Toggle (Advanced Appearance) | `appearance.accentFromWallpaper` | Disabled with reason; needs the wallpaper sampler |
 
-**T274 status.** The pane is six grouped cards, not seven one-row cards. The
-default accent is the reviewed Tahoe system blue. Folder color is consumed by
-the design-system `Icon` folder glyph in Files and the Dock; scroll-bar click
-is consumed by `ScrollView`; icon/cursor rows use the real installed-theme
-inventory. Transparency is disabled and its write discarded under Reduce
-Transparency. The preview reads the same Theme/Glass resolver as the live
-surfaces.
+The landed pane is six cards plus a footer: **Appearance** (mode tiles),
+**Glass** (the rendered attached-menu preview and the tint slider), **Theme**
+(accent, Text highlight, icon style, Folder color), **Windows** (sidebar icon
+size, wallpaper tint), **Show scroll bars**, and **Click in the scroll bar
+to**, followed by **Advanced Appearance…** and **More in Accessibility
+Settings…**. The six Linux-only rows live in the Advanced Appearance sheet.
+The Motion link is gone: `accessibility.reduceMotion` keeps its Accessibility
+owner and `Theme.reducedMotion` binding.
+
+**T290 status.** The pane is six cards plus the Advanced Appearance sheet; the
+T274 layout had a separate Preview group and a Desktop integration card. The
+Glass preview is the preview and the only tint slider is the attached-menu
+`appearance.transparency`. Icon style
+(`appearance.iconStyle`) and the installed icon theme (`appearance.iconTheme`)
+are separate controls: the style is a pane tile, the theme is an Advanced
+Appearance row. Highlight and Folder color are single swatch popups over the
+design-system palette; only the accent accepts a custom hex. Folder color is
+consumed by the design-system `Icon` folder glyph in Files and the Dock;
+scroll-bar click is consumed by `ScrollView`; icon/cursor rows use the real
+installed-theme inventory. Transparency is disabled and its write discarded
+under Reduce Transparency.
 
 **T227 status.** The pane ships every row. Highlight, sidebar icon size,
 wallpaper tinting, and scroll bars are settingsd keys consumed live by

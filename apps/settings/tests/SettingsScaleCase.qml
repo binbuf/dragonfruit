@@ -121,5 +121,124 @@ Item {
                 shell.destroy();
             }
         }
+
+        // T290g: the Appearance cards are the tallest and widest in the pane,
+        // so a scale input that silently clips a tile, plate, card, or radio
+        // group must fail here. Every check is in logical points; the device
+        // pixel ratio is asserted separately above.
+        function test_appearance_fit_at_scale() {
+            var shell = createTemporaryObject(shellComponent, root,
+                                              { width: 740, height: 820 });
+            waitForRendering(root);
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            shell.selectPane("appearance");
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready
+                    && shell.loadedPaneId === "appearance";
+            });
+            waitForRendering(root);
+
+            var pane = shell.paneBody.item;
+            verify(pane, "the appearance body must load");
+            verify(pane.width <= shell.detailContent.width + 0.5,
+                   "the pane tracks the detail column at "
+                   + root.expectedScale + "x");
+
+            function fits(item, ancestor, what) {
+                verify(item, what + " must exist");
+                var origin = item.mapToItem(ancestor, 0, 0);
+                verify(origin.x >= -0.5
+                       && origin.x + item.width <= ancestor.width + 0.5,
+                       what + " stays inside its column at "
+                       + root.expectedScale + "x");
+            }
+
+            function fitsRow(row, what) {
+                fits(row, pane, what);
+                verify(row.control.x >= -0.5
+                       && row.control.x + row.control.width
+                          <= row.width + 0.5,
+                       what + " control stays inside the row at "
+                       + root.expectedScale + "x");
+                verify(row.labelColumn.x + row.labelColumn.width
+                       <= row.control.x + 0.5,
+                       what + " label and control do not overlap at "
+                       + root.expectedScale + "x");
+            }
+
+            // One card per mockup group, inside the detail column.
+            var cards = [
+                [pane.glassGroup, "Glass card"],
+                [pane.themeGroup, "Theme card"],
+                [pane.windowsGroup, "Windows card"],
+                [pane.scrollBarsSection, "Show scroll bars card"],
+                [pane.scrollBarClickSection, "Click in the scroll bar to card"]
+            ];
+            for (var c = 0; c < cards.length; ++c)
+                fits(cards[c][0], pane, cards[c][1]);
+
+            // The three mode tiles: all of them inside the Appearance row.
+            compare(pane.schemeTileRepeater.count, 3);
+            fitsRow(pane.schemeRow, "Appearance row");
+            fits(pane.schemeTiles, pane.schemeRow, "mode tile row");
+            for (var m = 0; m < pane.schemeTileRepeater.count; ++m) {
+                var modeTile = pane.schemeTileRepeater.itemAt(m);
+                fits(modeTile, pane.schemeRow, "mode tile " + m);
+                verify(modeTile.x >= -0.5
+                       && modeTile.x + modeTile.width
+                          <= pane.schemeTiles.width + 0.5,
+                       "mode tile " + m + " stays inside the tile row at "
+                       + root.expectedScale + "x");
+            }
+
+            // The Glass preview, its resolver plate, and the tint slider.
+            fits(pane.glassPreview, pane.glassGroup, "Glass preview");
+            fits(pane.previewPlate, pane.glassPreview, "Glass plate");
+            fitsRow(pane.transparencyRow, "Glass tint row");
+            fits(pane.transparencySlider, pane.transparencyRow,
+                 "Glass tint slider");
+
+            // The Theme card: four rows, the accent swatches, and the four
+            // icon-style tiles.
+            fitsRow(pane.accentRow, "Accent color row");
+            fitsRow(pane.highlightRow, "Text highlight row");
+            fitsRow(pane.iconStyleRow, "Icon & widget style row");
+            fitsRow(pane.folderColorRow, "Folder color row");
+            for (var a = 0; a < pane.accentRepeater.count; ++a)
+                fits(pane.accentRepeater.itemAt(a), pane.accentRow,
+                     "accent swatch " + a);
+            compare(pane.iconStyleTileRepeater.count, 4);
+            fits(pane.iconStyleTiles, pane.iconStyleRow, "icon-style tile row");
+            for (var t = 0; t < pane.iconStyleTileRepeater.count; ++t) {
+                var styleTile = pane.iconStyleTileRepeater.itemAt(t);
+                fits(styleTile, pane.iconStyleRow, "icon-style tile " + t);
+                verify(styleTile.x >= -0.5
+                       && styleTile.x + styleTile.width
+                          <= pane.iconStyleTiles.width + 0.5,
+                       "icon-style tile " + t + " stays inside the tile row at "
+                       + root.expectedScale + "x");
+            }
+
+            // The Windows card rows.
+            fitsRow(pane.sidebarIconSizeRow, "Sidebar icon size row");
+            fitsRow(pane.wallpaperTintRow, "Wallpaper tint row");
+
+            // Both stacked radio groups, and their option labels.
+            fitsRow(pane.scrollBarsRow, "Show scroll bars row");
+            fitsRow(pane.scrollBarClickRow, "Click in the scroll bar to row");
+            fits(pane.scrollBarsGroup, pane.scrollBarsRow,
+                 "Show scroll bars radios");
+            fits(pane.scrollBarClickGroup, pane.scrollBarClickRow,
+                 "Scroll-bar click radios");
+            verify(pane.scrollBarsGroup.count === 3
+                   && pane.scrollBarClickGroup.count === 2);
+            for (var g = 0; g < pane.scrollBarsGroup.count; ++g) {
+                var option = pane.scrollBarsGroup.repeater.itemAt(g);
+                fits(option, pane.scrollBarsGroup,
+                     "scroll-bar option " + g);
+            }
+
+            shell.destroy();
+        }
     }
 }

@@ -83,7 +83,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Bluetooth | BlueZ |
 | Battery | UPower + power-profiles-daemon where present; T289 renders the mockup order (Low Power Mode, Battery Health + Show Detail, the `power.historyRange` range control, the live UPower status pill, the `SettingsChart` Battery Level chart, and an Options… sheet with the real `power.*` policy, Power Adapter, and Lock Screen rows) ([adr/0293](adr/0293-battery-displays-pane-adaptations.md)) |
 | General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
-| Appearance | `settingsd` (design-system themes, dark/light, accent, highlight, sidebar icon size, wallpaper tint, scroll bars, attached-menu transparency, motion link) ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md)) |
+| Appearance | `settingsd` (design-system themes, Light/Dark/Auto mode tiles, accent with custom hex, highlight, folder color, icon style, sidebar icon size, wallpaper tint, scroll bars, attached-menu Glass tint) plus the Advanced Appearance sheet for the Linux-only icon/cursor/window/material rows ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0275](adr/0275-appearance-groups-provider-rows-and-tahoe-accent.md), [adr/0296](adr/0296-appearance-pane-adaptations.md)) |
 | Accessibility | live AT-SPI read + `settingsd` + compositor + delegates — five-section pane: read-only screen-reader/bridge status plus `Open Orca`, Display accommodations (`increaseContrast`, `reduceTransparency`, `differentiateWithoutColor`, `textSize`), the compositor magnifier (`magnifier`, `magnifierZoom`, `magnifierMode`), Motion (`reduceMotion`, `dimFlashingLights`), Read & Speak and the hearing/motor/speech delegates, and the recorded `accessibility.shortcut` ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0276](adr/0276-accessibility-pane-accommodations.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor; the full Dock group, Desktop & Stage Manager (`desktop.showItems` live), Widgets, Windows, Mission Control links, and the default-browser delegate; T242/T245b/T243 rows are disabled with a reason (T276) |
 | Displays | Compositor output API + the real platform output list — **shipped:** the display icon row and per-output sheet, Resolution radios over the real logical sizes, the scaling note, brightness, and rotation (in the Advanced… sheet); **capability-gated:** Use as, auto-brightness, Ambient color (adaptive color), refresh switching, arrangement, Night Light (toggle/schedule/temperature), Preset (color profile), projector mode, HDR, VRR, and overscan are disabled with an OPEN reason until the compositor/colord/sensor half exists. One table (`displaycapabilities`) drives both the pane and the advanced sheet; the projector section appears only when the host marks a TV/projector output ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0274](adr/0274-data-panes-sampler-and-capability-rows.md), [adr/0293](adr/0293-battery-displays-pane-adaptations.md)) |
@@ -710,22 +710,42 @@ chroma pickup is not reproduced; T206 captures record the rendered channel
 spread separately. ADR [0225](adr/0225-first-party-app-chrome-presets.md)
 records the decision and the unresolved chroma transport.
 
-## The T274 Appearance pane (ADR 0275)
+## The T290 Appearance pane (ADR 0296)
 
-T274 turns Appearance into the macOS Tahoe page instead of seven one-row
-cards. The pane has six groups: Appearance (Light/Dark/Auto), Color (accent
-and highlight, each with swatches, a custom hex picker, and the accent's
-Multicolor choice), Icon & widget style (style, folder color, sidebar icon
-size), Windows and scroll bars (wallpaper tint, the three scroll-bar modes,
-the track-click policy, transparency, and the Motion link), Desktop
-integration (the Linux-only rows), and Preview.
+T290 lands the macOS Tahoe Appearance page: six cards plus a footer, instead
+of seven one-row cards and a separate Preview group.
 
-- The reviewed default accent is the macOS system blue (`#007aff` light /
+- **Appearance** is three `SettingsModeTile`s (Light/Dark/Auto) over
+  `appearance.colorScheme`. They are one radio group; Left/Right move the
+  selection and the tiles derive their width from the row so all three stay
+  inside the card.
+- **Glass** is the preview: a 120 pt token backdrop with the rendered
+  `Glass.resolve("menuAttached", …)` plate and the one tint slider over
+  `appearance.transparency`. The key is the attached-menu tint only; it does
+  not re-tint the Dock, the menu bar, or windows. Reduce Transparency keeps
+  winning: the slider is disabled with the reason and a drag/commit/queued
+  write is discarded rather than written.
+- **Theme** is one card: the six accent swatches (empty is Multicolor) with the
+  one custom-hex popup, a Text highlight single-swatch popup, four
+  `SettingsModeTile`s over `appearance.iconStyle` (Default/Dark/Clear/Tinted),
+  and a Folder color single-swatch popup. Highlight and folder color use the
+  design-system palette; the custom `#rrggbb` entry point is accent-only.
+- **Windows** holds the sidebar icon size popup and the wallpaper-tint toggle.
+  **Show scroll bars** and **Click in the scroll bar to** are separate cards,
+  each a stacked `SettingsRadioGroup` over the existing keys.
+- **Footer** offers **Advanced Appearance…** and **More in Accessibility
+  Settings…**. The first opens the sheet that owns the six Linux-only rows
+  (icon theme, cursor theme, cursor size, window control layout, material
+  effects, accent from wallpaper) with their real owners, keys, and
+  disabled-with-reason text; the second asks the shell to open
+  Accessibility → Display. The sheet rows are `SettingsMap` rows with
+  `rowSurface() === "dialog"`, so search and deep links still land on them.
+- The reviewed default accent stays the macOS system blue (`#007aff` light /
   `#0a84ff` dark). Empty `appearance.accent` is Multicolor; a custom value
-  still overrides the whole accent family.
-- `appearance.folderColor` is a real Theme key. `Theme.folderColor` replaces
-  the generic folder place artwork with a tinted folder glyph in Files and
-  the Dock; the emblematic folder variants keep their shipped artwork.
+  overrides the whole accent family.
+- `appearance.folderColor` is a real Theme key: `Theme.folderColor` replaces
+  the generic folder place artwork with a tinted folder glyph in Files and the
+  Dock; the emblematic folder variants keep their shipped artwork.
 - `appearance.scrollBarClick` maps onto `Theme.scrollBarClick`, the default
   for every `ScrollView`. `appearance.scrollBars` keeps the three distinct
   modes: automatic (focus/hover/motion), when-scrolling (motion/drag only),
@@ -734,19 +754,16 @@ integration (the Linux-only rows), and Preview.
   `Settings.iconStyleOptions()` maps Default/Dark/Clear/Tinted to a real
   installed theme and marks a style unavailable with a reason when no theme
   matches; with no provider at all the row is disabled with the reason. An
-  explicit `appearance.iconTheme` wins over the style mapping. The cursor
-  rows use the same provider shape and apply at the next session start.
-- The transparency slider is disabled while `accessibility.reduceTransparency`
-  is on, the row shows the override reason, and a drag/commit/queued write is
-  discarded rather than written. Reduce Transparency remains the winner in
-  the Glass resolver.
-- The preview renders the live `Theme` colours and the same
-  `Glass.resolve("menuAttached", …)` output as the shell, so scheme, accent,
-  highlight, folder colour, and material agree with the desktop rather than
-  re-deriving a second formula.
+  explicit `appearance.iconTheme` (Advanced Appearance) wins over the style
+  mapping. The cursor rows use the same provider shape and apply at the next
+  session start.
 - `windowControls`, `material`, and `accentFromWallpaper` are visible but
   disabled with their owners named; the schema keys are reserved for the
   decoration/Glass/wallpaper tasks.
+- `make t290-settings-appearance-capture` writes the pane, modes, Glass, both
+  colour popups, the Advanced sheet, and the reduce-transparency/
+  increase-contrast states in light and dark. `SettingsScaleCase.qml` asserts
+  the tiles, cards, and radios fit at 1×/1.5×/2×.
 
 ## The T276 Desktop & Dock and Overview panes (ADR 0277)
 
