@@ -759,7 +759,7 @@ before the task is marked done.
 | T287 | General | [287-t-24.1c-settings-general.md](../tasks/system-settings-2/287-t-24.1c-settings-general.md) |
 | T288 | Wi-Fi, Bluetooth, Network, VPN | [288-t-24.1d-settings-connectivity.md](../tasks/system-settings-2/288-t-24.1d-settings-connectivity.md) |
 | T289 | Battery, Displays | [289-t-24.1e-settings-battery-displays.md](../tasks/system-settings-2/289-t-24.1e-settings-battery-displays.md) |
-| T290 | Appearance | [290-t-24.1f-settings-appearance.md](../tasks/system-settings-2/290-t-24.1f-settings-appearance.md) |
+| T290 | Appearance (split into T290a–T290g) | [plan/ROADMAP.md](../tasks/system-settings-2/plan/ROADMAP.md) |
 | T291 | Accessibility | [291-t-24.1g-settings-accessibility.md](../tasks/system-settings-2/291-t-24.1g-settings-accessibility.md) |
 | T292 | Desktop & Dock (incl. Workspace Overview) | [292-t-24.1h-settings-desktop-dock.md](../tasks/system-settings-2/292-t-24.1h-settings-desktop-dock.md) |
 | T293 | Menu Bar (incl. OS glyph and Menu Bar Controls) | [293-t-24.1i-settings-menu-bar.md](../tasks/system-settings-2/293-t-24.1i-settings-menu-bar.md) |
