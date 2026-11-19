@@ -65,7 +65,7 @@ export RUSTFLAGS := $(RUSTFLAGS) -L $(DF_DEVROOT)
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test qml-test-serial glass-shader-test t238-native-build t238-native-round-trip \
+.PHONY: help all build cargo-build cmake-build configure test cargo-test settings-qml-refresh qml-test qml-test-serial glass-shader-test t238-native-build t238-native-round-trip \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast verify-settings gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t263-settings-window-capture t264-settings-navigation-capture t265-settings-search-capture t266-settings-components-capture t267-settings-accessibility-capture t268-settings-performance t269-general-capture t270-general-system-capture t271-wifi-bluetooth-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
@@ -1142,7 +1142,20 @@ dock-plate-corners-capture: build
 dock-icon-mask-capture: build
 	bash scripts/capture-dock-icon-mask.sh
 
-qml-test:
+# T290a: Qt's QML copy rule is keyed on a timestamp file, not on the copied
+# files, so a `build/qml/Dragonfruit/Settings` copy that is externally stale
+# survives `cmake --build`, and a copy deleted by hand is never restored (the
+# generated qmldir then has no rule). Refresh the Settings copy and its
+# qmlcache before the gate build: removing the timestamp marker makes the copy
+# rule run again. This is a gate guard, not a replacement for the real source
+# dependencies the generated Ninja rules already have.
+settings-qml-refresh:
+	rm -f $(BUILD_DIR)/qml/Dragonfruit/Settings/*.qml
+	rm -f $(BUILD_DIR)/apps/settings/.rcc/qmlcache/*_qml.cpp
+	rm -f $(BUILD_DIR)/apps/settings/.rcc/qmlcache/*.aotstats
+	rm -f $(BUILD_DIR)/apps/settings/.qt/dragonfruit-settings-ui_qml.txt
+
+qml-test: settings-qml-refresh
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null
 	# T282: the cold-open budget is a measurement of a quiescent host. Run the
@@ -1151,7 +1164,7 @@ qml-test:
 	$(CTEST) --test-dir $(BUILD_DIR) -R '^tst_settings_performance$$' --output-on-failure
 	$(CTEST) --test-dir $(BUILD_DIR) -j$(CTEST_JOBS) -E '^tst_settings_performance$$' --output-on-failure
 
-qml-test-serial:
+qml-test-serial: settings-qml-refresh
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null
 	$(CTEST) --test-dir $(BUILD_DIR) -R '^tst_settings_performance$$' --output-on-failure

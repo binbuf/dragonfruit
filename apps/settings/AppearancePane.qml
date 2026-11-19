@@ -19,6 +19,14 @@ import Dragonfruit.Settings
 //
 // The preview is the rendered resolver: it reads the same `Theme` colours and
 // the same `Glass.resolve` output the live surfaces use, not a second formula.
+//
+// Test and capture access (T290a): reach a control through a pane-body
+// `property`/`property alias` declared below (for example `schemeRowHandle` or
+// `schemeRow`), or through a row's `control.children[0]` /
+// `controlSlot.controlItem`. Never alias an id declared inside an inline
+// `component` in this file and never expect a function declared inside one to
+// be visible through the instance: inline-component internals are not
+// reachable from the instance.
 Item {
     id: root
 
@@ -232,6 +240,19 @@ Item {
     }
 
     // Test surface (used by tst_settings_appearance.qml).
+    //
+    // Build canary (T290a): never user-visible and never translated. It exists
+    // so a pane served from a stale compiled resource fails
+    // `tst_settings_appearance` instead of silently passing. A stale build copy
+    // is caught separately by `tst_settings_qml_copy_sync`.
+    readonly property string sourceRevision: "t290a"
+
+    // Test/capture accessor (T290a). Tests and captures reach a control
+    // through a pane-body property or alias like this one, never through an id
+    // declared inside an inline `component` (those are not reachable through
+    // the instance).
+    readonly property Item schemeRowHandle: schemeRow
+
     property alias schemeControl: schemeControl
     property alias schemeRow: schemeRow
     property alias accentRepeater: accentRepeater

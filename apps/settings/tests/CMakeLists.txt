@@ -1024,3 +1024,19 @@ set_tests_properties(tst_settings_absence PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# T290a: the build copy of the Settings QML is a cache, not a declared Ninja
+# output, so an externally stale copy survives `cmake --build`. Fail the gate
+# when any `QML_FILES` entry differs from its `build/qml/Dragonfruit/Settings`
+# copy. `make qml-test` refreshes the copy before the build.
+add_test(
+    NAME tst_settings_qml_copy_sync
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/..
+        -DCOPY_DIR=${CMAKE_BINARY_DIR}/qml/Dragonfruit/Settings
+        "-DQML_FILES=${DF_SETTINGS_QML_FILES}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_qml_copy_sync.cmake
+)
+set_tests_properties(tst_settings_qml_copy_sync PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

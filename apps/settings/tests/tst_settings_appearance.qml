@@ -71,6 +71,33 @@ Item {
             compare(Settings.values["appearance.colorScheme"], "auto");
         }
 
+        function test_pane_reports_the_source_revision_canary() {
+            var shell = make();
+            var pane = paneOf(shell);
+            // T290a: the pane that actually loaded must come from the source
+            // tree. A stale build copy or a stale compiled resource fails here
+            // instead of silently testing the previous pane.
+            compare(pane.sourceRevision, "t290a");
+        }
+
+        function test_scheme_row_handle_reaches_the_control() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            // T290a: tests read a row's control through a pane-body accessor
+            // and the row's `control` slot, never through an id declared inside
+            // an inline component.
+            var handle = pane.schemeRowHandle;
+            verify(handle);
+            var control = handle.control.children[0];
+            verify(control);
+            compare(control.currentIndex, 2); // auto
+
+            control.activateIndex(1); // dark
+            compare(Settings.values["appearance.colorScheme"], "dark");
+            compare(Theme.dark, true);
+        }
+
         function test_scheme_selection_applies_live() {
             var shell = make();
             var pane = paneOf(shell);

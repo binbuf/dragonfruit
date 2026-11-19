@@ -9,6 +9,71 @@ set_source_files_properties(SettingsMap.qml PROPERTIES QT_QML_SINGLETON_TYPE TRU
 set_source_files_properties(SettingsSearch.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(SettingsAbsence.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
+# T290a: one list feeds the module and the build-copy sync test, so the two
+# can never drift apart. Every entry is copied by Qt into
+# `build/qml/Dragonfruit/Settings/`; the test compares each copy against this
+# source.
+set(DF_SETTINGS_QML_FILES
+    SettingsPanes.qml
+    SettingsMap.qml
+    SettingsSearch.qml
+    SettingsAbsence.qml
+    SettingsAbsenceNotice.qml
+    SettingsKeyRow.qml
+    ShortcutRecorder.qml
+    SettingsMenu.qml
+    PaneLoader.qml
+    AppearancePane.qml
+    QuickSettingsPane.qml
+    SearchPane.qml
+    ScreenSaverPane.qml
+    WallpaperPane.qml
+    DesktopDockPane.qml
+    MissionControlPane.qml
+    BatteryPane.qml
+    DisplaysPane.qml
+    BluetoothPane.qml
+    StoragePane.qml
+    SoundPane.qml
+    InputPane.qml
+    KeyboardPane.qml
+    MousePane.qml
+    TrackpadPane.qml
+    NotificationsPane.qml
+    FocusPane.qml
+    LockScreenPane.qml
+    MenuBarPane.qml
+    GeneralPane.qml
+    AboutHero.qml
+    AboutUtilityMaterial.qml
+    AboutPanel.qml
+    AboutPage.qml
+    SoftwareUpdatePane.qml
+    PasswordsPane.qml
+    LoginItemsPane.qml
+    LanguageRegionPane.qml
+    DateTimePane.qml
+    SharingPane.qml
+    BackupPane.qml
+    StartupDiskPane.qml
+    ResetPane.qml
+    UsersGroupsPane.qml
+    PrintersScannersPane.qml
+    GameControllersPane.qml
+    PrivacyPane.qml
+    BiometricsPane.qml
+    OnlineAccountsPane.qml
+    AccessibilityPane.qml
+    WifiPane.qml
+    NetworkPane.qml
+    VpnPane.qml
+    VpnAddDialog.qml
+    SettingsDebugView.qml
+    SettingsSearchResults.qml
+    SettingsShell.qml
+    SettingsWindow.qml
+)
+
 qt_add_library(dragonfruit-settings-ui STATIC)
 qt_add_qml_module(dragonfruit-settings-ui
     URI Dragonfruit.Settings
@@ -49,64 +114,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         NetworkClient.cpp
         NetworkClient.h
     QML_FILES
-        SettingsPanes.qml
-        SettingsMap.qml
-        SettingsSearch.qml
-        SettingsAbsence.qml
-        SettingsAbsenceNotice.qml
-        SettingsKeyRow.qml
-        ShortcutRecorder.qml
-        SettingsMenu.qml
-        PaneLoader.qml
-        AppearancePane.qml
-        QuickSettingsPane.qml
-        SearchPane.qml
-        ScreenSaverPane.qml
-        WallpaperPane.qml
-        DesktopDockPane.qml
-        MissionControlPane.qml
-        BatteryPane.qml
-        DisplaysPane.qml
-        BluetoothPane.qml
-        StoragePane.qml
-        SoundPane.qml
-        InputPane.qml
-        KeyboardPane.qml
-        MousePane.qml
-        TrackpadPane.qml
-        NotificationsPane.qml
-        FocusPane.qml
-        LockScreenPane.qml
-        MenuBarPane.qml
-        GeneralPane.qml
-        AboutHero.qml
-        AboutUtilityMaterial.qml
-        AboutPanel.qml
-        AboutPage.qml
-        SoftwareUpdatePane.qml
-        PasswordsPane.qml
-        LoginItemsPane.qml
-        LanguageRegionPane.qml
-        DateTimePane.qml
-        SharingPane.qml
-        BackupPane.qml
-        StartupDiskPane.qml
-        ResetPane.qml
-        UsersGroupsPane.qml
-        PrintersScannersPane.qml
-        GameControllersPane.qml
-        PrivacyPane.qml
-        BiometricsPane.qml
-        OnlineAccountsPane.qml
-        AccessibilityPane.qml
-        WifiPane.qml
-        NetworkPane.qml
-        VpnPane.qml
-        VpnAddDialog.qml
-        SettingsDebugView.qml
-        SettingsSearchResults.qml
-        SettingsShell.qml
-        SettingsWindow.qml
+        ${DF_SETTINGS_QML_FILES}
     RESOURCES
         about-hero.svg
 )
