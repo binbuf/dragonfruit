@@ -29,6 +29,8 @@ Item {
     // The stable identity of a row that armed the submenu hover timer.
     readonly property string pendingHoverKey: levels.pendingKey
     readonly property int pendingHoverIndex: levels.pendingIndex
+    // Test/owner seam for the hover dwell; defaults to the menu token.
+    property alias dwellInterval: levels.dwellInterval
     property int preferredWidth: Theme.controls.contextMenu.minWidth
     // T266: when a `Select` (or another owner) sets `anchorItem`, opening the
     // menu reparents it to the window overlay and places it below the anchor,

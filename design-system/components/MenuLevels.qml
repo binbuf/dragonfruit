@@ -85,7 +85,9 @@ QtObject {
     // The deepest visible level: where keyboard navigation and type-ahead act.
     readonly property int deepestLevel: root.levelCount - 1
 
-    readonly property int dwellInterval: dwellTimer.interval
+    // The hover dwell before a sibling/submenu commit. The token is the
+    // production default; a test or an owner may override it.
+    property int dwellInterval: Theme.controls.contextMenu.submenuDelay
 
     // --- Identity ---------------------------------------------------------
 
@@ -546,7 +548,7 @@ QtObject {
     }
 
     property Timer dwellTimer: Timer {
-        interval: Theme.controls.contextMenu.submenuDelay
+        interval: root.dwellInterval
         repeat: false
         onTriggered: root.commitHover()
     }

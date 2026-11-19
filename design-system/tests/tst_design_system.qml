@@ -684,6 +684,10 @@ TestCase {
             var row = findChild(menu, "menuRow0");
             mouseMove(row, row.width / 2, row.height / 2);
             tryCompare(menu, "openSubmenuIndex", 0);
+            // Hold the dwell open so a loaded test process cannot retire the
+            // child between the pointer move and the assertion below.
+            var savedDwell = menu.dwellInterval;
+            menu.dwellInterval = 5000;
             var sibling = findChild(menu, "menuRow1");
             mouseMove(sibling, sibling.width - 2, sibling.height / 2);
             compare(menu.openSubmenuIndex, 0, "diagonal crossing retains the child");
@@ -693,6 +697,7 @@ TestCase {
             wait(Theme.controls.contextMenu.submenuDelay + 50);
             compare(menu.openSubmenuIndex, 0, "entering child cancels sibling dwell");
             compare(menu.highlightedIndex, 0);
+            menu.dwellInterval = savedDwell;
             mouseMove(sibling, sibling.width / 2, sibling.height / 2);
             tryCompare(menu, "openSubmenuIndex", -1);
             compare(menu.highlightedIndex, 1, "a deliberate sibling dwell wins");
@@ -717,6 +722,8 @@ TestCase {
             });
             menu.open = true;
             waitForRendering(stage);
+            // Keep the dwell from firing before the keyboard input arrives.
+            menu.dwellInterval = 5000;
             var row = findChild(menu, "menuRow0");
             mouseMove(row, 20, row.height / 2);
             tryCompare(menu, "pendingHoverIndex", 0);
@@ -734,6 +741,8 @@ TestCase {
             });
             menu.open = true;
             waitForRendering(stage);
+            // Keep the dwell from firing before the leave is delivered.
+            menu.dwellInterval = 5000;
             var row = findChild(menu, "menuRow0");
             mouseMove(row, 20, row.height / 2);
             mouseMove(stage, stage.width - 1, stage.height - 1);

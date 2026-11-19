@@ -68,6 +68,8 @@ Item {
     // The stable identity of a row that armed the submenu hover timer.
     readonly property int pendingHoverIndex: levels.pendingIndex
     readonly property string pendingHoverKey: levels.pendingKey
+    // Test/owner seam for the hover dwell; defaults to the menu token.
+    property alias dwellInterval: levels.dwellInterval
     readonly property string typeAheadBuffer: levels.typeAheadBuffer
     // Whether the bar title shows the keyboard FocusRing.
     property bool showFocusRing: true
