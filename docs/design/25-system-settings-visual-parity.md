@@ -544,7 +544,7 @@ Dispositions:
 The top-level list keeps the mockup's section order. A sub-pane that ends up
 with no owner is omitted from the list and recorded in `SettingsMap` with the
 reason; the section heading stays if at least one sibling remains. This is the
-largest deliberate reduction from the mockup. It is reviewed in T291.
+largest deliberate reduction from the mockup. It is reviewed in T291a–T291e.
 
 ### 5.6 Desktop & Dock
 
@@ -712,20 +712,29 @@ pane follows §5.7.
 
 ## 7. Evidence and acceptance
 
-Each category task records:
+Each task records:
 
-- the mockup commit and the pane id;
-- the rendered light/dark stills at 740 × 820 (and the category's absence,
-  reduced-motion, increase-contrast, and scale states where relevant);
-- the exact test commands and results;
+- the mockup commit and the pane/section id;
+- the deterministic capture target and its light/dark stills at 740 × 820
+  (plus the section's absence, reduced-motion, increase-contrast, and scale
+  states where relevant);
+- the exact targeted test commands and results;
 - every deviation from the mockup, with the reason and the owner;
-- every omitted row, with its `SettingsMap` reason.
+- every omitted row, with its `SettingsMap` reason;
+- the live `make demo` check, or an `OPEN` row naming the missing
+  Wayland/host/seat and the exact rerun command.
 
-The visual evidence task (T302) adds a manifest, a structural comparison
-against the mockup's DOM measurements (window, sidebar, inset, row heights,
-title alignment, card radius), and a human review checklist. Pixel-perfect
-comparison to the browser mockup is not a gate; the structural and interaction
-comparison is. Screenshots stay local under the git-ignored `docs/captures/`.
+The per-task bar is the targeted verify plus the capture artifact (or `OPEN`)
+plus the filled-in `## Hand-off`. The full `make gates`/`make verify-fast` is
+the release gate in T302b, not a per-task requirement. ADR 0295 records the
+session-sizing policy.
+
+T302a adds the manifest, the structural comparison against the mockup's DOM
+measurements (window, sidebar, inset, row heights, title alignment, card
+radius), and the per-pane human review checklist. T302b runs the full gate and
+batches the human sign-off. Pixel-perfect comparison to the browser mockup is
+not a gate; the structural and interaction comparison is. Screenshots stay
+local under the git-ignored `docs/captures/`.
 
 No task may add an Apple asset, a copied macOS screenshot, a proprietary name,
 or a fake control. A checked task is agent-done, not human-signed-off.
@@ -739,16 +748,16 @@ before the task is marked done.
 | Flag | Decision | Review in |
 |---|---|---|
 | VPN visibility | Always visible with the mockup empty state; the old optional-profile gate is removed. | T285/T288 |
-| Accessibility depth | Keep the sub-panes with a real owner/delegate; omit the Apple-only sub-panes with map reasons. | T291 |
-| Privacy categories | Keep the categories with a real portal owner; omit Apple-only/ownerless categories with map reasons. | T298 |
+| Accessibility depth | Keep the sub-panes with a real owner/delegate; omit the Apple-only sub-panes with map reasons. | T291a–T291e |
+| Privacy categories | Keep the categories with a real portal owner; omit Apple-only/ownerless categories with map reasons. | T298a/T298b |
 | Device Management | Omitted; no Linux MDM/profile owner in scope. | T287 |
 | Search history/telemetry | Omitted; no search-history or telemetry owner. | T294 |
-| Menu Bar controls | Now Playing, Text Input, Backups, and Timer are omitted until a real status item exists. | T293 |
-| Game Controllers Home Button | Omitted unless a real controller-service consumer exists. | T300 |
-| Linux-only rows | Appearance icon/cursor/material, Dock hover/minimize, window rules, Menu Bar overflow/global menu, Search web/indexing, and Sound per-app volume stay reachable in advanced sheets. | T290/T292/T293/T294/T297 |
+| Menu Bar controls | Now Playing, Text Input, Backups, and Timer are omitted until a real status item exists. | T293a/T293b |
+| Game Controllers Home Button | Omitted unless a real controller-service consumer exists. | T300d |
+| Linux-only rows | Appearance icon/cursor/material, Dock hover/minimize, window rules, Menu Bar overflow/global menu, Search web/indexing, and Sound per-app volume stay reachable in advanced sheets. | T290/T292a/T293a/T294/T297a |
 | Accent palette and icons | Use the design-system palette and Phosphor/Tabler glyphs, not the mockup's Apple hex values or SVG paths. | T286/T290 |
 | Glass tint scope | Keep `appearance.transparency` and state its attached-menu scope; a global glass-tint key is a follow-up. | T290 |
-| T284 matrix | T302 supersedes the visual matrix; the real-host interaction matrix remains the release sign-off input. | T302 |
+| T284 matrix | T302a supersedes the visual matrix; the real-host interaction matrix remains the release sign-off input. T302b batches the human sign-off. | T302a/T302b |
 
 ## 9. Task map
 
@@ -759,16 +768,32 @@ before the task is marked done.
 | T287 | General | [287-t-24.1c-settings-general.md](../tasks/system-settings-2/287-t-24.1c-settings-general.md) |
 | T288 | Wi-Fi, Bluetooth, Network, VPN | [288-t-24.1d-settings-connectivity.md](../tasks/system-settings-2/288-t-24.1d-settings-connectivity.md) |
 | T289 | Battery, Displays | [289-t-24.1e-settings-battery-displays.md](../tasks/system-settings-2/289-t-24.1e-settings-battery-displays.md) |
-| T290 | Appearance (split into T290a–T290g) | [plan/ROADMAP.md](../tasks/system-settings-2/plan/ROADMAP.md) |
-| T291 | Accessibility | [291-t-24.1g-settings-accessibility.md](../tasks/system-settings-2/291-t-24.1g-settings-accessibility.md) |
-| T292 | Desktop & Dock (incl. Workspace Overview) | [292-t-24.1h-settings-desktop-dock.md](../tasks/system-settings-2/292-t-24.1h-settings-desktop-dock.md) |
-| T293 | Menu Bar (incl. OS glyph and Menu Bar Controls) | [293-t-24.1i-settings-menu-bar.md](../tasks/system-settings-2/293-t-24.1i-settings-menu-bar.md) |
+| T290a–T290g | Appearance (existing split, unchanged; T290g ADR is 0296) | [plan/ROADMAP.md](../tasks/system-settings-2/plan/ROADMAP.md) |
+| T291a | Accessibility list and Vision | [291a-accessibility-vision.md](../tasks/system-settings-2/291a-accessibility-vision.md) |
+| T291b | Accessibility Physical and Motor | [291b-accessibility-physical-motor.md](../tasks/system-settings-2/291b-accessibility-physical-motor.md) |
+| T291c | Accessibility Hearing | [291c-accessibility-hearing.md](../tasks/system-settings-2/291c-accessibility-hearing.md) |
+| T291d | Accessibility Speech | [291d-accessibility-speech.md](../tasks/system-settings-2/291d-accessibility-speech.md) |
+| T291e | Accessibility General and close-out | [291e-accessibility-general.md](../tasks/system-settings-2/291e-accessibility-general.md) |
+| T292a | Desktop & Dock | [292a-desktop-dock.md](../tasks/system-settings-2/292a-desktop-dock.md) |
+| T292b | Workspace Overview | [292b-workspace-overview.md](../tasks/system-settings-2/292b-workspace-overview.md) |
+| T293a | Menu Bar and OS glyph | [293a-menu-bar.md](../tasks/system-settings-2/293a-menu-bar.md) |
+| T293b | Menu Bar Controls | [293b-menu-bar-controls.md](../tasks/system-settings-2/293b-menu-bar-controls.md) |
 | T294 | Search | [294-t-24.1j-settings-search.md](../tasks/system-settings-2/294-t-24.1j-settings-search.md) |
-| T295 | Wallpaper, Screen Saver | [295-t-24.1k-settings-wallpaper-screen-saver.md](../tasks/system-settings-2/295-t-24.1k-settings-wallpaper-screen-saver.md) |
-| T296 | Notifications, Focus | [296-t-24.1l-settings-notifications-focus.md](../tasks/system-settings-2/296-t-24.1l-settings-notifications-focus.md) |
-| T297 | Sound, Lock Screen | [297-t-24.1m-settings-sound-lock-screen.md](../tasks/system-settings-2/297-t-24.1m-settings-sound-lock-screen.md) |
-| T298 | Privacy & Security | [298-t-24.1n-settings-privacy-security.md](../tasks/system-settings-2/298-t-24.1n-settings-privacy-security.md) |
-| T299 | Users & Groups, Internet Accounts, Biometrics removal | [299-t-24.1o-settings-users-accounts.md](../tasks/system-settings-2/299-t-24.1o-settings-users-accounts.md) |
-| T300 | Keyboard, Mouse, Trackpad, Game Controllers | [300-t-24.1p-settings-input-devices.md](../tasks/system-settings-2/300-t-24.1p-settings-input-devices.md) |
+| T295a | Wallpaper | [295a-wallpaper.md](../tasks/system-settings-2/295a-wallpaper.md) |
+| T295b | Screen Saver | [295b-screen-saver.md](../tasks/system-settings-2/295b-screen-saver.md) |
+| T296a | Notifications | [296a-notifications.md](../tasks/system-settings-2/296a-notifications.md) |
+| T296b | Focus | [296b-focus.md](../tasks/system-settings-2/296b-focus.md) |
+| T297a | Sound | [297a-sound.md](../tasks/system-settings-2/297a-sound.md) |
+| T297b | Lock Screen | [297b-lock-screen.md](../tasks/system-settings-2/297b-lock-screen.md) |
+| T298a | Privacy | [298a-privacy.md](../tasks/system-settings-2/298a-privacy.md) |
+| T298b | Security | [298b-security.md](../tasks/system-settings-2/298b-security.md) |
+| T299a | Users & Groups | [299a-users-groups.md](../tasks/system-settings-2/299a-users-groups.md) |
+| T299b | Internet Accounts | [299b-internet-accounts.md](../tasks/system-settings-2/299b-internet-accounts.md) |
+| T299c | Biometrics removal | [299c-biometrics-removal.md](../tasks/system-settings-2/299c-biometrics-removal.md) |
+| T300a | Keyboard | [300a-keyboard.md](../tasks/system-settings-2/300a-keyboard.md) |
+| T300b | Mouse | [300b-mouse.md](../tasks/system-settings-2/300b-mouse.md) |
+| T300c | Trackpad | [300c-trackpad.md](../tasks/system-settings-2/300c-trackpad.md) |
+| T300d | Game Controllers | [300d-game-controllers.md](../tasks/system-settings-2/300d-game-controllers.md) |
 | T301 | Printers & Scanners | [301-t-24.1q-settings-printers.md](../tasks/system-settings-2/301-t-24.1q-settings-printers.md) |
-| T302 | Visual evidence and close-out | [302-t-24.1r-settings-visual-evidence.md](../tasks/system-settings-2/302-t-24.1r-settings-visual-evidence.md) |
+| T302a | Visual evidence matrix | [302a-visual-evidence-matrix.md](../tasks/system-settings-2/302a-visual-evidence-matrix.md) |
+| T302b | Release close-out and human sign-off | [302b-release-close-out.md](../tasks/system-settings-2/302b-release-close-out.md) |

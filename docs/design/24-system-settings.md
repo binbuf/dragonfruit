@@ -14,14 +14,15 @@
 > [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md)
 > supersedes this document's window/chrome and pane inventory where the two
 > disagree. The row ownership, absence, and evidence rules in §3.4–3.7 still
-> apply. The new task set is `docs/tasks/system-settings-2/` (T285–T302).
+> apply. The new task set is `docs/tasks/system-settings-2/` (T285–T302b,
+> session-sized by ADR 0295).
 >
 > **T285 (2026-11-17):** the pane inventory in this document is historical. The
 > live catalog is the 27-entry sidebar in 25-system-settings-visual-parity.md
 > §3.2/§4: `biometrics`, `mission-control`, and `control-center` are no longer
 > top-level panes; their ids are aliases or refusals in
 > `SettingsPanes.aliases`/`SettingsPanes.removed`. Pane bodies land through
-> T286–T301.
+> T286–T302b.
 
 > The app is now **System Settings**. Internal paths remain `apps/settings`,
 > `org.dragonfruit.Settings1`, and the `settingsd` service name; user-facing
