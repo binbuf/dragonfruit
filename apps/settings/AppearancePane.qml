@@ -13,7 +13,10 @@ import Dragonfruit.Settings
 //   Show scroll bars        stacked scroll-bar visibility radios
 //   Click in the scroll bar to
 //                           stacked scroll-bar-click radios
-//   Desktop integration     the Linux-only icon/cursor/window rows
+//   Footer                  Advanced Appearance… / More in Accessibility…
+//
+// The Linux-only icon/cursor/window rows live in the footer's Advanced
+// Appearance sheet (T290f), not in a pane card.
 //
 // T290d: the old `Color` and `Icon & widget style` cards are one `Theme` card
 // in the mockup order. The accent keeps its swatch row and custom-hex popup;
@@ -26,6 +29,13 @@ import Dragonfruit.Settings
 // `appearance.scrollBarClick` values. The Motion link is gone: the
 // `accessibility.reduceMotion` key keeps its Accessibility owner and its
 // `Theme.reducedMotion` binding.
+//
+// T290f: the Linux-only rows left the pane body. They keep their owners,
+// keys, order, and disabled-with-reason text inside the `Advanced Appearance`
+// `Dialog`, opened from the footer. The footer's second action asks the shell
+// to open Accessibility -> Display (the mockup's `accessibility/display`).
+// The dialog stays instantiated while closed so a deep link can open it and
+// land on a row through `openRowSurface` / `rowTargetFor`.
 //
 // Every settingsd-backed row is a `SettingsKeyRow`, so a rejected write
 // reverts its control and shows the owner's message inline. A row with no
@@ -47,6 +57,9 @@ Item {
     id: root
 
     signal navigationRequested(string paneId)
+    // T290f: a footer action can name another pane's section. The shell opens
+    // the pane, then reveals the section after the Loader swap.
+    signal sectionRequested(string paneId, string section)
 
     readonly property var schemeOptions: [
         { value: "light", label: qsTr("Light") },
@@ -253,7 +266,7 @@ Item {
     // so a pane served from a stale compiled resource fails
     // `tst_settings_appearance` instead of silently passing. A stale build copy
     // is caught separately by `tst_settings_qml_copy_sync`.
-    readonly property string sourceRevision: "t290e"
+    readonly property string sourceRevision: "t290f"
 
     // Test/capture accessor (T290a). Tests and captures reach a control
     // through a pane-body property or alias like this one, never through an id
@@ -297,13 +310,67 @@ Item {
     property alias transparencySlider: transparencySlider
     property alias transparencyRow: transparencyRow
     property alias windowsGroup: windowsGroup
-    property alias linuxGroup: linuxGroup
+    // T290f: the Advanced Appearance sheet and the footer that opens it.
+    property alias advancedFooter: advancedFooter
+    property alias advancedButton: advancedButton
+    property alias accessibilityButton: accessibilityButton
+    property alias advancedDialog: advancedDialog
+    property alias advancedContent: advancedContent
+    property alias advancedGroup: advancedGroup
     property alias windowControlsRow: windowControlsRow
     property alias materialRow: materialRow
     property alias accentFromWallpaperRow: accentFromWallpaperRow
     property alias glassGroup: glassGroup
     property alias glassPreview: glassPreview
     property alias previewPlate: previewPlate
+
+    // T290f: the six rows that live in the Advanced Appearance sheet, in
+    // their rendered order. The map's `rowSurface()` answers "dialog" for
+    // exactly these ids.
+    readonly property var advancedRowIds: [
+        "iconTheme", "cursorTheme", "cursorSize", "windowControls",
+        "material", "accentFromWallpaper"
+    ]
+
+    function isAdvancedRow(rowId) {
+        return root.advancedRowIds.indexOf(String(rowId)) >= 0;
+    }
+
+    // The row item behind an advanced row id. A closed Dialog has adopted the
+    // window overlay layer, so the shell cannot find it by walking the pane
+    // body; it asks the pane instead (`rowTargetFor`).
+    function advancedRowFor(rowId) {
+        switch (String(rowId)) {
+        case "iconTheme": return iconThemeRow;
+        case "cursorTheme": return cursorThemeRow;
+        case "cursorSize": return cursorSizeRow;
+        case "windowControls": return windowControlsRow;
+        case "material": return materialRow;
+        case "accentFromWallpaper": return accentFromWallpaperRow;
+        }
+        return null;
+    }
+
+    function rowTargetFor(rowId) {
+        return root.isAdvancedRow(rowId) ? root.advancedRowFor(rowId) : null;
+    }
+
+    function openAdvanced() {
+        advancedDialog.show();
+    }
+
+    function closeAdvanced() {
+        advancedDialog.hide();
+    }
+
+    // The shell's closed-surface hook: open the sheet before it looks for the
+    // row. Returns whether this pane owns the row.
+    function openRowSurface(rowId) {
+        if (!root.isAdvancedRow(rowId))
+            return false;
+        root.openAdvanced();
+        return true;
+    }
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -983,133 +1050,183 @@ Item {
             }
         }
 
-        // The Linux-only rows. Each names its real owner. The icon rows are
-        // backed by the host's installed themes; a host with no provider shows
-        // a disabled row with the reason rather than silently omitting it.
-        SettingsGroup {
-            id: linuxGroup
+        // T290f: the mockup footer. The Linux-only rows moved into the
+        // Advanced Appearance sheet; the second action hands off to the
+        // Accessibility pane's Display group. Both are real actions, not a
+        // duplicate row for a key another pane owns.
+        SettingsFooter {
+            id: advancedFooter
+            objectName: "appearanceFooter"
             width: parent.width
-            title: qsTr("Desktop integration")
-            sectionId: "Desktop integration"
 
-            SettingsKeyRow {
-                id: iconThemeRow
-                width: parent.width
-                label: qsTr("Icon theme")
-                settingsId: "iconTheme"
-                owner: "settingsd + icon-theme provider"
-                settingsKey: "appearance.iconTheme"
-                enabled: root.iconProviderAvailable
-                description: root.iconProviderAvailable
-                    ? qsTr("Overrides the icon & widget style with a specific "
-                           + "installed theme.")
-                    : root.iconProviderReason
-                controlData: Select {
-                    id: iconThemeSelect
-                    accessibleName: qsTr("Icon theme")
-                    model: root.iconThemeOptions
-                    onActivated: (index) => Settings.set(
-                                    "appearance.iconTheme",
-                                    String(root.iconThemeOptions[index].value))
-                }
+            Button {
+                id: advancedButton
+                objectName: "appearanceAdvancedButton"
+                text: qsTr("Advanced Appearance…")
+                accessibleName: qsTr("Open advanced appearance settings")
+                onClicked: root.openAdvanced()
             }
 
-            SettingsKeyRow {
-                id: cursorThemeRow
-                width: parent.width
-                label: qsTr("Cursor theme")
-                settingsId: "cursorTheme"
-                owner: "settingsd + compositor"
-                settingsKey: "appearance.cursorTheme"
-                enabled: root.cursorProviderAvailable
-                description: root.cursorProviderAvailable
-                    ? qsTr("Applied the next time you sign in.")
-                    : root.cursorProviderReason
-                controlData: Select {
-                    id: cursorThemeSelect
-                    accessibleName: qsTr("Cursor theme")
-                    model: root.cursorThemeOptions
-                    onActivated: (index) => Settings.set(
-                                    "appearance.cursorTheme",
-                                    String(root.cursorThemeOptions[index].value))
-                }
-            }
-
-            SettingsKeyRow {
-                id: cursorSizeRow
-                width: parent.width
-                label: qsTr("Cursor size")
-                settingsId: "cursorSize"
-                owner: "settingsd + compositor"
-                settingsKey: "appearance.cursorSize"
-                description: qsTr("Applied the next time you sign in.")
-                controlData: Slider {
-                    id: cursorSizeSlider
-                    width: 220
-                    from: 16
-                    to: 64
-                    stepSize: 1
-                    minLabel: qsTr("Small")
-                    maxLabel: qsTr("Large")
-                    accessibleName: qsTr("Cursor size")
-                    onCommitted: (value) => Settings.set("appearance.cursorSize",
-                                                         Math.round(value))
-                }
-            }
-
-            SettingsRow {
-                id: windowControlsRow
-                width: parent.width
-                label: qsTr("Window control layout")
-                description: qsTr("Dragonfruit keeps the traffic lights on the left. "
-                                  + "Moving them is not available yet.")
-                settingsId: "windowControls"
-                owner: "compositor/window decoration"
-                settingsKey: "appearance.windowControls"
-                controlData: Select {
-                    model: [{ value: "left", label: qsTr("Left") }]
-                    enabled: false
-                    accessibleName: qsTr("Window control layout")
-                }
-            }
-
-            SettingsRow {
-                id: materialRow
-                width: parent.width
-                label: qsTr("Material effects")
-                description: qsTr("Dragonfruit chooses the glass detail automatically "
-                                  + "from the graphics hardware; there is no manual "
-                                  + "override.")
-                settingsId: "material"
-                owner: "shell/design-system Glass"
-                settingsKey: "appearance.material"
-                controlData: Select {
-                    model: [{ value: "auto", label: qsTr("Automatic") }]
-                    enabled: false
-                    accessibleName: qsTr("Material effects")
-                }
-            }
-
-            SettingsRow {
-                id: accentFromWallpaperRow
-                width: parent.width
-                label: qsTr("Accent from wallpaper")
-                description: qsTr("Needs the wallpaper color sampler; use a "
-                                  + "custom accent above until it is available.")
-                settingsId: "accentFromWallpaper"
-                owner: "shell/design-system Theme"
-                settingsKey: "appearance.accentFromWallpaper"
-                controlData: Toggle {
-                    checked: false
-                    enabled: false
-                    accessibleName: qsTr("Accent from wallpaper")
-                }
+            Button {
+                id: accessibilityButton
+                objectName: "appearanceAccessibilityButton"
+                text: qsTr("More in Accessibility Settings…")
+                accessibleName: qsTr("Open Accessibility display settings")
+                onClicked: root.sectionRequested("accessibility", "display")
             }
         }
 
         Item {
             width: parent.width
             height: 0
+        }
+    }
+
+    // T290f: the Advanced Appearance sheet. Every row keeps its real owner,
+    // key, description, enabled state, and disabled-with-reason text; the
+    // sheet is an organization change, not a new owner. The dialog is
+    // instantiated while closed so a deep link can open it and land on a row.
+    //
+    // The content sits in a fixed-width wrapper rather than an inline
+    // `component`: the Dialog sizes its card from the content's implicit
+    // width, and a 480 pt column keeps every control slot usable at the
+    // measured window. The wrapper's height follows the group so the
+    // scrollable body keeps its real height.
+    Dialog {
+        id: advancedDialog
+        objectName: "appearanceAdvancedDialog"
+        title: qsTr("Advanced Appearance")
+        message: qsTr("Desktop integration settings for this system. A row the "
+                      + "host does not provide stays visible and disabled with "
+                      + "the reason.")
+
+        contentData: Item {
+            id: advancedContent
+            implicitWidth: 480
+            implicitHeight: advancedGroup.implicitHeight
+            width: parent.width
+            height: implicitHeight
+
+            SettingsGroup {
+                id: advancedGroup
+                width: parent.width
+                title: qsTr("Advanced Appearance")
+                sectionId: "Advanced Appearance"
+
+                SettingsKeyRow {
+                    id: iconThemeRow
+                    width: parent.width
+                    label: qsTr("Icon theme")
+                    settingsId: "iconTheme"
+                    owner: "settingsd + icon-theme provider"
+                    settingsKey: "appearance.iconTheme"
+                    enabled: root.iconProviderAvailable
+                    description: root.iconProviderAvailable
+                        ? qsTr("Overrides the icon & widget style with a specific "
+                               + "installed theme.")
+                        : root.iconProviderReason
+                    controlData: Select {
+                        id: iconThemeSelect
+                        accessibleName: qsTr("Icon theme")
+                        model: root.iconThemeOptions
+                        onActivated: (index) => Settings.set(
+                                        "appearance.iconTheme",
+                                        String(root.iconThemeOptions[index].value))
+                    }
+                }
+
+                SettingsKeyRow {
+                    id: cursorThemeRow
+                    width: parent.width
+                    label: qsTr("Cursor theme")
+                    settingsId: "cursorTheme"
+                    owner: "settingsd + compositor"
+                    settingsKey: "appearance.cursorTheme"
+                    enabled: root.cursorProviderAvailable
+                    description: root.cursorProviderAvailable
+                        ? qsTr("Applied the next time you sign in.")
+                        : root.cursorProviderReason
+                    controlData: Select {
+                        id: cursorThemeSelect
+                        accessibleName: qsTr("Cursor theme")
+                        model: root.cursorThemeOptions
+                        onActivated: (index) => Settings.set(
+                                        "appearance.cursorTheme",
+                                        String(root.cursorThemeOptions[index].value))
+                    }
+                }
+
+                SettingsKeyRow {
+                    id: cursorSizeRow
+                    width: parent.width
+                    label: qsTr("Cursor size")
+                    settingsId: "cursorSize"
+                    owner: "settingsd + compositor"
+                    settingsKey: "appearance.cursorSize"
+                    description: qsTr("Applied the next time you sign in.")
+                    controlData: Slider {
+                        id: cursorSizeSlider
+                        width: 220
+                        from: 16
+                        to: 64
+                        stepSize: 1
+                        minLabel: qsTr("Small")
+                        maxLabel: qsTr("Large")
+                        accessibleName: qsTr("Cursor size")
+                        onCommitted: (value) => Settings.set("appearance.cursorSize",
+                                                             Math.round(value))
+                    }
+                }
+
+                SettingsRow {
+                    id: windowControlsRow
+                    width: parent.width
+                    label: qsTr("Window control layout")
+                    description: qsTr("Dragonfruit keeps the traffic lights on the left. "
+                                      + "Moving them is not available yet.")
+                    settingsId: "windowControls"
+                    owner: "compositor/window decoration"
+                    settingsKey: "appearance.windowControls"
+                    controlData: Select {
+                        model: [{ value: "left", label: qsTr("Left") }]
+                        enabled: false
+                        accessibleName: qsTr("Window control layout")
+                    }
+                }
+
+                SettingsRow {
+                    id: materialRow
+                    width: parent.width
+                    label: qsTr("Material effects")
+                    description: qsTr("Dragonfruit chooses the glass detail automatically "
+                                      + "from the graphics hardware; there is no manual "
+                                      + "override.")
+                    settingsId: "material"
+                    owner: "shell/design-system Glass"
+                    settingsKey: "appearance.material"
+                    controlData: Select {
+                        model: [{ value: "auto", label: qsTr("Automatic") }]
+                        enabled: false
+                        accessibleName: qsTr("Material effects")
+                    }
+                }
+
+                SettingsRow {
+                    id: accentFromWallpaperRow
+                    width: parent.width
+                    label: qsTr("Accent from wallpaper")
+                    description: qsTr("Needs the wallpaper color sampler; use a "
+                                      + "custom accent above until it is available.")
+                    settingsId: "accentFromWallpaper"
+                    owner: "shell/design-system Theme"
+                    settingsKey: "appearance.accentFromWallpaper"
+                    controlData: Toggle {
+                        checked: false
+                        enabled: false
+                        accessibleName: qsTr("Accent from wallpaper")
+                    }
+                }
+            }
         }
     }
 

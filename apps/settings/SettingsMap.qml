@@ -619,27 +619,27 @@ QtObject {
                          "settingsd", "appearance.scrollBarClick", "live-on-defaults", "shipped"),
                 root.row("transparency", qsTr("Glass"), qsTr("Glass tint"), "slider",
                          "settingsd", "appearance.transparency", "live-on-defaults", "shipped"),
-                root.row("iconTheme", qsTr("Desktop integration"), qsTr("Icon theme"), "popup",
+                root.row("iconTheme", qsTr("Advanced Appearance"), qsTr("Icon theme"), "popup",
                          "settingsd + icon-theme provider", "appearance.iconTheme",
                          "disabled-with-reason", "shipped",
                          false, "shell/app-index icon lookup, apps/settings icon provider"),
-                root.row("cursorTheme", qsTr("Desktop integration"), qsTr("Cursor theme"), "popup",
+                root.row("cursorTheme", qsTr("Advanced Appearance"), qsTr("Cursor theme"), "popup",
                          "settingsd + compositor", "appearance.cursorTheme",
                          "disabled-with-reason", "shipped",
                          false, "compositor/cursor theme (next session)"),
-                root.row("cursorSize", qsTr("Desktop integration"), qsTr("Cursor size"), "slider",
+                root.row("cursorSize", qsTr("Advanced Appearance"), qsTr("Cursor size"), "slider",
                          "settingsd + compositor", "appearance.cursorSize",
                          "disabled-with-reason", "shipped",
                          false, "compositor/cursor theme (next session)"),
-                root.row("windowControls", qsTr("Desktop integration"), qsTr("Window control layout"), "popup",
+                root.row("windowControls", qsTr("Advanced Appearance"), qsTr("Window control layout"), "popup",
                          "compositor/window decoration", "appearance.windowControls",
                          "disabled-with-reason", "shipped",
                          false, "compositor/window decoration (traffic lights stay left)"),
-                root.row("material", qsTr("Desktop integration"), qsTr("Material effects"), "popup",
+                root.row("material", qsTr("Advanced Appearance"), qsTr("Material effects"), "popup",
                          "shell/design-system Glass", "appearance.material",
                          "disabled-with-reason", "shipped",
                          false, "shell/design-system Glass (GPU budget owns the tier)"),
-                root.row("accentFromWallpaper", qsTr("Desktop integration"), qsTr("Accent from wallpaper"), "toggle",
+                root.row("accentFromWallpaper", qsTr("Advanced Appearance"), qsTr("Accent from wallpaper"), "toggle",
                          "shell/design-system Theme", "appearance.accentFromWallpaper",
                          "disabled-with-reason", "shipped")
             ],
@@ -1724,6 +1724,18 @@ QtObject {
         return mapped !== undefined ? mapped : "";
     }
 
+    // T290f: the Appearance rows that live inside the Advanced Appearance
+    // sheet. The sheet is an organization change, so the ids (not localized
+    // section titles) are the stable table.
+    readonly property var appearanceDialogRows: ({
+        "iconTheme": true,
+        "cursorTheme": true,
+        "cursorSize": true,
+        "windowControls": true,
+        "material": true,
+        "accentFromWallpaper": true
+    })
+
     // Where a row lives: "subpane", "dialog", or "pane". "" means the row
     // cannot be landed and must not be indexed or deep-linked.
     function rowSurface(paneId, rowId) {
@@ -1732,6 +1744,9 @@ QtObject {
             return "";
         if (root.subPaneForRow(paneId, rowId).length > 0)
             return "subpane";
+        if (paneId === "appearance"
+                && root.appearanceDialogRows[rowId] === true)
+            return "dialog";
         return "pane";
     }
 

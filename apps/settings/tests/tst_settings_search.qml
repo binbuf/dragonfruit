@@ -308,6 +308,80 @@ Item {
         }
 
 
+        // T290f: the Advanced Appearance sheet's six rows are indexed by their
+        // rendered labels and synonyms, and every appearance row is landable.
+        function test_appearance_advanced_rows_are_searchable() {
+            var cases = [
+                { terms: ["icon theme", "installed icon theme"],
+                  row: "iconTheme" },
+                { terms: ["cursor theme", "pointer theme"], row: "cursorTheme" },
+                { terms: ["cursor size", "pointer size"], row: "cursorSize" },
+                { terms: ["window controls", "traffic lights"],
+                  row: "windowControls" },
+                { terms: ["material effects", "glass effects"], row: "material" },
+                { terms: ["accent from wallpaper", "dynamic accent"],
+                  row: "accentFromWallpaper" }
+            ];
+            for (var c = 0; c < cases.length; ++c) {
+                for (var t = 0; t < cases[c].terms.length; ++t) {
+                    var results = SettingsSearch.search(cases[c].terms[t],
+                                                        { perPane: 50 });
+                    var found = false;
+                    for (var i = 0; i < results.length; ++i) {
+                        if (results[i].paneId === "appearance"
+                                && String(results[i].deepLink)
+                                   === "settings://pane/appearance/row/"
+                                      + cases[c].row) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    verify(found, "search for '" + cases[c].terms[t]
+                           + "' must reach appearance/" + cases[c].row);
+                }
+            }
+
+            // The sheet's own heading is one section result that deep-links
+            // into the sheet.
+            var section = SettingsSearch.search("advanced appearance",
+                                                { perPane: 50 });
+            var sectionFound = false;
+            for (var s = 0; s < section.length; ++s) {
+                if (section[s].kind === "section"
+                        && section[s].paneId === "appearance"
+                        && section[s].label === "Advanced Appearance") {
+                    sectionFound = true;
+                    break;
+                }
+            }
+            verify(sectionFound, "the Advanced Appearance section must be indexed");
+        }
+
+        // T290f: the audit in one place - every shipped Appearance row is
+        // landable and its rendered label finds the row it deep-links to.
+        function test_every_appearance_row_is_landable_and_searchable() {
+            var rows = SettingsMap.visibleRowsFor("appearance");
+            verify(rows.length > 0);
+            for (var r = 0; r < rows.length; ++r) {
+                verify(SettingsMap.isRowLandable("appearance", rows[r].id),
+                       rows[r].id + " must be landable");
+                var results = SettingsSearch.search(rows[r].label,
+                                                    { perPane: 50 });
+                var found = false;
+                for (var i = 0; i < results.length; ++i) {
+                    if (results[i].paneId === "appearance"
+                            && String(results[i].deepLink)
+                               === "settings://pane/appearance/row/"
+                                  + rows[r].id) {
+                        found = true;
+                        break;
+                    }
+                }
+                verify(found, "the label '" + rows[r].label
+                       + "' must reach appearance/" + rows[r].id);
+            }
+        }
+
         function test_synonyms_and_help_text_are_indexed() {
             var bluez = SettingsSearch.search("bluez");
             verify(bluez.length > 0);
@@ -854,6 +928,30 @@ Item {
             tryVerify(function() {
                 return shell.highlightTarget !== null
                     && shell.highlightTarget.settingsId === "language.region";
+            });
+        }
+
+        // T290f: a dialog row is part of history; Back closes the sheet with
+        // the pane, Forward reopens it on the row.
+        function test_back_forward_restores_a_dialog_row() {
+            var shell = make();
+            verify(shell.deepLink(
+                "settings://pane/appearance/row/iconTheme"));
+            tryVerify(function() {
+                return shell.paneBody.item.advancedDialog.open
+                    && shell.highlightTarget !== null
+                    && shell.highlightTarget.settingsId === "iconTheme";
+            });
+            verify(shell.deepLink("settings://pane/notifications/row/previews"));
+            waitForRendering(stage);
+            compare(shell.currentPaneId, "notifications");
+
+            shell.back();
+            tryVerify(function() {
+                return shell.currentPaneId === "appearance"
+                    && shell.paneBody.item.advancedDialog.open
+                    && shell.highlightTarget !== null
+                    && shell.highlightTarget.settingsId === "iconTheme";
             });
         }
 

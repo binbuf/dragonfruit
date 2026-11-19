@@ -476,6 +476,19 @@ Item {
         Qt.callLater(root.focusAfterNavigation);
     }
 
+    // A pane footer can ask for another pane's section (Appearance's "More in
+    // Accessibility Settings…"). The pane is selected first, then the section
+    // is queued so `revealPending` lands after the Loader swap.
+    function openSection(paneId, section) {
+        if (!paneId || paneId.length === 0)
+            return;
+        root.selectPane(paneId);
+        root.pendingPaneId = paneId;
+        root.pendingSection = section || "";
+        if (root.currentPaneId === paneId && root.loadedPaneId === paneId)
+            Qt.callLater(root.revealPending);
+    }
+
     function openAboutPage() {
         root.pendingAboutPage = true;
         root.selectPane("general");
@@ -837,6 +850,12 @@ Item {
         if (surface === "dialog" && body.openRowSurface !== undefined)
             body.openRowSurface(row.id);
         var target = row !== null ? root.findRowTarget(body, row) : null;
+        // A dialog row can live outside the pane body: Dialog adopts the
+        // window overlay layer. The pane that owns the surface names the row
+        // item directly, so the landing is still one path.
+        if (target === null && row !== null && surface === "dialog"
+                && body.rowTargetFor !== undefined)
+            target = body.rowTargetFor(row.id);
         if (target === null && row !== null)
             target = root.findSectionTarget(body, row.section);
         if (target === null && root.pendingSection.length > 0)
@@ -1660,6 +1679,9 @@ Item {
                             ignoreUnknownSignals: true
                             function onNavigationRequested(paneId) {
                                 root.selectPane(paneId);
+                            }
+                            function onSectionRequested(paneId, section) {
+                                root.openSection(paneId, section);
                             }
                             function onSubPaneLoaded(subPaneId) {
                                 // A deep link that needed a closed sub-pane

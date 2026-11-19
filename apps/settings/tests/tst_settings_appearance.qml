@@ -135,7 +135,7 @@ Item {
             // T290a: the pane that actually loaded must come from the source
             // tree. A stale build copy or a stale compiled resource fails here
             // instead of silently testing the previous pane.
-            compare(pane.sourceRevision, "t290e");
+            compare(pane.sourceRevision, "t290f");
         }
 
         function test_theme_card_holds_the_four_controls_in_order() {
@@ -200,6 +200,206 @@ Item {
                    === pane.wallpaperTintToggle);
             compare(pane.wallpaperTintRow.settingsId, "wallpaperTint");
             compare(pane.wallpaperTintRow.owner, "settingsd + shell");
+        }
+
+        // T290f: the footer opens the Advanced Appearance sheet and the sheet
+        // keeps the six Linux-only rows; the pane body no longer renders a
+        // "Desktop integration" card.
+        function test_footer_opens_and_closes_the_advanced_sheet() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            verify(pane.advancedFooter);
+            compare(pane.advancedButton.text, "Advanced Appearance…");
+            compare(pane.accessibilityButton.text,
+                    "More in Accessibility Settings…");
+            compare(pane.advancedDialog.open, false);
+            verify(pane.linuxGroup === undefined,
+                   "the old Desktop integration card must be gone");
+
+            pane.advancedButton.clicked();
+            tryVerify(function() { return pane.advancedDialog.open; });
+            compare(pane.advancedDialog.title, "Advanced Appearance");
+            compare(pane.advancedDialog.Accessible.role, Accessible.Dialog);
+
+            pane.advancedDialog.closeAction.clicked();
+            tryVerify(function() { return !pane.advancedDialog.open; });
+        }
+
+        function test_advanced_sheet_holds_the_six_linux_rows() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            compare(pane.advancedGroup.sectionId, "Advanced Appearance");
+            compare(pane.advancedGroup.title, "Advanced Appearance");
+
+            var rows = pane.advancedGroup.rows.children;
+            compare(rows.length, 6);
+            verify(rows[0] === pane.iconThemeRow);
+            verify(rows[1] === pane.cursorThemeRow);
+            verify(rows[2] === pane.cursorSizeRow);
+            verify(rows[3] === pane.windowControlsRow);
+            verify(rows[4] === pane.materialRow);
+            verify(rows[5] === pane.accentFromWallpaperRow);
+
+            var expected = [
+                ["iconTheme", "Icon theme", "appearance.iconTheme",
+                 "settingsd + icon-theme provider"],
+                ["cursorTheme", "Cursor theme", "appearance.cursorTheme",
+                 "settingsd + compositor"],
+                ["cursorSize", "Cursor size", "appearance.cursorSize",
+                 "settingsd + compositor"],
+                ["windowControls", "Window control layout",
+                 "appearance.windowControls", "compositor/window decoration"],
+                ["material", "Material effects", "appearance.material",
+                 "shell/design-system Glass"],
+                ["accentFromWallpaper", "Accent from wallpaper",
+                 "appearance.accentFromWallpaper", "shell/design-system Theme"]
+            ];
+            for (var i = 0; i < expected.length; ++i) {
+                var row = rows[i];
+                compare(row.settingsId, expected[i][0]);
+                compare(row.label, expected[i][1]);
+                compare(row.settingsKey, expected[i][2]);
+                compare(row.owner, expected[i][3]);
+                verify(row.description.length > 0,
+                       expected[i][0] + " must keep its description");
+                compare(SettingsMap.rowFor("appearance", expected[i][0]).label,
+                        expected[i][1]);
+                compare(SettingsMap.rowFor("appearance",
+                                           expected[i][0]).owner,
+                        expected[i][3]);
+            }
+
+            // The three rows with no consumer stay visible and disabled with
+            // their reason; they are never silently dropped.
+            compare(pane.windowControlsRow.control.children[0].enabled, false);
+            compare(pane.materialRow.control.children[0].enabled, false);
+            compare(pane.accentFromWallpaperRow.control.children[0].enabled,
+                    false);
+            verify(pane.windowControlsRow.description.indexOf("not available") >= 0);
+            verify(pane.materialRow.description.indexOf("automatically") >= 0);
+            verify(pane.accentFromWallpaperRow.description.indexOf("wallpaper") >= 0);
+        }
+
+        function test_advanced_provider_rows_disable_without_a_provider() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.iconThemeRow.enabled);
+            verify(pane.cursorThemeRow.enabled);
+
+            Settings.setIconThemeFixture("none");
+            Settings.setCursorThemeFixture("none");
+            tryVerify(function() {
+                return !pane.iconThemeRow.enabled
+                    && !pane.cursorThemeRow.enabled;
+            });
+            verify(pane.iconThemeRow.description.indexOf("No icon theme") >= 0);
+            verify(pane.cursorThemeRow.description.indexOf("No cursor theme") >= 0);
+            compare(pane.advancedGroup.rows.children.length, 6);
+        }
+
+        function test_advanced_row_deep_links_open_the_sheet_and_land() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var ids = ["iconTheme", "cursorTheme", "cursorSize",
+                       "windowControls", "material", "accentFromWallpaper"];
+
+            for (var i = 0; i < ids.length; ++i) {
+                if (pane.advancedDialog.open)
+                    pane.closeAdvanced();
+                compare(pane.advancedDialog.open, false);
+                verify(shell.deepLink("settings://pane/appearance/row/"
+                                      + ids[i]),
+                       "deep link to " + ids[i] + " must be accepted");
+                tryVerify(function() {
+                    return pane.advancedDialog.open
+                        && shell.highlightTarget !== null
+                        && shell.highlightTarget.settingsId === ids[i];
+                });
+                compare(shell.currentPaneId, "appearance");
+                compare(shell.highlightTarget.highlighted, true);
+            }
+        }
+
+        // T290f: the whole Appearance map/search surface in one audit. Every
+        // rendered row (the pane body and the Advanced sheet) has a map row
+        // with the same section and label, and every map row is landable.
+        function test_every_rendered_appearance_row_has_a_map_row() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            var rendered = [];
+            function collect(item) {
+                if (item === null || item === undefined)
+                    return;
+                if (item.settingsId !== undefined
+                        && String(item.settingsId).length > 0
+                        && item.settingsKey !== undefined
+                        && item.label !== undefined)
+                    rendered.push(item);
+                var kids = item.children;
+                for (var i = 0; i < kids.length; ++i)
+                    collect(kids[i]);
+            }
+            function enclosingGroup(item) {
+                var node = item ? item.parent : null;
+                while (node !== null && node !== undefined) {
+                    if (node.sectionId !== undefined
+                            && node.titleText !== undefined)
+                        return node;
+                    node = node.parent;
+                }
+                return null;
+            }
+
+            collect(pane);
+            // The dialog adopts the window overlay layer, so its group is not
+            // a descendant of the pane body; include it explicitly.
+            collect(pane.advancedGroup);
+
+            compare(rendered.length, 16,
+                    "every rendered Appearance row must be collected");
+            var seen = {};
+            for (var i = 0; i < rendered.length; ++i) {
+                var row = rendered[i];
+                var mapped = SettingsMap.rowFor("appearance",
+                                                String(row.settingsId));
+                verify(mapped !== null,
+                       "rendered row " + row.settingsId + " must be in the map");
+                verify(seen[String(row.settingsId)] === undefined,
+                       "row " + row.settingsId + " must be rendered once");
+                seen[String(row.settingsId)] = true;
+                compare(row.label, mapped.label,
+                        row.settingsId + " rendered label");
+                compare(row.settingsKey, mapped.key,
+                        row.settingsId + " rendered key");
+                var group = enclosingGroup(row);
+                verify(group !== null,
+                       row.settingsId + " must sit in a SettingsGroup");
+                compare(group.sectionId, mapped.section,
+                        row.settingsId + " map section");
+                verify(SettingsMap.isRowLandable("appearance",
+                                                 String(row.settingsId)),
+                       row.settingsId + " must be landable");
+            }
+        }
+
+        // T290f: the footer's second action lands on Accessibility -> Display.
+        function test_accessibility_footer_lands_on_the_display_section() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            pane.accessibilityButton.clicked();
+            tryVerify(function() {
+                return shell.currentPaneId === "accessibility"
+                    && shell.paneBody.status === Loader.Ready
+                    && shell.highlightTarget !== null
+                    && shell.highlightTarget.sectionId === "display";
+            });
+            compare(shell.highlightTarget.sectionId, "display");
+            compare(shell.highlightTarget.highlighted, true);
+            compare(shell.pendingSection, "");
         }
 
         function test_scheme_row_handle_reaches_the_tile_row() {

@@ -188,7 +188,60 @@ Item {
                 verify(rows[i].section !== "Color");
                 verify(rows[i].section !== "Icon & widget style");
                 verify(rows[i].section !== "Windows and scroll bars");
+                verify(rows[i].section !== "Desktop integration");
             }
+        }
+
+        // T290f: the six Linux-only Appearance rows live in the Advanced
+        // Appearance sheet; the map answers "dialog" for exactly those ids and
+        // every other appearance row stays on the pane surface.
+        function test_appearance_advanced_rows_are_dialog_rows() {
+            var cases = [
+                { id: "iconTheme", label: "Icon theme", control: "popup",
+                  key: "appearance.iconTheme" },
+                { id: "cursorTheme", label: "Cursor theme", control: "popup",
+                  key: "appearance.cursorTheme" },
+                { id: "cursorSize", label: "Cursor size", control: "slider",
+                  key: "appearance.cursorSize" },
+                { id: "windowControls", label: "Window control layout",
+                  control: "popup", key: "appearance.windowControls" },
+                { id: "material", label: "Material effects", control: "popup",
+                  key: "appearance.material" },
+                { id: "accentFromWallpaper", label: "Accent from wallpaper",
+                  control: "toggle", key: "appearance.accentFromWallpaper" }
+            ];
+            for (var i = 0; i < cases.length; ++i) {
+                var row = SettingsMap.rowFor("appearance", cases[i].id);
+                verify(row !== null, cases[i].id + " must be in the map");
+                compare(row.section, "Advanced Appearance");
+                compare(row.label, cases[i].label);
+                compare(row.control, cases[i].control);
+                compare(row.key, cases[i].key);
+                compare(row.state, "shipped");
+                compare(SettingsMap.rowSurface("appearance", cases[i].id),
+                        "dialog");
+                verify(SettingsMap.isRowLandable("appearance", cases[i].id),
+                       cases[i].id + " must be landable");
+            }
+
+            var dialogIds = cases.map(function(entry) { return entry.id; });
+            var rows = SettingsMap.rowsFor("appearance");
+            var seen = {};
+            for (var r = 0; r < rows.length; ++r) {
+                verify(seen[rows[r].id] === undefined,
+                       "duplicate appearance row " + rows[r].id);
+                seen[rows[r].id] = true;
+                var surface = SettingsMap.rowSurface("appearance", rows[r].id);
+                if (dialogIds.indexOf(rows[r].id) >= 0) {
+                    compare(surface, "dialog");
+                } else {
+                    compare(surface, "pane",
+                            rows[r].id + " must stay on the pane surface");
+                }
+                verify(SettingsMap.isRowLandable("appearance", rows[r].id),
+                       rows[r].id + " must be landable");
+            }
+            compare(rows.length, 16);
         }
 
         // -- Every visible row has an owner/key/absence path -------------------
