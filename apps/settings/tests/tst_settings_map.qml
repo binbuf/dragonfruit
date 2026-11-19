@@ -104,6 +104,19 @@ Item {
             compare(row.state, "shipped");
         }
 
+        // T290c: the transparency slider is the Glass tint row in the Glass
+        // section; the settings key and slider control are unchanged.
+        function test_appearance_transparency_row_is_the_glass_tint() {
+            var row = SettingsMap.rowFor("appearance", "transparency");
+            verify(row !== null);
+            compare(row.section, "Glass");
+            compare(row.label, "Glass tint");
+            compare(row.control, "slider");
+            compare(row.key, "appearance.transparency");
+            compare(row.state, "shipped");
+            compare(SettingsMap.rowsFor("appearance").length > 0, true);
+        }
+
         // -- Every visible row has an owner/key/absence path -------------------
 
         function test_every_visible_row_has_an_owner() {

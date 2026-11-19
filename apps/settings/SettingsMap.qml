@@ -615,7 +615,7 @@ QtObject {
                          "settingsd", "appearance.scrollBars", "live-on-defaults", "shipped"),
                 root.row("scrollBarClick", qsTr("Windows and scroll bars"), qsTr("Click in the scroll bar to"), "popup",
                          "settingsd", "appearance.scrollBarClick", "live-on-defaults", "shipped"),
-                root.row("transparency", qsTr("Windows and scroll bars"), qsTr("Transparency"), "slider",
+                root.row("transparency", qsTr("Glass"), qsTr("Glass tint"), "slider",
                          "settingsd", "appearance.transparency", "live-on-defaults", "shipped"),
                 root.row("motion", qsTr("Windows and scroll bars"), qsTr("Motion"), "link",
                          "settingsd", "accessibility.reduceMotion", "live-on-defaults", "shipped"),

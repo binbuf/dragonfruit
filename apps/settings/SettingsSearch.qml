@@ -101,7 +101,7 @@ QtObject {
         "appearance/scheme": ["theme", "dark mode", "light mode", "dark",
                               "light", "auto", "color scheme"],
         "appearance/accent": ["highlight color", "tint", "color"],
-        "appearance/transparency": ["attached menu transparency", "glass",
+        "appearance/transparency": ["glass tint", "attached menu transparency",
                                     "opacity"],
         "desktop-dock/size": ["dock size", "icon size", "small", "large"],
         "desktop-dock/magnification": ["zoom", "magnify"],

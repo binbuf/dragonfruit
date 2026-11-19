@@ -53,8 +53,9 @@ Item {
             waitForRendering(stage);
             grabImage(shell).save("docs/captures/t274-appearance-" + scheme + ".png");
 
-            // The live preview: scheme, accent, highlight, folder, material.
-            scrollTo(shell, pane.previewGroup);
+            // The Glass card is the preview: the rendered attached-menu plate
+            // and the tint slider share the resolver.
+            scrollTo(shell, pane.glassGroup);
             grabImage(shell).save("docs/captures/t274-appearance-preview-"
                                   + scheme + ".png");
 

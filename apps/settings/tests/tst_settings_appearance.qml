@@ -86,7 +86,7 @@ Item {
             // T290a: the pane that actually loaded must come from the source
             // tree. A stale build copy or a stale compiled resource fails here
             // instead of silently testing the previous pane.
-            compare(pane.sourceRevision, "t290b");
+            compare(pane.sourceRevision, "t290c");
         }
 
         function test_scheme_row_handle_reaches_the_tile_row() {
@@ -256,10 +256,15 @@ Item {
             var pane = paneOf(shell);
             fuzzyCompare(pane.transparency, 0.5255, 0.0001);
             fuzzyCompare(pane.transparencySlider.value, 0.5255, 0.0001);
-            verify(pane.transparencyRow.description.indexOf("Light attached menus") >= 0,
+            compare(pane.glassGroup.sectionId, "Glass");
+            compare(pane.glassGroup.title, "Glass");
+            compare(pane.transparencyRow.label, "Glass tint");
+            verify(pane.transparencyRow.description.indexOf("Attached menus only") >= 0,
                    "the control text must name the affected surface");
             verify(pane.transparencyRow.description.indexOf("Dock") >= 0,
                    "the control text must say which surfaces keep their material");
+            verify(pane.transparencyRow.description.indexOf("Reduce Transparency") >= 0,
+                   "the control text must say the accessibility override wins");
         }
 
         function test_transparency_drag_is_coalesced_and_committed() {
@@ -609,31 +614,45 @@ Item {
             Settings.set("accessibility.reduceTransparency", false);
         }
 
-        function test_preview_renders_scheme_accent_highlight_and_folder() {
+        // T290c: the Glass card is the preview. The scheme readout, the tint,
+        // and the plate all come from the one resolver; the accent, highlight,
+        // and folder chips that used to sit in the removed Preview group are
+        // covered by the Theme control tests above and move fully to T290d.
+        function test_glass_preview_renders_the_scheme_and_tint() {
             var shell = make();
             var pane = paneOf(shell);
             pane.previewRollout = "replacement";
 
+            verify(pane.previewPlate);
+            compare(pane.glassGroup.sectionId, "Glass");
+
             Settings.set("appearance.colorScheme", "dark");
             tryVerify(function() { return pane.previewScheme === "Dark"; });
+            fuzzyCompare(pane.previewPlate.color.a,
+                         pane.previewResolved.alpha, 0.001);
 
-            Settings.set("appearance.accent", "#123456");
+            // Only the light attached-menu preset follows the slider, so the
+            // tint half of this case uses the light scheme.
+            Settings.set("appearance.colorScheme", "light");
+            tryVerify(function() { return pane.previewScheme === "Light"; });
+
+            // The plate is the resolver output at both ends of the slider, not
+            // a decorative blend that happens to look similar.
+            pane.transparencySlider.setValue(0.0);
+            var low = pane.previewResolved.alpha;
             tryVerify(function() {
-                return Qt.colorEqual(pane.previewAccentChip.color, "#123456");
+                return Math.abs(pane.previewPlate.color.a - low) < 0.001;
+            });
+            pane.transparencySlider.setValue(1.0);
+            var high = pane.previewResolved.alpha;
+            verify(high < low,
+                   "higher transparency must resolve to a clearer plate");
+            tryVerify(function() {
+                return Math.abs(pane.previewPlate.color.a - high) < 0.001;
             });
 
-            Settings.set("appearance.highlight", "#7fd6a4");
-            tryVerify(function() {
-                return Qt.colorEqual(pane.previewHighlightChip.color, "#7fd6a4");
-            });
-
-            Settings.set("appearance.folderColor", "#e0a43a");
-            tryVerify(function() { return pane.previewFolderIcon.tintedFolder; });
-            verify(Qt.colorEqual(Theme.folderColorColor, "#e0a43a"));
-
-            // The material plate is the same resolver the live surfaces use.
             var expected = Glass.resolve("menuAttached", {
-                scheme: "dark",
+                scheme: "light",
                 rollout: "replacement",
                 slider: pane.previewTransparency,
                 reduceTransparency: false,
@@ -644,6 +663,10 @@ Item {
             });
             fuzzyCompare(pane.previewResolved.alpha, expected.alpha, 0.000001);
             compare(pane.previewResolved.renderMode, expected.renderMode);
+            compare(pane.previewMode, expected.renderMode);
+            compare(pane.previewPercent,
+                    Math.round(pane.previewTransparency * 100) + "%");
+            pane.transparencySlider.commit();
         }
 
         function test_long_labels_and_the_measured_window_keep_controls_inside() {

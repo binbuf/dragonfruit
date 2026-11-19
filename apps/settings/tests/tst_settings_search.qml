@@ -214,6 +214,26 @@ Item {
             }
         }
 
+        // T290c: the Appearance tint is called "Glass tint"; the old
+        // "attached menu transparency" wording still resolves.
+        function test_appearance_glass_tint_is_searchable() {
+            var terms = ["glass tint", "attached menu transparency", "opacity"];
+            for (var t = 0; t < terms.length; ++t) {
+                var results = SettingsSearch.search(terms[t]);
+                var found = false;
+                for (var i = 0; i < results.length; ++i) {
+                    if (results[i].paneId === "appearance"
+                            && String(results[i].deepLink)
+                               === "settings://pane/appearance/row/transparency") {
+                        found = true;
+                        break;
+                    }
+                }
+                verify(found, "search for '" + terms[t]
+                       + "' must reach appearance/transparency");
+            }
+        }
+
         function test_synonyms_and_help_text_are_indexed() {
             var bluez = SettingsSearch.search("bluez");
             verify(bluez.length > 0);

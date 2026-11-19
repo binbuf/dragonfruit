@@ -6,19 +6,21 @@ import Dragonfruit.Settings
 // The Appearance pane (T274). One card per macOS group, never a card per row:
 //
 //   Appearance              Light / Dark / Auto
+//   Glass                   the rendered attached-menu preview + tint slider
 //   Color                   accent + highlight (swatches, multicolor, custom)
 //   Icon & widget style     icon style, folder color, sidebar icon size
 //   Windows and scroll bars wallpaper tint, scroll bars, track click,
-//                           transparency, motion link
+//                           motion link
 //   Desktop integration     the Linux-only icon/cursor/window rows
-//   Preview                 the live scheme/accent/highlight/material render
 //
 // Every settingsd-backed row is a `SettingsKeyRow`, so a rejected write
 // reverts its control and shows the owner's message inline. A row with no
 // consumer is disabled with the reason instead of pretending to be live.
 //
-// The preview is the rendered resolver: it reads the same `Theme` colours and
-// the same `Glass.resolve` output the live surfaces use, not a second formula.
+// The Glass preview is the rendered resolver: it reads the same `Theme`
+// colours and the same `Glass.resolve` output the live surfaces use, not a
+// second formula. The tint slider still writes `appearance.transparency`,
+// which only the light attached-menu preset follows.
 //
 // Test and capture access (T290a): reach a control through a pane-body
 // `property`/`property alias` declared below (for example `schemeRowHandle` or
@@ -189,15 +191,6 @@ Item {
         Math.round(root.previewTransparency * 100) + "%"
     readonly property string previewScheme:
         Theme.dark ? qsTr("Dark") : qsTr("Light")
-    readonly property string previewAccentLabel:
-        root.currentAccent.length > 0 ? root.currentAccent
-                                      : qsTr("Multicolor")
-    readonly property string previewHighlightLabel:
-        root.currentHighlight.length > 0 ? root.currentHighlight
-                                         : qsTr("Default")
-    readonly property string previewFolderLabel:
-        root.currentFolderColor.length > 0 ? root.currentFolderColor
-                                           : qsTr("Automatic")
 
     // Coalesce live drag writes: the knob and preview move on every `moved`,
     // the settings owner sees at most one write per timer window, and
@@ -245,7 +238,7 @@ Item {
     // so a pane served from a stale compiled resource fails
     // `tst_settings_appearance` instead of silently passing. A stale build copy
     // is caught separately by `tst_settings_qml_copy_sync`.
-    readonly property string sourceRevision: "t290b"
+    readonly property string sourceRevision: "t290c"
 
     // Test/capture accessor (T290a). Tests and captures reach a control
     // through a pane-body property or alias like this one, never through an id
@@ -292,12 +285,9 @@ Item {
     property alias windowControlsRow: windowControlsRow
     property alias materialRow: materialRow
     property alias accentFromWallpaperRow: accentFromWallpaperRow
+    property alias glassGroup: glassGroup
+    property alias glassPreview: glassPreview
     property alias previewPlate: previewPlate
-    property alias previewGroup: previewGroup
-    property alias previewWindow: previewWindow
-    property alias previewAccentChip: previewAccentChip
-    property alias previewHighlightChip: previewHighlightChip
-    property alias previewFolderIcon: previewFolderIcon
     property alias motionRow: motionRow
     property alias motionButton: motionButton
 
@@ -445,6 +435,184 @@ Item {
                                          root.schemeOptions[next].value);
                         }
                         event.accepted = true;
+                    }
+                }
+            }
+        }
+
+        // T290c: the Glass card is the preview. The plate is the rendered
+        // `Glass.resolve("menuAttached", ...)` output the live menus use, so
+        // the slider and the attached-menu material cannot drift. The tint
+        // only follows the light attached-menu preset; the description says
+        // so rather than claiming a global re-tint.
+        SettingsGroup {
+            id: glassGroup
+            width: parent.width
+            title: qsTr("Glass")
+            sectionId: "Glass"
+
+            Item {
+                id: glassPreview
+                width: parent.width
+                height: 120
+
+                // A token-only backdrop so the plate's transmission is
+                // visible without shipping another wallpaper asset.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.controls.settingsGroup.radius
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: Theme.color.accentMuted }
+                        GradientStop { position: 1.0; color: Theme.color.surfaceMuted }
+                    }
+                    border.width: Theme.controls.window.borderWidth
+                    border.color: Theme.color.border
+                    antialiasing: true
+                }
+
+                // The attached-menu sample. Its fill, rim, and edge width are
+                // all resolver outputs, not a second alpha formula.
+                Rectangle {
+                    id: previewPlate
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.leftMargin: Theme.primitive.spacing.md
+                    anchors.rightMargin: Theme.primitive.spacing.md
+                    anchors.topMargin: Theme.primitive.spacing.md
+                    height: 60
+                    radius: Theme.controls.settingsGroup.radius
+                    color: Qt.rgba(root.previewResolved.tint,
+                                   root.previewResolved.tint,
+                                   root.previewResolved.tint,
+                                   root.previewResolved.alpha)
+                    border.width: Math.max(Theme.controls.window.borderWidth,
+                                           Math.round(root.previewResolved.edgeWidth))
+                    border.color: Qt.rgba(1, 1, 1, root.previewResolved.edge)
+                    antialiasing: true
+
+                    Row {
+                        id: glassDots
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.primitive.spacing.md
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.primitive.spacing.xxs
+
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                width: 7
+                                height: 7
+                                radius: 3.5
+                                color: Qt.rgba(1, 1, 1, 0.85)
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.left: glassDots.right
+                        anchors.leftMargin: Theme.primitive.spacing.md
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.primitive.spacing.md
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 20
+                        radius: height / 2
+                        color: Qt.rgba(1, 1, 1, 0.35)
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: Theme.primitive.spacing.sm
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("Search")
+                            color: Qt.rgba(1, 1, 1, 0.95)
+                            font.pixelSize: Theme.primitive.font.sizeXs
+                        }
+                    }
+                }
+
+                // The resolver readout the card already owned: scheme, live
+                // render mode, and the tint percent.
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Theme.primitive.spacing.md
+                    anchors.rightMargin: Theme.primitive.spacing.md
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: Theme.primitive.spacing.sm
+                    text: qsTr("%1 · %2 · %3")
+                          .arg(root.previewScheme)
+                          .arg(root.previewMode)
+                          .arg(root.previewPercent)
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeXs
+                    elide: Text.ElideRight
+                }
+            }
+
+            // The one `appearance.transparency` row. It stays a
+            // `SettingsKeyRow` so a rejected write reverts inline; the two end
+            // glyphs are the design-system icon vocabulary, not new artwork.
+            SettingsKeyRow {
+                id: transparencyRow
+                width: parent.width
+                label: qsTr("Glass tint")
+                settingsId: "transparency"
+                owner: "settingsd + shell"
+                settingsKey: "appearance.transparency"
+                enabled: !root.reduceTransparency
+                description: root.reduceTransparency
+                    ? qsTr("Unavailable while Reduce Transparency is on. Turn it "
+                           + "off in Accessibility to use this slider.")
+                    : qsTr("Attached menus only. The Dock, menu bar, and windows "
+                           + "keep their own materials; Reduce Transparency "
+                           + "overrides this slider.")
+                controlData: Row {
+                    spacing: Theme.primitive.spacing.sm
+
+                    Item {
+                        width: 16
+                        height: transparencySlider.height
+
+                        TablerIcon {
+                            anchors.centerIn: parent
+                            name: "layout-bottombar"
+                            size: 16
+                            color: Theme.color.textTertiary
+                        }
+                    }
+
+                    Slider {
+                        id: transparencySlider
+                        width: 160
+                        from: 0.0
+                        to: 1.0
+                        minLabel: qsTr("Opaque")
+                        maxLabel: qsTr("Clear")
+                        accessibleName: qsTr("Glass tint")
+                        enabled: !root.reduceTransparency
+                        onMoved: (value) => root.queueTransparency(value)
+                        onCommitted: (value) => {
+                            if (root.reduceTransparency) {
+                                root.previewTransparency = root.transparency;
+                                return;
+                            }
+                            root.pendingTransparency =
+                                Math.round(Math.max(0, Math.min(1, value)) * 10000) / 10000;
+                            root.transparencyWritePending = true;
+                            root.flushTransparency();
+                        }
+                    }
+
+                    Item {
+                        width: 16
+                        height: transparencySlider.height
+
+                        TablerIcon {
+                            anchors.centerIn: parent
+                            name: "app-window"
+                            size: 16
+                            color: Theme.color.textTertiary
+                        }
                     }
                 }
             }
@@ -666,47 +834,6 @@ Item {
                 }
             }
 
-            // T274: the transparency control is disabled while Reduce
-            // Transparency owns the result, and the row says why. A drag that
-            // was already in flight when the override turned on is discarded,
-            // never written.
-            SettingsKeyRow {
-                id: transparencyRow
-                width: parent.width
-                label: qsTr("Attached-menu transparency")
-                settingsId: "transparency"
-                owner: "settingsd + shell"
-                settingsKey: "appearance.transparency"
-                enabled: !root.reduceTransparency
-                description: root.reduceTransparency
-                    ? qsTr("Unavailable while Reduce Transparency is on. Turn it off in "
-                           + "Accessibility to use this slider.")
-                    : qsTr("Light attached menus only; higher values are clearer. "
-                           + "The Dock, menu bar, windows, and panels keep their own "
-                           + "materials. Reduce Transparency overrides this slider.")
-                controlData: Slider {
-                    id: transparencySlider
-                    width: 220
-                    from: 0.0
-                    to: 1.0
-                    minLabel: qsTr("Opaque")
-                    maxLabel: qsTr("Clear")
-                    accessibleName: qsTr("Attached-menu transparency")
-                    enabled: !root.reduceTransparency
-                    onMoved: (value) => root.queueTransparency(value)
-                    onCommitted: (value) => {
-                        if (root.reduceTransparency) {
-                            root.previewTransparency = root.transparency;
-                            return;
-                        }
-                        root.pendingTransparency =
-                            Math.round(Math.max(0, Math.min(1, value)) * 10000) / 10000;
-                        root.transparencyWritePending = true;
-                        root.flushTransparency();
-                    }
-                }
-            }
-
             SettingsRow {
                 id: motionRow
                 width: parent.width
@@ -844,233 +971,6 @@ Item {
                     checked: false
                     enabled: false
                     accessibleName: qsTr("Accent from wallpaper")
-                }
-            }
-        }
-
-        // The same effective resolver the rendered menus consume. The
-        // immediate value/mode readout gives feedback even while the rollout
-        // still selects the legacy look.
-        SettingsGroup {
-            id: previewGroup
-            width: parent.width
-            title: qsTr("Preview")
-            sectionId: "Preview"
-
-            Item {
-                width: parent.width
-                height: 238
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.controls.settingsGroup.radius
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: "#2f6fde" }
-                        GradientStop { position: 0.5; color: "#d65a8a" }
-                        GradientStop { position: 1.0; color: "#e8b34a" }
-                    }
-                }
-
-                Rectangle {
-                    id: previewWindow
-                    anchors.fill: parent
-                    anchors.margins: Theme.primitive.spacing.sm
-                    radius: Theme.controls.window.radius
-                    color: Theme.color.surface
-                    border.width: Theme.controls.window.borderWidth
-                    border.color: Theme.color.border
-                    clip: true
-
-                    // Sidebar: the accent selection wash and the scheme's
-                    // surface/ink pair.
-                    Rectangle {
-                        id: previewSidebar
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        width: 92
-                        color: Theme.color.surfaceMuted
-
-                        Column {
-                            anchors.fill: parent
-                            anchors.margins: Theme.primitive.spacing.sm
-                            spacing: Theme.primitive.spacing.xs
-
-                            Rectangle {
-                                width: parent.width
-                                height: 22
-                                radius: Theme.primitive.radius.sm
-                                color: Theme.color.accentMuted
-
-                                Text {
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: Theme.primitive.spacing.xs
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: qsTr("Appearance")
-                                    color: Theme.color.accent
-                                    font.pixelSize: Theme.primitive.font.sizeXs
-                                    font.weight: Theme.primitive.font.weightMedium
-                                }
-                            }
-                            Repeater {
-                                model: [qsTr("Color"), qsTr("Sidebar"), qsTr("Scroll bars")]
-                                delegate: Text {
-                                    required property string modelData
-                                    text: modelData
-                                    color: Theme.color.textSecondary
-                                    font.pixelSize: Theme.primitive.font.sizeXs
-                                }
-                            }
-                        }
-                    }
-
-                    // Content: highlight wash, accent action, folder glyph,
-                    // and the material plate in one place.
-                    Column {
-                        anchors.left: previewSidebar.right
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.margins: Theme.primitive.spacing.sm
-                        anchors.leftMargin: Theme.primitive.spacing.md
-                        spacing: Theme.primitive.spacing.sm
-
-                        Text {
-                            text: qsTr("Preview")
-                            color: Theme.color.textPrimary
-                            font.pixelSize: Theme.controls.button.fontSize
-                            font.weight: Theme.primitive.font.weightSemibold
-                        }
-
-                        // A search field with a selected word: the highlight
-                        // wash is the live Theme selection colour.
-                        Rectangle {
-                            width: parent.width
-                            height: 24
-                            radius: Theme.primitive.radius.sm
-                            color: Theme.color.controlFill
-                            border.width: Theme.controls.window.borderWidth
-                            border.color: Theme.color.border
-
-                            Rectangle {
-                                id: previewHighlightChip
-                                x: Theme.primitive.spacing.xs
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 46
-                                height: 16
-                                radius: Theme.primitive.radius.xs
-                                color: Theme.color.selection
-                            }
-                            Text {
-                                anchors.left: previewHighlightChip.right
-                                anchors.leftMargin: Theme.primitive.spacing.xs
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: qsTr("selected")
-                                color: Theme.color.textPrimary
-                                font.pixelSize: Theme.primitive.font.sizeXs
-                                elide: Text.ElideRight
-                            }
-                        }
-
-                        Row {
-                            spacing: Theme.primitive.spacing.sm
-
-                            Rectangle {
-                                id: previewAccentChip
-                                width: 64
-                                height: 22
-                                radius: Theme.controls.button.radius
-                                color: Theme.color.accent
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: qsTr("Accent")
-                                    color: Theme.color.accentContent
-                                    font.pixelSize: Theme.primitive.font.sizeXs
-                                    font.weight: Theme.primitive.font.weightMedium
-                                }
-                            }
-
-                            Icon {
-                                id: previewFolderIcon
-                                name: "folder"
-                                size: 20
-                                color: Theme.hasFolderColor ? Theme.folderColorColor
-                                                           : Theme.color.textPrimary
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: qsTr("Folder")
-                                color: Theme.color.textSecondary
-                                font.pixelSize: Theme.primitive.font.sizeXs
-                            }
-                        }
-
-                        // The material plate: the rendered resolver output,
-                        // not a second alpha formula.
-                        Rectangle {
-                            id: previewPlate
-                            width: parent.width
-                            height: 48
-                            radius: Theme.controls.settingsGroup.radius
-                            color: Qt.rgba(root.previewResolved.tint,
-                                           root.previewResolved.tint,
-                                           root.previewResolved.tint,
-                                           root.previewResolved.alpha)
-                            border.width: Math.max(Theme.controls.window.borderWidth,
-                                                   Math.round(root.previewResolved.edgeWidth))
-                            border.color: Qt.rgba(1, 1, 1, root.previewResolved.edge)
-                            antialiasing: true
-
-                            Column {
-                                anchors.left: parent.left
-                                anchors.leftMargin: Theme.primitive.spacing.sm
-                                anchors.right: parent.right
-                                anchors.rightMargin: Theme.primitive.spacing.sm
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 0
-
-                                Text {
-                                    width: parent.width
-                                    text: qsTr("Attached menu")
-                                    color: Theme.color.textPrimary
-                                    font.pixelSize: Theme.primitive.font.sizeXs
-                                    font.weight: Theme.primitive.font.weightMedium
-                                    elide: Text.ElideRight
-                                }
-                                Text {
-                                    objectName: "appearancePreviewMode"
-                                    width: parent.width
-                                    text: root.previewMode + " · " + root.previewPercent
-                                    color: Theme.color.textSecondary
-                                    font.pixelSize: Theme.primitive.font.sizeXs
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: qsTr("%1 scheme · %2 accent")
-                                  .arg(root.previewScheme)
-                                  .arg(root.previewAccentLabel)
-                            color: Theme.color.textSecondary
-                            font.pixelSize: Theme.primitive.font.sizeXs
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            width: parent.width
-                            text: qsTr("%1 highlight · %2 folders · %3 icons")
-                                  .arg(root.previewHighlightLabel)
-                                  .arg(root.previewFolderLabel)
-                                  .arg(root.currentIconStyle)
-                            color: Theme.color.textSecondary
-                            font.pixelSize: Theme.primitive.font.sizeXs
-                            elide: Text.ElideRight
-                        }
-                    }
                 }
             }
         }
