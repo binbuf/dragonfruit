@@ -8,15 +8,24 @@ import Dragonfruit.Settings
 //   Appearance              Light / Dark / Auto
 //   Glass                   the rendered attached-menu preview + tint slider
 //   Theme                   accent swatches, Text highlight popup, icon-style
-//                           tiles, Folder color popup, sidebar icon size
-//   Windows and scroll bars wallpaper tint, scroll bars, track click,
-//                           motion link
+//                           tiles, Folder color popup
+//   Windows                 sidebar icon size, wallpaper tint
+//   Show scroll bars        stacked scroll-bar visibility radios
+//   Click in the scroll bar to
+//                           stacked scroll-bar-click radios
 //   Desktop integration     the Linux-only icon/cursor/window rows
 //
 // T290d: the old `Color` and `Icon & widget style` cards are one `Theme` card
 // in the mockup order. The accent keeps its swatch row and custom-hex popup;
 // highlight and folder color are one swatch popup each; icon style is four
 // `SettingsModeTile`s over the four `appearance.iconStyle` values.
+//
+// T290e: the sidebar icon size row moved into the `Windows` card, the tint
+// toggle uses the mockup label, and the two scroll-bar `Select`s are stacked
+// `SettingsRadioGroup`s over the same `appearance.scrollBars` /
+// `appearance.scrollBarClick` values. The Motion link is gone: the
+// `accessibility.reduceMotion` key keeps its Accessibility owner and its
+// `Theme.reducedMotion` binding.
 //
 // Every settingsd-backed row is a `SettingsKeyRow`, so a rejected write
 // reverts its control and shows the owner's message inline. A row with no
@@ -85,7 +94,8 @@ Item {
         { value: "large", label: qsTr("Large") }
     ]
     readonly property var scrollBarOptions: [
-        { value: "automatic", label: qsTr("Automatically") },
+        { value: "automatic",
+          label: qsTr("Automatically based on mouse or trackpad") },
         { value: "when-scrolling", label: qsTr("When scrolling") },
         { value: "always", label: qsTr("Always") }
     ]
@@ -243,7 +253,7 @@ Item {
     // so a pane served from a stale compiled resource fails
     // `tst_settings_appearance` instead of silently passing. A stale build copy
     // is caught separately by `tst_settings_qml_copy_sync`.
-    readonly property string sourceRevision: "t290d"
+    readonly property string sourceRevision: "t290e"
 
     // Test/capture accessor (T290a). Tests and captures reach a control
     // through a pane-body property or alias like this one, never through an id
@@ -279,12 +289,13 @@ Item {
     property alias wallpaperTintRow: wallpaperTintRow
     property alias wallpaperTintToggle: wallpaperTintToggle
     property alias scrollBarsRow: scrollBarsRow
-    property alias scrollBarsSelect: scrollBarsSelect
+    property alias scrollBarsGroup: scrollBarsGroup
+    property alias scrollBarsSection: scrollBarsSection
     property alias scrollBarClickRow: scrollBarClickRow
-    property alias scrollBarClickSelect: scrollBarClickSelect
+    property alias scrollBarClickGroup: scrollBarClickGroup
+    property alias scrollBarClickSection: scrollBarClickSection
     property alias transparencySlider: transparencySlider
     property alias transparencyRow: transparencyRow
-    property alias transparencyGroup: windowsGroup
     property alias windowsGroup: windowsGroup
     property alias linuxGroup: linuxGroup
     property alias windowControlsRow: windowControlsRow
@@ -293,8 +304,6 @@ Item {
     property alias glassGroup: glassGroup
     property alias glassPreview: glassPreview
     property alias previewPlate: previewPlate
-    property alias motionRow: motionRow
-    property alias motionButton: motionButton
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -363,6 +372,25 @@ Item {
     }
     readonly property real iconStyleTileRowHeight:
         iconStyleTiles.implicitHeight + 2 * Theme.primitive.spacing.sm
+
+    // T290e: both scroll-bar radio groups sit in a row's control slot, which
+    // is capped at 60% of the row. Size the group from the row (never from
+    // `parent.width` inside the slot) and declare the same width as the
+    // implicit width so the slot takes exactly the group's width. The 400 pt
+    // fallback yields the component's own 240 pt stacked width and only
+    // applies before the first layout pass.
+    readonly property real scrollBarControlWidth: {
+        var rowWidth = scrollBarsRow.width;
+        if (!(rowWidth > 0))
+            rowWidth = 400;
+        return Math.min(288, rowWidth * 0.6);
+    }
+    // A stacked group is taller than the 33 pt row token; derive the row
+    // height from the control (no `fixedRowHeight`).
+    readonly property real scrollBarsRowHeight:
+        scrollBarsGroup.implicitHeight + 2 * Theme.primitive.spacing.sm
+    readonly property real scrollBarClickRowHeight:
+        scrollBarClickGroup.implicitHeight + 2 * Theme.primitive.spacing.sm
 
     // The tile thumbnails are the design-system palette: Default is the light
     // plate with the live accent, Dark the dark plate, Clear the transparent
@@ -684,7 +712,7 @@ Item {
         // swatch row and custom-hex popup (the one colour with a custom entry
         // point); highlight and folder color are one swatch popup each; icon
         // style is four tiles over the four `appearance.iconStyle` values.
-        // Sidebar icon size stays at the end of this card until T290e.
+        // T290e moved the sidebar icon size row to the Windows card.
         SettingsGroup {
             id: themeGroup
             width: parent.width
@@ -841,6 +869,17 @@ Item {
                     popup: folderColorChoicePopup
                 }
             }
+        }
+
+        // T290e: the Windows card carries the sidebar icon size popup and the
+        // wallpaper tint toggle. Both keys and their live consumers are
+        // unchanged; only the card membership and the tint label follow the
+        // mockup.
+        SettingsGroup {
+            id: windowsGroup
+            width: parent.width
+            title: qsTr("Windows")
+            sectionId: "Windows"
 
             SettingsKeyRow {
                 id: sidebarIconSizeRow
@@ -849,7 +888,6 @@ Item {
                 settingsId: "sidebarIconSize"
                 owner: "settingsd + apps/settings"
                 settingsKey: "appearance.sidebarIconSize"
-                showSeparator: false
 
                 controlData: Select {
                     id: sidebarIconSizeSelect
@@ -860,18 +898,11 @@ Item {
                                     root.sidebarIconSizeOptions[index].value)
                 }
             }
-        }
-
-        SettingsGroup {
-            id: windowsGroup
-            width: parent.width
-            title: qsTr("Windows and scroll bars")
-            sectionId: "Windows and scroll bars"
 
             SettingsKeyRow {
                 id: wallpaperTintRow
                 width: parent.width
-                label: qsTr("Allow wallpaper tinting")
+                label: qsTr("Tint window background with wallpaper color")
                 settingsId: "wallpaperTint"
                 owner: "settingsd + shell"
                 settingsKey: "appearance.wallpaperTint"
@@ -883,6 +914,18 @@ Item {
                     onToggled: (checked) => Settings.set("appearance.wallpaperTint", checked)
                 }
             }
+        }
+
+        // T290e: one card per mockup heading, each a single settings row whose
+        // control is a stacked radio group. The values are unchanged
+        // (`automatic`/`when-scrolling`/`always`, `jump-to-next-page`/
+        // `jump-to-spot`); `Theme.scrollBars` and `Theme.scrollBarClick` still
+        // drive `SettingsShell.detailScroll`.
+        SettingsGroup {
+            id: scrollBarsSection
+            width: parent.width
+            title: qsTr("Show scroll bars")
+            sectionId: "Show scroll bars"
 
             SettingsKeyRow {
                 id: scrollBarsRow
@@ -894,15 +937,26 @@ Item {
                 description: qsTr("Automatic shows bars while a view is focused, hovered, "
                                   + "or scrolling; When scrolling hides them at rest; "
                                   + "Always keeps them visible.")
-                controlData: Select {
-                    id: scrollBarsSelect
+                rowHeight: root.scrollBarsRowHeight
+
+                controlData: SettingsRadioGroup {
+                    id: scrollBarsGroup
+                    implicitWidth: root.scrollBarControlWidth
+                    width: root.scrollBarControlWidth
+                    options: root.scrollBarOptions
                     accessibleName: qsTr("Show scroll bars")
-                    model: root.scrollBarOptions
                     onActivated: (index) => Settings.set(
                                     "appearance.scrollBars",
                                     root.scrollBarOptions[index].value)
                 }
             }
+        }
+
+        SettingsGroup {
+            id: scrollBarClickSection
+            width: parent.width
+            title: qsTr("Click in the scroll bar to")
+            sectionId: "Click in the scroll bar to"
 
             SettingsKeyRow {
                 id: scrollBarClickRow
@@ -911,29 +965,20 @@ Item {
                 settingsId: "scrollBarClick"
                 owner: "settingsd + shell"
                 settingsKey: "appearance.scrollBarClick"
-                controlData: Select {
-                    id: scrollBarClickSelect
+                description: qsTr("Jump to the next page scrolls a page at a time; "
+                                  + "Jump to the spot that's clicked jumps straight "
+                                  + "to the pointer.")
+                rowHeight: root.scrollBarClickRowHeight
+
+                controlData: SettingsRadioGroup {
+                    id: scrollBarClickGroup
+                    implicitWidth: root.scrollBarControlWidth
+                    width: root.scrollBarControlWidth
+                    options: root.scrollBarClickOptions
                     accessibleName: qsTr("Click in the scroll bar to")
-                    model: root.scrollBarClickOptions
                     onActivated: (index) => Settings.set(
                                     "appearance.scrollBarClick",
                                     root.scrollBarClickOptions[index].value)
-                }
-            }
-
-            SettingsRow {
-                id: motionRow
-                width: parent.width
-                label: qsTr("Motion")
-                description: qsTr("Reduced motion is the Accessibility preference; "
-                                  + "it disables window and control animation.")
-                showSeparator: false
-
-                controlData: Button {
-                    id: motionButton
-                    text: qsTr("Open Accessibility")
-                    accessibleName: qsTr("Open Accessibility motion settings")
-                    onClicked: root.navigationRequested("accessibility")
                 }
             }
         }
@@ -1095,12 +1140,12 @@ Item {
         value: Settings.values["appearance.wallpaperTint"] !== false
     }
     Binding {
-        target: scrollBarsSelect
+        target: scrollBarsGroup
         property: "currentIndex"
         value: root.optionIndex(root.scrollBarOptions, root.currentScrollBars, 0)
     }
     Binding {
-        target: scrollBarClickSelect
+        target: scrollBarClickGroup
         property: "currentIndex"
         value: root.optionIndex(root.scrollBarClickOptions,
                                 root.currentScrollBarClick, 0)

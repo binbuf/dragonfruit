@@ -274,6 +274,40 @@ Item {
         }
 
 
+        // T290e: the Windows and scroll-bar rows are findable by the mockup
+        // labels and by the phrases users type.
+        function test_appearance_windows_and_scroll_rows_are_searchable() {
+            var cases = [
+                { terms: ["sidebar icon size", "sidebar icons"],
+                  row: "sidebarIconSize" },
+                { terms: ["wallpaper tint", "tint window background"],
+                  row: "wallpaperTint" },
+                { terms: ["scroll bars", "scroll bar visibility"],
+                  row: "scrollBars" },
+                { terms: ["scroll bar click", "click in the scroll bar",
+                          "jump to the spot"],
+                  row: "scrollBarClick" }
+            ];
+            for (var c = 0; c < cases.length; ++c) {
+                for (var t = 0; t < cases[c].terms.length; ++t) {
+                    var results = SettingsSearch.search(cases[c].terms[t]);
+                    var found = false;
+                    for (var i = 0; i < results.length; ++i) {
+                        if (results[i].paneId === "appearance"
+                                && String(results[i].deepLink)
+                                   === "settings://pane/appearance/row/"
+                                      + cases[c].row) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    verify(found, "search for '" + cases[c].terms[t]
+                           + "' must reach appearance/" + cases[c].row);
+                }
+            }
+        }
+
+
         function test_synonyms_and_help_text_are_indexed() {
             var bluez = SettingsSearch.search("bluez");
             verify(bluez.length > 0);

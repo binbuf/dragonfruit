@@ -74,6 +74,35 @@ Item {
             return tile;
         }
 
+        // T290e: a stacked radio group inside a SettingsRow must keep every
+        // radio circle and label inside the group, and the group inside the
+        // row's control slot.
+        function verifyRadioGroupFits(group, row) {
+            verify(group.width > 0, "the radio group must have a width");
+            verify(group.width <= row.width * 0.6 + 0.5,
+                   "the group must stay inside the 60% control slot: group="
+                   + group.width + " row=" + row.width);
+            verify(row.control.x >= 0
+                   && row.control.x + row.control.width <= row.width + 0.5,
+                   "the control slot must stay inside the row");
+            for (var i = 0; i < group.count; ++i) {
+                var option = group.repeater.itemAt(i);
+                verify(option, "radio option " + i + " must exist");
+                verify(option.width > 0);
+                var radio = option.children[0];
+                var labelColumn = option.children[1];
+                verify(radio && labelColumn);
+                verify(radio.x >= 0
+                       && radio.x + radio.width <= option.width + 0.5,
+                       "radio " + i + " must stay inside the option row");
+                verify(labelColumn.x >= radio.x + radio.width - 0.5,
+                       "the label column must start after the radio");
+                verify(labelColumn.x + labelColumn.width
+                       <= option.width + 0.5,
+                       "the label column must stay inside the option row");
+            }
+        }
+
         function collectGroups(item, out) {
             if (item === null || item === undefined)
                 return out;
@@ -106,7 +135,7 @@ Item {
             // T290a: the pane that actually loaded must come from the source
             // tree. A stale build copy or a stale compiled resource fails here
             // instead of silently testing the previous pane.
-            compare(pane.sourceRevision, "t290d");
+            compare(pane.sourceRevision, "t290e");
         }
 
         function test_theme_card_holds_the_four_controls_in_order() {
@@ -117,21 +146,18 @@ Item {
             compare(pane.themeGroup.title, "Theme");
 
             // One card, in the mockup order: accent, Text highlight, icon
-            // style, Folder color, then the sidebar icon size row (T290e
-            // moves that one to Windows).
+            // style, Folder color. T290e moved the sidebar icon size row to
+            // the Windows card.
             var rows = pane.themeGroup.rows.children;
-            compare(rows.length, 5);
+            compare(rows.length, 4);
             verify(rows[0] === pane.accentRow);
             verify(rows[1] === pane.highlightRow);
             verify(rows[2] === pane.iconStyleRow);
             verify(rows[3] === pane.folderColorRow);
-            verify(rows[4] === pane.sidebarIconSizeRow);
             compare(pane.accentRow.settingsKey, "appearance.accent");
             compare(pane.highlightRow.settingsKey, "appearance.highlight");
             compare(pane.iconStyleRow.settingsKey, "appearance.iconStyle");
             compare(pane.folderColorRow.settingsKey, "appearance.folderColor");
-            compare(pane.sidebarIconSizeRow.settingsKey,
-                    "appearance.sidebarIconSize");
 
             // The old two cards are gone, not merely renamed.
             var groups = collectGroups(pane, []);
@@ -145,6 +171,35 @@ Item {
                     hasTheme = true;
             }
             verify(hasTheme, "the Theme group must be part of the pane");
+        }
+
+        // T290e: the Windows card owns the sidebar icon size popup and the
+        // wallpaper tint toggle, in that order.
+        function test_windows_card_holds_sidebar_size_and_wallpaper_tint() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            compare(pane.windowsGroup.sectionId, "Windows");
+            compare(pane.windowsGroup.title, "Windows");
+
+            var rows = pane.windowsGroup.rows.children;
+            compare(rows.length, 2);
+            verify(rows[0] === pane.sidebarIconSizeRow);
+            verify(rows[1] === pane.wallpaperTintRow);
+            compare(pane.sidebarIconSizeRow.settingsKey,
+                    "appearance.sidebarIconSize");
+            compare(pane.wallpaperTintRow.settingsKey,
+                    "appearance.wallpaperTint");
+            compare(pane.wallpaperTintRow.label,
+                    "Tint window background with wallpaper color");
+
+            // The controls are still the live ones, not re-created copies.
+            verify(pane.sidebarIconSizeRow.control.children[0]
+                   === pane.sidebarIconSizeSelect);
+            verify(pane.wallpaperTintRow.control.children[0]
+                   === pane.wallpaperTintToggle);
+            compare(pane.wallpaperTintRow.settingsId, "wallpaperTint");
+            compare(pane.wallpaperTintRow.owner, "settingsd + shell");
         }
 
         function test_scheme_row_handle_reaches_the_tile_row() {
@@ -300,9 +355,13 @@ Item {
         }
 
         // Reduced motion stays the Accessibility key, but the app-local Theme
-        // owner mirrors it (the Appearance pane links to it in the hand-off).
+        // owner mirrors it. T290e removed the Appearance Motion link; the key
+        // and its binding are untouched.
         function test_reduced_motion_binding_is_live() {
             var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.motionRow === undefined);
+            verify(pane.motionButton === undefined);
             Settings.set("accessibility.reduceMotion", true);
             compare(Theme.reducedMotion, true);
             Settings.set("accessibility.reduceMotion", false);
@@ -485,6 +544,11 @@ Item {
                        "icon-style tile " + s + " must stay inside the tile row");
                 verify(styleTile.height > 0);
             }
+
+            // T290e: the stacked scroll-bar radios keep their circles and
+            // labels inside the card at 640×640.
+            verifyRadioGroupFits(pane.scrollBarsGroup, pane.scrollBarsRow);
+            verifyRadioGroupFits(pane.scrollBarClickGroup, pane.scrollBarClickRow);
         }
 
         // -- T227: the remaining Appearance rows --------------------------------
@@ -685,19 +749,85 @@ Item {
             tryVerify(function() { return pane.cursorSizeSlider.value === 20; });
         }
 
+        // T290e: the two scroll-bar policies are stacked radio groups over the
+        // same values. Each card keeps its row metadata and inline error.
+        function test_scroll_bar_groups_are_stacked_radio_groups() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            compare(pane.scrollBarsSection.title, "Show scroll bars");
+            compare(pane.scrollBarsSection.sectionId, "Show scroll bars");
+            compare(pane.scrollBarClickSection.title, "Click in the scroll bar to");
+            compare(pane.scrollBarClickSection.sectionId,
+                    "Click in the scroll bar to");
+
+            // Stacked, not inline: one option per line.
+            compare(pane.scrollBarsGroup.inline, false);
+            compare(pane.scrollBarClickGroup.inline, false);
+            compare(pane.scrollBarsGroup.count, 3);
+            compare(pane.scrollBarClickGroup.count, 2);
+            compare(pane.scrollBarsGroup.optionAt(0).label,
+                    "Automatically based on mouse or trackpad");
+            compare(pane.scrollBarsGroup.optionAt(1).label, "When scrolling");
+            compare(pane.scrollBarsGroup.optionAt(2).label, "Always");
+            compare(pane.scrollBarClickGroup.optionAt(0).label,
+                    "Jump to the next page");
+            compare(pane.scrollBarClickGroup.optionAt(1).label,
+                    "Jump to the spot that's clicked");
+
+            // One AT-SPI radio group each, with radio semantics per option.
+            compare(pane.scrollBarsGroup.Accessible.role, Accessible.Grouping);
+            compare(pane.scrollBarsGroup.Accessible.name, "Show scroll bars");
+            compare(pane.scrollBarClickGroup.Accessible.role,
+                    Accessible.Grouping);
+            compare(pane.scrollBarClickGroup.Accessible.name,
+                    "Click in the scroll bar to");
+            for (var i = 0; i < pane.scrollBarsGroup.count; ++i) {
+                var option = pane.scrollBarsGroup.repeater.itemAt(i);
+                verify(option);
+                compare(option.Accessible.role, Accessible.RadioButton);
+                compare(option.Accessible.checkable, true);
+                compare(option.Accessible.checked,
+                        pane.scrollBarsGroup.currentIndex === i);
+            }
+
+            // The rows keep their map wiring and control slot.
+            compare(pane.scrollBarsRow.control.children[0],
+                    pane.scrollBarsGroup);
+            compare(pane.scrollBarClickRow.control.children[0],
+                    pane.scrollBarClickGroup);
+            compare(pane.scrollBarsRow.settingsId, "scrollBars");
+            compare(pane.scrollBarsRow.settingsKey, "appearance.scrollBars");
+            compare(pane.scrollBarClickRow.settingsId, "scrollBarClick");
+            compare(pane.scrollBarClickRow.settingsKey,
+                    "appearance.scrollBarClick");
+            compare(pane.scrollBarClickRow.owner, "settingsd + shell");
+
+            // A stacked group is taller than the 33 pt row token, and the row
+            // grows from the control instead of a fixed height.
+            verify(pane.scrollBarsRow.height > Theme.controls.settingsRow.height);
+            verify(pane.scrollBarClickRow.height > Theme.controls.settingsRow.height);
+            verify(!pane.scrollBarsRow.fixedRowHeight);
+            verify(!pane.scrollBarClickRow.fixedRowHeight);
+            verifyRadioGroupFits(pane.scrollBarsGroup, pane.scrollBarsRow);
+            verifyRadioGroupFits(pane.scrollBarClickGroup, pane.scrollBarClickRow);
+        }
+
         function test_scroll_bar_click_policy_applies_live() {
             var shell = make();
             var pane = paneOf(shell);
             compare(Theme.scrollBarClick, "jump-to-next-page");
             compare(shell.detailScroll.scrollBarClickBehavior, "jump-to-next-page");
+            compare(pane.scrollBarClickGroup.currentIndex, 0);
 
-            pane.scrollBarClickSelect.activateIndex(1); // jump to spot
+            pane.scrollBarClickGroup.select(1); // jump to spot
             compare(Settings.values["appearance.scrollBarClick"], "jump-to-spot");
             compare(Theme.scrollBarClick, "jump-to-spot");
             compare(shell.detailScroll.scrollBarClickBehavior, "jump-to-spot");
+            compare(pane.scrollBarClickGroup.currentIndex, 1);
 
             Settings.set("appearance.scrollBarClick", "jump-to-next-page");
-            tryVerify(function() { return pane.scrollBarClickSelect.currentIndex === 0; });
+            tryVerify(function() { return pane.scrollBarClickGroup.currentIndex === 0; });
             compare(shell.detailScroll.scrollBarClickBehavior, "jump-to-next-page");
         }
 
@@ -719,6 +849,36 @@ Item {
             scroll.flickable.contentY = 0;
             scroll.forceActiveFocus();
             tryVerify(function() { return scroll.showBars === true; });
+        }
+
+        function test_scroll_bar_groups_move_with_the_keyboard() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            var first = pane.scrollBarsGroup.repeater.itemAt(0);
+            verify(first);
+            first.forceActiveFocus();
+            keyClick(Qt.Key_Down);
+            compare(Settings.values["appearance.scrollBars"], "when-scrolling");
+            compare(Theme.scrollBars, "when-scrolling");
+            compare(shell.detailScroll.scrollBars, "when-scrolling");
+            tryVerify(function() { return pane.scrollBarsGroup.currentIndex === 1; });
+            compare(pane.scrollBarsGroup.repeater.itemAt(1).Accessible.checked,
+                    true);
+
+            keyClick(Qt.Key_Up);
+            compare(Settings.values["appearance.scrollBars"], "automatic");
+            tryVerify(function() { return pane.scrollBarsGroup.currentIndex === 0; });
+
+            var clickFirst = pane.scrollBarClickGroup.repeater.itemAt(0);
+            verify(clickFirst);
+            clickFirst.forceActiveFocus();
+            keyClick(Qt.Key_Down);
+            compare(Settings.values["appearance.scrollBarClick"], "jump-to-spot");
+            compare(Theme.scrollBarClick, "jump-to-spot");
+            tryVerify(function() {
+                return pane.scrollBarClickGroup.currentIndex === 1;
+            });
         }
 
         function test_transparency_is_disabled_and_discarded_under_the_override() {
@@ -835,6 +995,11 @@ Item {
                 verify(row.labelText.width <= row.width,
                        "long label must stay inside the row");
             }
+
+            // T290e: the radio option labels may elide, but the circle and the
+            // label column stay inside each option row at the measured window.
+            verifyRadioGroupFits(pane.scrollBarsGroup, pane.scrollBarsRow);
+            verifyRadioGroupFits(pane.scrollBarClickGroup, pane.scrollBarClickRow);
         }
 
         function test_a_new_row_write_failure_shows_inline() {
@@ -842,7 +1007,7 @@ Item {
             var pane = paneOf(shell);
             Settings.failNextWrite("appearance.scrollBarClick",
                                    "The settings service rejected the change.");
-            pane.scrollBarClickSelect.activateIndex(1);
+            pane.scrollBarClickGroup.select(1);
             tryVerify(function() { return pane.scrollBarClickRow.errorText.length > 0; });
             compare(pane.scrollBarClickRow.errorText,
                     "The settings service rejected the change.");
@@ -851,6 +1016,11 @@ Item {
                 return Settings.values["appearance.scrollBarClick"]
                         === "jump-to-next-page";
             });
+            // The group snaps back to the stored value, not the rejected one.
+            tryVerify(function() {
+                return pane.scrollBarClickGroup.currentIndex === 0;
+            });
+            compare(Theme.scrollBarClick, "jump-to-next-page");
         }
 
         function test_sidebar_icon_size_applies_live() {
@@ -871,6 +1041,8 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
             pane.previewRollout = "replacement";
+            compare(pane.wallpaperTintRow.label,
+                    "Tint window background with wallpaper color");
             compare(pane.previewResolved.wallpaperTint, true);
 
             pane.wallpaperTintToggle.toggled(false);
@@ -888,17 +1060,21 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
             compare(shell.detailScroll.scrollBars, "automatic");
-            pane.scrollBarsSelect.activateIndex(1); // when scrolling
+            compare(pane.scrollBarsGroup.currentIndex, 0);
+            pane.scrollBarsGroup.select(1); // when scrolling
             compare(Settings.values["appearance.scrollBars"], "when-scrolling");
             compare(Theme.scrollBars, "when-scrolling");
             compare(shell.detailScroll.scrollBars, "when-scrolling");
-        }
+            compare(pane.scrollBarsGroup.currentIndex, 1);
 
-        function test_motion_link_opens_accessibility() {
-            var shell = make();
-            var pane = paneOf(shell);
-            pane.motionButton.clicked();
-            compare(shell.currentPaneId, "accessibility");
+            // The always value still restyles the shell live.
+            pane.scrollBarsGroup.select(2);
+            compare(Settings.values["appearance.scrollBars"], "always");
+            compare(Theme.scrollBars, "always");
+            tryVerify(function() { return shell.detailScroll.showBars === true; });
+
+            Settings.set("appearance.scrollBars", "automatic");
+            tryVerify(function() { return pane.scrollBarsGroup.currentIndex === 0; });
         }
     }
 }

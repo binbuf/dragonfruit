@@ -117,10 +117,11 @@ Item {
             compare(SettingsMap.rowsFor("appearance").length > 0, true);
         }
 
-        // T290d: the accent, Text highlight, icon style, folder color, and
-        // sidebar icon size rows are one Theme section with their real control
-        // kinds. Sidebar icon size reports Theme until T290e moves it.
-        function test_appearance_theme_rows_use_the_theme_section() {
+        // T290d/T290e: the accent, Text highlight, icon style, and folder
+        // color rows are one Theme section; the sidebar icon size and
+        // wallpaper tint rows moved to Windows, and the scroll-bar rows are
+        // their own mockup sections with radio controls.
+        function test_appearance_theme_and_windows_rows_use_their_sections() {
             var accent = SettingsMap.rowFor("appearance", "accent");
             verify(accent !== null);
             compare(accent.section, "Theme");
@@ -152,15 +153,41 @@ Item {
 
             var sidebar = SettingsMap.rowFor("appearance", "sidebarIconSize");
             verify(sidebar !== null);
-            compare(sidebar.section, "Theme");
+            compare(sidebar.section, "Windows");
+            compare(sidebar.label, "Sidebar icon size");
             compare(sidebar.control, "popup");
             compare(sidebar.key, "appearance.sidebarIconSize");
+
+            var tint = SettingsMap.rowFor("appearance", "wallpaperTint");
+            verify(tint !== null);
+            compare(tint.section, "Windows");
+            compare(tint.label, "Tint window background with wallpaper color");
+            compare(tint.control, "toggle");
+            compare(tint.key, "appearance.wallpaperTint");
+
+            var scrollBars = SettingsMap.rowFor("appearance", "scrollBars");
+            verify(scrollBars !== null);
+            compare(scrollBars.section, "Show scroll bars");
+            compare(scrollBars.label, "Show scroll bars");
+            compare(scrollBars.control, "radio");
+            compare(scrollBars.key, "appearance.scrollBars");
+
+            var scrollClick = SettingsMap.rowFor("appearance", "scrollBarClick");
+            verify(scrollClick !== null);
+            compare(scrollClick.section, "Click in the scroll bar to");
+            compare(scrollClick.label, "Click in the scroll bar to");
+            compare(scrollClick.control, "radio");
+            compare(scrollClick.key, "appearance.scrollBarClick");
+
+            // T290e: the Motion row left the pane; Accessibility owns the key.
+            compare(SettingsMap.rowFor("appearance", "motion"), null);
 
             // The old section names are gone from the map, not duplicated.
             var rows = SettingsMap.rowsFor("appearance");
             for (var i = 0; i < rows.length; ++i) {
                 verify(rows[i].section !== "Color");
                 verify(rows[i].section !== "Icon & widget style");
+                verify(rows[i].section !== "Windows and scroll bars");
             }
         }
 
