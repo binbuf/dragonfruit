@@ -650,6 +650,18 @@ and increase-contrast states, and the absent-host list in light and dark.
 The top-level Overview pane is removed; `settings://pane/mission-control` and
 `settings://pane/overview` land on this section.
 
+T292a landed the main surface: Dock, Desktop & Workspaces (with the Stage →
+Workspace Focus rename), Widgets (Default web browser moved here), Windows
+(“Hold Super”, the two edge-tile labels), and one **Window Overview** section
+whose **Workspace Overview** disclosure opens the existing Mission Control
+surface. The footer has **Advanced…** (the Advanced Dock sheet: hover chooser,
+minimize reaction), **Advanced…** (the Advanced Windows sheet: application
+window rules), **Shortcuts…**, and **Hot Corners…**. The Linux-only rows keep
+their owners, and `rowSurface("desktop-dock", …)` answers `dialog` for the
+three sheet rows. “Show application menus in the menu bar” is gone from this
+pane (Menu Bar owns it). T292b replaces the single Overview entry with the
+merged section and the Advanced Workspace Overview sheet.
+
 ### 5.7 Menu Bar
 
 | Mockup block | Target |

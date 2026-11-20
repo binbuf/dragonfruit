@@ -704,7 +704,7 @@ Item {
             waitForRendering(stage);
             compare(shell.currentPaneId, "desktop-dock");
             verify(shell.highlightTarget !== null);
-            compare(shell.highlightTarget.label, "Size");
+            compare(shell.highlightTarget.label, "Dock Size");
         }
 
         function test_down_enters_the_list_within_the_debounce_window() {
@@ -783,7 +783,7 @@ Item {
                 "settings://pane/desktop-dock/row/size",
                 "settings://pane/notifications/row/previews"
             ];
-            var labels = ["Appearance", "Size", "Show previews"];
+            var labels = ["Appearance", "Dock Size", "Show previews"];
             for (var i = 0; i < links.length; ++i) {
                 verify(shell.deepLink(links[i]), "deep link " + links[i]);
                 waitForRendering(stage);

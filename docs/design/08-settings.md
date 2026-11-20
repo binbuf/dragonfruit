@@ -765,6 +765,37 @@ of seven one-row cards and a separate Preview group.
   increase-contrast states in light and dark. `SettingsScaleCase.qml` asserts
   the tiles, cards, and radios fit at 1×/1.5×/2×.
 
+## The T292a Desktop & Dock restyle (ADR 0303)
+
+Desktop & Dock now follows the mockup's section order, headings, and labels:
+**Dock** (Dock Size, Dock Magnification Size, Dock position on screen,
+Minimized window animation, Window title bar double-click action, Minimize
+windows into application icon, Automatically hide and show the Dock, Animate
+opening applications, Show indicators for open applications, Show suggested and
+recent apps in Dock), **Desktop & Workspaces** (Show items, Click wallpaper to
+show desktop, Workspace Focus, Show recent apps in Workspace Focus, Show
+windows from an application; Stage is renamed Workspace Focus), **Widgets**
+(Show Widgets, Dim widgets on desktop, Default web browser), **Windows** (tabs,
+keep changes, close on quit, Drag windows to left or right edge of screen to
+tile, Drag windows to menu bar to fill screen, Hold Super key while dragging
+windows to tile, Tiled windows have margins), and one **Window Overview**
+section whose single **Workspace Overview** disclosure opens the existing
+Mission Control surface. T292b replaces that entry with the merged section.
+
+The Linux-only rows keep their owners and keys but leave the main pane:
+**Advanced Dock…** (`dock.chooserOnHover`, `dock.minimizeReaction`) and
+**Advanced Windows…** (`windows.rules`) are footers that open sheets. The
+footer also keeps **Shortcuts…** and **Hot Corners…**; they open the existing
+surfaces rather than duplicating their controls. The “Show application menus in
+the menu bar” row (`menu.global`) left this pane for the Menu Bar pane (T293a).
+The executable map's `rowSurface("desktop-dock", …)` answers `dialog` for the
+three sheet rows, so a deep link opens the sheet and lands on the row.
+
+`make t292a-settings-desktop-dock-capture` writes the pane top, the four
+sections, the Workspace Overview entry, both advanced sheets, the hot-corner
+surface reached from the footer, and the no-daemon state in light and dark
+(`docs/captures/t292a-desktop-dock-*.png`).
+
 ## The T276 Desktop & Dock and Overview panes (ADR 0277)
 
 T276 completes the macOS Desktop & Dock page and the Linux Overview surface.

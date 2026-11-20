@@ -212,6 +212,11 @@ Item {
             return out;
         }
 
+        // T292a: the pane still owns these rows, but its ids are no longer a
+        // top-level map pane. The map keeps the legacy `mission-control` row
+        // inventory until T292b merges it into Desktop & Dock -> Workspace
+        // Overview, so the rendered rows are checked against that inventory
+        // by row id.
         function test_rows_match_the_executable_map() {
             var shell = make();
             var pane = paneOf(shell);
@@ -222,6 +227,23 @@ Item {
                 verify(rendered.indexOf(mapRows[i].id) >= 0,
                        "map row " + mapRows[i].id + " has no rendered row");
             }
+        }
+
+        // T292a: the Desktop & Dock pane reaches this surface through its
+        // Workspace Overview entry, and the alias still resolves to that
+        // section, so the legacy rows never dead-end.
+        function test_the_desktop_dock_entry_reaches_this_surface() {
+            compare(SettingsPanes.resolve("mission-control").paneId,
+                    "desktop-dock");
+            compare(SettingsMap.aliasFor("mission-control").anchor,
+                    "Workspace Overview");
+            var section = SettingsMap.rowsFor("desktop-dock").filter(function(row) {
+                return row.section === "Workspace Overview";
+            });
+            verify(section.length > 0,
+                   "Desktop & Dock must keep a Workspace Overview section");
+            compare(section[0].id, "overview");
+            compare(section[0].state, "shipped");
         }
 
         function test_measured_window_740x820_keeps_every_row_reachable() {

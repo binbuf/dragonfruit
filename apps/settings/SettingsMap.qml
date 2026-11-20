@@ -1042,10 +1042,17 @@ QtObject {
                 root.row("advanced", qsTr("Security"), qsTr("Advanced..."), "sheet",
                          "adapters", "security.advanced", "read-only", "shipped")
             ],
+            // T292a: the mockup's Dock / Desktop & Workspaces / Widgets /
+            // Windows order. Section titles equal the rendered group titles.
+            // The Linux-only Dock rows (`chooserOnHover`, `minimizeReaction`)
+            // and the window-rules row keep their owners and keys but live in
+            // the Advanced Dock / Advanced Windows sheets ("dialog" surface).
+            // The former Overview group is the temporary **Workspace Overview**
+            // entry; T292b merges the Mission Control rows into it.
             "desktop-dock": [
-                root.row("size", qsTr("Dock"), qsTr("Size"), "slider",
+                root.row("size", qsTr("Dock"), qsTr("Dock Size"), "slider",
                          "settingsd", "dock.size", "live-on-defaults", "shipped"),
-                root.row("magnification", qsTr("Dock"), qsTr("Magnification"), "slider",
+                root.row("magnification", qsTr("Dock"), qsTr("Dock Magnification Size"), "slider",
                          "settingsd", "dock.magnification", "live-on-defaults", "shipped"),
                 root.row("position", qsTr("Dock"), qsTr("Dock position on screen"), "popup",
                          "settingsd", "dock.position", "live-on-defaults", "shipped"),
@@ -1055,7 +1062,7 @@ QtObject {
                          "settingsd", "dock.titlebarDoubleClick", "live-on-defaults", "shipped"),
                 root.row("minimizeIntoTileIcon", qsTr("Dock"), qsTr("Minimize windows into application icon"), "toggle",
                          "settingsd", "dock.minimizeIntoTileIcon", "live-on-defaults", "shipped"),
-                root.row("autohide", qsTr("Dock"), qsTr("Automatically hide and show Dock"), "toggle",
+                root.row("autohide", qsTr("Dock"), qsTr("Automatically hide and show the Dock"), "toggle",
                          "settingsd", "dock.autohide", "live-on-defaults", "shipped"),
                 root.row("animateOpening", qsTr("Dock"), qsTr("Animate opening applications"), "toggle",
                          "settingsd", "dock.animateOpening", "live-on-defaults", "shipped"),
@@ -1063,56 +1070,59 @@ QtObject {
                          "settingsd", "dock.showIndicators", "live-on-defaults", "shipped"),
                 root.row("showRecentApps", qsTr("Dock"), qsTr("Show suggested and recent apps in Dock"), "toggle",
                          "settingsd", "dock.showRecentApps", "live-on-defaults", "shipped"),
-                root.row("chooserOnHover", qsTr("Dock"), qsTr("Open a window chooser by hovering"), "toggle",
-                         "settingsd", "dock.chooserOnHover", "live-on-defaults", "shipped"),
-                root.row("minimizeReaction", qsTr("Dock"), qsTr("Bounce app icons when windows minimize"), "toggle",
-                         "settingsd", "dock.minimizeReaction", "live-on-defaults", "shipped"),
-                root.row("menuBarToggle", qsTr("Menu Bar"), qsTr("Show application menus in menu bar"), "toggle",
-                         "settingsd", "menu.global", "live-on-defaults", "shipped",
-                         false, "shell/MenuBar, services/menu-broker"),
-                root.row("desktopItems", qsTr("Desktop"), qsTr("Desktop items"), "segmented",
-                         "settingsd", "desktop.showItems", "live-on-defaults", "shipped"),
-                root.row("clickWallpaper", qsTr("Desktop"), qsTr("Click wallpaper to reveal desktop"), "popup",
+                root.row("desktopItems", qsTr("Desktop & Workspaces"), qsTr("Show items"), "segmented",
+                         "settingsd -> apps/files desktop", "desktop.showItems", "live-on-defaults", "shipped"),
+                root.row("clickWallpaper", qsTr("Desktop & Workspaces"), qsTr("Click wallpaper to show desktop"), "popup",
                          "settingsd", "desktop.clickWallpaper", "disabled-with-reason", "shipped"),
-                root.row("stage", qsTr("Stage"), qsTr("Stage"), "toggle",
+                root.row("stage", qsTr("Desktop & Workspaces"), qsTr("Workspace Focus"), "toggle",
                          "settingsd", "stageManager.enabled", "disabled-with-reason", "shipped"),
-                root.row("stageRecent", qsTr("Stage"), qsTr("Recent apps in Stage"), "toggle",
+                root.row("stageRecent", qsTr("Desktop & Workspaces"), qsTr("Show recent apps in Workspace Focus"), "toggle",
                          "settingsd", "stageManager.showRecentApps", "disabled-with-reason", "shipped"),
-                root.row("stageWindowMode", qsTr("Stage"), qsTr("Show windows from an application"), "popup",
+                root.row("stageWindowMode", qsTr("Desktop & Workspaces"), qsTr("Show windows from an application"), "popup",
                          "compositor (T242)", "stageManager.windowMode", "disabled-with-reason", "shipped"),
                 root.row("showWidgets", qsTr("Widgets"), qsTr("Show Widgets"), "segmented",
                          "shell + files desktop (T245b)", "widgets.show", "disabled-with-reason", "shipped"),
                 root.row("dimWidgets", qsTr("Widgets"), qsTr("Dim widgets on desktop"), "popup",
                          "shell + files desktop (T245b)", "widgets.dim", "disabled-with-reason", "shipped"),
+                root.row("defaultBrowser", qsTr("Widgets"), qsTr("Default web browser"), "popup",
+                         "settingsd + default-apps delegate", "defaults.browser", "delegated", "shipped"),
                 root.row("preferTabs", qsTr("Windows"), qsTr("Prefer tabs when opening documents"), "popup",
                          "first-party apps", "windows.preferTabs", "disabled-with-reason", "shipped"),
                 root.row("askToKeepChanges", qsTr("Windows"), qsTr("Ask to keep changes when closing documents"), "toggle",
                          "first-party apps", "windows.askToKeepChanges", "disabled-with-reason", "shipped"),
                 root.row("closeOnQuit", qsTr("Windows"), qsTr("Close windows when quitting an application"), "toggle",
                          "first-party app lifecycle (T243)", "windows.closeOnQuit", "disabled-with-reason", "shipped"),
-                root.row("dragToTile", qsTr("Windows"), qsTr("Drag windows to screen edges to tile"), "toggle",
+                root.row("dragToTile", qsTr("Windows"), qsTr("Drag windows to left or right edge of screen to tile"), "toggle",
                          "compositor (T242)", "tiling.dragToTile", "disabled-with-reason", "shipped",
                          false, "compositor/window tiling (not implemented)"),
-                root.row("dragToFill", qsTr("Windows"), qsTr("Drag windows to the menu bar to fill the screen"), "toggle",
+                root.row("dragToFill", qsTr("Windows"), qsTr("Drag windows to menu bar to fill screen"), "toggle",
                          "compositor (T242)", "tiling.dragToFill", "disabled-with-reason", "shipped",
                          false, "compositor/window tiling (not implemented)"),
-                root.row("tileModifier", qsTr("Windows"), qsTr("Hold Option while dragging to tile"), "toggle",
+                root.row("tileModifier", qsTr("Windows"), qsTr("Hold Super key while dragging windows to tile"), "toggle",
                          "compositor (T242)", "tiling.modifier", "disabled-with-reason", "shipped",
                          false, "compositor/window tiling (not implemented)"),
                 root.row("tileMargins", qsTr("Windows"), qsTr("Tiled windows have margins"), "toggle",
                          "compositor (T242)", "tiling.margins", "disabled-with-reason", "shipped",
                          false, "compositor/window tiling (not implemented)"),
-                root.row("windowRules", qsTr("Windows"), qsTr("Application window rules..."), "button",
-                         "compositor", "windows.rules", "disabled-with-reason", "shipped",
-                         false, "compositor/window-rule engine (not implemented)"),
-                root.row("overview", qsTr("Overview"), qsTr("Overview"), "disclosure",
+                root.row("overview", qsTr("Workspace Overview"), qsTr("Workspace Overview"), "disclosure",
                          "settingsd + compositor", "overview.*", "live-on-defaults", "shipped"),
-                root.row("hotCorners", qsTr("Overview"), qsTr("Hot Corners..."), "disclosure",
+                // T292a: the Shortcuts… and Hot Corners… actions are the mockup
+                // footer, not pane rows. They keep their map ids under the
+                // Window Overview section so a deep link lands on the live
+                // Workspace Overview entry; the shortcut editor is still
+                // disabled.
+                root.row("hotCorners", qsTr("Workspace Overview"), qsTr("Hot Corners..."), "sheet",
                          "settingsd + compositor", "overview.hotCorner*", "live-on-defaults", "shipped"),
-                root.row("shortcuts", qsTr("Overview"), qsTr("Shortcuts..."), "sheet",
+                root.row("shortcuts", qsTr("Workspace Overview"), qsTr("Shortcuts..."), "sheet",
                          "compositor", "shortcuts.*", "disabled-with-reason", "shipped"),
-                root.row("defaultBrowser", qsTr("Default web browser"), qsTr("Default web browser"), "popup",
-                         "settingsd + default-apps delegate", "defaults.browser", "delegated", "shipped")
+                // Advanced sheets.
+                root.row("chooserOnHover", qsTr("Advanced Dock"), qsTr("Open a window chooser by hovering"), "toggle",
+                         "settingsd", "dock.chooserOnHover", "live-on-defaults", "shipped"),
+                root.row("minimizeReaction", qsTr("Advanced Dock"), qsTr("Bounce app icons when windows minimize"), "toggle",
+                         "settingsd", "dock.minimizeReaction", "live-on-defaults", "shipped"),
+                root.row("windowRules", qsTr("Advanced Windows"), qsTr("Application window rules..."), "button",
+                         "compositor", "windows.rules", "disabled-with-reason", "shipped",
+                         false, "compositor/window-rule engine (not implemented)")
             ],
             "mission-control": [
                 root.row("rearrange", qsTr("Overview"), qsTr("Automatically rearrange workspaces"), "toggle",
@@ -1857,6 +1867,14 @@ QtObject {
         "accentFromWallpaper": true
     })
 
+    // T292a: the Desktop & Dock rows that live in the Advanced Dock and
+    // Advanced Windows sheets. Their section titles are the stable key.
+    readonly property var desktopDockDialogRows: ({
+        "chooserOnHover": true,
+        "minimizeReaction": true,
+        "windowRules": true
+    })
+
     // Where a row lives: "subpane", "dialog", or "pane". "" means the row
     // cannot be landed and must not be indexed or deep-linked.
     function rowSurface(paneId, rowId) {
@@ -1867,6 +1885,9 @@ QtObject {
             return "subpane";
         if (paneId === "appearance"
                 && root.appearanceDialogRows[rowId] === true)
+            return "dialog";
+        if (paneId === "desktop-dock"
+                && root.desktopDockDialogRows[rowId] === true)
             return "dialog";
         return "pane";
     }

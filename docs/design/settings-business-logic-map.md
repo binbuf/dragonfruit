@@ -828,50 +828,59 @@ a dead affordance.
 ### 5.12 Desktop & Dock
 
 Owner: `settingsd` → compositor/shell. Absence: live on defaults; no error.
-The existing top-level Overview pane (`mission-control`) keeps its id and owns
-the workspace, gesture, and hot-corner rows. T276 completes the macOS page and
-adds the default-browser delegate.
+T292a restyles the pane to the mockup's section order and labels. The former
+top-level Overview pane (`mission-control`) keeps its id; its rows stay
+reachable through the single **Workspace Overview** entry under Desktop & Dock
+until T292b merges them here.
 
-| macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
+| Mockup section | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Size | Size | Slider | existing: `dock.size` | Live |
-| Magnification | Magnification | Slider | existing: `dock.magnification` | Live |
-| Position on screen | Position on screen | Popup | existing: `dock.position` | Bottom/left/right |
-| Minimized window animation | Minimized window animation | Popup | existing: `dock.minimizedAnimation` | Genie/scale/none |
-| Double-click title bar | Window title bar double-click action | Popup | existing: `dock.titlebarDoubleClick` | Zoom/minimize/none |
-| Minimize windows into app icon | Minimize windows into application icon | Toggle | existing: `dock.minimizeIntoTileIcon` | Live |
-| Automatically hide/show Dock | Automatically hide and show the Dock | Toggle | existing: `dock.autohide` | Live |
-| Animate opening applications | Animate opening applications | Toggle | existing: `dock.animateOpening` | Live |
-| Show indicators for open apps | Show indicators for open applications | Toggle | existing: `dock.showIndicators` | Live |
-| Show suggested and recent apps | Show suggested and recent apps in Dock | Toggle | existing: `dock.showRecentApps` | Live |
-| — | Open a window chooser by hovering | Toggle | existing: `dock.chooserOnHover` | Live |
-| — | Bounce app icons when windows minimize | Toggle | existing: `dock.minimizeReaction` | Live |
-| — | Show application menus in menu bar | Toggle | existing: `menu.global` | Live |
-| Show items | Show items | Segmented | `desktop.showItems` | Live: Files desktop consumes it |
-| Click wallpaper to show desktop | Click wallpaper to reveal desktop | Popup | `desktop.clickWallpaper` | Disabled: desktop reveal is T245b |
-| Stage Manager | Stage | Toggle | `stageManager.enabled` | Disabled: Stage is T242 |
-| Show recent apps in Stage Manager | Recent apps in Stage | Toggle | `stageManager.showRecentApps` | Disabled: Stage is T242 |
-| Show windows from an application | Show windows from an application | Popup | `stageManager.windowMode` | Disabled: Stage is T242 |
+| Dock | Dock Size | Slider | existing: `dock.size` | Live |
+| Dock | Dock Magnification Size | Slider | existing: `dock.magnification` | Live; off at 0 |
+| Dock | Dock position on screen | Popup | existing: `dock.position` | Bottom/left/right |
+| Dock | Minimized window animation | Popup | existing: `dock.minimizedAnimation` | Genie/scale/none |
+| Dock | Window title bar double-click action | Popup | existing: `dock.titlebarDoubleClick` | Zoom/minimize/none |
+| Dock | Minimize windows into application icon | Toggle | existing: `dock.minimizeIntoTileIcon` | Live |
+| Dock | Automatically hide and show the Dock | Toggle | existing: `dock.autohide` | Live |
+| Dock | Animate opening applications | Toggle | existing: `dock.animateOpening` | Live |
+| Dock | Show indicators for open applications | Toggle | existing: `dock.showIndicators` | Live |
+| Dock | Show suggested and recent apps in Dock | Toggle | existing: `dock.showRecentApps` | Live |
+| Advanced Dock | Open a window chooser by hovering | Toggle | existing: `dock.chooserOnHover` | Live; in the Advanced… Dock sheet |
+| Advanced Dock | Bounce app icons when windows minimize | Toggle | existing: `dock.minimizeReaction` | Live; in the Advanced… Dock sheet |
+| Desktop & Workspaces | Show items | Segmented | `desktop.showItems` | Live: Files desktop consumes it |
+| Desktop & Workspaces | Click wallpaper to show desktop | Popup | `desktop.clickWallpaper` | Disabled: desktop reveal is T245b |
+| Desktop & Workspaces | Workspace Focus | Toggle | `stageManager.enabled` | Disabled: staging is T242 |
+| Desktop & Workspaces | Show recent apps in Workspace Focus | Toggle | `stageManager.showRecentApps` | Disabled: staging is T242 |
+| Desktop & Workspaces | Show windows from an application | Popup | `stageManager.windowMode` | Disabled: staging is T242 |
 | Widgets | Show Widgets | Segmented | `widgets.show` | Disabled: desktop widgets are T245b |
-| Dim widgets | Dim widgets on desktop | Popup | `widgets.dim` | Disabled: desktop widgets are T245b |
-| Prefer tabs | Prefer tabs when opening documents | Popup | `windows.preferTabs` | Disabled: no first-party tabbed documents |
-| Ask to keep changes | Ask to keep changes when closing documents | Toggle | `windows.askToKeepChanges` | Disabled: no first-party document app |
-| Close windows on quit | Close windows when quitting an application | Toggle | `windows.closeOnQuit` | Disabled: app lifecycle is T243 |
-| Drag to tile | Drag windows to screen edges to tile | Toggle | `tiling.dragToTile` | Disabled: tiling is T242 |
-| Drag to fill | Drag windows to the menu bar to fill the screen | Toggle | `tiling.dragToFill` | Disabled: tiling is T242 |
-| Hold modifier to tile | Hold Option while dragging to tile | Toggle | `tiling.modifier` | Disabled: tiling is T242 |
-| Tiled windows have margins | Tiled windows have margins | Toggle | `tiling.margins` | Disabled: tiling is T242 |
-| — | Application window rules… | Button | `windows.rules` | Disabled: the compositor window-rule engine is not present (T281) |
-| Overview | Overview | Disclosure | `overview.*` | Opens the Overview pane |
-| Hot Corners… | Hot Corners… | Disclosure | `overview.hotCorner*` | Opens the Overview pane |
-| Shortcuts… | Shortcuts… | Sheet | `shortcuts.*` | Disabled: shortcut editor not implemented |
-| Default web browser | Default web browser | Popup | `defaults.browser` + default-apps delegate | Live: app-index `WebBrowser` records, applied by `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full matrix |
+| Widgets | Dim widgets on desktop | Popup | `widgets.dim` | Disabled: desktop widgets are T245b |
+| Widgets | Default web browser | Popup | `defaults.browser` + default-apps delegate | Live: app-index `WebBrowser` records, applied by `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full matrix |
+| Windows | Prefer tabs when opening documents | Popup | `windows.preferTabs` | Disabled: no first-party tabbed documents |
+| Windows | Ask to keep changes when closing documents | Toggle | `windows.askToKeepChanges` | Disabled: no first-party document app |
+| Windows | Close windows when quitting an application | Toggle | `windows.closeOnQuit` | Disabled: app lifecycle is T243 |
+| Windows | Drag windows to left or right edge of screen to tile | Toggle | `tiling.dragToTile` | Disabled: tiling is T242 |
+| Windows | Drag windows to menu bar to fill screen | Toggle | `tiling.dragToFill` | Disabled: tiling is T242 |
+| Windows | Hold Super key while dragging windows to tile | Toggle | `tiling.modifier` | Disabled: tiling is T242 |
+| Windows | Tiled windows have margins | Toggle | `tiling.margins` | Disabled: tiling is T242 |
+| Advanced Windows | Application window rules… | Button | `windows.rules` | Disabled: the compositor window-rule engine is not present (T281); in the Advanced… Windows sheet |
+| Window Overview | Workspace Overview | Disclosure | existing: `overview.*` (mission-control) | Opens the existing surface; the `settings://pane/mission-control` alias lands here (T292b merges the section) |
+| Footer | Shortcuts… | Action | `shortcuts.*` | Opens the existing surface; the shortcut editor is still unavailable |
+| Footer | Hot Corners… | Action | `overview.hotCorner*` | Opens the existing hot-corner surface |
+| Footer | Advanced… (Dock) / Advanced… (Windows) | Sheet | — | Opens the Advanced Dock / Advanced Windows sheet |
+
+The removed rows: “Show application menus in the menu bar” (`menu.global`) left
+this pane for the Menu Bar pane (T293a); the Overview disclosure rows for Hot
+Corners and Shortcuts became footer actions; Stage is renamed Workspace Focus.
 
 <a id="pane-overview"></a>
-### 5.12.1 Overview (the `mission-control` pane)
+### 5.12.1 Overview (the `mission-control` surface)
 
 Owner: `settingsd` → compositor. Absence: live on defaults; the absence note
-names the missing daemon. T276 adds the Overview and workspace rows.
+names the missing daemon. T276 adds the Overview and workspace rows. T285
+removed the top-level pane and T292a reaches the surface through Desktop & Dock
+→ Workspace Overview; T292b merges these rows into that section and removes the
+surface. The map keeps this row inventory under the legacy `mission-control`
+key until then.
 
 | Row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|

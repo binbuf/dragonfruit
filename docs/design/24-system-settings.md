@@ -1441,6 +1441,20 @@ no-trackpad state explains the kept preference.
 
 Owner: settingsd → compositor/shell. Absence: live on defaults.
 
+> **Superseded in part by T292a** ([25](25-system-settings-visual-parity.md)
+> §5.6, [ADR 0303](adr/0303-desktop-dock-restyle-and-advanced-sheets.md)). The
+> namespace layout below is the T276 inventory; the shipped pane now follows
+> the mockup's section order and labels: Dock Size / Dock Magnification Size /
+> Dock position on screen, **Desktop & Workspaces** with the Stage →
+> **Workspace Focus** rename, Widgets (including Default web browser), Windows
+> with “Hold Super” and the two edge-tile labels, a single **Window Overview** →
+> **Workspace Overview** entry, and a footer with Advanced… (Dock), Advanced…
+> (Windows), Shortcuts…, and Hot Corners…. The two Linux-only Dock rows
+> (hover chooser, minimize reaction) live in the Advanced Dock sheet and the
+> window-rules row in the Advanced Windows sheet. “Show application menus in
+> the menu bar” left this pane for Menu Bar (T293a). §4.21's rows stay reachable
+> through the Workspace Overview entry until T292b merges them.
+
 T276 completes the page. Every live row has a real owner and consumer; a row
 whose runtime is a later task is visible and disabled with a user-facing
 reason, never an `OPEN` marker or a task id. The owning task id lives in the
@@ -1506,8 +1520,13 @@ executable map and this document.
 
 ### 4.21 Overview — T276
 
-Linux-specific workspace surface. The top-level `mission-control` id and the
-sidebar title **Overview** stay. Every live row is settingsd-backed and applied
+> **Superseded in part by T285 and T292a.** The top-level Overview pane is
+> gone; the catalog maps `settings://pane/mission-control` to Desktop & Dock →
+> Workspace Overview, and T292a's single Workspace Overview entry opens the
+> surface this section describes. T292b merges these rows into that section and
+> deletes `MissionControlPane.qml`.
+
+Linux-specific workspace surface. The surface keeps its `mission-control` id. Every live row is settingsd-backed and applied
 by the compositor; the shell forwards one v13
 `df_toplevel_manager.set_overview_policy` snapshot (assignments, modifiers,
 workspace count, app-Space switch).
