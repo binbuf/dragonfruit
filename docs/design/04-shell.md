@@ -634,8 +634,12 @@ plate thickness, matching the reference's ~0.34). `barThickness` is
 `iconSize + 2 * padding` on every side; the running indicator's
 `indicatorGap` + `indicatorSize` live *inside* the
 anchored-edge padding rather than in a band added to the plate, so the artwork
-keeps the same inset from both plate edges and the dot sits 8 pt below it. The
-artwork is anchored on the anchored-edge side, so under magnification it grows
+keeps the same inset from both plate edges and the dot sits 8 pt below it.
+The resting `padding`, `paddingAlong`, and `radius` are pinned by `tst_dock`
+and by the T198 capture (`panel_logical` height 78, `declared_radius_pt` 27);
+a restyle must not retune them without a new reference capture (ADR
+[0308](adr/0308-dock-resting-proportions-restored.md)). The artwork is
+anchored on the anchored-edge side, so under magnification it grows
 toward the screen interior while the dot stays put. `indicatorSpace` never
 exceeds `padding`, so no entry (dot included) clips the plate at
 `iconSizeMin`/`iconSizeMax`. The fill opacity is unchanged; the fallback rim
@@ -658,12 +662,17 @@ narrow specular line on that physical pixel plus a super-exponential tail
 approximates the same tail with three concentric full-perimeter strokes
 (`plate.glowOuter*`/`glowMid*`/`glowInner*`) and an Increase Contrast-only
 uniform border; it has no `position` branch, so bottom, left and right Docks
-draw the same perimeter. The corner lens is corner-only: it is parameterized by
-distance inside the rim, directed by the outward SDF normal, and gated by
-`4·nx²·ny²`, so flat edges and flat sides are exactly unbent. The persistent
-Dock resolves to the `Reduced` tier; that tier keeps the flat-band corner lens
-and drops only the generic edge-lens `refraction`, so the measured corner
-refraction is present on the normal production path (T235a). The plate group
+draw the same perimeter. The lens is a measured **short-end** lens: it is
+parameterized by distance inside the rim, directed by the outward SDF normal,
+and weighted by `DockOptics::bevel_end_gain`, so the whole short side keeps the
+measured displacement (4/8.5/9.6 pt at 5/10/15 pt inside) while the long flats
+stay at the measured ~0.5 pt. The earlier `4·nx²·ny²` corner gate instead
+peaked on the 45-degree diagonals and left the middle of each short side flat
+(ADR [0255](adr/0255-dock-uniform-perimeter-and-corner-gate.md) amendment).
+The persistent Dock resolves to the `Reduced` tier; that tier keeps the
+flat-band end lens and drops only the generic edge-lens `refraction`, so the
+measured short-end refraction is present on the normal production path
+(T235a). The plate group
 is clipped at its top edge so no paint bleeds into the transparent magnify band
 above it (T-10 section 2). Icon tiles are rounded squares at
 `controls.dock.icon.radiusRatio`, and the themed artwork is **masked** into
@@ -691,10 +700,11 @@ shell declares the *same* integer rect to the compositor as the backdrop panel
 independently rasterized ones, and no 1 px fringe appears as the plate grows.
 The shell commits the declared panel only when the integer rect actually
 changes, so a smooth animation cannot ping-pong the backdrop. The bright rim is
-a stroked path along the interior edge (top for a bottom Dock, the interior
-side for a vertical one) that follows the corner arcs and is inset by half the
-stroke, so no rim pixel leaves the plate; a straight hairline no longer runs
-into the corner curve. Geometry and tone stay token-driven
+a full-perimeter stroked path inset by half the stroke so every rim pixel lies
+inside the plate shape; it follows all four edges and the corner arcs, with no
+position branch, so a bottom, left, or right Dock draws the same rim and a
+straight hairline no longer runs into the corner curve. Geometry and tone stay
+token-driven
 (`controls.dock.radius`, `plate.rimHeight`/`rimOpacity`); the radius stays
 static (T-14.7u).
 

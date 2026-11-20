@@ -713,7 +713,7 @@ qint64 DockLayoutMetrics::lengthFor(int iconSize, const DockLayoutSpacing &spaci
          + qint64(dividerCount) * spacing.dividerWidth
          + qint64(iconGapCount) * spacing.gap
          + qint64(dividerGapCount) * spacing.dividerGap
-         + qRound(double(paddingCount) * spacing.paddingAlong);
+         + qint64(paddingCount) * spacing.paddingAlong;
 }
 
 DockLayoutMetrics planDockLayout(const QVariantList &entries, int fixedCount,

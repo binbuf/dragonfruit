@@ -439,8 +439,8 @@ mod tests {
     #[test]
     fn the_bevel_is_a_short_end_lens_not_a_45_degree_corner_gate() {
         let optics = DockOptics::light();
-        // Standard horizontal Dock: 1163 x 80 pt, 26.9 pt radius.
-        let half = [1163.0 / 2.0 - 26.9, 80.0 / 2.0 - 26.9];
+        // Standard horizontal Dock: 1163 x 78 pt, 27 pt radius.
+        let half = [1163.0 / 2.0 - 27.0, 78.0 / 2.0 - 27.0];
         // The whole short side (left/right end) keeps the full measured lens,
         // including its middle. The old gate left this at the flat gain and
         // put the two maxima on the 45-degree diagonals.
@@ -449,7 +449,7 @@ mod tests {
             assert!((gain - 1.0).abs() < 1e-6, "short end at y={y}: {gain}");
         }
         // The long edge middle is the measured ~0.5 pt flat.
-        let gain = optics.bevel_end_gain(half, [0.0, -80.0 / 2.0]);
+        let gain = optics.bevel_end_gain(half, [0.0, -78.0 / 2.0]);
         assert!((gain - DOCK_BEVEL_FLAT_GAIN).abs() < 0.01);
         // The gain decays monotonically along the long edge: no saddle and no
         // 45-degree lobes between the end and the interior.
@@ -460,7 +460,7 @@ mod tests {
             previous = gain;
         }
         // A vertical Dock is the same model on its short top/bottom ends.
-        let tall = [80.0 / 2.0 - 26.9, 1163.0 / 2.0 - 26.9];
+        let tall = [78.0 / 2.0 - 27.0, 1163.0 / 2.0 - 27.0];
         assert!((optics.bevel_end_gain(tall, [0.0, 1163.0 / 2.0]) - 1.0).abs() < 1e-6);
         assert!((optics.bevel_end_gain(tall, [0.0, 0.0]) - DOCK_BEVEL_FLAT_GAIN).abs() < 0.01);
     }

@@ -4353,7 +4353,7 @@ Rectangle {
     // software fallback and the authoritative path agree at the corner. A
     // superellipse corner (`|x/r|^n + |y/r|^n = 1`) has continuous curvature;
     // 12 line segments per corner are below a tenth of a pixel at the Dock's
-    // 26.9 pt radius and keep the software Shape renderer cheap.
+    // 27 pt radius and keep the software Shape renderer cheap.
     function squirclePath(w, h, radius, power) {
         var r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
         if (r <= 0)

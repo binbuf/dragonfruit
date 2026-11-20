@@ -1556,10 +1556,16 @@ Item {
         // indicator lives inside the anchored-edge padding rather than in a band
         // added on top of it.
         function test_plate_thickness_and_indicator_inset_match_the_reference() {
-            compare(Theme.controls.dock.padding, 16);
+            // T-14.7u/T-14.7z resting proportions. These are measured tokens,
+            // not free knobs: 48 + 2 * 15 = the 78 pt plate in the T198
+            // capture, with the 16 pt end padding and 27 pt radius. Pin every
+            // one so a later restyle cannot silently retune the plate (the
+            // 2026-11 `dock plate fixes` regression changed all three).
+            compare(Theme.controls.dock.padding, 15);
+            compare(Theme.controls.dock.paddingAlong, 16);
             compare(Theme.controls.dock.gap, 14);
             compare(Theme.controls.dock.indicatorGap, 8);
-            compare(Theme.controls.dock.radius, 26.9);
+            compare(Theme.controls.dock.radius, 27);
 
             var dock = make(dockComponent, {
                 width: 1280, height: 240, position: "bottom",

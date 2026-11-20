@@ -626,14 +626,18 @@ side, no straight top/bottom lift and no outer shadow. The shader places a
 narrow specular line on the first covered physical pixel so the measured
 +0.397 lands there at 1×/1.5×/2×; the tail is a super-exponential with
 half-amplitude at the token 1 pt, 10 % at ~2.5 pt and zero by the 6 pt tail.
-The corner lens is parameterized by distance *inside* the rim, directed by the
-outward SDF normal and gated by `4·nx²·ny²`: exactly zero on flat edges and
-flat sides, one at the 45° corner. `cornerLensPeak` 13.6 is the displacement
-along the normal, whose horizontal component at 15 pt inside is the measured
-9.6 pt. The persistent Dock/Quick Settings roles resolve to `Reduced`
-(T-21.2c); that tier keeps the flat-band corner lens and drops only the generic
-edge-lens `refraction`, so the measured corner refraction is on the production
-path rather than only at `Full` (T235a). The shader applies the measured flat
+The lens is a measured *short-end* lens: it is parameterized by distance
+*inside* the rim, directed by the outward SDF normal and weighted by
+`DockOptics::bevel_end_gain`, so the whole short side keeps the measured
+displacement and the long flats stay at ~0.5 pt. The earlier `4·nx²·ny²` gate
+peaked on the 45° diagonals and left the middle of each short side flat (ADR
+[0255](adr/0255-dock-uniform-perimeter-and-corner-gate.md) amendment).
+`cornerLensPeak` 13.6 is the displacement along the normal, whose horizontal
+component at 15 pt inside is the measured 9.6 pt. The persistent Dock/Quick
+Settings roles resolve to `Reduced` (T-21.2c); that tier keeps the flat-band
+end lens and drops only the generic edge-lens `refraction`, so the measured
+short-end refraction is on the production path rather than only at `Full`
+(T235a). The shader applies the measured flat
 band (alpha 0.253 light / 0.149 dark, neutral tint 0.604/0.207); Increase
 Contrast raises the resolved rim peak/width after the fit. The QML plate layers
 are hidden on the sampled path, so tint and rim are painted once; unsupported

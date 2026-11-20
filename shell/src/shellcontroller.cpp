@@ -9170,7 +9170,7 @@ DockOverflowResult ShellController::computeDockOverflow() const
         qRound(m_dockItem->property("gap").toReal()),
         qRound(m_dockItem->property("dividerGap").toReal()),
         qRound(m_dockItem->property("dividerWidth").toReal()),
-        m_dockItem->property("paddingAlong").toDouble(),
+        qRound(m_dockItem->property("paddingAlong").toReal()),
     };
     const int fixedCount = qMax(0, m_dockItem->property("fixedEntryCount").toInt());
     const int iconMin = qRound(m_dockItem->property("iconSizeMin").toReal());

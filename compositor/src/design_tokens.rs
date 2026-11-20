@@ -404,10 +404,10 @@ pub mod component {
         pub const ICON_SIZE: f32 = 48.0_f32;
         pub const ICON_SIZE_MIN: f32 = 32.0_f32;
         pub const ICON_SIZE_MAX: f32 = 64.0_f32;
-        pub const PADDING: f32 = 16.0_f32;
-        pub const PADDING_ALONG: f32 = 8.5_f32;
+        pub const PADDING: f32 = 15.0_f32;
+        pub const PADDING_ALONG: f32 = 16.0_f32;
         pub const GAP: f32 = 14.0_f32;
-        pub const RADIUS: f32 = 26.9_f32;
+        pub const RADIUS: f32 = 27.0_f32;
         pub const INDICATOR_SIZE: f32 = 4.0_f32;
         pub const INDICATOR_GAP: f32 = 8.0_f32;
         pub const MAGNIFY_PEAK: f32 = 1.217_f32;
