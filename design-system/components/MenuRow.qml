@@ -136,6 +136,7 @@ Item {
     }
 
     HoverHandler {
+        id: rowHover
         onHoveredChanged: {
             // Disabled rows and separators also retire the previous selection.
             if (hovered)
