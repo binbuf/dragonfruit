@@ -65,6 +65,7 @@ set(DF_SETTINGS_QML_FILES
     OnlineAccountsPane.qml
     AccessibilityPane.qml
     AccessibilityVisionPane.qml
+    AccessibilityMotorPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml
@@ -203,6 +204,7 @@ df_qml_lint(app-settings
     PrivacyPane.qml
     AccessibilityPane.qml
     AccessibilityVisionPane.qml
+    AccessibilityMotorPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml

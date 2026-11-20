@@ -1030,13 +1030,18 @@ policy reads, and the row says the tier is chosen for the user.
 > **Superseded in T291a.** The one-scroll five-section form below is replaced
 > by the mockup's big list of in-place sub-panes
 > ([adr/0297](adr/0297-accessibility-big-list-and-vision.md)). Vision ships
-> first (T291a); Physical and Motor, Hearing, Speech, and General follow in
-> T291b–T291e. The row tables remain the owner/disposition contract, with one
-> correction: a Vision row that has no real owner is now an explicit map
-> `omitted` row with a reason, not a disabled control. The shipped Vision rows
-> are Screen reader, Accessibility bridge, Increase contrast, Reduce
+> first (T291a) and Physical and Motor second (T291b); Hearing, Speech, and
+> General follow in T291c–T291e. The row tables remain the owner/disposition
+> contract, with one correction: a row that has no real owner is now an
+> explicit map `omitted` row with a reason, not a disabled control. The shipped
+> Vision rows are Screen reader, Accessibility bridge, Increase contrast, Reduce
 > transparency, Differentiate without color, Text size, Pointer size, the
-> magnifier rows, Reduce motion, Dim flashing lights, and Read & speak.
+> magnifier rows, Reduce motion, Dim flashing lights, and Read & speak. The
+> shipped Physical and Motor rows are Full keyboard access (stored-only
+> `input.keyboardNavigation`), On-screen keyboard (`onboard`/`wvkbd` delegate),
+> and Double-click speed (live `input.doubleClickSpeed`); Voice Control, Sticky
+> Keys, Slow Keys, Mouse Keys, Ignore built-in trackpad, and Switch Control are
+> omitted with reasons.
 
 Owner: settingsd + compositor + AT-SPI + delegates. Absence: keep the
 five-section structure; only the live status rows and the delegates that
@@ -1093,15 +1098,15 @@ explicit omission. It is never a fake toggle.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Voice Control | Voice control | — | speech-to-text delegate | delegated; disabled when absent |
-| — Full keyboard access | Full keyboard access | — | compositor/input | disabled-with-reason: no global mode |
-| — Sticky Keys | Sticky keys | — | compositor/input | disabled-with-reason: no sticky-key machine |
-| — Slow Keys | Slow keys | — | compositor/input | disabled-with-reason: no slow-key delay |
+| Voice Control | Voice control | — | — | omit: no voice-control or speech-to-pointer engine |
+| — Full keyboard access | Full keyboard access | Toggle | `input.keyboardNavigation` | stored-only; no compositor consumer |
+| — Sticky Keys | Sticky keys | — | — | omit: no sticky-key modifier latch |
+| — Slow Keys | Slow keys | — | — | omit: no slow-key acceptance delay |
 | — Accessibility Keyboard | On-screen keyboard | Action | onboard/wvkbd | delegated; `Open` disabled when absent |
 | — Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | ship; live compositor pointer |
-| — Mouse Keys | Mouse keys | — | compositor/input | disabled-with-reason: no keyboard pointer mode |
-| — Ignore built-in trackpad | Ignore built-in trackpad | — | compositor/input | disabled-with-reason: no per-device ignore |
-| Switch Control | Switch control | — | switch-control delegate | delegated; disabled when absent |
+| — Mouse Keys | Mouse keys | — | — | omit: no keyboard pointer mode |
+| — Ignore built-in trackpad | Ignore built-in trackpad | — | — | omit: no per-device ignore |
+| Switch Control | Switch control | — | — | omit: no switch-control delegate or scanning source |
 | Live Speech | Live speech | Action | speech-dispatcher/espeak-ng | delegated; `Speak Sample` disabled when absent |
 | Personal Voice | Personal voice | — | — | omit: no equivalent |
 | Vocal Shortcuts | Vocal shortcuts | — | — | omit: no equivalent |

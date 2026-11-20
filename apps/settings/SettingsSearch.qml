@@ -61,7 +61,8 @@ QtObject {
                        "wallpaper tint"],
         "accessibility": ["a11y", "screen reader", "contrast", "motion", "vision",
                           "hearing", "motor", "zoom", "magnifier", "speech",
-                          "read and speak", "accessibility"],
+                          "read and speak", "physical", "physical and motor",
+                          "pointer control", "accessibility"],
         "menu-bar": ["menu bar controls", "control center", "quick settings",
                      "controls", "tiles", "modules", "status items", "clock",
                      "menu extras", "menu bar items"],
@@ -295,7 +296,22 @@ QtObject {
                                                           "photosensitive"],
         "accessibility/vision.readSpeak": ["read and speak", "speech",
                                            "spd-say", "espeak",
-                                           "text to speech", "tts"]
+                                           "text to speech", "tts"],
+        // T291b: the Physical and Motor sub-pane rows. Voice Control, Sticky
+        // Keys, Slow Keys, Mouse Keys, Ignore built-in trackpad, and Switch
+        // Control are omitted rows, so they carry no synonyms.
+        "accessibility/motor.keyboard.fullKeyboardAccess": [
+            "full keyboard access", "keyboard navigation", "tab navigation",
+            "tab key", "focus between controls"
+        ],
+        "accessibility/motor.keyboard.onScreenKeyboard": [
+            "on-screen keyboard", "onscreen keyboard", "virtual keyboard",
+            "onboard", "wvkbd"
+        ],
+        "accessibility/motor.pointer.doubleClickSpeed": [
+            "double click", "double-click", "double click speed",
+            "click speed", "pointer control"
+        ]
     })
 
     // Built once from the map/catalog; rebuilt only when the optional Online

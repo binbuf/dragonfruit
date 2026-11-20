@@ -9,11 +9,12 @@ import Dragonfruit.Settings
 // (see CMakeLists.txt), so the `Settings` singleton, the AT-SPI view, and the
 // external delegates are deterministic and in-process with no bus.
 //
-// The cases cover the mockup intro and big list, the in-place Vision sub-pane,
-// the Vision row inventory (rendered and omitted), the read-only screen-reader
-// status plus its real Open Orca action, the live display/motion/magnifier
-// keys, the speech delegate, absence structure, search/deep links, keyboard
-// operation, and the 740×820 window.
+// The cases cover the mockup intro and big list, the in-place Vision and
+// Physical and Motor sub-panes, both row inventories (rendered and omitted),
+// the read-only screen-reader status plus its real Open Orca action, the live
+// display/motion/magnifier keys, the speech and on-screen-keyboard delegates,
+// the keyboard-navigation and pointer keys, absence structure, search/deep
+// links, keyboard operation, and the 740×820 window.
 Item {
     id: stage
     width: 900
@@ -40,6 +41,7 @@ Item {
             Settings.set("accessibility.shortcut", "");
             Settings.set("sound.balance", 0.5);
             Settings.set("input.doubleClickSpeed", 400);
+            Settings.set("input.keyboardNavigation", false);
             Settings.set("appearance.cursorSize", 24);
         }
 
@@ -76,6 +78,19 @@ Item {
             return vision;
         }
 
+        // Open the in-place Physical and Motor sub-pane and return its body.
+        function openMotor(shell) {
+            var pane = paneOf(shell);
+            pane.openSubPane("motor");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var motor = pane.subPaneLoader.item;
+            verify(motor, "the Physical and Motor sub-pane body must be loaded");
+            return motor;
+        }
+
         function collectRows(item, out) {
             if (!item)
                 return;
@@ -94,7 +109,7 @@ Item {
 
         // -- The mockup intro and top-level big list -------------------------
 
-        function test_the_pane_opens_with_the_mockup_intro_and_vision_row() {
+        function test_the_pane_opens_with_the_mockup_intro_and_big_list() {
             var shell = make();
             compare(shell.currentPaneId, "accessibility");
             compare(shell.currentPane.title, "Accessibility");
@@ -108,20 +123,32 @@ Item {
             var pane = paneOf(shell);
             compare(pane.subPaneId, "");
             compare(pane.listColumn.visible, true);
-            compare(pane.bigList.rows.children.length, 1,
-                    "T291a ships exactly the Vision row; later children add one each");
+            compare(pane.bigList.rows.children.length, 2,
+                    "T291a/T291b ship Vision and Physical and Motor; later "
+                    + "children add one each");
             compare(pane.visionRow.visible, true);
             compare(pane.visionRow.label, "Vision");
+            compare(pane.motorRow.visible, true);
+            compare(pane.motorRow.label, "Physical and Motor");
+
+            // The mockup order: Vision, then Physical and Motor.
+            compare(pane.bigList.rows.children[0].label, "Vision");
+            compare(pane.bigList.rows.children[1].label, "Physical and Motor");
+
             verify(pane.visionRow.height === 52,
                    "the big row is the 52 pt token, not 53");
+            verify(pane.motorRow.height === 52,
+                   "the Physical and Motor row uses the same 52 pt token");
             verify(pane.visionRow.category !== null,
                    "the Vision row carries a category tile");
             compare(pane.visionRow.category.source, "scan");
+            verify(pane.motorRow.category !== null,
+                   "the Physical and Motor row carries a category tile");
+            compare(pane.motorRow.category.source, "hand-pointing");
 
             // No disabled placeholders for later sections.
             for (var i = 0; i < pane.bigList.rows.children.length; ++i) {
                 var label = pane.bigList.rows.children[i].label;
-                verify(label !== "Physical and Motor");
                 verify(label !== "Hearing");
                 verify(label !== "Speech");
                 verify(label !== "General");
@@ -203,8 +230,13 @@ Item {
                 verify(SettingsMap.isRowLandable("accessibility", mapped.id));
             }
 
-            // The rendered rows and the shipped map rows are the same set.
+            // The rendered rows and the shipped Vision map rows are the same
+            // set (Physical and Motor has its own body).
             var expected = SettingsMap.visibleRowsFor("accessibility")
+                    .filter(function(entry) {
+                        return SettingsMap.subPaneForRow("accessibility", entry.id)
+                                === "vision";
+                    })
                     .map(function(entry) { return String(entry.id); });
             var actual = rendered.map(function(row) { return String(row.settingsId); });
             compare(actual.sort().join(","), expected.sort().join(","));
@@ -367,6 +399,176 @@ Item {
             compare(Settings.accessibilityLastDelegate, "speech");
         }
 
+        // -- Physical and Motor ----------------------------------------------
+
+        function test_the_motor_row_opens_and_closes_the_in_place_sub_pane() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            pane.motorRow.disclosureClicked();
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+
+            compare(pane.subPaneId, "motor");
+            compare(pane.subPaneTitle, "Physical and Motor");
+            compare(shell.paneTitle, "Physical and Motor");
+            compare(pane.listColumn.visible, false);
+            verify(pane.subPaneLoader.item !== null);
+
+            pane.backButton.clicked();
+            tryVerify(function() { return pane.subPaneId === ""; });
+            waitForRendering(stage);
+            compare(pane.listColumn.visible, true);
+            compare(pane.subPaneLoader.status, Loader.Null);
+            compare(shell.paneTitle, "Accessibility");
+        }
+
+        function test_the_motor_groups_render_in_mockup_order() {
+            var shell = make();
+            var motor = openMotor(shell);
+
+            var content = motor.keyboardGroup.parent;
+            var order = [];
+            for (var i = 0; i < content.children.length; ++i) {
+                var child = content.children[i];
+                if (child.title !== undefined && child.title.length > 0)
+                    order.push(child.title);
+            }
+            compare(order.join(","), "Keyboard,Pointer Control");
+            compare(motor.keyboardGroup.visible, true);
+            compare(motor.pointerGroup.visible, true);
+        }
+
+        function test_every_rendered_motor_row_has_a_map_owner_and_key() {
+            var shell = make();
+            var motor = openMotor(shell);
+            var rendered = [];
+            collectRows(motor, rendered);
+            compare(rendered.length, 3,
+                    "the Motor sub-pane renders the two keyboard rows and the "
+                    + "pointer row");
+
+            for (var i = 0; i < rendered.length; ++i) {
+                var row = rendered[i];
+                verify(String(row.owner).length > 0,
+                       "rendered row " + row.settingsId + " has no owner");
+                verify(String(row.settingsKey).length > 0,
+                       "rendered row " + row.settingsId + " has no key/API");
+                var mapped = SettingsMap.rowFor("accessibility", row.settingsId);
+                verify(mapped !== null,
+                       "rendered row " + row.settingsId + " has no map row");
+                compare(mapped.state, "shipped",
+                        "rendered row " + row.settingsId + " must be shipped");
+                verify(String(mapped.owner).length > 0 && mapped.owner !== "omit");
+                verify(String(mapped.key).length > 0 && mapped.key !== "omit");
+                compare(SettingsMap.subPaneForRow("accessibility", mapped.id),
+                        "motor");
+                compare(SettingsMap.rowSurface("accessibility", mapped.id),
+                        "subpane");
+                verify(SettingsMap.isRowLandable("accessibility", mapped.id));
+            }
+
+            var expected = SettingsMap.visibleRowsFor("accessibility")
+                    .filter(function(entry) {
+                        return SettingsMap.subPaneForRow("accessibility", entry.id)
+                                === "motor";
+                    })
+                    .map(function(entry) { return String(entry.id); });
+            var actual = rendered.map(function(row) { return String(row.settingsId); });
+            compare(actual.sort().join(","), expected.sort().join(","));
+        }
+
+        function test_ownerless_motor_rows_are_omitted_with_a_reason() {
+            var omitted = [
+                "motor.voiceControl",
+                "motor.keyboard.stickyKeys",
+                "motor.keyboard.slowKeys",
+                "motor.pointer.mouseKeys",
+                "motor.pointer.ignoreTrackpad",
+                "motor.switchControl"
+            ];
+
+            var shell = make();
+            var motor = openMotor(shell);
+            var ids = renderedIds(motor);
+            for (var i = 0; i < omitted.length; ++i) {
+                var id = omitted[i];
+                var row = SettingsMap.rowFor("accessibility", id);
+                verify(row !== null, id + " must stay in the map as an omission");
+                compare(row.state, "omitted", id + " must not be shipped");
+                compare(row.absence, "omitted", id + " must carry the omitted absence");
+                verify(row.reason.length > 0, id + " must document its reason");
+                compare(ids.indexOf(id), -1, id + " must not be rendered");
+                compare(SettingsMap.isRowLandable("accessibility", id), false,
+                        id + " must not be landable");
+                verify(SettingsMap.visibleRowsFor("accessibility")
+                       .map(function(entry) { return entry.id; }).indexOf(id) < 0,
+                       id + " must not be in the search index");
+            }
+
+            // A stale mockup name never becomes a row result.
+            var results = SettingsSearch.search("switch control");
+            for (var r = 0; r < results.length; ++r) {
+                verify(!(results[r].kind === "row"
+                         && results[r].paneId === "accessibility"),
+                       "an omitted motor row must never be a row result");
+            }
+        }
+
+        function test_keyboard_navigation_is_the_shared_stored_key() {
+            var shell = make();
+            var motor = openMotor(shell);
+            compare(motor.keyboardNavigation, false);
+            compare(motor.keyboardNavigationToggle.checked, false);
+
+            motor.keyboardNavigationToggle.toggle();
+            compare(Settings.values["input.keyboardNavigation"], true);
+            compare(motor.keyboardNavigation, true);
+
+            // The map marks the durable preference stored-only: no compositor
+            // consumer reads it yet.
+            var row = SettingsMap.rowFor("accessibility",
+                                         "motor.keyboard.fullKeyboardAccess");
+            compare(row.storedOnly, true);
+            compare(row.key, "input.keyboardNavigation");
+            verify(row.absence !== "disabled-with-reason",
+                   "a stored-only row is not a disabled row");
+        }
+
+        function test_on_screen_keyboard_delegate_matches_availability() {
+            var shell = make();
+            var motor = openMotor(shell);
+            compare(motor.onScreenKeyboardAvailable, true);
+            compare(motor.onScreenKeyboardRow.trailingActionEnabled, true);
+            compare(motor.onScreenKeyboardRow.trailingAction, "Open");
+
+            motor.onScreenKeyboardRow.trailingActionClicked();
+            compare(Settings.accessibilityLastDelegate, "on-screen-keyboard");
+
+            // The disabled state is the same row with the reason in the
+            // description (proven with the absent fixture in the T291b
+            // absence test).
+            compare(motor.onScreenKeyboardRow.trailingActionEnabled,
+                    motor.onScreenKeyboardAvailable);
+        }
+
+        function test_double_click_speed_is_the_live_pointer_key() {
+            var shell = make();
+            var motor = openMotor(shell);
+            compare(motor.doubleClickSpeed, 400);
+
+            motor.doubleClickSpeedSlider.setValue(300);
+            motor.doubleClickSpeedSlider.commit();
+            compare(Settings.values["input.doubleClickSpeed"], 300);
+            compare(motor.doubleClickSpeed, 300);
+
+            compare(SettingsMap.rowFor("accessibility",
+                                       "motor.pointer.doubleClickSpeed").absence,
+                    "live-on-defaults");
+        }
+
         // -- Search and deep links -------------------------------------------
 
         function test_a_search_result_lands_in_the_vision_sub_pane() {
@@ -405,6 +607,40 @@ Item {
             });
         }
 
+        function test_a_search_result_lands_in_the_motor_sub_pane() {
+            var results = SettingsSearch.search("double click");
+            var found = null;
+            for (var i = 0; i < results.length; ++i) {
+                if (results[i].kind === "row"
+                        && results[i].paneId === "accessibility"
+                        && results[i].targetRow === "motor.pointer.doubleClickSpeed")
+                    found = results[i];
+            }
+            verify(found !== null,
+                   "the Double-click speed row must be searchable");
+            compare(found.deepLink,
+                    "settings://pane/accessibility/row/motor.pointer.doubleClickSpeed");
+
+            var shell = make();
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            verify(shell.deepLink(found.deepLink));
+            tryVerify(function() {
+                return shell.currentPaneId === "accessibility"
+                        && shell.paneBody.status === Loader.Ready;
+            });
+            var pane = paneOf(shell);
+            tryVerify(function() {
+                return pane.subPaneId === "motor"
+                        && pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            compare(shell.paneTitle, "Physical and Motor");
+            tryVerify(function() {
+                return shell.currentRowId === "motor.pointer.doubleClickSpeed";
+            });
+        }
+
         // -- Keyboard / AT-SPI ----------------------------------------------
 
         function test_the_live_controls_are_keyboard_operable() {
@@ -424,6 +660,20 @@ Item {
             compare(Settings.values["accessibility.differentiateWithoutColor"], true);
         }
 
+        function test_the_motor_controls_are_keyboard_operable() {
+            var shell = make();
+            var motor = openMotor(shell);
+
+            motor.keyboardNavigationToggle.forceActiveFocus();
+            keyClick(Qt.Key_Space);
+            compare(Settings.values["input.keyboardNavigation"], true);
+
+            motor.doubleClickSpeedSlider.forceActiveFocus();
+            keyClick(Qt.Key_Right);
+            verify(Settings.values["input.doubleClickSpeed"] > 400,
+                   "the slider must move with the keyboard");
+        }
+
         // -- 740×820 ---------------------------------------------------------
 
         function test_the_pane_fits_the_measured_window() {
@@ -437,6 +687,12 @@ Item {
             var vision = openVision(shell);
             verify(vision.width > 0 && vision.width <= 740);
             verify(vision.implicitHeight > 0);
+
+            pane.closeSubPane();
+            waitForRendering(stage);
+            var motor = openMotor(shell);
+            verify(motor.width > 0 && motor.width <= 740);
+            verify(motor.implicitHeight > 0);
         }
     }
 }

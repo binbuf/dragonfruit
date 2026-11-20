@@ -138,9 +138,11 @@ QtObject {
         "startup":       { source: "hard-drive",    gradientStart: "#7d8fa6", gradientEnd: "#4a5b70" },
         "backup":        { source: "arrow-clockwise", gradientStart: "#34c759", gradientEnd: "#14883a" },
         "transfer":      { source: "arrows-clockwise", gradientStart: "#a06bff", gradientEnd: "#6236c4" },
-        // T291a: the Accessibility big-list row identities. The vendored set
-        // has no dedicated eye mark, so Vision uses the closest shipped glyph.
-        "vision":        { source: "scan",          gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
+        // T291a/T291b: the Accessibility big-list row identities. The vendored
+        // set has no dedicated eye mark, so Vision uses the closest shipped
+        // glyph; Physical and Motor takes the hand mark.
+        "vision":        { source: "scan",          gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
+        "motor":         { source: "hand-pointing", gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
     })
 
     // The General big-list row tile for a row identity (`about`, `update`,

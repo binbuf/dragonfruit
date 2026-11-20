@@ -768,39 +768,47 @@ QtObject {
                 root.row("hearing.nameRecognition", qsTr("Hearing"),
                          qsTr("Name recognition"), "omit", "omit", "omit",
                          "omitted", "omitted"),
-                // Physical and Motor (T291b).
-                root.row("motor.voiceControl", qsTr("Motor"), qsTr("Voice control"),
-                         "toggle", "speech-to-text delegate",
-                         "speech-to-text/delegate", "delegated", "planned"),
-                root.row("motor.keyboard.fullKeyboardAccess", qsTr("Motor"),
-                         qsTr("Full keyboard access"), "toggle",
-                         "compositor/input", "input/keyboard-navigation",
-                         "disabled-with-reason", "planned"),
-                root.row("motor.keyboard.stickyKeys", qsTr("Motor"),
-                         qsTr("Sticky keys"), "toggle+options", "compositor/input",
-                         "compositor/sticky-keys", "disabled-with-reason", "planned"),
-                root.row("motor.keyboard.slowKeys", qsTr("Motor"),
-                         qsTr("Slow keys"), "toggle+delay", "compositor/input",
-                         "compositor/slow-keys", "disabled-with-reason", "planned"),
-                root.row("motor.keyboard.onScreenKeyboard", qsTr("Motor"),
+                // Physical and Motor (T291b). Keyboard and Pointer Control are
+                // the two shipped groups; Voice Control and Switch Control have
+                // no Linux owner and are omitted with a reason.
+                root.row("motor.voiceControl", qsTr("Voice Control"),
+                         qsTr("Voice control"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No voice-control engine or speech-to-pointer "
+                              + "delegate exists in this build.")),
+                root.row("motor.keyboard.fullKeyboardAccess", qsTr("Keyboard"),
+                         qsTr("Full keyboard access"), "toggle", "settingsd",
+                         "input.keyboardNavigation", "live-on-defaults",
+                         "shipped", true),
+                root.row("motor.keyboard.stickyKeys", qsTr("Keyboard"),
+                         qsTr("Sticky keys"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor has no sticky-key modifier latch.")),
+                root.row("motor.keyboard.slowKeys", qsTr("Keyboard"),
+                         qsTr("Slow keys"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor has no slow-key acceptance delay.")),
+                root.row("motor.keyboard.onScreenKeyboard", qsTr("Keyboard"),
                          qsTr("On-screen keyboard"), "button",
-                         "on-screen keyboard delegate", "onboard",
-                         "delegated", "planned"),
-                root.row("motor.pointer.doubleClickSpeed", qsTr("Motor"),
-                         qsTr("Double-click speed"), "slider",
-                         "compositor/input pointer", "input.doubleClickSpeed",
-                         "live-on-defaults", "planned"),
-                root.row("motor.pointer.mouseKeys", qsTr("Motor"),
-                         qsTr("Mouse keys"), "toggle", "compositor/input",
-                         "compositor/mouse-keys", "disabled-with-reason", "planned"),
-                root.row("motor.pointer.ignoreTrackpad", qsTr("Motor"),
-                         qsTr("Ignore built-in trackpad"), "toggle",
-                         "compositor/input", "compositor/ignore-trackpad",
-                         "disabled-with-reason", "planned"),
-                root.row("motor.switchControl", qsTr("Motor"),
-                         qsTr("Switch control"), "disclosure",
-                         "switch-control delegate", "switch-control/delegate",
-                         "delegated", "planned"),
+                         "on-screen keyboard (onboard/wvkbd)", "onboard",
+                         "delegated", "shipped"),
+                root.row("motor.pointer.doubleClickSpeed",
+                         qsTr("Pointer Control"), qsTr("Double-click speed"),
+                         "slider", "compositor/input pointer",
+                         "input.doubleClickSpeed", "live-on-defaults", "shipped"),
+                root.row("motor.pointer.mouseKeys", qsTr("Pointer Control"),
+                         qsTr("Mouse keys"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor has no keyboard pointer mode.")),
+                root.row("motor.pointer.ignoreTrackpad",
+                         qsTr("Pointer Control"), qsTr("Ignore built-in trackpad"),
+                         "omit", "omit", "omit", "omitted", "omitted", false, "",
+                         qsTr("The compositor cannot ignore one pointer device.")),
+                root.row("motor.switchControl", qsTr("Switch Control"),
+                         qsTr("Switch control"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No switch-control delegate or scanning input "
+                              + "source exists in this build.")),
                 // Speech (T291d).
                 root.row("speech.liveSpeech", qsTr("Speech"), qsTr("Live speech"),
                          "action", "speech-dispatcher/espeak-ng", "spd-say",
@@ -1724,7 +1732,8 @@ QtObject {
     // Each child adds its own prefix as it lands a body; a row whose prefix is
     // absent stays unlandable instead of deep-linking into a missing surface.
     readonly property var accessibilityRowSubPanes: ({
-        "vision": "vision"
+        "vision": "vision",
+        "motor": "motor"
     })
 
     // T291a: a section deep link (the Appearance footer's "More in
@@ -1736,7 +1745,11 @@ QtObject {
         "zoom": "vision",
         "display": "vision",
         "motion": "vision",
-        "read & speak": "vision"
+        "read & speak": "vision",
+        "voice control": "motor",
+        "keyboard": "motor",
+        "pointer control": "motor",
+        "switch control": "motor"
     })
 
     // The sub-pane id that renders a section, or "" when the section is on the

@@ -549,6 +549,16 @@ T291b–T291e. The Vision sub-pane groups its rows under **Screen Reader**,
 real owner is a map `omitted` row with a reason and is neither rendered nor
 search-indexed; it is not a disabled control.
 
+T291b status: Physical and Motor is the second big-list row, in mockup order.
+Its sub-pane has **Keyboard** and **Pointer Control**. The shipped rows are
+Full keyboard access (stored-only `input.keyboardNavigation`; no compositor
+consumer), On-screen keyboard (the `onboard`/`wvkbd` delegate; `Open` disables
+when neither program is installed), and Double-click speed (live
+`input.doubleClickSpeed`, read by the compositor pointer policy). Voice
+Control, Sticky Keys, Slow Keys, Mouse Keys, Ignore built-in trackpad, and
+Switch Control are `omitted` map rows with reasons; they are not rendered and
+not search-indexed.
+
 #### 5.7.1 Vision
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
@@ -590,23 +600,33 @@ search-indexed; it is not a disabled control.
 | RTT | RTT | — | — | Omitted: no real-time text service |
 | Name Recognition | Name recognition | — | — | Omitted: no on-device name model |
 
-#### 5.7.3 Motor and Speech
+#### 5.7.3 Physical and Motor
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Voice Control | Voice control | — | speech-to-text delegate | Delegated; disabled when absent |
-| — Full keyboard access | Full keyboard access | — | compositor/input | Disabled: no global mode |
-| — Sticky Keys | Sticky keys | — | compositor/input | Disabled: no sticky-key machine |
-| — Slow Keys | Slow keys | — | compositor/input | Disabled: no slow-key delay |
+| Voice Control | Voice control | — | — | Omitted: no voice-control or speech-to-pointer engine |
+| — Full keyboard access | Full keyboard access | Toggle | `input.keyboardNavigation` | Stored-only; no compositor consumer |
+| — Sticky Keys | Sticky keys | — | — | Omitted: no sticky-key modifier latch |
+| — Slow Keys | Slow keys | — | — | Omitted: no slow-key acceptance delay |
 | — Accessibility Keyboard | On-screen keyboard | Action | onboard/wvkbd | Delegated; `Open` disabled when absent |
 | — Double-click speed | Double-click speed | Slider | `input.doubleClickSpeed` | Live compositor pointer |
-| — Mouse Keys | Mouse keys | — | compositor/input | Disabled: no keyboard pointer mode |
-| — Ignore built-in trackpad | Ignore built-in trackpad | — | compositor/input | Disabled: no per-device ignore |
-| Switch Control | Switch control | — | switch-control delegate | Delegated; disabled when absent |
+| — Mouse Keys | Mouse keys | — | — | Omitted: no keyboard pointer mode |
+| — Ignore built-in trackpad | Ignore built-in trackpad | — | — | Omitted: no per-device ignore |
+| Switch Control | Switch control | — | — | Omitted: no switch-control delegate or scanning source |
+
+#### 5.7.4 Speech
+
+| macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
+|---|---|---|---|---|
 | Live Speech | Live speech | Action | speech-dispatcher/espeak-ng | Delegated; `Speak Sample` disabled when absent |
 | Personal Voice | Personal voice | — | — | Omitted: no equivalent |
 | Vocal Shortcuts | Vocal shortcuts | — | — | Omitted: no equivalent |
 | Siri | — | — | — | Omitted |
+
+#### 5.7.5 General
+
+| macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
+|---|---|---|---|---|
 | Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | Live compositor shortcut engine; opens this pane |
 
 <a id="pane-control-center"></a>

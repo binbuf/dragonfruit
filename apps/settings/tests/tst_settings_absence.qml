@@ -788,8 +788,9 @@ Item {
             var pane = showPane(shell, "accessibility");
             compare(pane.subPaneId, "");
             compare(pane.listColumn.visible, true);
-            compare(pane.bigList.rows.children.length, 1);
+            compare(pane.bigList.rows.children.length, 2);
             compare(pane.visionRow.label, "Vision");
+            compare(pane.motorRow.label, "Physical and Motor");
 
             pane.openSubPane("vision");
             tryVerify(function() {

@@ -608,6 +608,19 @@ set_tests_properties(tst_settings_accessibility PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T291b: the Physical and Motor sub-pane with no AT-SPI host and no
+# on-screen-keyboard delegate. The delegate row disables with a reason; the
+# settingsd rows stay live.
+add_test(
+    NAME tst_settings_accessibility_motor_absence
+    COMMAND tst_settings_accessibility
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_t291b_absence.qml
+)
+set_tests_properties(tst_settings_accessibility_motor_absence PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_ACCESSIBILITY_FIXTURE=absent;DF_ACCESSIBILITY_DELEGATE_FIXTURE=absent;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Network advanced (VPN) pane tests (T-15.15b): the live connection list, the
 # connect/disconnect round-trip, and the absence/empty gating.
 # `DF_VPN_FIXTURE` is the deterministic in-process host-stack client, so the

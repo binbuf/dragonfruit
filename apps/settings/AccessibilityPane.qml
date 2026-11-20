@@ -9,7 +9,7 @@ import Dragonfruit.Settings
 // in-place sub-pane. This file owns the shared list and loader; each child
 // task adds exactly one big-list row and one sub-pane body:
 //
-//   * T291a — Vision (this task)
+//   * T291a — Vision
 //   * T291b — Physical and Motor
 //   * T291c — Hearing
 //   * T291d — Speech
@@ -30,6 +30,7 @@ Item {
     readonly property string subPaneTitle: {
         switch (root.subPaneId) {
         case "vision": return qsTr("Vision");
+        case "motor": return qsTr("Physical and Motor");
         default: return "";
         }
     }
@@ -38,6 +39,7 @@ Item {
     property alias listColumn: listColumn
     property alias bigList: bigList
     property alias visionRow: visionRow
+    property alias motorRow: motorRow
     property alias subPaneLoader: subPaneLoader
     property alias backButton: backButton
 
@@ -73,6 +75,7 @@ Item {
     function subPaneComponent(id) {
         switch (id) {
         case "vision": return visionComponent;
+        case "motor": return motorComponent;
         default: return null;
         }
     }
@@ -105,6 +108,15 @@ Item {
                     label: qsTr("Vision")
                     onDisclosureClicked: root.openSubPane("vision")
                 }
+
+                SettingsBigRow {
+                    id: motorRow
+                    objectName: "accessibilityMotorRow"
+                    width: parent.width
+                    category: SettingsPanes.rowStyle("motor")
+                    label: qsTr("Physical and Motor")
+                    onDisclosureClicked: root.openSubPane("motor")
+                }
             }
         }
 
@@ -131,4 +143,5 @@ Item {
     }
 
     Component { id: visionComponent; AccessibilityVisionPane { } }
+    Component { id: motorComponent; AccessibilityMotorPane { } }
 }

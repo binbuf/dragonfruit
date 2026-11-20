@@ -577,6 +577,17 @@ rendered and not search-indexed. The AT-SPI absence state keeps the structure:
 the live status rows disable with the note while the settingsd rows stay live
 ([adr/0297](adr/0297-accessibility-big-list-and-vision.md)).
 
+T291b adds **Physical and Motor** after Vision, in mockup order, with the hand
+tile. The sub-pane keeps **Keyboard** (Full keyboard access on the stored
+`input.keyboardNavigation` key, and the on-screen-keyboard delegate to
+`onboard`/`wvkbd`) and **Pointer Control** (Double-click speed on the live
+`input.doubleClickSpeed`). Voice Control, Sticky Keys, Slow Keys, Mouse Keys,
+Ignore built-in trackpad, and Switch Control have no Linux owner and are
+`omitted` map rows with a reason; they are not rendered and not search-indexed.
+An absent on-screen-keyboard program keeps the row and disables only `Open`
+with the missing-program reason. The capture writes the row, the sub-pane, the
+accommodation state, and the absent delegate in six stills.
+
 ### 5.6 Desktop & Dock
 
 | Mockup block | Target |
