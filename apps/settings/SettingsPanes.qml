@@ -143,7 +143,10 @@ QtObject {
         // glyph; Physical and Motor takes the hand mark.
         "vision":        { source: "scan",          gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
         "motor":         { source: "hand-pointing", gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
-        "hearing":       { source: "speaker-high",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
+        "hearing":       { source: "speaker-high",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
+        // T291d: the vendored set has no mouth/speech mark, so Speech takes the
+        // closest shipped speaker mark in the same accessibility blue tile.
+        "speech":        { source: "speaker-high",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
     })
 
     // The General big-list row tile for a row identity (`about`, `update`,

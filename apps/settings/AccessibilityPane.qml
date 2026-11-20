@@ -12,7 +12,7 @@ import Dragonfruit.Settings
 //   * T291a — Vision
 //   * T291b — Physical and Motor
 //   * T291c — Hearing
-//   * T291d — Speech
+//   * T291d — Speech (one delegated Live Speech row)
 //   * T291e — General (the Accessibility Shortcut) and the close-out audit
 //
 // A section whose rows all have a real Linux owner is shipped; a section with
@@ -32,6 +32,7 @@ Item {
         case "vision": return qsTr("Vision");
         case "motor": return qsTr("Physical and Motor");
         case "hearing": return qsTr("Hearing");
+        case "speech": return qsTr("Speech");
         default: return "";
         }
     }
@@ -42,6 +43,7 @@ Item {
     property alias visionRow: visionRow
     property alias motorRow: motorRow
     property alias hearingRow: hearingRow
+    property alias speechRow: speechRow
     property alias subPaneLoader: subPaneLoader
     property alias backButton: backButton
 
@@ -79,6 +81,7 @@ Item {
         case "vision": return visionComponent;
         case "motor": return motorComponent;
         case "hearing": return hearingComponent;
+        case "speech": return speechComponent;
         default: return null;
         }
     }
@@ -129,6 +132,15 @@ Item {
                     label: qsTr("Hearing")
                     onDisclosureClicked: root.openSubPane("hearing")
                 }
+
+                SettingsBigRow {
+                    id: speechRow
+                    objectName: "accessibilitySpeechRow"
+                    width: parent.width
+                    category: SettingsPanes.rowStyle("speech")
+                    label: qsTr("Speech")
+                    onDisclosureClicked: root.openSubPane("speech")
+                }
             }
         }
 
@@ -157,4 +169,5 @@ Item {
     Component { id: visionComponent; AccessibilityVisionPane { } }
     Component { id: motorComponent; AccessibilityMotorPane { } }
     Component { id: hearingComponent; AccessibilityHearingPane { } }
+    Component { id: speechComponent; AccessibilitySpeechPane { } }
 }

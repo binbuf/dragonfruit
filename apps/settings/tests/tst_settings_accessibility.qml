@@ -10,7 +10,7 @@ import Dragonfruit.Settings
 // external delegates are deterministic and in-process with no bus.
 //
 // The cases cover the mockup intro and big list, the in-place Vision,
-// Physical and Motor, and Hearing sub-panes, every row inventory (rendered and
+// Physical and Motor, Hearing, and Speech sub-panes, every row inventory (rendered and
 // omitted), the read-only screen-reader status plus its real Open Orca action,
 // the live display/motion/magnifier keys, the speech and on-screen-keyboard
 // delegates, the keyboard-navigation, pointer, and balance keys, absence
@@ -104,6 +104,19 @@ Item {
             return hearing;
         }
 
+        // Open the in-place Speech sub-pane and return its body.
+        function openSpeech(shell) {
+            var pane = paneOf(shell);
+            pane.openSubPane("speech");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var speech = pane.subPaneLoader.item;
+            verify(speech, "the Speech sub-pane body must be loaded");
+            return speech;
+        }
+
         function collectRows(item, out) {
             if (!item)
                 return;
@@ -136,20 +149,23 @@ Item {
             var pane = paneOf(shell);
             compare(pane.subPaneId, "");
             compare(pane.listColumn.visible, true);
-            compare(pane.bigList.rows.children.length, 3,
-                    "T291a/T291b/T291c ship Vision, Physical and Motor, and "
-                    + "Hearing; later children add one each");
+            compare(pane.bigList.rows.children.length, 4,
+                    "T291a-T291d ship Vision, Physical and Motor, Hearing, and "
+                    + "Speech; T291e adds General");
             compare(pane.visionRow.visible, true);
             compare(pane.visionRow.label, "Vision");
             compare(pane.motorRow.visible, true);
             compare(pane.motorRow.label, "Physical and Motor");
             compare(pane.hearingRow.visible, true);
             compare(pane.hearingRow.label, "Hearing");
+            compare(pane.speechRow.visible, true);
+            compare(pane.speechRow.label, "Speech");
 
-            // The mockup order: Vision, Physical and Motor, then Hearing.
+            // The mockup order: Vision, Physical and Motor, Hearing, Speech.
             compare(pane.bigList.rows.children[0].label, "Vision");
             compare(pane.bigList.rows.children[1].label, "Physical and Motor");
             compare(pane.bigList.rows.children[2].label, "Hearing");
+            compare(pane.bigList.rows.children[3].label, "Speech");
 
             verify(pane.visionRow.height === 52,
                    "the big row is the 52 pt token, not 53");
@@ -157,6 +173,8 @@ Item {
                    "the Physical and Motor row uses the same 52 pt token");
             verify(pane.hearingRow.height === 52,
                    "the Hearing row uses the same 52 pt token");
+            verify(pane.speechRow.height === 52,
+                   "the Speech row uses the same 52 pt token");
             verify(pane.visionRow.category !== null,
                    "the Vision row carries a category tile");
             compare(pane.visionRow.category.source, "scan");
@@ -166,11 +184,13 @@ Item {
             verify(pane.hearingRow.category !== null,
                    "the Hearing row carries a category tile");
             compare(pane.hearingRow.category.source, "speaker-high");
+            verify(pane.speechRow.category !== null,
+                   "the Speech row carries a category tile");
+            compare(pane.speechRow.category.source, "speaker-high");
 
             // No disabled placeholders for later sections.
             for (var i = 0; i < pane.bigList.rows.children.length; ++i) {
                 var label = pane.bigList.rows.children[i].label;
-                verify(label !== "Speech");
                 verify(label !== "General");
             }
         }
@@ -756,6 +776,168 @@ Item {
                    "a stored-only row is not a disabled row");
         }
 
+        // -- Speech ----------------------------------------------------------
+
+        function test_the_speech_row_opens_and_closes_the_in_place_sub_pane() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            pane.speechRow.disclosureClicked();
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+
+            compare(pane.subPaneId, "speech");
+            compare(pane.subPaneTitle, "Speech");
+            compare(shell.paneTitle, "Speech");
+            compare(pane.listColumn.visible, false);
+            verify(pane.subPaneLoader.item !== null);
+
+            pane.backButton.clicked();
+            tryVerify(function() { return pane.subPaneId === ""; });
+            waitForRendering(stage);
+            compare(pane.listColumn.visible, true);
+            compare(pane.subPaneLoader.status, Loader.Null);
+            compare(shell.paneTitle, "Accessibility");
+        }
+
+        function test_the_speech_groups_render_in_mockup_order() {
+            var shell = make();
+            var speech = openSpeech(shell);
+
+            var content = speech.liveSpeechGroup.parent;
+            var order = [];
+            for (var i = 0; i < content.children.length; ++i) {
+                var child = content.children[i];
+                if (child.title !== undefined && child.title.length > 0)
+                    order.push(child.title);
+            }
+            // Live Speech is the only group with a real Linux owner; Custom
+            // Voice and Vocal Shortcuts are map omissions, never empty
+            // headings.
+            compare(order.join(","), "Live Speech");
+            compare(speech.liveSpeechGroup.visible, true);
+            compare(speech.liveSpeechGroup.sectionId, "live-speech");
+        }
+
+        function test_every_rendered_speech_row_has_a_map_owner_and_key() {
+            var shell = make();
+            var speech = openSpeech(shell);
+            var rendered = [];
+            collectRows(speech, rendered);
+            compare(rendered.length, 1,
+                    "the Speech sub-pane renders only the Live Speech row");
+
+            for (var i = 0; i < rendered.length; ++i) {
+                var row = rendered[i];
+                verify(String(row.owner).length > 0,
+                       "rendered row " + row.settingsId + " has no owner");
+                verify(String(row.settingsKey).length > 0,
+                       "rendered row " + row.settingsId + " has no key/API");
+                var mapped = SettingsMap.rowFor("accessibility", row.settingsId);
+                verify(mapped !== null,
+                       "rendered row " + row.settingsId + " has no map row");
+                compare(mapped.state, "shipped",
+                        "rendered row " + row.settingsId + " must be shipped");
+                compare(mapped.absence, "delegated");
+                verify(String(mapped.owner).length > 0 && mapped.owner !== "omit");
+                verify(String(mapped.key).length > 0 && mapped.key !== "omit");
+                compare(SettingsMap.subPaneForRow("accessibility", mapped.id),
+                        "speech");
+                compare(SettingsMap.rowSurface("accessibility", mapped.id),
+                        "subpane");
+                verify(SettingsMap.isRowLandable("accessibility", mapped.id));
+            }
+
+            var expected = SettingsMap.visibleRowsFor("accessibility")
+                    .filter(function(entry) {
+                        return SettingsMap.subPaneForRow("accessibility", entry.id)
+                                === "speech";
+                    })
+                    .map(function(entry) { return String(entry.id); });
+            var actual = rendered.map(function(row) { return String(row.settingsId); });
+            compare(actual.sort().join(","), expected.sort().join(","));
+        }
+
+        function test_ownerless_speech_rows_are_omitted_with_a_reason() {
+            var omitted = ["speech.customVoice", "speech.vocalShortcuts"];
+
+            var shell = make();
+            var speech = openSpeech(shell);
+            var ids = renderedIds(speech);
+            for (var i = 0; i < omitted.length; ++i) {
+                var id = omitted[i];
+                var row = SettingsMap.rowFor("accessibility", id);
+                verify(row !== null, id + " must stay in the map as an omission");
+                compare(row.state, "omitted", id + " must not be shipped");
+                compare(row.absence, "omitted", id + " must carry the omitted absence");
+                verify(row.reason.length > 0, id + " must document its reason");
+                compare(ids.indexOf(id), -1, id + " must not be rendered");
+                compare(SettingsMap.isRowLandable("accessibility", id), false,
+                        id + " must not be landable");
+                verify(SettingsMap.visibleRowsFor("accessibility")
+                       .map(function(entry) { return entry.id; }).indexOf(id) < 0,
+                       id + " must not be in the search index");
+            }
+
+            // Every mockup Speech section is represented in the map: Live
+            // Speech keeps the one shipped row, and Custom Voice / Vocal
+            // Shortcuts keep only omitted rows with reasons.
+            var sections = ["Live Speech", "Custom Voice", "Vocal Shortcuts"];
+            var rows = SettingsMap.rowsFor("accessibility");
+            for (var s = 0; s < sections.length; ++s) {
+                var inSection = rows.filter(function(entry) {
+                    return entry.section === sections[s];
+                });
+                verify(inSection.length > 0,
+                       "section " + sections[s] + " must stay in the map");
+                var shipped = inSection.filter(function(entry) {
+                    return entry.state === "shipped";
+                });
+                if (sections[s] === "Live Speech")
+                    compare(shipped.length, 1);
+                else
+                    compare(shipped.length, 0,
+                            sections[s] + " has no owner and must not ship");
+                for (var r = 0; r < inSection.length; ++r) {
+                    if (inSection[r].state === "omitted")
+                        verify(inSection[r].reason.length > 0,
+                               inSection[r].id + " needs an omission reason");
+                }
+            }
+
+            // A stale mockup name never becomes a row result (the only
+            // searchable Speech row is Live Speech).
+            var queries = ["custom voice", "vocal shortcuts"];
+            for (var q = 0; q < queries.length; ++q) {
+                var results = SettingsSearch.search(queries[q]);
+                for (var k = 0; k < results.length; ++k) {
+                    verify(!(results[k].kind === "row"
+                             && results[k].paneId === "accessibility"
+                             && String(results[k].targetRow) !== "speech.liveSpeech"),
+                           "an omitted speech row must never be a row result");
+                }
+            }
+        }
+
+        function test_live_speech_delegate_matches_availability() {
+            var shell = make();
+            var speech = openSpeech(shell);
+            compare(speech.speechAvailable, true);
+            compare(speech.speakSampleRow.trailingActionEnabled, true);
+            compare(speech.speakSampleRow.trailingAction, "Speak Sample");
+
+            speech.speakSampleRow.trailingActionClicked();
+            compare(Settings.accessibilityLastDelegate, "speech");
+
+            // The disabled state is the same row with the reason in the
+            // description (proven with the absent delegate fixture in the
+            // T291d absence test).
+            compare(speech.speakSampleRow.trailingActionEnabled,
+                    speech.speechAvailable);
+        }
+
         // -- Search and deep links -------------------------------------------
 
         function test_a_search_result_lands_in_the_vision_sub_pane() {
@@ -862,6 +1044,40 @@ Item {
             });
         }
 
+        function test_a_search_result_lands_in_the_speech_sub_pane() {
+            var results = SettingsSearch.search("speak sample");
+            var found = null;
+            for (var i = 0; i < results.length; ++i) {
+                if (results[i].kind === "row"
+                        && results[i].paneId === "accessibility"
+                        && results[i].targetRow === "speech.liveSpeech")
+                    found = results[i];
+            }
+            verify(found !== null,
+                   "the Live Speech row must be searchable by its synonym");
+            compare(found.deepLink,
+                    "settings://pane/accessibility/row/speech.liveSpeech");
+
+            var shell = make();
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            verify(shell.deepLink(found.deepLink));
+            tryVerify(function() {
+                return shell.currentPaneId === "accessibility"
+                        && shell.paneBody.status === Loader.Ready;
+            });
+            var pane = paneOf(shell);
+            tryVerify(function() {
+                return pane.subPaneId === "speech"
+                        && pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            compare(shell.paneTitle, "Speech");
+            tryVerify(function() {
+                return shell.currentRowId === "speech.liveSpeech";
+            });
+        }
+
         // -- Keyboard / AT-SPI ----------------------------------------------
 
         function test_the_live_controls_are_keyboard_operable() {
@@ -905,6 +1121,24 @@ Item {
                    "the balance slider must move with the keyboard");
         }
 
+        function test_the_speech_row_is_keyboard_operable() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            pane.speechRow.forceActiveFocus();
+            keyClick(Qt.Key_Return);
+            tryVerify(function() {
+                return pane.subPaneId === "speech"
+                        && pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            compare(shell.paneTitle, "Speech");
+
+            var speech = pane.subPaneLoader.item;
+            verify(speech !== null, "the Speech body must be keyboard-reachable");
+            compare(speech.speakSampleRow.trailingAction, "Speak Sample");
+        }
+
         // -- 740×820 ---------------------------------------------------------
 
         function test_the_pane_fits_the_measured_window() {
@@ -930,6 +1164,12 @@ Item {
             var hearing = openHearing(shell);
             verify(hearing.width > 0 && hearing.width <= 740);
             verify(hearing.implicitHeight > 0);
+
+            pane.closeSubPane();
+            waitForRendering(stage);
+            var speech = openSpeech(shell);
+            verify(speech.width > 0 && speech.width <= 740);
+            verify(speech.implicitHeight > 0);
         }
     }
 }

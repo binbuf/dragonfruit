@@ -610,6 +610,19 @@ The absent AT-SPI bridge leaves the Audio group and its settingsd row live.
 The capture writes the list and sub-pane in light/dark, the accommodation
 state, and the absent-bridge state in six stills.
 
+T291d adds **Speech** after Hearing, in mockup order, with the speaker tile.
+The build has no first-party speech service and no voice model, so the
+sub-pane keeps one group, **Live Speech**, with one real owner: the
+speech-dispatcher / espeak-ng delegate the Vision Read & Speak row already
+uses. **Speak sample** speaks through the session engine; when neither program
+is installed the row stays visible and disables only its action with the
+missing-program reason. Custom Voice (no on-device voice model or cloning
+service) and Vocal Shortcuts (no vocal-shortcut trigger engine) have no owner
+and are `omitted` map rows with a reason; they are not rendered and not
+search-indexed. The section ships alive because Live Speech has a real owner;
+it is not removed. The capture writes the list and sub-pane in light/dark and
+the absent-engine state in five stills.
+
 ### 5.6 Desktop & Dock
 
 | Mockup block | Target |

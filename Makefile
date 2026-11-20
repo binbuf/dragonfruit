@@ -147,6 +147,7 @@ help:
 	@echo "  make t291a-settings-accessibility-vision-capture — T291a Accessibility list/Vision/reduce-motion/contrast/absence stills"
 	@echo "  make t291b-settings-accessibility-physical-motor-capture — T291b Accessibility Physical and Motor row/sub-pane/absence stills"
 	@echo "  make t291c-settings-accessibility-hearing-capture — T291c Accessibility Hearing row/sub-pane/absence stills"
+	@echo "  make t291d-settings-accessibility-speech-capture — T291d Accessibility Speech row/sub-pane/absence stills"
 	@echo "  make t18-wallpaper-capture — T-18.2 Wallpaper pane stills (fetching skeleton + filled)"
 	@echo "  make t18-absence-matrix — T-18.3 headless absence/state matrix transcript"
 	@echo "  make t15-absence-matrix — T-15.16 headless absent-daemon masking matrix transcript"
@@ -819,6 +820,11 @@ t291b-settings-accessibility-physical-motor-capture: build
 # state. Six stills.
 t291c-settings-accessibility-hearing-capture: build
 	bash scripts/capture-t291c-accessibility-hearing.sh
+
+# T291d: the Accessibility big list with Speech and the Speech sub-pane in
+# light/dark, plus the absent speech-engine state. Five stills.
+t291d-settings-accessibility-speech-capture: build
+	bash scripts/capture-t291d-accessibility-speech.sh
 
 # T-18.2: the Wallpaper-pane capture. Needs a host Wayland session, `spectacle`,
 # Pillow, `gdbus`, the built tree and `cargo build -p dragonfruit-wallpaperd`;

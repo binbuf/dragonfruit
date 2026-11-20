@@ -576,6 +576,16 @@ reason. Mono audio, Flash the screen on alert, and Background sounds are
 Audio-group omissions for the same reason. The absent AT-SPI bridge leaves the
 settingsd row live.
 
+T291d status: Speech is the fourth big-list row, in mockup order. Its sub-pane
+has one group, **Live Speech**, with one shipped row: **Speak sample** on the
+speech-dispatcher/espeak-ng delegate (the same engine Read & Speak uses; the
+action disables with the missing-program reason when neither `spd-say` nor
+`espeak-ng` is installed). There is no first-party speech service and no
+voice model. **Custom Voice** (no on-device voice model or cloning service) and
+**Vocal Shortcuts** (no vocal-shortcut trigger engine) are each `omitted` map
+rows with a reason; they are not rendered and not search-indexed. The section
+ships alive because Live Speech has a real owner.
+
 #### 5.7.1 Vision
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |

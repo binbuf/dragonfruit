@@ -217,6 +217,7 @@ closest shipped mark; `SettingsPanes.rowStyle(name)` is the lookup:
 | `vision` | `scan` | Accessibility → Vision (no eye mark is vendored) |
 | `motor` | `hand-pointing` | Accessibility → Physical and Motor |
 | `hearing` | `speaker-high` | Accessibility → Hearing |
+| `speech` | `speaker-high` | Accessibility → Speech (no mouth mark is vendored) |
 
 A row tile and the pane tile use the same `SettingsCategoryIcon` container, so
 the identity is consistent even where the glyph is an approximation.

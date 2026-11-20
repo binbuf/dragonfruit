@@ -836,16 +836,28 @@ QtObject {
                          qsTr("Spoken name"), "omit", "omit", "omit",
                          "omitted", "omitted", false, "",
                          qsTr("No on-device spoken-name model exists.")),
-                // Speech (T291d).
-                root.row("speech.liveSpeech", qsTr("Speech"), qsTr("Live speech"),
-                         "action", "speech-dispatcher/espeak-ng", "spd-say",
-                         "delegated", "planned"),
-                root.row("speech.personalVoice", qsTr("Speech"),
-                         qsTr("Personal voice"), "omit", "omit", "omit",
-                         "omitted", "omitted"),
-                root.row("speech.vocalShortcuts", qsTr("Speech"),
+                // Speech (T291d). There is no first-party speech service and
+                // no voice model, so the section keeps one group with one real
+                // owner: the speech-dispatcher/espeak-ng delegate the Vision
+                // Read & Speak row also uses. Custom Voice and Vocal Shortcuts
+                // have no Linux owner; their rows are omissions with a reason
+                // and are never rendered or search-indexed.
+                root.row("speech.liveSpeech", qsTr("Live Speech"),
+                         qsTr("Speak sample"), "action",
+                         "speech-dispatcher/espeak-ng", "spd-say",
+                         "delegated", "shipped"),
+                root.row("speech.customVoice", qsTr("Custom Voice"),
+                         qsTr("Custom voice"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No on-device voice model or voice-cloning "
+                              + "service exists in this build; the engine's "
+                              + "own voices are chosen inside speech-dispatcher.")),
+                root.row("speech.vocalShortcuts", qsTr("Vocal Shortcuts"),
                          qsTr("Vocal shortcuts"), "omit", "omit", "omit",
-                         "omitted", "omitted"),
+                         "omitted", "omitted", false, "",
+                         qsTr("No vocal-shortcut trigger engine (voice sound "
+                              + "recognition mapped to shell actions) exists in "
+                              + "this build.")),
                 // General -> Shortcut (T291e).
                 root.row("shortcut.recorder", qsTr("Accessibility Shortcut"),
                          qsTr("Accessibility shortcut"), "recorder",
@@ -1761,7 +1773,8 @@ QtObject {
     readonly property var accessibilityRowSubPanes: ({
         "vision": "vision",
         "motor": "motor",
-        "hearing": "hearing"
+        "hearing": "hearing",
+        "speech": "speech"
     })
 
     // T291a: a section deep link (the Appearance footer's "More in
@@ -1782,7 +1795,10 @@ QtObject {
         "audio": "hearing",
         "subtitles and captioning": "hearing",
         "live captions": "hearing",
-        "spoken name": "hearing"
+        "spoken name": "hearing",
+        "live speech": "speech",
+        "custom voice": "speech",
+        "vocal shortcuts": "speech"
     })
 
     // The sub-pane id that renders a section, or "" when the section is on the

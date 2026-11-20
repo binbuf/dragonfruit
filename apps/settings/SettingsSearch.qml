@@ -318,6 +318,13 @@ QtObject {
         "accessibility/hearing.balance": [
             "balance", "audio balance", "stereo balance", "left right",
             "hearing", "audio"
+        ],
+        // T291d: the Speech sub-pane. Live Speech is the one rendered group;
+        // Custom Voice and Vocal Shortcuts are omitted rows and carry no
+        // synonyms.
+        "accessibility/speech.liveSpeech": [
+            "speech", "live speech", "speak sample", "text to speech", "tts",
+            "speech dispatcher", "spd-say", "espeak"
         ]
     })
 

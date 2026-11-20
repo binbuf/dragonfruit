@@ -1036,8 +1036,8 @@ policy reads, and the row says the tier is chosen for the user.
 > **Superseded in T291a.** The one-scroll five-section form below is replaced
 > by the mockup's big list of in-place sub-panes
 > ([adr/0297](adr/0297-accessibility-big-list-and-vision.md)). Vision ships
-> first (T291a), Physical and Motor second (T291b), and Hearing third (T291c);
-> Speech and General follow in T291d–T291e. The row tables remain the
+> first (T291a), Physical and Motor second (T291b), Hearing third (T291c), and
+> Speech fourth (T291d); General follows in T291e. The row tables remain the
 > owner/disposition contract, with one correction: a row that has no real owner
 > is now an explicit map `omitted` row with a reason, not a disabled control.
 > The shipped Vision rows are Screen reader, Accessibility bridge, Increase
@@ -1050,7 +1050,9 @@ policy reads, and the row says the tier is chosen for the user.
 > omitted with reasons. The only shipped Hearing row is Balance (stored-only
 > `sound.balance`); Hearing Devices, Flash the screen on alert, Mono audio,
 > Background sounds, Captions, RTT, Name recognition, and Spoken name are
-> omitted with reasons.
+> omitted with reasons. The only shipped Speech row is Live speech on the
+> speech-dispatcher/espeak-ng delegate (Speak sample); Custom voice and Vocal
+> shortcuts are omitted with reasons.
 
 Owner: settingsd + compositor + AT-SPI + delegates. Absence: keep the
 five-section structure; only the live status rows and the delegates that
@@ -1118,7 +1120,7 @@ explicit omission. It is never a fake toggle.
 | — Mouse Keys | Mouse keys | — | — | omit: no keyboard pointer mode |
 | — Ignore built-in trackpad | Ignore built-in trackpad | — | — | omit: no per-device ignore |
 | Switch Control | Switch control | — | — | omit: no switch-control delegate or scanning source |
-| Live Speech | Live speech | Action | speech-dispatcher/espeak-ng | delegated; `Speak Sample` disabled when absent |
+| Live Speech | Speak sample | Action | speech-dispatcher/espeak-ng | delegated; `Speak Sample` disabled when absent |
 | Personal Voice | Personal voice | — | — | omit: no equivalent |
 | Vocal Shortcuts | Vocal shortcuts | — | — | omit: no equivalent |
 | voice assistant | — | — | — | omit |
