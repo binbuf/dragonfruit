@@ -220,6 +220,8 @@ required=(
     usr/share/dragonfruit/qml
     usr/share/dragonfruit/translations
     usr/share/dragonfruit/wallpapers/Default.jpg
+    usr/share/dragonfruit/wallpapers/Lagoon.jpg
+    usr/share/dragonfruit/wallpapers/Midnight.jpg
     usr/share/icons/capitaine-cursors
     usr/share/dbus-1/services/org.dragonfruit.Files1.service
     usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.dragonfruit.service

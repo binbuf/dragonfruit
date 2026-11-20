@@ -122,25 +122,27 @@ offline() {
         echo "(build/ not configured; run 'make build', then this row)"
     fi
 
-    section "10. Package artifact holds only the shipped original (no fetched bytes)"
-    echo "The install seam copies Default.jpg to share/dragonfruit/wallpapers/"
-    echo "and ships no fetched image."
+    section "10. Package artifact holds only the shipped built-ins (no fetched bytes)"
+    echo "The install seam copies Default.jpg, Lagoon.jpg, and Midnight.jpg to"
+    echo "share/dragonfruit/wallpapers/ and ships no fetched image."
     DEST="$SCRATCH/package"
     command_line "make install DESTDIR=$DEST PREFIX=/usr"
     ( make install DESTDIR="$DEST" PREFIX=/usr >/dev/null 2>&1 ) || echo "(run 'make install' manually)"
     echo "installed images under the prefix:"
     find "$DEST" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -printf '  %p\n' 2>/dev/null || true
-    installed="$DEST/usr/share/dragonfruit/wallpapers/Default.jpg"
-    if [ -f "$installed" ]; then
-        echo "  Default.jpg byte-identical to the in-tree asset:"
-        if cmp -s "$installed" assets/graphics/wallpapers/Default.jpg; then
-            echo "    yes"
+    for name in Default.jpg Lagoon.jpg Midnight.jpg; do
+        installed="$DEST/usr/share/dragonfruit/wallpapers/$name"
+        if [ -f "$installed" ]; then
+            echo "  $name byte-identical to the in-tree asset:"
+            if cmp -s "$installed" "assets/graphics/wallpapers/$name"; then
+                echo "    yes"
+            else
+                echo "    NO — the install drifted"
+            fi
         else
-            echo "    NO — the install drifted"
+            echo "  ($name not installed in this environment)"
         fi
-    else
-        echo "  (Default.jpg not installed in this environment)"
-    fi
+    done
 } >"$OUT" 2>&1
 
 echo "t18-absence-matrix: wrote $OUT"

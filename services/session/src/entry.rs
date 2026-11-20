@@ -48,6 +48,16 @@ pub const WALLPAPER_DIR: &str = "share/dragonfruit/wallpapers";
 pub const WALLPAPER_FILE: &str = "Default.jpg";
 /// The shipped default wallpaper's source, relative to the session crate.
 pub const WALLPAPER_ASSET: &str = "../../assets/graphics/wallpapers/Default.jpg";
+/// The bundled built-in wallpapers as (installed filename, source relative to
+/// the session crate). The first entry is the shipped default.
+pub const WALLPAPER_ASSETS: &[(&str, &str)] = &[
+    (WALLPAPER_FILE, WALLPAPER_ASSET),
+    ("Lagoon.jpg", "../../assets/graphics/wallpapers/Lagoon.jpg"),
+    (
+        "Midnight.jpg",
+        "../../assets/graphics/wallpapers/Midnight.jpg",
+    ),
+];
 
 /// The shipped entry file, embedded verbatim.
 pub const DESKTOP_ENTRY: &str = include_str!("../dragonfruit.desktop");
@@ -133,17 +143,19 @@ pub fn install_into(prefix: &Path) -> io::Result<Vec<PathBuf>> {
         written.push(path);
     }
 
-    // The shipped original default wallpaper (T-18.1a): installed to the stable
-    // share path the provider resolves. Original project asset, MIT (ADR 0094);
-    // never a fetched/third-party image.
+    // The shipped built-in wallpapers (T-18.1a): installed to the stable share
+    // path the provider resolves. Original project assets, MIT (ADR 0094);
+    // never fetched/third-party images.
     let wallpaper_dir = prefix.join(WALLPAPER_DIR);
     std::fs::create_dir_all(&wallpaper_dir)?;
-    let wallpaper = wallpaper_dir.join(WALLPAPER_FILE);
-    std::fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join(WALLPAPER_ASSET),
-        &wallpaper,
-    )?;
-    written.push(wallpaper);
+    for (name, source) in WALLPAPER_ASSETS {
+        let wallpaper = wallpaper_dir.join(name);
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join(source),
+            &wallpaper,
+        )?;
+        written.push(wallpaper);
+    }
 
     Ok(written)
 }

@@ -934,6 +934,30 @@ QString shippedDefaultWallpaperPath()
     return QString();
 }
 
+QStringList shippedBuiltinWallpaperPaths()
+{
+    return shippedBuiltinWallpaperPaths(shippedDefaultWallpaperPath());
+}
+
+QStringList shippedBuiltinWallpaperPaths(const QString &defaultPath)
+{
+    if (defaultPath.isEmpty())
+        return {};
+
+    QStringList paths{defaultPath};
+    static const QStringList kAlternatives{
+        QStringLiteral("Lagoon.jpg"),
+        QStringLiteral("Midnight.jpg"),
+    };
+    const QString directory = QFileInfo(defaultPath).absolutePath();
+    for (const QString &name : kAlternatives) {
+        const QString path = directory + QLatin1Char('/') + name;
+        if (QFileInfo::exists(path))
+            paths.append(path);
+    }
+    return paths;
+}
+
 // --- DbusSettingsClient ----------------------------------------------------
 
 DbusSettingsClient::DbusSettingsClient(QObject *parent)

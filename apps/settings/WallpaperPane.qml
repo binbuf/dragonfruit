@@ -113,8 +113,14 @@ Item {
         return out;
     }
 
+    // The bundled alternatives (Lagoon, Midnight) resolved next to the shipped
+    // default. Empty on a package that predates them.
+    readonly property var builtinAlternatives:
+        Settings.wallpaperBuiltinAlternatives
+
     // The Built-in row is always available (T278): the shipped default first,
-    // falling back to the first original gradient so the row is never empty.
+    // then the bundled alternatives, falling back to the first original
+    // gradient so the row is never empty.
     readonly property var builtinItems: {
         var source = root.builtinDefault;
         var url = source.length > 0 ? root.fileUrl(source) : "";
@@ -126,7 +132,7 @@ Item {
             source = root.providerDefault;
             url = root.fileUrl(source);
         }
-        return [{
+        var out = [{
             key: "s" + source,
             name: qsTr("Default"),
             source: source,
@@ -135,6 +141,22 @@ Item {
             builtin: true,
             provider: ""
         }];
+        for (var i = 0; i < root.builtinAlternatives.length; ++i) {
+            var alt = root.builtinAlternatives[i];
+            if (!alt.source || alt.source === source)
+                continue;
+            var altUrl = root.fileUrl(alt.source);
+            out.push({
+                key: "s" + alt.source,
+                name: alt.name || root.fileName(alt.source),
+                source: alt.source,
+                thumbUrl: altUrl,
+                previewUrl: altUrl,
+                builtin: true,
+                provider: ""
+            });
+        }
+        return out;
     }
 
     // Colors: the shipped original gradients (T278, ADR 0279). They are real

@@ -29,8 +29,10 @@ plus a `Preload` to the wallpaper API. T-18.1a is the implementation slice.
   the first existing `$XDG_DATA_DIRS/dragonfruit/wallpapers/Default.jpg`
   (default `/usr/local/share:/usr/share`) → the in-tree
   `assets/graphics/wallpapers/Default.jpg`. It is read in place and is never
-  copied into the cache. `make install` / `dragonfruit-session
-  --install-session` installs it to `<prefix>/share/dragonfruit/wallpapers/`.
+  copied into the cache. The bundled alternatives `Lagoon.jpg` and
+  `Midnight.jpg` resolve next to the same `Default.jpg`. `make install` /
+  `dragonfruit-session --install-session` installs all three to
+  `<prefix>/share/dragonfruit/wallpapers/`.
 - **The cache** is `$XDG_CACHE_HOME/dragonfruit/wallpapers/`: `index.json`
   plus `<category>/<pageid>.<ext>`. `lastFetch` lives in `index.json`; a cold
   start rebuilds the catalogue from it with no network.

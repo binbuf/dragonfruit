@@ -103,6 +103,10 @@ class SettingsBridge : public QObject
     // The resolved shipped `Default.jpg`; non-empty even with the provider
     // absent, so the Built-in row always has its out-of-box entry (ADR 0094).
     Q_PROPERTY(QString wallpaperBuiltinDefault READ wallpaperBuiltinDefault NOTIFY providerChanged)
+    // The other bundled built-in wallpapers, as `{ name, source }` entries,
+    // resolved next to the shipped default. Empty when the package predates
+    // them; the Built-in row then shows only Default.
+    Q_PROPERTY(QVariantList wallpaperBuiltinAlternatives READ wallpaperBuiltinAlternatives NOTIFY providerChanged)
     // How many eager `Preload` requests the bridge has sent (T-18.2). The
     // Wallpaper pane calls `preloadWallpapers()` when it opens; a test asserts
     // this counter advanced. With `DF_WALLPAPER_FIXTURE` the request is served
@@ -484,6 +488,7 @@ public:
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
+    QVariantList wallpaperBuiltinAlternatives() const;
     int providerPreloadCount() const;
     bool wallpaperChooserAvailable() const;
     QString startPane() const;

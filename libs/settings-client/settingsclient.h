@@ -183,6 +183,16 @@ QVariantMap settingsSchemaInfo(const QString &key);
 // forwarder and the Settings app's bridge share this one resolver.
 QString shippedDefaultWallpaperPath();
 
+// The shipped built-in wallpapers on this host: the resolved `Default.jpg`
+// first, then the bundled alternatives (`Lagoon.jpg`, `Midnight.jpg`) that
+// exist next to it. Missing alternatives are simply omitted, so an older
+// installed package still resolves the default. Empty when the default is
+// nowhere.
+QStringList shippedBuiltinWallpaperPaths();
+// The same list for a caller that already resolved the default (for example
+// the provider's `BuiltinDefaultSource`).
+QStringList shippedBuiltinWallpaperPaths(const QString &defaultPath);
+
 // The live client over the user session bus.
 class DbusSettingsClient : public SettingsClient
 {

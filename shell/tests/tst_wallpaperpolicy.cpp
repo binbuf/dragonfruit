@@ -2,6 +2,8 @@
 // T-09.3 / T-18.1b: the pure mapping from the settingsd wallpaper keys and
 // the provider's resolved defaults onto what the shell forwards over
 // `df_workspace.set_wallpaper`. No bus, Wayland, or QML.
+#include <QFile>
+#include <QTemporaryDir>
 #include <QtTest>
 
 #include "settingsclient.h"
@@ -20,6 +22,7 @@ private slots:
     void providerIsTheFetchedFallback();
     void missingEverythingIsTheSolidColor();
     void shippedDefaultResolvesTheOverride();
+    void builtinAlternativesResolveNextToTheDefault();
     void fitNamesMapToTheWireEnum();
     void unknownFitFallsBackToFill();
     void liveFlipChangesTheSettings();
@@ -114,6 +117,29 @@ void TestWallpaperPolicy::shippedDefaultResolvesTheOverride()
         qunsetenv("DF_DEFAULT_WALLPAPER");
     else
         qputenv("DF_DEFAULT_WALLPAPER", previous.toUtf8());
+}
+
+// The bundled alternatives resolve next to the default, and a package that
+// lacks them still yields the default alone.
+void TestWallpaperPolicy::builtinAlternativesResolveNextToTheDefault()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString defaultPath = dir.filePath(QStringLiteral("Default.jpg"));
+    const QString lagoon = dir.filePath(QStringLiteral("Lagoon.jpg"));
+    const QString midnight = dir.filePath(QStringLiteral("Midnight.jpg"));
+    for (const QString &path : {defaultPath, lagoon, midnight}) {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("wallpaper");
+    }
+
+    const QStringList paths = shippedBuiltinWallpaperPaths(defaultPath);
+    QCOMPARE(paths, QStringList({defaultPath, lagoon, midnight}));
+
+    QVERIFY(QFile::remove(midnight));
+    QCOMPARE(shippedBuiltinWallpaperPaths(defaultPath),
+             QStringList({defaultPath, lagoon}));
 }
 
 void TestWallpaperPolicy::fitNamesMapToTheWireEnum()

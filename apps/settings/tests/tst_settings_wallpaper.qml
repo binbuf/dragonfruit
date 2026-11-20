@@ -234,18 +234,24 @@ Item {
 
         // -- Built-in: the shipped default -------------------------------------
 
-        function test_builtin_row_includes_the_shipped_default_tile() {
+        function test_builtin_row_includes_the_shipped_default_and_alternatives() {
             var shell = make();
             var pane = paneOf(shell);
             waitForRendering(stage);
 
-            compare(pane.builtinTiles.length, 1,
-                    "Built-in is the always-available Default row");
+            compare(pane.builtinTiles.length, 3,
+                    "Built-in is Default plus the two bundled alternatives");
             var defaultTile = pane.builtinTiles[0];
             compare(defaultTile.modelData.name, "Default");
             compare(defaultTile.modelData.source, pane.builtinDefault);
             verify(pane.builtinDefault.indexOf("Default.jpg") >= 0,
                    "the shipped default is Default.jpg");
+            compare(pane.builtinTiles[1].modelData.name, "Lagoon");
+            verify(pane.builtinTiles[1].modelData.source.indexOf("Lagoon.jpg") >= 0,
+                   "the first alternative is the bundled Lagoon.jpg");
+            compare(pane.builtinTiles[2].modelData.name, "Midnight");
+            verify(pane.builtinTiles[2].modelData.source.indexOf("Midnight.jpg") >= 0,
+                   "the second alternative is the bundled Midnight.jpg");
 
             chooseAndWait(pane, defaultTile);
             compare(Settings.values["wallpaper.source"], pane.builtinDefault);
@@ -253,6 +259,20 @@ Item {
             compare(pane.currentName, "Default");
             verify(!pane.hasAttribution,
                    "the shipped default carries no third-party attribution");
+        }
+
+        function test_builtin_alternative_applies_live() {
+            var shell = make();
+            var pane = paneOf(shell);
+            waitForRendering(stage);
+
+            var tile = pane.builtinTiles[1];
+            chooseAndWait(pane, tile);
+            compare(Settings.values["wallpaper.source"], tile.modelData.source);
+            verify(tile.selected);
+            compare(pane.currentName, "Lagoon");
+            verify(!pane.hasAttribution,
+                   "a bundled alternative carries no third-party attribution");
         }
 
         function test_choosing_a_preset_applies_live() {

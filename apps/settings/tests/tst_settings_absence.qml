@@ -268,9 +268,11 @@ Item {
             verify(pane.featuredMessageItem.visible,
                    "an absent provider shows the available-soon note, never an error");
             compare(pane.featuredTiles.length, 0);
-            compare(pane.builtinTiles.length, 1);
+            compare(pane.builtinTiles.length, 3);
             compare(pane.builtinTiles[0].modelData.name, "Default");
             compare(pane.builtinTiles[0].modelData.source, pane.builtinDefault);
+            compare(pane.builtinTiles[1].modelData.name, "Lagoon");
+            compare(pane.builtinTiles[2].modelData.name, "Midnight");
             compare(pane.colorTiles.length, pane.presets.length);
 
             // The settingsd-backed controls still write in memory. Applying a

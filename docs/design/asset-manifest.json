@@ -147,7 +147,37 @@
       "license_file": "LICENSE.md",
       "notice": "NOTICE",
       "install": "share/dragonfruit/wallpapers/Default.jpg",
-      "notes": "The only image bundled in a package."
+      "notes": "The out-of-box wallpaper and the first tile in the Built-in row."
+    },
+    {
+      "id": "wallpaper.lagoon",
+      "category": "wallpaper",
+      "name": "Dragonfruit Lagoon wallpaper",
+      "status": "shipped",
+      "path": "assets/graphics/wallpapers/Lagoon.jpg",
+      "include": [],
+      "source": "original Dragonfruit project asset",
+      "version": "shipped built-in alternative (T-18)",
+      "license": "MIT",
+      "license_file": "LICENSE.md",
+      "notice": "NOTICE",
+      "install": "share/dragonfruit/wallpapers/Lagoon.jpg",
+      "notes": "A bundled Built-in tile; never fetched and never packaged from a third party."
+    },
+    {
+      "id": "wallpaper.midnight",
+      "category": "wallpaper",
+      "name": "Dragonfruit Midnight wallpaper",
+      "status": "shipped",
+      "path": "assets/graphics/wallpapers/Midnight.jpg",
+      "include": [],
+      "source": "original Dragonfruit project asset",
+      "version": "shipped built-in alternative (T-18)",
+      "license": "MIT",
+      "license_file": "LICENSE.md",
+      "notice": "NOTICE",
+      "install": "share/dragonfruit/wallpapers/Midnight.jpg",
+      "notes": "A bundled Built-in tile; never fetched and never packaged from a third party."
     },
     {
       "id": "wallpaper.featured",

@@ -978,6 +978,22 @@ QString SettingsBridge::wallpaperBuiltinDefault() const
     return m_providerBuiltin.isEmpty() ? shippedDefaultWallpaperPath() : m_providerBuiltin;
 }
 
+QVariantList SettingsBridge::wallpaperBuiltinAlternatives() const
+{
+    // Skip the first entry (the Default tile) and expose the bundled
+    // alternatives with a display name derived from the filename. A package
+    // that predates the alternatives simply yields an empty list.
+    const QStringList paths = shippedBuiltinWallpaperPaths(wallpaperBuiltinDefault());
+    QVariantList out;
+    for (int i = 1; i < paths.size(); ++i) {
+        QVariantMap item;
+        item.insert(QStringLiteral("name"), QFileInfo(paths.at(i)).completeBaseName());
+        item.insert(QStringLiteral("source"), paths.at(i));
+        out.append(item);
+    }
+    return out;
+}
+
 int SettingsBridge::providerPreloadCount() const
 {
     return m_providerPreloads;

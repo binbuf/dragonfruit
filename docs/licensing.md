@@ -28,7 +28,7 @@ restrictions to track.
 | `assets/icons/brand/` (Dragonfruit and Tux OS-menu marks) | MIT (original project assets) |
 | `assets/icons/whitesur/` (colored place/app artwork and the Files app icon) | GPL-3.0-only |
 | `assets/cursors/capitaine-cursors/` (system cursor theme) | LGPL-3.0-or-later |
-| `assets/graphics/wallpapers/Default.jpg` (shipped default wallpaper) | MIT (original project asset) |
+| `assets/graphics/wallpapers/` (`Default.jpg`, `Lagoon.jpg`, `Midnight.jpg`; shipped built-in wallpapers) | MIT (original project assets) |
 
 Rationale: MIT is permissive, maximises third-party adoption and
 interoperability, and keeps Dragonfruit consumable by any project —
@@ -184,10 +184,11 @@ Two different things share this surface (ADRs
 [0055](design/adr/0055-online-wallpaper-content-provider.md) /
 [0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md)):
 
-- The **shipped default wallpaper**
-  (`assets/graphics/wallpapers/Default.jpg`) is our own original project asset.
-  It **is** bundled and installed to the share path; it is listed in the asset
-  table above and covered by `NOTICE` like the rest of the tree.
+- The **shipped built-in wallpapers**
+  (`assets/graphics/wallpapers/Default.jpg`, `Lagoon.jpg`, and `Midnight.jpg`)
+  are our own original project assets. They **are** bundled and installed to
+  the share path; they are listed in the asset table above and covered by
+  `NOTICE` like the rest of the tree.
 - The **Featured pictures** are fetched at runtime from Wikimedia Commons and
   are **not** bundled in the package. This is separate from the "original
   assets only" rule, which forbids reproducing Apple's artwork: Commons
@@ -196,8 +197,9 @@ Two different things share this surface (ADRs
   use). Consequences:
 
   - No fetched image is ever shipped in a package artifact; the cache is user
-    data under `$XDG_CACHE_HOME/dragonfruit/`. The only image in a package is
-    the shipped original `Default.jpg`.
+    data under `$XDG_CACHE_HOME/dragonfruit/`. The only images in a package are
+    the three shipped original built-ins (`Default.jpg`, `Lagoon.jpg`, and
+    `Midnight.jpg`).
   - Attribution (`Artist` + license name/link + file page) is displayed for the
     current fetched wallpaper and the tiles, and is not optional.
   - Share-alike (CC BY-SA) and FAL images are never represented as original

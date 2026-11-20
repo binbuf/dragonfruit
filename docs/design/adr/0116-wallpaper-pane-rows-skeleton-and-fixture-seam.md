@@ -22,11 +22,12 @@ session bus, so the provider lifecycle has to be drivable in-process.
 ## Decision
 
 - **Three source rows.** The pane is restructured into **Featured** (the
-  provider catalogue), **Built-in** (the shipped `Default.jpg` "Default" tile
-  plus the original gradients), and **Custom** (the portal `Add Photo…` row,
-  disabled when the portal is absent). The selection model is unchanged: a
-  tile writes `wallpaper.source`; `wallpaper.showOnAllSpaces` and
-  `wallpaper.fit` stay where they were.
+  provider catalogue), **Built-in** (the shipped `Default.jpg` "Default" tile,
+  the bundled `Lagoon.jpg` and `Midnight.jpg` alternatives, and the original
+  gradients), and **Custom** (the portal `Add Photo…` row, disabled when the
+  portal is absent). The selection model is unchanged: a tile writes
+  `wallpaper.source`; `wallpaper.showOnAllSpaces` and `wallpaper.fit` stay
+  where they were.
 - **A `Skeleton` design-system component.** A grey rounded rectangle with a
   slow horizontal highlight (a plateau gradient), driven by `Theme.motion.
   skeleton` and themed by the semantic `skeletonBase` / `skeletonHighlight`

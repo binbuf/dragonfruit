@@ -811,9 +811,10 @@ per row and a **Show All (N)** / **Show Less** toggle. The online rows are
 **Dynamic** (Wikimedia Commons), **Landscape**, **Water**, **Cityscapes**,
 **Earth**, **Space** (NASA Image and Video Library), **Scenery**, and
 **Underwater**; **Colors** holds the original gradients, **Shuffle** applies
-a random Featured picture, **Built-in** is the always-available shipped
-default `assets/graphics/wallpapers/Default.jpg`, and **Your Photos** starts
-with the portal **Add Photo…** tile.
+a random Featured picture, **Built-in** holds the always-available shipped
+default `assets/graphics/wallpapers/Default.jpg` plus the bundled alternatives
+`Lagoon.jpg` and `Midnight.jpg`, and **Your Photos** starts with the portal
+**Add Photo…** tile.
 
 The out-of-box background is the shipped original default, so first run and a
 cold cache never depend on the network. The provider warms lazily on launch and

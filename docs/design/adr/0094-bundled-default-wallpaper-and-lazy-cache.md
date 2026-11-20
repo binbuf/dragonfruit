@@ -24,9 +24,11 @@ would also stall bring-up for a surface the user has not opened.
 
 - **Ship the original default.** `assets/graphics/wallpapers/Default.jpg` is
   installed to a stable share path and is the out-of-box, first-run, and
-  cold-cache/offline background. 0055's "fetch, never bundle" is narrowed to
-  **never bundle fetched or third-party images**; original project assets may
-  ship (consistent with the "original assets only" rule).
+  cold-cache/offline background. The bundled Built-in alternatives
+  `Lagoon.jpg` and `Midnight.jpg` ship the same way. 0055's "fetch, never
+  bundle" is narrowed to **never bundle fetched or third-party images**;
+  original project assets may ship (consistent with the "original assets only"
+  rule).
 - **Effective-source precedence.** `wallpaper.source` (user choice) when
   non-empty, otherwise `wallpaper.builtinDefault` (the shipped default),
   otherwise `wallpaper.providerSource` (the deterministic Nature entry, now a
@@ -48,8 +50,9 @@ would also stall bring-up for a surface the user has not opened.
 
 - The out-of-box desktop never depends on the network; a provider failure or
   absence is invisible at first run.
-- Packaging must install `Default.jpg` and list it (MIT/`NOTICE`); fetched
-  images are still never bundled ([licensing.md](../../licensing.md)).
+- Packaging must install the three built-ins (`Default.jpg`, `Lagoon.jpg`,
+  `Midnight.jpg`) and list them (MIT/`NOTICE`); fetched images are still never
+  bundled ([licensing.md](../../licensing.md)).
 - T-18.1a installs and resolves the default and implements lazy/`Preload`;
   T-18.1b adds `wallpaper.builtinDefault` and the System Settings/shell wiring;
   T-18.2 calls `Preload` when the pane opens; T-18.3 verifies the licensing and
