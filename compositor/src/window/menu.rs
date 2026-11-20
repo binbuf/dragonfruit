@@ -314,16 +314,51 @@ impl WindowMenu {
         self.submenu.iter().position(|row| row.rect.contains(point))
     }
 
+    /// Whether `point` is in the gap between the panel and its open submenu
+    /// at the opener row's vertical span. The corridor keeps both the opener
+    /// and the last child highlight while the pointer travels diagonally.
+    fn in_submenu_corridor(&self, point: Point<i32, Logical>) -> bool {
+        if !self.open_submenu {
+            return false;
+        }
+        let Some(opener) = self.rows.first() else {
+            return false;
+        };
+        let top = opener.rect.loc.y;
+        if point.y < top || point.y >= top + opener.rect.size.h {
+            return false;
+        }
+        let panel_left = self.rect.loc.x;
+        let panel_right = self.rect.loc.x + self.rect.size.w;
+        let submenu_left = self.submenu_rect.loc.x;
+        let submenu_right = self.submenu_rect.loc.x + self.submenu_rect.size.w;
+        let gap_left = panel_right.min(submenu_right);
+        let gap_right = panel_left.max(submenu_left);
+        gap_left < gap_right && point.x >= gap_left && point.x < gap_right
+    }
+
     /// Update the highlight to the row under `point` (design-system hover
     /// reveal). Returns whether the highlight changed. A point in the panel
     /// padding clears the highlight.
     pub fn hover(&mut self, point: Point<i32, Logical>) -> bool {
         if self.open_submenu && self.submenu_rect.contains(point) {
+            let mut changed = false;
             let next = self.submenu_row_at(point);
             if next != self.submenu_highlighted {
                 self.submenu_highlighted = next;
-                return true;
+                changed = true;
             }
+            // The opener stays selected while the pointer is in the child;
+            // the child row is the additional highlight, not a replacement.
+            if self.highlighted != Some(0) {
+                self.highlighted = Some(0);
+                changed = true;
+            }
+            return changed;
+        }
+        // Crossing the gap toward the open child must not flash the opener
+        // off before the child claims the pointer.
+        if self.in_submenu_corridor(point) {
             return false;
         }
         if self.rect.contains(point) {
@@ -762,6 +797,36 @@ mod tests {
             Some(MenuKey::Activate)
         );
         assert_eq!(MenuKey::from_keysym(keysyms::KEY_a), None);
+    }
+
+    #[test]
+    fn a_flipped_menu_selects_the_row_near_the_press_point() {
+        // Near the bottom-right corner the panel flips up and left. The
+        // pointer is on the panel's bottom edge, so the initial highlight must
+        // be the nearest row (Close), not the first row.
+        let menu = menu_at((1270, 710));
+        assert_eq!(menu.highlighted, Some(3));
+    }
+
+    #[test]
+    fn submenu_corridor_keeps_the_opener_highlighted() {
+        let mut menu = menu_at((100, 100));
+        menu.open_submenu = true;
+        menu.highlighted = Some(0);
+        menu.submenu_highlighted = Some(1);
+        // The 2 px gap beside the opener is part of the crossing path.
+        let corridor = Point::from((
+            menu.rect.loc.x + menu.rect.size.w + 1,
+            menu.rows[0].rect.loc.y + MENU_ROW_HEIGHT / 2,
+        ));
+        assert!(!menu.hover(corridor));
+        assert_eq!(menu.highlighted, Some(0));
+        assert_eq!(menu.submenu_highlighted, Some(1));
+        // Entering the child keeps the opener selected and highlights the
+        // child row under the pointer.
+        assert!(menu.hover(center(menu.submenu[0].rect)));
+        assert_eq!(menu.highlighted, Some(0));
+        assert_eq!(menu.submenu_highlighted, Some(0));
     }
 
     #[test]

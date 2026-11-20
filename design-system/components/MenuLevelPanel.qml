@@ -178,8 +178,14 @@ Item {
 
     HoverHandler {
         enabled: panel.open
-        onHoveredChanged: if (hovered && panel.levels)
-                              panel.levels.enterChild(panel.level - 1)
+        onHoveredChanged: {
+            if (!panel.levels)
+                return;
+            if (hovered)
+                panel.levels.enterChild(panel.level - 1);
+            else
+                panel.levels.leaveChild(panel.level - 1);
+        }
     }
 
     Shadow {

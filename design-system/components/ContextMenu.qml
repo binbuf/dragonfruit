@@ -43,7 +43,8 @@ Item {
     // coordinates. It is consumed once when the menu opens so the row under
     // the cursor is selected immediately instead of showing row zero until
     // the first motion event (which reads as a jump/flicker).
-    property real pointerOpenY: -1
+    property bool pointerOpenValid: false
+    property real pointerOpenY: 0
     // The rectangle, in parent coordinates, this menu family may occupy.
     // Callers that commit a single popover rectangle (the Dock) pass the
     // intersection of the output area and the render budget. When unset the
@@ -308,6 +309,7 @@ Item {
     function showAt(x, y) {
         // Keep the pointer point before clamping. A menu that flips or slides
         // up still highlights the row the cursor is actually over.
+        root.pointerOpenValid = true;
         root.pointerOpenY = y;
         var bounds = root.effectiveRect;
         if (bounds) {
@@ -318,6 +320,16 @@ Item {
         }
         root.x = x;
         root.y = y;
+        // A second pointer press retargets an already-open menu: reset the
+        // open chain and select the row under the new point now, without
+        // waiting for a fresh open transaction.
+        if (root.open) {
+            levels.reset();
+            root.syncFromLevels();
+            if (rowView.flickable)
+                rowView.flickable.contentY = 0;
+            root.applyInitialHighlight();
+        }
         root.show();
     }
     // Move the menu into the window overlay layer when its owner is anchored.
@@ -459,16 +471,28 @@ Item {
     // it names one, otherwise the checked/current row (a Select opens on its
     // live value), otherwise the first row through the normal move path.
     function initialHighlightIndex() {
-        if (root.pointerOpenY >= 0) {
+        if (root.pointerOpenValid) {
             var at = root.rowIndexAtY(root.pointerOpenY - root.y);
-            if (at >= 0)
+            if (at >= 0 && root.isSelectableEntry(root.entries[at]))
                 return at;
         }
         for (var i = 0; i < root.entries.length; ++i) {
-            if (root.entries[i].checked === true)
+            if (root.entries[i].checked === true
+                    && root.isSelectableEntry(root.entries[i]))
                 return i;
         }
         return -1;
+    }
+    // Consume the pending pointer point and select the row it names (or the
+    // checked/first fallback). Shared by the open path and a live retarget.
+    function applyInitialHighlight() {
+        var initial = root.initialHighlightIndex();
+        root.pointerOpenValid = false;
+        root.pointerOpenY = 0;
+        if (initial >= 0)
+            levels.setHighlight(0, initial);
+        else
+            levels.move(0, 1);
     }
     // The row's top offset in the scrolled viewport. A nested panel follows
     // its parent row while the menu scrolls.
@@ -549,12 +573,7 @@ Item {
             // Open on the row the cursor is over (a pointer-opened menu) or
             // on the checked/current value (a Select). Only fall back to the
             // first row when neither names one.
-            var initial = root.initialHighlightIndex();
-            root.pointerOpenY = -1;
-            if (initial >= 0)
-                levels.setHighlight(0, initial);
-            else
-                levels.move(0, 1);
+            root.applyInitialHighlight();
             root.forceActiveFocus();
             root.opened();
         } else {

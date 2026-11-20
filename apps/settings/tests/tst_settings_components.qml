@@ -790,14 +790,21 @@ Item {
             compare(first.Accessible.checked, true);
             compare(second.Accessible.checked, false);
 
-            // A stationary click on the second row selects it.
+            // A stationary click on the second row selects it and takes focus.
             mouseClick(second, second.width / 2, second.height / 2);
             compare(group.currentIndex, 1);
+            verify(second.activeFocus, "a pointer pick follows the pointer");
 
-            // Down moves to the next option from the keyboard.
-            group.repeater.itemAt(1).forceActiveFocus();
+            // Down moves the selection and the roving focus together, so a
+            // following Space confirms the newly selected option.
+            second.forceActiveFocus();
             keyClick(Qt.Key_Down);
             compare(group.currentIndex, 2);
+            verify(group.repeater.itemAt(2).activeFocus,
+                   "keyboard selection moves the focus ring with the dot");
+            keyClick(Qt.Key_Space);
+            compare(group.currentIndex, 2,
+                    "activating the focused option keeps the selection");
         }
 
         function test_t286_scale_slider_ticks_and_range() {

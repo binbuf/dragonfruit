@@ -37,11 +37,20 @@ QtObject {
     property int pendingLevel: -1
     property int pendingIndex: -1
     property string pendingKey: ""
-    // The level whose pointer just left a row. A zero-delay timer clears the
-    // stale highlight unless another row (or a submenu) claims the pointer
+    // Which row currently owns the pointer, per level. The identity is the
+    // row index rather than only the level so the new row's enter cannot be
+    // undone by the old row's later leave event.
+    property int hoverRowLevel: -1
+    property int hoverRowIndex: -1
+    // The level whose child panel currently owns the pointer. A crossing into
+    // the child sets this before the opener row's leave, so the deferred clear
+    // knows the pointer did not leave the menu.
+    property int hoverChildLevel: -1
+    // Levels whose pointer just left a row. A zero-delay timer clears their
+    // stale highlights unless another row (or a submenu) claims the pointer
     // first; that is what stops the last hovered row staying lit after the
     // pointer leaves the menu.
-    property int hoverLeaveLevel: -1
+    property var hoverLeaveLevels: []
 
     signal activated(var item, var entry, var ancestors)
     signal stateChanged()
@@ -278,6 +287,8 @@ QtObject {
         if (level < 0 || level >= root.openPath.length)
             return;
         root.cancelPending();
+        if (root.hoverChildLevel >= level)
+            root.hoverChildLevel = -1;
         root.openPath = root.openPath.slice(0, level);
         root.highlightKeys = root.highlightKeys.slice(0, level + 1);
         root.highlightIndices = root.highlightIndices.slice(0, level + 1);
@@ -362,7 +373,15 @@ QtObject {
         // A new row claims the pointer before the leave timer retires the old
         // highlight, so moving between rows never flickers.
         hoverLeaveTimer.stop();
-        hoverLeaveLevel = -1;
+        // Only this level is claimed; a pending clear on another visible
+        // level (the child the pointer just left) still owes its clear.
+        root.hoverLeaveLevels = root.hoverLeaveLevels.filter(
+            function(pendingLevel) { return pendingLevel !== level; });
+        if (root.hoverLeaveLevels.length > 0)
+            hoverLeaveTimer.restart();
+        root.hoverRowLevel = level;
+        root.hoverRowIndex = index;
+        root.hoverChildLevel = -1;
         if (root.pendingLevel === level && root.pendingIndex === index
                 && dwellTimer.running)
             return;
@@ -388,31 +407,50 @@ QtObject {
     }
 
     function leave(level, index) {
-        // A new sibling may have claimed the pointer before the old row's
-        // leave arrives. Only the departing row itself may retire the dwell it
-        // armed; otherwise the enter and leave order would cancel the new
-        // selection.
-        var wasPending = root.pendingLevel === level
-                         && root.pendingIndex === index;
-        if (wasPending)
+        // Only the row that owns the pointer may retire its identity; a new
+        // sibling's enter may already have run when this leave arrives.
+        if (root.hoverRowLevel === level && root.hoverRowIndex === index) {
+            root.hoverRowLevel = -1;
+            root.hoverRowIndex = -1;
+        }
+        // A departed row cannot keep a dwell alive and open a replacement
+        // later, even when an open child kept the parent selected during the
+        // crossing.
+        if (root.pendingLevel === level && root.pendingIndex === index)
             root.cancelPending();
-        // A departed row cannot leave a stale highlight behind. The deferred
-        // clear is cancelled by a sibling enter or by entering the open child,
-        // so only a pointer that truly left that row reaches the clear.
-        var shown = root.highlightIndexAt(level);
-        if (!wasPending && shown !== index && shown >= 0)
-            return;
-        root.hoverLeaveLevel = level;
+        // Defer the highlight clear one event-loop turn: a sibling enter or a
+        // child-panel enter claims the pointer and suppresses it.
+        var pending = root.hoverLeaveLevels.slice();
+        if (pending.indexOf(level) < 0)
+            pending.push(level);
+        root.hoverLeaveLevels = pending;
         hoverLeaveTimer.restart();
     }
 
     function enterChild(level) {
         hoverLeaveTimer.stop();
-        root.hoverLeaveLevel = -1;
+        root.hoverLeaveLevels = [];
+        root.hoverChildLevel = level;
+        root.hoverRowLevel = -1;
+        root.hoverRowIndex = -1;
         root.cancelPending();
         var open = root.openIndexAt(level);
         if (open >= 0)
             root.setHighlight(level, open);
+    }
+
+    // The pointer left an open child panel. Defer the opener clear one turn so
+    // a parent row that takes the pointer back cancels it.
+    function leaveChild(level) {
+        if (root.hoverChildLevel === level)
+            root.hoverChildLevel = -1;
+        if (root.openIndexAt(level) < 0)
+            return;
+        var pending = root.hoverLeaveLevels.slice();
+        if (pending.indexOf(level) < 0)
+            pending.push(level);
+        root.hoverLeaveLevels = pending;
+        hoverLeaveTimer.restart();
     }
 
     function commitHover() {
@@ -442,7 +480,10 @@ QtObject {
     function reset() {
         root.cancelPending();
         hoverLeaveTimer.stop();
-        root.hoverLeaveLevel = -1;
+        root.hoverLeaveLevels = [];
+        root.hoverRowLevel = -1;
+        root.hoverRowIndex = -1;
+        root.hoverChildLevel = -1;
         root.clearTypeAhead();
         root.openPath = [];
         root.highlightKeys = [];
@@ -560,13 +601,19 @@ QtObject {
         interval: 0
         repeat: false
         onTriggered: {
-            var level = root.hoverLeaveLevel;
-            root.hoverLeaveLevel = -1;
-            if (level < 0 || root.pendingLevel === level)
-                return;
-            // Entering an open child cancels this deferred clear; a pointer
-            // that truly leaves the menu must not leave the opener row lit.
-            root.setHighlight(level, -1);
+            var levels = root.hoverLeaveLevels;
+            root.hoverLeaveLevels = [];
+            for (var i = 0; i < levels.length; ++i) {
+                var level = levels[i];
+                if (level < 0 || root.pendingLevel === level)
+                    continue;
+                // A sibling row or the open child of this level owns the
+                // pointer; only a true departure clears the row.
+                if (root.hoverRowLevel === level
+                        || root.hoverChildLevel >= level)
+                    continue;
+                root.setHighlight(level, -1);
+            }
         }
     }
 

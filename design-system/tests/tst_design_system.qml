@@ -693,6 +693,11 @@ TestCase {
             compare(menu.openSubmenuIndex, 0, "diagonal crossing retains the child");
             compare(menu.highlightedIndex, 0, "the parent stays selected during crossing");
             var sub = findChild(menu, "submenuPanel");
+            // The child fades in over the open motion; move into it once it
+            // is actually visible so the test exercises the hover path rather
+            // than racing the animation.
+            tryCompare(sub, "visible", true);
+            wait(Theme.motion.menuOpen.duration + 60);
             mouseMove(sub, 12, 12);
             wait(Theme.controls.contextMenu.submenuDelay + 50);
             compare(menu.openSubmenuIndex, 0, "entering child cancels sibling dwell");
@@ -767,6 +772,24 @@ TestCase {
             compare(cm.highlightedIndex, expected);
         }
 
+        function test_context_menu_retargets_to_the_new_pointer_row() {
+            var cm = make(contextMenuComponent, {
+                model: [ { label: "One" }, { label: "Two" },
+                         { label: "Three" }, { label: "Four" },
+                         { label: "Five" }, { label: "Six" } ]
+            });
+            cm.showAt(10, 10);
+            waitForRendering(stage);
+            var pointerY = stage.height - 10;
+            mouseMove(stage, stage.width - 10, pointerY);
+            cm.showAt(stage.width - 10, pointerY);
+            waitForRendering(stage);
+            var expected = cm.rowIndexAtY(pointerY - cm.y);
+            verify(expected >= 0);
+            compare(cm.highlightedIndex, expected,
+                    "a second press selects the row at the new point");
+        }
+
         function test_context_menu_opens_on_its_checked_row() {
             var cm = make(contextMenuComponent, {
                 model: [ { label: "Small" }, { label: "Medium", checked: true },
@@ -811,16 +834,9 @@ TestCase {
             tryCompare(menu, "openSubmenuIndex", 0);
             var sibling = findChild(menu, "menuRow1");
             menu.dwellInterval = 5000;
-            console.log("probe before", menu.openSubmenuIndex,
-                        menu.highlightedIndex, menu.pendingHoverIndex,
-                        sibling.x, sibling.y, sibling.width, sibling.height);
             mouseMove(sibling, sibling.width / 2, sibling.height / 2);
             compare(menu.pendingHoverIndex, 1,
-                    "open=" + menu.openSubmenuIndex
-                    + " hi=" + menu.highlightedIndex
-                    + " pending=" + menu.pendingHoverIndex
-                    + " row=" + sibling.x + "," + sibling.y
-                    + " " + sibling.width + "x" + sibling.height);
+                    "a sibling claims the pointer before its dwell fires");
             mouseMove(stage, stage.width - 1, stage.height - 1);
             menu.dwellInterval = Theme.controls.contextMenu.submenuDelay;
             wait(Theme.controls.contextMenu.submenuDelay + 50);
@@ -1171,6 +1187,20 @@ TestCase {
         compare(selectActivatedSpy.count, 1);
         compare(selectActivatedSpy.signalArguments[0][0], 1);
         compare(sel.menu.open, false);
+    }
+
+    function test_select_opens_on_its_current_value() {
+        var sel = make(selectComponent, {
+            model: ["Bottom", "Left", "Right"],
+            currentIndex: 1
+        });
+        sel.openMenu();
+        tryCompare(sel.menu, "open", true);
+        compare(sel.menu.highlightedIndex, 1,
+                "the popup opens on the live value, not the first row");
+        keyClick(Qt.Key_Return);
+        compare(sel.currentIndex, 1,
+                "confirming the popup keeps the current value");
     }
 
     function test_select_activate_emits_value() {
