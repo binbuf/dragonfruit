@@ -38,6 +38,35 @@ TestCase {
     Component { id: popupComponent; Popup { } }
     Component { id: menuComponent; MenuBarMenu { } }
     Component { id: rectComponent; Rectangle { } }
+    Component {
+        id: shadowCardComponent
+        Item {
+            width: 120
+            height: 80
+            Shadow {
+                objectName: "cardShadow"
+                anchors.fill: parent
+                radius: 10
+                level: "overlay"
+                cutoutBounds: true
+            }
+            Rectangle {
+                anchors.fill: parent
+                radius: 10
+                color: "#ffffff"
+            }
+        }
+    }
+    Component {
+        id: transparentAppWindowComponent
+        AppWindow {
+            width: 200
+            height: 160
+            cornerRadius: 10
+            chromeTransparent: true
+            showShadow: false
+        }
+    }
     Component { id: buttonComponent; Button { } }
     Component { id: toolbarComponent; Toolbar { } }
     Component { id: splitViewComponent; SplitView { } }
@@ -790,6 +819,38 @@ TestCase {
                     "a second press selects the row at the new point");
         }
 
+        function test_context_menu_uses_a_fresh_model_before_placing() {
+            // Callers set a model and immediately call showAt(). The Repeater
+            // delegates are not polished yet, so the Column still reports the
+            // previous model's height. Placement and the initial highlight
+            // must use the new entries, not that stale layout.
+            var cm = make(contextMenuComponent, {
+                model: [ { label: "One" }, { label: "Two" },
+                         { label: "Three" } ]
+            });
+            cm.open = true;
+            waitForRendering(stage);
+            cm.hide(true);
+            waitForRendering(stage);
+            var model = [];
+            for (var i = 0; i < 8; ++i)
+                model.push({ label: "Row " + i });
+            cm.model = model;
+            cm.showAt(stage.width - 10, stage.height - 10);
+            compare(cm.entries.length, 8);
+            compare(cm.desiredHeight,
+                    2 * Theme.controls.contextMenu.padding
+                    + 8 * Theme.controls.contextMenu.rowHeight,
+                    "the new model's height is known before layout");
+            compare(cm.height, cm.desiredHeight);
+            var expected = cm.rowIndexAtY(stage.height - 10 - cm.y);
+            verify(expected >= 0, "the pointer is over a row of the new model");
+            compare(cm.highlightedIndex, expected,
+                    "the row under the pointer is selected on the first frame");
+            verify(cm.y + cm.height <= stage.height + 0.5,
+                   "the menu is clamped using the new height");
+        }
+
         function test_context_menu_opens_on_its_checked_row() {
             var cm = make(contextMenuComponent, {
                 model: [ { label: "Small" }, { label: "Medium", checked: true },
@@ -1010,6 +1071,61 @@ TestCase {
         compare(Theme.controls.elevation.med.blur, Theme.primitive.elevation.med);
         compare(Theme.controls.elevation.high.blur, Theme.primitive.elevation.high);
         compare(Theme.controls.elevation.overlay.blur, Theme.primitive.elevation.overlay);
+    }
+
+    function test_shadow_keeps_the_rounded_corner_tip_transparent() {
+        // The shadow must stay outside the card's bounds, not trace its
+        // rounded body. A rounded-body cutout leaves shadow in the square
+        // corner gap, so the tip that should show the wallpaper reads as an
+        // opaque/translucent pixel (ADR 0257).
+        var plate = make(rectComponent, {
+            width: 260, height: 220, color: "#ff0000"
+        });
+        var card = createTemporaryObject(shadowCardComponent, plate, {
+            x: 70, y: 70
+        });
+        waitForRendering(plate);
+        var image = grabImage(plate);
+        var corner = image.pixel(70, 70);
+        verify(corner.r > 0.9 && corner.g < 0.1,
+               "the bounds corner must show the background, was "
+               + corner.r + "," + corner.g + "," + corner.b);
+        // The ring still exists just outside the bounds.
+        var outside = image.pixel(70, 62);
+        verify(outside.r < 0.95, "the shadow must remain outside the bounds");
+        // The rounded-body variant is the regression control: it leaves
+        // shadow in the corner gap.
+        var shadow = findChild(card, "cardShadow");
+        shadow.cutoutBounds = false;
+        waitForRendering(plate);
+        image = grabImage(plate);
+        corner = image.pixel(70, 70);
+        verify(corner.r < 0.99,
+               "the old rounded-body cutout must reproduce the corner shadow");
+    }
+
+    function test_transparent_app_window_corner_has_no_backing_square() {
+        // A first-party app whose titlebar lives inside its content leaves the
+        // AppWindow titlebar slot empty. A zero-height backing sheet used to
+        // paint a small square at the origin, so the window's rounded corner
+        // tip was opaque instead of transparent.
+        var plate = make(rectComponent, {
+            width: 260, height: 220, color: "#ff0000"
+        });
+        createTemporaryObject(transparentAppWindowComponent, plate, {
+            x: 30, y: 30
+        });
+        waitForRendering(plate);
+        var image = grabImage(plate);
+        // Points inside the bounding box but outside the radius-10 arc; the
+        // border arc itself is legitimately painted at the diagonal.
+        var points = [ [30, 30], [31, 31], [32, 32], [33, 31], [31, 33] ];
+        for (var i = 0; i < points.length; ++i) {
+            var p = image.pixel(points[i][0], points[i][1]);
+            verify(p.r > 0.9 && p.g < 0.1,
+                   "the window corner must show the background at "
+                   + points[i][0] + "," + points[i][1]);
+        }
     }
 
     // -- Wallpaper text (menu bar / desktop labels) -------------------------

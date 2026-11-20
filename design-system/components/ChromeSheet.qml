@@ -22,6 +22,10 @@ Shape {
 
     antialiasing: true
     layer.enabled: false
+    // A degenerate sheet must not paint. Its path collapses to the origin and
+    // the fill can leave a small square where a caller expected nothing (the
+    // AppWindow titlebar backing before its title row is laid out).
+    visible: width > 0 && height > 0
 
     ShapePath {
         fillColor: root.color

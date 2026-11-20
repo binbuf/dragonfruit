@@ -471,8 +471,10 @@ Item {
         offset: Qt.point(0, Theme.controls.appsDrawer.shadowOffsetY)
         // The sampled card fill is transparent so the compositor's glass
         // shows through; keep the shadow outside the card or it would darken
-        // that glass from inside the surface.
+        // that glass from inside the surface. Cut at the bounds so the rounded
+        // corner tips stay transparent instead of picking up the shadow ring.
         cutout: root.compositorGlass
+        cutoutBounds: true
         opacity: root.reveal
     }
 

@@ -18,6 +18,7 @@ Item {
         anchors.fill: parent
         level: "high"
         radius: 13
+        cutoutBounds: true
     }
     Rectangle {
         anchors.fill: parent

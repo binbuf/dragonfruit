@@ -237,6 +237,7 @@ Item {
                             anchors.fill: panel
                             level: cell.modelData
                             radius: Theme.primitive.radius.md
+                            cutoutBounds: true
                         }
                         Rectangle {
                             id: panel

@@ -136,6 +136,7 @@ FocusScope {
         height: root.height
         radius: root.radius
         blur: Theme.controls.popup.shadowBlur
+        cutoutBounds: true
     }
 
     Rectangle {

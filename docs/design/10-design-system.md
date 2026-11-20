@@ -339,6 +339,13 @@ integration, replacing the eight uniform bands. Geometry remains cached in the
 compositor and excludes translucent window interiors; see
 [ADR 0245](adr/0245-menu-tracking-and-soft-window-shadows.md).
 
+The QML `Shadow` component opts into the same bounds cutout with
+`cutoutBounds`. A card over a glass or otherwise transparent fill sets it so
+the shadow stays outside the card's bounding box; the card's own rounded fill
+supplies the silhouette and the square corner gap stays clear. The plain
+`cutout` flag keeps the rounded-body cut for small opaque tiles. See
+[ADR 0257](adr/0257-window-corner-cutout-transparency.md).
+
 The semantic `material` group (`chromeOpacity`/`chromeBlur`,
 `dockOpacity`/`dockBlur`, `popupOpacity`/`popupBlur`, `shadowOpacity`, plus
 the `chromeFallbackOpacity`/`dockFallbackOpacity`/`popupFallbackOpacity`

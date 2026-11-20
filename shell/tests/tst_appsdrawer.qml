@@ -653,6 +653,8 @@ Item {
                     verify(shadow !== null);
                     compare(shadow.cutout, state.blur,
                             state.label + " shadow cutout follows the glass path");
+                    compare(shadow.cutoutBounds, true,
+                            state.label + " shadow cuts at the card bounds");
                     if (state.blur) {
                         compare(panel.color.a, 0,
                                 state.label + " sampled fill must be transparent");

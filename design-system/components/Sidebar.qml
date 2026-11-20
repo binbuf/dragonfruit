@@ -13,6 +13,11 @@ FocusScope {
     property var sections: []
     property int currentIndex: -1
     property alias hoveredIndex: hoverTracker.index
+    // True while `activateIndex()` moves the selection to the row it is about
+    // to activate. An owner that mirrors the selection in
+    // `onCurrentIndexChanged` can use this to avoid running the same
+    // navigation twice (once for the index move, once for `activated`).
+    property bool activating: false
     // T206: the app-local material fill. The default is the existing opaque
     // source-list surface; first-party apps pass the resolved glass tint/alpha
     // and round the bottom-left window corner.
@@ -149,7 +154,9 @@ FocusScope {
         var e = root.entries[index];
         if (!e || (e.type !== "item" && e.type !== "status"))
             return;
+        root.activating = true;
         root.currentIndex = index;
+        root.activating = false;
         root.activated(index, e);
     }
 

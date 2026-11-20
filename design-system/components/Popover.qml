@@ -90,6 +90,7 @@ Item {
         height: root.height
         radius: Theme.controls.popover.radius
         blur: Theme.controls.popover.shadowBlur
+        cutoutBounds: true
     }
 
     Rectangle {

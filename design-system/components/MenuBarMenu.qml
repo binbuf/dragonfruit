@@ -410,6 +410,19 @@ Item {
         }
         return width;
     }
+    // A live model update reaches `entries` immediately, but the popup's
+    // Column keeps reporting the previous model's height until its delegates
+    // are polished. Opening the dropdown against that stale height placed it
+    // at the wrong edge and left the pointer over a different row. Resolve the
+    // height from the entries with the same row math the panel uses.
+    readonly property real desiredPopupHeight: {
+        var padding = Theme.controls.menuBarMenu.padding;
+        var rowHeight = Theme.controls.menuBarMenu.rowHeight;
+        var total = 2 * padding;
+        for (var i = 0; i < root.entries.length; ++i)
+            total += root.entries[i].type === "separator" ? padding : rowHeight;
+        return total;
+    }
 
     Rectangle {
         id: barBackground
@@ -523,8 +536,7 @@ Item {
         width: Math.min(Math.max(preferredWidth,
                                  root.naturalRowWidth + 2 * horizontalPadding),
                         boundWidth)
-        height: Math.min(rowColumn.implicitHeight + 2 * verticalPadding,
-                         boundHeight)
+        height: Math.min(root.desiredPopupHeight, boundHeight)
 
         onOpened: {
             levels.reset();

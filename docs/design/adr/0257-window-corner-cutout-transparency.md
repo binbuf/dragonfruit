@@ -31,6 +31,14 @@ wallpaper or at fractional scale.
 - The ring still omits the whole window body, so T206's translucent-chrome
   rule is preserved. Only the corner cutout changes: it is now completely
   clear instead of shadowed.
+- The QML `Shadow` component carries the same rule as an opt-in
+  `cutoutBounds` property. When set, its cutout path cuts square at the
+  card's bounds instead of tracing the rounded body, so a QML-drawn card over
+  glass/transparent fills does not pick up the shadow ring in its corner gap.
+  `cutout` alone keeps the rounded-body path for small opaque icon tiles,
+  where the gap is not visible and the cheaper path is enough. Menus,
+  popovers, dialogs, sheets, notification and OSD cards, the power/file-picker
+  overlays, and the apps drawer opt in.
 
 ## Consequences
 
@@ -43,3 +51,6 @@ wallpaper or at fractional scale.
 - `window::shadow::tests::shadow_outside_bounds_keeps_the_rounded_corner_cutout_clear`
   guards every corner point and keeps the old rounded-body variant as the
   regression control.
+- `tst_design_system` guards the QML `Shadow` bounds corner and keeps
+  `cutoutBounds: false` as the regression control; `tst_appsdrawer` asserts
+  the drawer shadow opts in.

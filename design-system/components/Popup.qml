@@ -228,6 +228,7 @@ Item {
         height: root.height
         radius: root.cornerRadius
         blur: Theme.controls.popup.shadowBlur
+        cutoutBounds: true
     }
 
     Rectangle {

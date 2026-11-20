@@ -31,6 +31,15 @@ Item {
     // surface that lets the compositor's glass through must not paint the
     // shadow's interior over it; only the ring outside the card is a shadow.
     property bool cutout: false
+    // Cut at the card's bounding box instead of its rounded body (ADR 0257).
+    // A rounded-body cutout still leaves shadow in the square corner gap
+    // between the arc and the bounds, so a card whose corner tip should be a
+    // transparent pixel shows a faint shadow there instead. The card's own
+    // rounded fill supplies the silhouette; the shadow only belongs outside
+    // the bounds. Large cards opt in; small opaque icon tiles keep the cheap
+    // rectangle path because the corner gap is not visible there.
+    property bool cutoutBounds: false
+    readonly property bool cutsShadow: root.cutoutBounds || root.cutout
 
     // Match the compositor's truncated Gaussian and source-over integration.
     function cumulativeAlpha(distance) {
@@ -68,7 +77,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                visible: !root.cutout
+                visible: !root.cutsShadow
                 radius: layer.outerRadius
                 color: root.shadowColor
                 antialiasing: true
@@ -76,7 +85,7 @@ Item {
 
             Shape {
                 anchors.fill: parent
-                visible: root.cutout
+                visible: root.cutsShadow
                 ShapePath {
                     fillColor: root.shadowColor
                     strokeColor: "transparent"
@@ -88,12 +97,15 @@ Item {
                         height: layer.outerHeight
                         radius: layer.outerRadius
                     }
+                    // The inner cut is square at the bounds by default. The
+                    // rounded-body variant stays available for a caller that
+                    // explicitly sets `cutoutBounds: false`.
                     PathRectangle {
                         x: -layer.layerX
                         y: -layer.layerY
                         width: root.width
                         height: root.height
-                        radius: root.radius
+                        radius: root.cutoutBounds ? 0 : root.radius
                     }
                 }
             }

@@ -104,8 +104,17 @@ Item {
     }
     readonly property real desiredWidth:
         Math.max(panel.minWidth, panel.naturalRowWidth + 2 * panel.padding)
-    readonly property real desiredHeight:
-        rowColumn.implicitHeight + 2 * panel.padding
+    // The submenu delegates are created after `openAt()` flips the panel on;
+    // the Column reports the previous level's height until they polish. Derive
+    // the height from the entries so the panel opens at its final size and the
+    // row under the pointer is highlighted from the first frame.
+    readonly property real desiredHeight: {
+        var total = 2 * panel.padding;
+        for (var i = 0; i < panel.entries.length; ++i)
+            total += panel.entries[i].type === "separator" ? panel.padding
+                                                            : panel.rowHeight;
+        return total;
+    }
     readonly property bool scrolls: panel.desiredHeight > panel.maxHeight + 0.5
     readonly property real scrollbarGutter: panel.scrolls
         ? Theme.controls.scrollView.scrollbarWidth
@@ -193,6 +202,7 @@ Item {
         height: panel.height
         radius: panel.cornerRadius
         blur: Theme.controls.popup.shadowBlur
+        cutoutBounds: true
     }
 
     Rectangle {

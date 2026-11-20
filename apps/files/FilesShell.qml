@@ -1046,7 +1046,11 @@ Item {
                             browser.navigate(uri);
                     }
                     onCurrentIndexChanged: {
-                        if (root.syncing)
+                        // A click/Return moves the index and then emits
+                        // `activated`; `activating` marks that move so the
+                        // same location is not navigated twice. Arrow keys
+                        // still follow the selection live.
+                        if (root.syncing || sidebar.activating)
                             return;
                         var uri = root.uriForEntry(sidebar.entries[sidebar.currentIndex]);
                         if (uri)

@@ -74,6 +74,7 @@ Item {
         anchors.fill: card
         radius: card.radius
         level: "overlay"
+        cutoutBounds: true
     }
 
     Rectangle {

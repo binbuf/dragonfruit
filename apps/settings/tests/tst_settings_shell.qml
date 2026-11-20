@@ -313,6 +313,48 @@ Item {
             verify(shell.canGoBack);
         }
 
+        function test_sidebar_arrows_follow_the_selection_once() {
+            // Arrow keys follow the sidebar selection live. The move must run
+            // one navigation, not the `currentIndexChanged` and `activated`
+            // paths back to back.
+            var shell = make();
+            shell.sidebar.forceActiveFocus();
+            waitForRendering(stage);
+            var beforeIndex = shell.sidebar.currentIndex;
+            keyClick(Qt.Key_Down);
+            compare(shell.sidebar.currentIndex !== beforeIndex, true);
+            compare(shell.currentPaneId,
+                    shell.sidebarIdAtIndex(shell.sidebar.currentIndex),
+                    "Down moves the selection and opens the next pane once");
+        }
+
+        function test_return_on_the_selected_row_is_idempotent() {
+            var shell = make();
+            shell.activateSidebarItem("appearance");
+            waitForRendering(stage);
+            shell.sidebar.forceActiveFocus();
+            waitForRendering(stage);
+            var before = shell.history.length;
+            keyClick(Qt.Key_Return);
+            compare(shell.currentPaneId, "appearance");
+            compare(shell.history.length, before,
+                    "Return on the selected row records no duplicate");
+        }
+
+        function test_switching_from_an_open_subpane_records_one_step() {
+            var shell = make();
+            shell.openSubPane("about");
+            tryVerify(function() { return shell.currentSubPaneId === "about"; });
+            var before = shell.history.length;
+            var index = shell.sidebarIndexOf("appearance");
+            var row = shell.sidebar.rowAtIndex(index);
+            mouseClick(row, 20, row.height / 2);
+            compare(shell.currentPaneId, "appearance");
+            compare(shell.currentSubPaneId, "");
+            compare(shell.history.length, before + 1,
+                    "one click records one navigation step, not a duplicate");
+        }
+
         function test_history_back_and_forward() {
             var shell = make();
             shell.selectPane("displays");
@@ -1009,11 +1051,10 @@ Item {
         function test_t286_selected_row_scrolls_into_view() {
             var shell = makeSized(720, 480);
             waitForRendering(stage);
-            // Select the last pane from the keyboard path: the row must be
-            // scrolled into the viewport.
+            // Open the last pane: the selected row must be scrolled into the
+            // viewport.
             var index = shell.sidebarIndexOf("printers");
-            shell.sidebar.currentIndex = index;
-            shell.syncSelection();
+            shell.activateSidebarItem("printers");
             waitForRendering(stage);
             var row = shell.sidebar.rowAtIndex(index);
             verify(row !== null);

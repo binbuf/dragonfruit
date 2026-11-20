@@ -475,6 +475,27 @@ Item {
             var at = root.rowIndexAtY(root.pointerOpenY - root.y);
             if (at >= 0 && root.isSelectableEntry(root.entries[at]))
                 return at;
+            // Clamping or flipping can leave the press in the card padding or
+            // on its border. Select the nearest selectable row instead of
+            // jumping to row zero, matching the compositor's window menu.
+            var localY = root.pointerOpenY - root.y;
+            var best = -1;
+            var bestDistance = Number.MAX_VALUE;
+            for (var j = 0; j < root.entries.length; ++j) {
+                if (!root.isSelectableEntry(root.entries[j]))
+                    continue;
+                var top = root.rowY(j);
+                var height = root.entries[j].type === "separator"
+                             ? Theme.controls.contextMenu.padding
+                             : Theme.controls.contextMenu.rowHeight;
+                var distance = Math.abs(localY - (top + height / 2));
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = j;
+                }
+            }
+            if (best >= 0)
+                return best;
         }
         for (var i = 0; i < root.entries.length; ++i) {
             if (root.entries[i].checked === true
@@ -539,8 +560,20 @@ Item {
     readonly property real desiredWidth:
         Math.max(root.preferredWidth,
                  root.naturalRowWidth + 2 * Theme.controls.contextMenu.padding)
-    readonly property real desiredHeight:
-        rowColumn.implicitHeight + 2 * Theme.controls.contextMenu.padding
+    // Resolve the height from the entry list, not `rowColumn.implicitHeight`.
+    // Callers set a model and immediately call `showAt()`; the Repeater's
+    // delegates are not polished yet, so the Column still reports the previous
+    // model's height for one turn. Clamping/flipping against that stale height
+    // placed a tall menu at the wrong edge and highlighted a row the pointer
+    // was not over. The row math is the same one `rowY()`/`rowIndexAtY()` use.
+    readonly property real desiredHeight: {
+        var padding = Theme.controls.contextMenu.padding;
+        var rowHeight = Theme.controls.contextMenu.rowHeight;
+        var total = 2 * padding;
+        for (var i = 0; i < root.entries.length; ++i)
+            total += root.entries[i].type === "separator" ? padding : rowHeight;
+        return total;
+    }
     // The menu never grows past the rectangle its host committed. A taller
     // model scrolls inside the card instead of being clipped by the overlay.
     readonly property bool scrolls: root.desiredHeight > root.availableHeight + 0.5
@@ -630,6 +663,7 @@ Item {
         height: root.height
         radius: root.cornerRadius
         blur: Theme.controls.popup.shadowBlur
+        cutoutBounds: true
     }
 
     Rectangle {

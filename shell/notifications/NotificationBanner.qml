@@ -134,6 +134,7 @@ Item {
         anchors.fill: card
         radius: card.radius
         level: "overlay"
+        cutoutBounds: true
         // T205: the compositor's flat band is opaque and already sits behind
         // the card. A QML shadow under a transparent sampled fill would show
         // through and darken the measured material, so it is only painted on

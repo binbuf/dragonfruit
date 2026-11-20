@@ -144,6 +144,7 @@ FocusScope {
             width: card.width
             height: card.height
             radius: Theme.controls.sheet.radius
+            cutoutBounds: true
         }
 
         Rectangle {

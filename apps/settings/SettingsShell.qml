@@ -1551,12 +1551,17 @@ Item {
                         fillColor: "transparent"
                         sections: root.sidebarSections
 
+                        // Arrow keys follow the selection live. A click or
+                        // Return moves the index and then emits `activated`;
+                        // `sidebar.activating` marks that move so the same
+                        // navigation is not run twice. `syncSelection()` keeps
+                        // the index in step for programmatic pane changes.
                         onActivated: (index, item) => {
                             if (item && item.id)
                                 root.activateSidebarItem(item.id);
                         }
                         onCurrentIndexChanged: {
-                            if (root.syncing)
+                            if (root.syncing || sidebar.activating)
                                 return;
                             var id = root.sidebarIdAtIndex(sidebar.currentIndex);
                             if (id.length > 0)

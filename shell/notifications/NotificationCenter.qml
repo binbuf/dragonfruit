@@ -234,6 +234,7 @@ Item {
         anchors.fill: stackPlate
         radius: stackPlate.radius
         level: "overlay"
+        cutoutBounds: true
         // T205: the compositor's opaque flat band is the sampled material; a
         // QML shadow under a transparent fill would show through and darken
         // it. The shadow is only for the solid/software plates.
@@ -660,6 +661,7 @@ Item {
         anchors.fill: lowerPanel
         radius: lowerPanel.radius
         level: "overlay"
+        cutoutBounds: true
         visible: !root.sampledGlass
     }
 

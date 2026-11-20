@@ -41,6 +41,7 @@ Item {
         // it would leak through the sidebar/toolbar alpha and darken the
         // measured material.
         visible: root.showShadow && !root.chromeTransparent
+        cutoutBounds: true
         level: root.shadowLevel
         width: root.width
         height: root.height
@@ -62,7 +63,12 @@ Item {
     // toolbar, never the window controls or the drag strip.
     ChromeSheet {
         id: titleBarBacking
-        visible: root.chromeTransparent
+        // A window whose app-local titlebar lives inside its own content (the
+        // split Settings/Files toolbars) leaves `titleBarArea` empty. A
+        // zero-height sheet still paints a small square at its origin, which
+        // showed as an opaque tip outside the rounded window corner. Hide the
+        // backing when there is no titlebar row to back.
+        visible: root.chromeTransparent && titleBarArea.height > 0
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
