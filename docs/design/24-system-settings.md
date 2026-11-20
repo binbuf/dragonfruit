@@ -1441,19 +1441,21 @@ no-trackpad state explains the kept preference.
 
 Owner: settingsd → compositor/shell. Absence: live on defaults.
 
-> **Superseded in part by T292a** ([25](25-system-settings-visual-parity.md)
-> §5.6, [ADR 0303](adr/0303-desktop-dock-restyle-and-advanced-sheets.md)). The
-> namespace layout below is the T276 inventory; the shipped pane now follows
-> the mockup's section order and labels: Dock Size / Dock Magnification Size /
-> Dock position on screen, **Desktop & Workspaces** with the Stage →
-> **Workspace Focus** rename, Widgets (including Default web browser), Windows
-> with “Hold Super” and the two edge-tile labels, a single **Window Overview** →
-> **Workspace Overview** entry, and a footer with Advanced… (Dock), Advanced…
-> (Windows), Shortcuts…, and Hot Corners…. The two Linux-only Dock rows
-> (hover chooser, minimize reaction) live in the Advanced Dock sheet and the
-> window-rules row in the Advanced Windows sheet. “Show application menus in
-> the menu bar” left this pane for Menu Bar (T293a). §4.21's rows stay reachable
-> through the Workspace Overview entry until T292b merges them.
+> **Superseded in part by T292a and T292b**
+> ([25](25-system-settings-visual-parity.md) §5.6,
+> [ADR 0303](adr/0303-desktop-dock-restyle-and-advanced-sheets.md),
+> [ADR 0304](adr/0304-workspace-overview-merge.md)). The namespace layout below
+> is the T276 inventory; the shipped pane now follows the mockup's section
+> order and labels: Dock Size / Dock Magnification Size / Dock position on
+> screen, **Desktop & Workspaces** with the Stage → **Workspace Focus** rename,
+> Widgets (including Default web browser), Windows with “Hold Super” and the
+> two edge-tile labels, the merged **Workspace Overview** section (T292b), and
+> a footer with Advanced… (Dock), Advanced… (Windows), Shortcuts…, and Hot
+> Corners…. The two Linux-only Dock rows (hover chooser, minimize reaction)
+> live in the Advanced Dock sheet and the window-rules row in the Advanced
+> Windows sheet. “Show application menus in the menu bar” left this pane for
+> Menu Bar (T293a). §4.21's rows now render in the merged section and its
+> Advanced Workspace Overview sheet; `MissionControlPane.qml` is deleted.
 
 T276 completes the page. Every live row has a real owner and consumer; a row
 whose runtime is a later task is visible and disabled with a user-facing
@@ -1513,36 +1515,41 @@ executable map and this document.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| Overview | Overview | Disclosure | `overview.*` | opens the Overview pane |
-| Hot Corners… | Hot Corners… | Disclosure | `overview.hotCorner*` | opens the Overview pane |
-| Shortcuts… | Shortcuts… | Sheet | `shortcuts.*` | disabled: the shortcut editor is not implemented |
+| Overview | Workspace Overview | Section (five toggles) | `overview.*` | T292b: merged into Desktop & Dock; only `overview.switchToAppSpace` is live |
+| Hot Corners… | Hot Corners… | Footer action | `overview.hotCorner*` | opens the Advanced Workspace Overview sheet (four corners + modifiers) |
+| Shortcuts… | Shortcuts… | Footer action | `shortcuts.*` | opens Keyboard → Shortcuts |
 | — | Default web browser | Popup | `defaults.browser` + default-apps delegate | live: installed `WebBrowser` records, applied through `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full portal/mimeapps matrix |
 
 ### 4.21 Overview — T276
 
-> **Superseded in part by T285 and T292a.** The top-level Overview pane is
-> gone; the catalog maps `settings://pane/mission-control` to Desktop & Dock →
-> Workspace Overview, and T292a's single Workspace Overview entry opens the
-> surface this section describes. T292b merges these rows into that section and
-> deletes `MissionControlPane.qml`.
+> **Superseded in part by T285 and T292a; merged by T292b.** The top-level
+> Overview pane is gone; the catalog maps `settings://pane/mission-control` to
+> Desktop & Dock → Workspace Overview. T292b shipped the merged section (the
+> five mockup toggles) and moved the rows below into the Advanced Workspace
+> Overview sheet, then deleted `MissionControlPane.qml` and its dedicated tests.
+> The `mission-control` id survives only as the deep-link alias and the stored
+> corner-action value, never as a pane.
 
-Linux-specific workspace surface. The surface keeps its `mission-control` id. Every live row is settingsd-backed and applied
-by the compositor; the shell forwards one v13
+Linux-specific workspace surface. It renders as Desktop & Dock → **Workspace
+Overview** (section) and **Advanced Workspace Overview** (sheet); the
+`mission-control` id survives only as the deep-link alias and the stored
+corner-action value. Every live row is settingsd-backed and applied by the
+compositor; the shell forwards one v13
 `df_toplevel_manager.set_overview_policy` snapshot (assignments, modifiers,
 workspace count, app-Space switch).
 
 | Row | Control | Owner / key | Disposition |
 |---|---|---|---|
-| Automatically rearrange workspaces | Toggle | `overview.autoRearrange` | disabled: automatic reordering is T240 |
-| Switch to an application's workspace | Toggle | `overview.switchToAppSpace` | live: the compositor follows the window's Space on activation |
+| Automatically rearrange workspaces | Toggle | `overview.autoRearrange` | disabled: automatic reordering is T240 (rendered as “Automatically rearrange Spaces”) |
+| Switch to an application's workspace | Toggle | `overview.switchToAppSpace` | live: the compositor follows the window's Space on activation (rendered as “Switch to an app's Space”) |
 | Group windows by application | Toggle | `overview.groupByApp` | disabled: grouping is T240 |
-| Displays have separate workspaces | Info | `overview.perDisplay` | read-only: the compositor always keeps one Space list per output |
-| Drag windows to the top to open Overview | Toggle | `overview.dragToOpen` | disabled: drag-to-Overview is T240 |
-| Workspace count | Popup | `workspaces.count` | live: resizes every output's normal Space list in lockstep |
-| Swipe up to open | Toggle | `gestures.missionControl` | live |
-| Swipe between Workspaces | Toggle | `gestures.spaceSwitch` | live |
-| Hot corners | Four action + modifier popups | `overview.hotCorner*` / `*Modifier` | live; Command/Shift/Option/Control gate the dwell |
-| Shortcuts | Sheet | `shortcuts.*` | disabled: the shortcut editor is not implemented |
+| Displays have separate workspaces | Info | `overview.perDisplay` | read-only: the compositor always keeps one Space list per output (rendered as “Displays have separate Spaces”) |
+| Drag windows to the top to open Overview | Toggle | `overview.dragToOpen` | disabled: drag-to-Overview is T240 (rendered as “Drag windows to the top to enter Workspace Overview”) |
+| Workspace count | Popup | `workspaces.count` | live: resizes every output's normal Space list in lockstep (Advanced Workspace Overview sheet) |
+| Swipe up to open | Toggle | `gestures.missionControl` | live (Advanced sheet) |
+| Swipe between Workspaces | Toggle | `gestures.spaceSwitch` | live (Advanced sheet) |
+| Hot corners | Four action + modifier popups | `overview.hotCorner*` / `*Modifier` | live; Command/Shift/Option/Control gate the dwell (Advanced sheet) |
+| Shortcuts | Footer action | `shortcuts.*` | opens Keyboard → Shortcuts |
 | Animation budget / reduced motion | — | `accessibility.reduceMotion` | adapt: the existing Accessibility row is the one owner |
 
 ### 4.22 Displays — T273

@@ -16,6 +16,7 @@
 #   docs/captures/t292a-desktop-dock-overview-footer-<scheme>.png
 #   docs/captures/t292a-desktop-dock-advanced-dock-<scheme>.png
 #   docs/captures/t292a-desktop-dock-advanced-windows-<scheme>.png
+#   docs/captures/t292a-desktop-dock-merged-overview-<scheme>.png
 #   docs/captures/t292a-desktop-dock-hot-corners-<scheme>.png
 #   docs/captures/t292a-desktop-dock-absence-<scheme>.png
 #   docs/captures/t292a-desktop-dock-absence-advanced-dock-<scheme>.png
@@ -70,6 +71,7 @@ for scheme in light dark; do
         docs/captures/t292a-desktop-dock-overview-footer-$scheme.png \
         docs/captures/t292a-desktop-dock-advanced-dock-$scheme.png \
         docs/captures/t292a-desktop-dock-advanced-windows-$scheme.png \
+        docs/captures/t292a-desktop-dock-merged-overview-$scheme.png \
         docs/captures/t292a-desktop-dock-hot-corners-$scheme.png \
         docs/captures/t292a-desktop-dock-absence-$scheme.png \
         docs/captures/t292a-desktop-dock-absence-advanced-dock-$scheme.png \

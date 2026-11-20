@@ -49,11 +49,17 @@ FocusScope {
                  (root.parent ? root.parent.width : 720) - 2 * root.windowMargin)
     readonly property real availableHeight:
         Math.max(120, (root.parent ? root.parent.height : 480) - 2 * root.windowMargin)
+    // T292b: a dialog whose content is wider than one text column (the
+    // Advanced Workspace Overview sheet's two-popup corner rows) asks for a
+    // width; 0 keeps the content-derived default.
+    property real preferredWidth: 0
     readonly property real preferredCardWidth:
-        Math.max(Theme.controls.dialog.minWidth,
-                 Math.max(titleText.implicitWidth,
-                          Math.max(contentColumn.implicitWidth,
-                                   buttonRow.implicitWidth)) + 2 * root.padding)
+        Math.max(root.preferredWidth,
+                 Math.max(Theme.controls.dialog.minWidth,
+                        Math.max(titleText.implicitWidth,
+                                 Math.max(contentColumn.implicitWidth,
+                                          buttonRow.implicitWidth))
+                        + 2 * root.padding))
     readonly property real cardWidth:
         Math.min(root.availableWidth, root.preferredCardWidth)
     readonly property real maxBodyHeight:

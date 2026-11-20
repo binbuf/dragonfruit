@@ -27,7 +27,6 @@ Item {
         when: windowShown
 
         Component { id: shellComponent; SettingsShell { } }
-        Component { id: missionControlComponent; MissionControlPane { } }
         Component { id: dateTimeComponent; DateTimePane { } }
         Component { id: languageComponent; LanguageRegionPane { } }
         Component { id: loginComponent; LoginItemsPane { } }
@@ -495,20 +494,23 @@ Item {
             compare(Settings.values["input.mouse.naturalScroll"], false);
         }
 
-        // Overview is compositor-native: the pane's rows are settingsd
-        // keys, so with no daemon they stay live on the schema defaults and the
-        // pane shows the absence note instead of an adapter view. T285 removed
-        // the top-level pane, so this exercises the component directly; T292
-        // folds it into Desktop & Dock -> Workspace Overview.
-        function test_mission_control_pane_stays_live_without_a_daemon() {
-            var pane = createTemporaryObject(missionControlComponent, stage);
-            verify(pane);
-            compare(pane.absenceNote.visible, true,
+        // T292b: Overview is compositor-native, but its rows are settingsd
+        // keys. In Desktop & Dock -> Workspace Overview the merged section and
+        // the Advanced Workspace Overview sheet stay live on the schema
+        // defaults and show the section's absence note instead of an adapter
+        // view.
+        function test_workspace_overview_stays_live_without_a_daemon() {
+            var shell = make();
+            var pane = showPane(shell, "desktop-dock");
+            compare(pane.overviewAbsenceNote.visible, true,
                     "the absence note explains the missing settings daemon");
-            verify(pane.absenceNote.text.length > 0);
+            verify(pane.overviewAbsenceNote.text.length > 0);
 
-            // The corner rows and the gesture rows write through to the
+            // The section's live toggle and the advanced sheet's corner,
+            // gesture, and workspace-count controls write through to the
             // in-memory store on the schema defaults.
+            pane.switchToAppSpaceToggle.toggle();
+            compare(Settings.values["overview.switchToAppSpace"], false);
             compare(pane.topLeft, "mission-control");
             pane.topLeftSelect.activateIndex(0); // none
             compare(Settings.values["overview.hotCornerTopLeft"], "none");
@@ -516,6 +518,8 @@ Item {
             compare(Settings.values["overview.hotCornerBottomRight"], "mission-control");
             pane.gestureMissionToggle.toggle();
             compare(Settings.values["gestures.missionControl"], false);
+            pane.workspaceCountSelect.activateIndex(3); // four spaces
+            compare(Settings.values["workspaces.count"], 4);
         }
 
         // With no bridge host on the private bus, the Battery pane is the absence

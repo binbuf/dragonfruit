@@ -30,7 +30,6 @@ set(DF_SETTINGS_QML_FILES
     ScreenSaverPane.qml
     WallpaperPane.qml
     DesktopDockPane.qml
-    MissionControlPane.qml
     BatteryPane.qml
     DisplaysPane.qml
     BluetoothPane.qml
@@ -177,7 +176,6 @@ df_qml_lint(app-settings
     AppearancePane.qml
     WallpaperPane.qml
     DesktopDockPane.qml
-    MissionControlPane.qml
     BatteryPane.qml
     DisplaysPane.qml
     BluetoothPane.qml

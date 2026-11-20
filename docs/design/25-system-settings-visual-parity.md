@@ -647,6 +647,10 @@ and increase-contrast states, and the absent-host list in light and dark.
 | Windows | Mockup labels; “Hold Super” replaces “Hold Option”; window rules move to an Advanced Windows sheet. |
 | Workspace Overview | Merge the MissionControlPane rows here. Five mockup toggles plus the real workspace-count/gesture rows in an Advanced sheet. Footer Shortcuts… and Hot Corners… open the existing sheets. |
 
+Landed in T292b: the five toggles render as the section; the workspace count,
+the gestures, and the four corner assignments are in the Advanced Workspace
+Overview sheet (Hot Corners…), and Shortcuts… opens Keyboard → Shortcuts.
+
 The top-level Overview pane is removed; `settings://pane/mission-control` and
 `settings://pane/overview` land on this section.
 
@@ -659,8 +663,28 @@ minimize reaction), **Advanced…** (the Advanced Windows sheet: application
 window rules), **Shortcuts…**, and **Hot Corners…**. The Linux-only rows keep
 their owners, and `rowSurface("desktop-dock", …)` answers `dialog` for the
 three sheet rows. “Show application menus in the menu bar” is gone from this
-pane (Menu Bar owns it). T292b replaces the single Overview entry with the
-merged section and the Advanced Workspace Overview sheet.
+pane (Menu Bar owns it).
+
+T292b lands the **Workspace Overview** section itself, replacing the temporary
+entry: the mockup description plus the five toggles (Automatically rearrange
+Workspaces, Switch to an app's Workspace, Group windows by application,
+Displays have separate Workspaces, Drag windows to the top to enter Workspace
+Overview). Only Switch to an app's Workspace
+(`overview.switchToAppSpace`) is live; rearrange, group-by-application, and
+drag-to-Overview are disabled with their reasons, and per-display workspaces is
+the read-only compositor fact. The mockup's “Spaces” is rendered as
+“Workspaces”, the naming gate's term for virtual desktops. The real workspace count
+(`workspaces.count`), the two gesture keys (`gestures.missionControl`,
+`gestures.spaceSwitch`), and the four corner assignments plus their modifiers
+(`overview.hotCorner*`) move from the deleted `MissionControlPane.qml` into an
+**Advanced Workspace Overview** sheet, opened by the footer's **Hot Corners…**
+(the sheet takes the measured 560 pt width so each corner row holds both
+popups). **Shortcuts…** still hands off to Keyboard → Shortcuts. The map's row
+sections are `Workspace Overview` and `Advanced Workspace Overview`, and
+`rowSurface` answers `dialog` for the seven sheet rows.
+`settings://pane/mission-control` and `settings://pane/overview` land on the
+section. `make t292b-settings-workspace-overview-capture` writes the section,
+the footer, the advanced sheet, and the absence pair in light/dark.
 
 ### 5.7 Menu Bar
 

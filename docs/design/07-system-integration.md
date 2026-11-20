@@ -695,13 +695,15 @@ locally instead.
   `Gesture, n corner(s)`, `n corner(s)`, or `No trigger`, with the `overview`
   glyph, plus a `Overview Settings…` link. It is shell-native because
   Overview is compositor-native.
-- The **Settings pane** (`apps/settings/MissionControlPane.qml`) writes the
-  revision-13 `overview.hotCorner*` assignment keys and the revision-1
+- The **Settings surface** is Desktop & Dock → **Workspace Overview**
+  (`apps/settings/DesktopDockPane.qml`, T292b) plus its **Advanced Workspace
+  Overview** sheet; the former `MissionControlPane.qml` is deleted. It writes
+  the revision-13 `overview.hotCorner*` assignment keys and the revision-1
   `gestures.*` trio. Every row applies live; the compositor already applies the
   gesture trio over `set_input_policy`, and applying a corner assignment needs
   the append-only request ADR [0126](adr/0126-mission-control-hot-corners-adapter.md)
   names (deferred).
-- **Absence** is a missing settings daemon: the pane's rows stay live on the
+- **Absence** is a missing settings daemon: the section's rows stay live on the
   schema defaults and it shows a one-line note. There is no adapter `present`
   hide rule, because there is no adapter view in the shell path.
 

@@ -109,6 +109,15 @@ Item {
             waitForRendering(stage);
             grabImage(shell).save("docs/captures/t227-desktop-stage.png");
 
+            // T292b: the merged Workspace Overview section at the pane's
+            // bottom, above the Shortcuts…/Hot Corners… footer.
+            var overview = showPane(shell, "desktop-dock");
+            var overviewY = overview.missionControlGroup.mapToItem(
+                        shell.detailContent, 0, 0).y;
+            shell.detailScroll.flickable.contentY = Math.max(0, overviewY - 12);
+            waitForRendering(stage);
+            grabImage(shell).save("docs/captures/t227-workspace-overview.png");
+
             // Restore the fixture list so a rerun is deterministic.
             Settings.setList("quickSettings.modules", [
                 "wifi", "bluetooth", "storage", "focus", "volume", "brightness",

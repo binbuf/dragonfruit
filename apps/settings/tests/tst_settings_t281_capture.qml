@@ -29,7 +29,9 @@ Item {
             { pane: "lock-screen", row: "idleDim", name: "lock-idle-stages" },
             { pane: "search", row: "clipboard", name: "search-clipboard" },
             { pane: "menu-bar", row: "globalMenu", name: "menubar-global-menu" },
-            { pane: "mission-control", row: "workspaceCount", name: "overview-workspaces" },
+            // T292b: the merged Desktop & Dock -> Advanced Workspace Overview
+            // sheet (the former Overview pane's rows).
+            { pane: "desktop-dock", row: "workspaceCount", name: "overview-workspaces" },
             { pane: "appearance", row: "windowControls", name: "appearance-window-controls" },
             { pane: "displays", row: "nightLight", name: "displays-night-light" },
             { pane: "sound", row: "perApp", name: "sound-per-app" },

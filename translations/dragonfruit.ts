@@ -3347,7 +3347,27 @@ Open source system software</source>
 <context>
     <name>DesktopDockPane</name>
     <message>
-        <source>All</source>
+        <source>Activating a window on another Space follows it there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Workspace Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All at Once</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3363,7 +3383,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Ask to keep changes when closing documents</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic Space reordering is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatically</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3371,7 +3403,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Available with Stage.</source>
+        <source>Automatically rearrange Workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Available with Workspace Focus.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3383,15 +3419,39 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Bottom Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Left hot corner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Left hot corner modifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Right hot corner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom Right hot corner modifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bounce an app's Dock tile once when one of its windows minimizes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Bounce app icons when windows minimize</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose an action and optional modifier for each screen corner.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Click wallpaper to reveal desktop</source>
+        <source>Click wallpaper to show desktop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3399,11 +3459,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Command</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Default web browser</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Desktop &amp; Stage</source>
+        <source>Desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop &amp; Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3415,7 +3487,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Displays have separate Workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock Magnification Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock behaviour that is specific to this desktop.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3423,15 +3511,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Dock position on screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Dock size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Drag windows to screen edges to tile</source>
+        <source>Drag windows to left or right edge of screen to tile</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Drag windows to the menu bar to fill the screen</source>
+        <source>Drag windows to menu bar to fill screen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag windows to the top to enter Workspace Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag-to-Overview is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each display keeps its own Space list in the compositor; a shared-workspace mode is not available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3439,11 +3543,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Focus Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Genie Effect</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Hold Option while dragging to tile</source>
+        <source>Group windows by application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Grouping windows by application is not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hold Super key while dragging windows to tile</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3455,7 +3571,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>In Stage</source>
+        <source>In Workspace Focus</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3467,7 +3583,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Magnification</source>
+        <source>Lock Screen</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3484,6 +3600,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Minimized window animation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move the pointer to a corner to perform an action. Choose – to leave a corner inactive, or hold a modifier while entering the corner.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3511,7 +3631,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Normal workspaces every display starts with.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3519,15 +3651,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>On Desktop shows the Files desktop icons; In Stage leaves them to Stage.</source>
+        <source>On Desktop shows the Files desktop icons; In Workspace Focus leaves them to Workspace Focus.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>One</source>
+        <source>One at a Time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Only in Stage</source>
+        <source>Only in Workspace Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open a grouped app's window chooser when the pointer dwells on its tile.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3535,7 +3671,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open advanced Dock settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open advanced window settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open hot corner settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open keyboard shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Option</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Per-window placement and rule settings. A row the host does not provide stays visible and disabled with the reason.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3543,15 +3703,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Position on screen</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Prefer tabs when opening documents</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Recent apps in Stage</source>
+        <source>Quick Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reveal every open window and workspace in the overview with a three-finger swipe.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3567,15 +3727,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Shift</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Shortcuts…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show Widgets</source>
+        <source>Show Dock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show application menus in the menu bar</source>
+        <source>Show Widgets</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3587,6 +3751,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Show recent apps in Workspace Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show suggested and recent apps in Dock</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3595,23 +3763,27 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Size</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Small</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Stage</source>
+        <source>Swipe between Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Stage is not available yet; window staging is not implemented.</source>
+        <source>Swipe left or right with three fingers to move between workspaces.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The shortcut editor is not available yet; system shortcuts are fixed.</source>
+        <source>Swipe up to open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch to an app's Workspace</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The settings daemon is not running, so these preferences apply from the built-in defaults. Overview itself is run by the compositor.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3619,19 +3791,35 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Top Left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Left hot corner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Left hot corner modifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Right hot corner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Right hot corner modifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Used for web links and web-search results.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>When windows are open</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Widgets</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Window Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3647,11 +3835,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Workspaces, gestures, and window arrangement.</source>
+        <source>Workspace Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace Focus is not available yet; window staging is not implemented.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace count, gestures, and hot corners. Overview is run by the compositor; these preferences are stored by the settings daemon.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Zoom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>–</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7089,213 +7297,6 @@ Open source system software</source>
     </message>
 </context>
 <context>
-    <name>MissionControlPane</name>
-    <message>
-        <source>Activating a window on another workspace follows it there.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Applications</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Automatic workspace reordering is not available yet.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Automatically rearrange workspaces</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Bottom Left</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Bottom Left hot corner</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Bottom Left hot corner modifier</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Bottom Right</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Bottom Right hot corner</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Bottom Right hot corner modifier</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Command</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Control</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Desktop</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Displays have separate workspaces</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Drag windows to the top to open Overview</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Drag-to-Overview is not available yet.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Each display keeps its own workspace list in the compositor; a shared-space mode is not available.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Focus Dock</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Group windows by application</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Grouping windows by application is not available yet.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Hot Corners</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Lock Screen</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Menu Bar</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Move the pointer to a corner to perform an action. Choose – to leave a corner inactive, or hold a modifier while entering the corner.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Normal workspaces every display starts with.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Notifications</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>On</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Option</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Overview</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Quick Settings</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reveal every open window and workspace in the overview with a three-finger swipe.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Shift</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Shortcuts</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Shortcuts…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Show Dock</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Swipe between Workspaces</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Swipe left or right with three fingers to move between workspaces.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Swipe up to open</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Switch to an application's workspace</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>The settings daemon is not running, so these preferences apply from the built-in defaults. Overview itself is run by the compositor.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>The shortcut editor is not available yet; system shortcuts are fixed.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Top Left</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Top Left hot corner</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Top Left hot corner modifier</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Top Right</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Top Right hot corner</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Top Right hot corner modifier</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Window Overview</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Workspace count</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Workspaces</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>–</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>NetworkPane</name>
     <message>
         <source> · </source>
@@ -9369,7 +9370,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The four corner assignments are shared with Overview; the sheet opens there.</source>
+        <source>The four corner assignments are shared with Workspace Overview in Desktop &amp; Dock.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9890,6 +9891,22 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Advanced Appearance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Windows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Workspace Overview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Advanced...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9982,7 +9999,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Audio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Audio descriptions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio descriptions are content-level, not a shell preference.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10018,11 +10043,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Automatically hide and show Dock</source>
+        <source>Automatically hide and show the Dock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Automatically rearrange workspaces</source>
+        <source>Automatically rearrange Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10067,10 +10092,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Battery</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Battery and power profiles are unavailable because their host services are not running.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10190,7 +10211,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Click wallpaper to reveal desktop</source>
+        <source>Click wallpaper to show desktop</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10215,10 +10236,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Close windows when quitting an application</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Color</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10270,6 +10287,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Custom Voice</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom voice</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Dark mode</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10318,15 +10343,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Desktop &amp; Workspaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Desktop and Dock preferences stay live on the schema defaults.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Desktop integration</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Desktop items</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10426,11 +10447,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Displays have separate workspaces</source>
+        <source>Displays have separate Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Dock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock Magnification Size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dock Size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10450,15 +10479,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Drag windows to screen edges to tile</source>
+        <source>Drag windows to left or right edge of screen to tile</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Drag windows to the menu bar to fill the screen</source>
+        <source>Drag windows to menu bar to fill screen</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Drag windows to the top to open Overview</source>
+        <source>Drag windows to the top to enter Workspace Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10478,7 +10507,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Energy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Energy Compliance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Energy and power profiles are unavailable because their host services are not running.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10590,6 +10627,14 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Glass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Glass tint</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Global app menu</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10618,11 +10663,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>High dynamic range</source>
+        <source>Hearing Devices</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Highlight color</source>
+        <source>Hearing devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High dynamic range</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10630,11 +10679,7 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Hold Option while dragging to tile</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Hot Corners</source>
+        <source>Hold Super key while dragging windows to tile</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10702,18 +10747,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Internet accounts</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Internet accounts are not installed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Internet accounts are not installed.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Internet sharing</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10778,7 +10811,11 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Live speech</source>
+        <source>Live Captions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Speech</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10831,10 +10868,6 @@ Open source system software</source>
     </message>
     <message>
         <source>MAC randomization</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Magnification</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10926,10 +10959,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Motor</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Mouse</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11006,6 +11035,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No background-sound player or audio delegate is shipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No desktop text-in-images owner exists.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11014,7 +11047,31 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No hearing-aid or LE Audio hearing-device service is integrated in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No host energy-compliance document exists.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No hover-text overlay reads the text under the pointer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No live-caption or subtitle delegate exists in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No on-device name-recognition model exists.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No on-device spoken-name model exists.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No on-device voice model or voice-cloning service exists in this build; the engine's own voices are chosen inside speech-dispatcher.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11026,6 +11083,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No real-time text service exists in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No regulatory document ships with this build.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11034,11 +11095,23 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No switch-control delegate or scanning input source exists in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No translation consumer exists.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No verification-code consumer exists.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No vocal-shortcut trigger engine (voice sound recognition mapped to shell actions) exists in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No voice-control engine or speech-to-pointer delegate exists in this build.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11075,6 +11148,18 @@ Open source system software</source>
     </message>
     <message>
         <source>Online Accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online accounts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online accounts are not installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Online accounts are not installed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11198,15 +11283,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Personal voice</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Photos</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>PipeWire has no per-session stereo-to-mono downmix in the control path this build uses.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play effects through</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pointer Control</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11350,10 +11439,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Recent apps in Stage</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Recent items</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11459,6 +11544,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Schedule</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screen Reader</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11574,10 +11663,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Shortcuts</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Shortcuts...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11598,10 +11683,6 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show application menus in menu bar</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Show application menus in the menu bar</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11615,6 +11696,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Show indicators for open applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show items</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11643,6 +11728,10 @@ Open source system software</source>
     </message>
     <message>
         <source>Show previews</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show recent apps in Workspace Focus</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11687,10 +11776,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Sign in again</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11742,11 +11827,19 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Speech</source>
+        <source>Speak sample</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Speech recognition</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spoken Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spoken name</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11786,6 +11879,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Subtitles and Captioning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Suspend stage</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11802,11 +11899,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Switch Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Switch control</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Switch to an application's workspace</source>
+        <source>Switch to an app's Workspace</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11834,6 +11935,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Text highlight color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Text in Images</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11846,7 +11951,59 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The compositor allocates a fixed menu-bar height at session start.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor cannot ignore one pointer device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor has no colour-filter pass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor has no display-contrast adjustment pass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor has no full-output alert flash surface.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor has no keyboard pointer mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor has no slow-key acceptance delay.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor has no sticky-key modifier latch.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compositor has no whole-scene colour-inversion pass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The cursor theme has no per-colour override.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The design system has no toolbar shape-cue pass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The shell has no animated-image surface to gate.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The shipped default wallpaper is always available; Featured is empty, never an error.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The text cursor blink is toolkit-owned; no per-app override exists.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11855,6 +12012,10 @@ Open source system software</source>
     </message>
     <message>
         <source>The user list is read-only while the account service is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Theme</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11882,6 +12043,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Tint window background with wallpaper color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Top Left</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11903,10 +12068,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Translation Languages</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Transparency</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11998,7 +12159,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Vocal Shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Vocal shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice Control</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -12023,10 +12192,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Wallpaper</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Wallpaper tinting</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -12066,6 +12231,10 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Window decoration has no title-icon slot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Window title bar double-click action</source>
         <translation type="unfinished"></translation>
     </message>
@@ -12074,11 +12243,15 @@ Open source system software</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Windows and scroll bars</source>
+        <source>WireGuard</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>WireGuard</source>
+        <source>Workspace Focus</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Workspace Overview</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -12087,10 +12260,6 @@ Open source system software</source>
     </message>
     <message>
         <source>Workspace indicator</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Workspaces</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

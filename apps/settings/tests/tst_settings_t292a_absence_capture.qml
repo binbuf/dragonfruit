@@ -64,14 +64,15 @@ Item {
             waitForRendering(stage);
 
             // T285 removed the top-level Overview pane, so the alias lands on
-            // Desktop & Dock's Workspace Overview section; the former Mission
-            // Control body is still reachable from its entry. The section
-            // lands with the accent wash and stays live on the defaults.
+            // Desktop & Dock's merged Workspace Overview section (T292b). The
+            // section lands with the accent wash and stays live on the
+            // defaults with its own absence note.
             shell.deepLink("settings://pane/mission-control");
             tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
             tryVerify(function() { return shell.highlightTarget !== null; });
             compare(Settings.available, false);
             waitForRendering(stage);
+            compare(shell.paneBody.item.overviewAbsenceNote.visible, true);
             save(shell, "t292a-desktop-dock-absence-overview-" + scheme);
 
             shell.destroy();

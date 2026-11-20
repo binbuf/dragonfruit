@@ -779,8 +779,9 @@ windows from an application; Stage is renamed Workspace Focus), **Widgets**
 keep changes, close on quit, Drag windows to left or right edge of screen to
 tile, Drag windows to menu bar to fill screen, Hold Super key while dragging
 windows to tile, Tiled windows have margins), and one **Window Overview**
-section whose single **Workspace Overview** disclosure opens the existing
-Mission Control surface. T292b replaces that entry with the merged section.
+section whose single **Workspace Overview** disclosure opened the existing
+Mission Control surface (T292b replaces that entry with the merged section;
+see below).
 
 The Linux-only rows keep their owners and keys but leave the main pane:
 **Advanced Dock…** (`dock.chooserOnHover`, `dock.minimizeReaction`) and
@@ -792,9 +793,37 @@ The executable map's `rowSurface("desktop-dock", …)` answers `dialog` for the
 three sheet rows, so a deep link opens the sheet and lands on the row.
 
 `make t292a-settings-desktop-dock-capture` writes the pane top, the four
-sections, the Workspace Overview entry, both advanced sheets, the hot-corner
-surface reached from the footer, and the no-daemon state in light and dark
-(`docs/captures/t292a-desktop-dock-*.png`).
+sections, the merged Workspace Overview section, both advanced sheets, the
+hot-corner sheet reached from the footer, and the no-daemon state in light and
+dark (`docs/captures/t292a-desktop-dock-*.png`).
+
+## The T292b Workspace Overview merge (ADR 0304)
+
+Desktop & Dock ends with the merged **Workspace Overview** section: the
+mockup description and the five toggles — Automatically rearrange Workspaces
+(`overview.autoRearrange`), Switch to an app's Workspace
+(`overview.switchToAppSpace`), Group windows by application
+(`overview.groupByApp`), Displays have separate Workspaces
+(`overview.perDisplay`, the read-only compositor fact), and Drag windows to the top to enter Workspace
+Overview (`overview.dragToOpen`). Switch to an app's Workspace is the one live
+toggle; the other three name why their runtime is absent and stay disabled.
+
+The former Mission Control pane's real controls are not duplicated inline.
+**Hot Corners…** in the footer opens the **Advanced Workspace Overview** sheet:
+the workspace count (`workspaces.count`), Swipe up to open
+(`gestures.missionControl`), Swipe between Workspaces
+(`gestures.spaceSwitch`), the Hot Corners note, and the four corner rows
+(action + modifier popups, `overview.hotCorner*`). **Shortcuts…** still hands
+off to Keyboard → Shortcuts. With no settings daemon the section keeps its
+live toggle on the built-in defaults and shows one note inside the card.
+
+`MissionControlPane.qml`, its dedicated tests, and the shell's unused pane
+component are deleted. The `settings://pane/mission-control` and
+`settings://pane/overview` deep links still land on the section, and the map
+answers `dialog` for the seven sheet rows so a row deep link opens the sheet.
+`make t292b-settings-workspace-overview-capture` writes the merged section, the
+footer, the advanced sheet, and the absence pair in light and dark
+(`docs/captures/t292b-workspace-overview-*.png`, ten stills).
 
 ## The T276 Desktop & Dock and Overview panes (ADR 0277)
 

@@ -143,7 +143,8 @@ Settings debug view reads it directly; T223's search index reads the same rows.
 - T285 reduces the top-level catalog to the 26 panes in the 27-entry sidebar
   (the update status row is the 27th entry). `storage` stays a hidden General
   sub-pane; `mission-control` and `control-center` moved under Desktop & Dock
-  and Menu Bar. `SettingsPanes.aliases`/`SettingsMap.aliases` are the alias
+  and Menu Bar (T292b merged the Overview rows and deleted that pane body).
+  `SettingsPanes.aliases`/`SettingsMap.aliases` are the alias
   table; `SettingsPanes.removed`/`SettingsMap.removed` carry the reason the
   three ids left the catalog (Biometrics is refused). New panes use the map
   names; user-facing titles are `Passwords & Keys`, `Backups`,
@@ -828,10 +829,10 @@ a dead affordance.
 ### 5.12 Desktop & Dock
 
 Owner: `settingsd` → compositor/shell. Absence: live on defaults; no error.
-T292a restyles the pane to the mockup's section order and labels. The former
-top-level Overview pane (`mission-control`) keeps its id; its rows stay
-reachable through the single **Workspace Overview** entry under Desktop & Dock
-until T292b merges them here.
+T292a restyled the pane to the mockup's section order and labels; T292b merged
+the former top-level Overview pane (`mission-control`) into the **Workspace
+Overview** section and its **Advanced Workspace Overview** sheet. The pane keeps
+no `mission-control` inventory: the id is a deep-link alias only.
 
 | Mockup section | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
@@ -863,9 +864,17 @@ until T292b merges them here.
 | Windows | Hold Super key while dragging windows to tile | Toggle | `tiling.modifier` | Disabled: tiling is T242 |
 | Windows | Tiled windows have margins | Toggle | `tiling.margins` | Disabled: tiling is T242 |
 | Advanced Windows | Application window rules… | Button | `windows.rules` | Disabled: the compositor window-rule engine is not present (T281); in the Advanced… Windows sheet |
-| Window Overview | Workspace Overview | Disclosure | existing: `overview.*` (mission-control) | Opens the existing surface; the `settings://pane/mission-control` alias lands here (T292b merges the section) |
-| Footer | Shortcuts… | Action | `shortcuts.*` | Opens the existing surface; the shortcut editor is still unavailable |
-| Footer | Hot Corners… | Action | `overview.hotCorner*` | Opens the existing hot-corner surface |
+| Workspace Overview | Automatically rearrange Workspaces | Toggle | `overview.autoRearrange` | Disabled: automatic workspace reordering has no runtime |
+| Workspace Overview | Switch to an app's Workspace | Toggle | `overview.switchToAppSpace` | Live: the compositor follows the window's Space on activation |
+| Workspace Overview | Group windows by application | Toggle | `overview.groupByApp` | Disabled: window grouping has no runtime |
+| Workspace Overview | Displays have separate Workspaces | Info | `overview.perDisplay` | Read-only: the compositor always keeps one workspace list per output |
+| Workspace Overview | Drag windows to the top to enter Workspace Overview | Toggle | `overview.dragToOpen` | Disabled: drag-to-Overview has no runtime |
+| Advanced Workspace Overview | Workspace count | Popup | `workspaces.count` | Live: resizes every output's normal Space list in lockstep; in the Hot Corners… sheet |
+| Advanced Workspace Overview | Swipe up to open | Toggle | `gestures.missionControl` | Live (Advanced sheet) |
+| Advanced Workspace Overview | Swipe between Workspaces | Toggle | `gestures.spaceSwitch` | Live (Advanced sheet) |
+| Advanced Workspace Overview | Top Left / Top Right / Bottom Left / Bottom Right | Action + modifier popups | `overview.hotCorner*` / `*Modifier` | Live: Command/Shift/Option/Control gate the dwell (Advanced sheet) |
+| Footer | Shortcuts… | Action | `shortcuts.*` | Opens Keyboard → Shortcuts; the shortcut editor lives there |
+| Footer | Hot Corners… | Action | `overview.hotCorner*` | Opens the Advanced Workspace Overview sheet |
 | Footer | Advanced… (Dock) / Advanced… (Windows) | Sheet | — | Opens the Advanced Dock / Advanced Windows sheet |
 
 The removed rows: “Show application menus in the menu bar” (`menu.global`) left
@@ -873,27 +882,24 @@ this pane for the Menu Bar pane (T293a); the Overview disclosure rows for Hot
 Corners and Shortcuts became footer actions; Stage is renamed Workspace Focus.
 
 <a id="pane-overview"></a>
-### 5.12.1 Overview (the `mission-control` surface)
+### 5.12.1 Overview (the `mission-control` surface, merged in T292b)
 
-Owner: `settingsd` → compositor. Absence: live on defaults; the absence note
-names the missing daemon. T276 adds the Overview and workspace rows. T285
-removed the top-level pane and T292a reaches the surface through Desktop & Dock
-→ Workspace Overview; T292b merges these rows into that section and removes the
-surface. The map keeps this row inventory under the legacy `mission-control`
-key until then.
+Owner: `settingsd` → compositor. Absence: live on defaults; the merged section
+shows one note naming the missing daemon. T276 added the Overview and workspace
+rows; T285 removed the top-level pane; T292a added the temporary entry; T292b
+merged the rows into Desktop & Dock → **Workspace Overview** (§5.12) and its
+**Advanced Workspace Overview** sheet and deleted `MissionControlPane.qml`. The
+executable map keeps no `mission-control` row inventory: the id is a deep-link
+alias (`settings://pane/mission-control` lands on the section) and the stored
+corner-action value.
 
-| Row | Control | Owner / key | Behaviour / absence |
-|---|---|---|---|
-| Automatically rearrange workspaces | Toggle | `overview.autoRearrange` | Disabled: automatic reordering is T240 |
-| Switch to an application's workspace | Toggle | `overview.switchToAppSpace` | Live: the compositor follows the window's Space on activation |
-| Group windows by application | Toggle | `overview.groupByApp` | Disabled: grouping is T240 |
-| Displays have separate workspaces | Info | `overview.perDisplay` | Read-only: the compositor always keeps one Space list per output |
-| Drag windows to the top to open Overview | Toggle | `overview.dragToOpen` | Disabled: drag-to-Overview is T240 |
-| Workspace count | Popup | `workspaces.count` | Live: resizes every output's normal Space list in lockstep |
-| Swipe up to open | Toggle | `gestures.missionControl` | Live |
-| Swipe between Workspaces | Toggle | `gestures.spaceSwitch` | Live |
-| Hot Corners | Action + modifier popups | `overview.hotCorner*` / `*Modifier` | Live: Command/Shift/Option/Control gate the dwell |
-| Shortcuts… | Sheet | `shortcuts.*` | Disabled: shortcut editor not implemented |
+Row history, for the record: Automatically rearrange workspaces →
+**Automatically rearrange Workspaces** (the mockup's “Spaces” is the
+locale term); Switch to an application's workspace → **Switch to an app's
+Workspace**; Displays have separate workspaces → **Displays have separate
+Workspaces**; Drag windows to the top to open Overview → **Drag
+windows to the top to enter Workspace Overview**. Shortcuts… is now the
+footer's hand-off to Keyboard → Shortcuts.
 
 <a id="pane-displays"></a>
 ### 5.13 Displays
@@ -984,13 +990,14 @@ Owner: shell/compositor + `settingsd`.
 | Start after | Start after | Popup | `idle.blank` | 2 h/5 h/never; None disables |
 | Show with clock | Show with clock | Toggle | `screenSaver.clock` | Lock scene |
 | Options… | Clock options… | Sheet | `settingsd` | Style-specific; disabled when None |
-| Hot Corners… | Hot corners… | Button | existing: `overview.hotCorner*` | Opens Overview |
+| Hot Corners… | Hot corners… | Button | existing: `overview.hotCorner*` | Opens Desktop & Dock (the corner rows live in its Advanced Workspace Overview sheet, T292b) |
 
 **T278 status.** The gallery has two real previews of the first-party lock
 scene; the clock preview renders the live clock/date/seconds choices. None
 disables Start After and the clock options with a reason. Start After offers
 2 h/5 h/never and shows a custom idle value's real duration. Hot Corners
-opens the actual Overview controls.
+opens Desktop & Dock, where the merged Workspace Overview section and its
+Advanced Workspace Overview sheet hold the corner controls (T292b).
 
 <a id="pane-notifications"></a>
 ### 5.16 Notifications

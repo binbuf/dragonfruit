@@ -921,9 +921,9 @@ Item {
     }
 
     // The pane-body registry: a pane appears here once its content has landed.
-    // T285 removes the top-level Biometrics, Overview, and Quick Settings
-    // cases; their QML files stay for T292/T293/T299 to fold into the new
-    // homes.
+    // T285 removed the top-level Biometrics, Overview, and Quick Settings
+    // cases; T292b deleted the Overview body (merged into Desktop & Dock),
+    // and the remaining bodies fold into their new homes in T293/T299.
     function paneComponent(id) {
         switch (id) {
         case "appearance":
@@ -1248,12 +1248,8 @@ Item {
         id: desktopDockPaneComponent
         DesktopDockPane {
             onNavigateRequested: (paneId) => root.selectPane(paneId)
+            onSectionRequested: (paneId, section) => root.openSection(paneId, section)
         }
-    }
-
-    Component {
-        id: missionControlPaneComponent
-        MissionControlPane { }
     }
 
     Component {

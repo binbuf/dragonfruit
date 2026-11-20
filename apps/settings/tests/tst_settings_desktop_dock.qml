@@ -4,16 +4,19 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Desktop & Dock-pane tests (T-09.4; T292a restyle). Headless with
-// `DF_SETTINGS_FIXTURE`, so the `Settings` singleton serves the schema
-// defaults and keeps writes in memory: no bus, no daemon, deterministic.
-// Every control is asserted to apply live to its `dock.*` key on the same
-// event-loop turn, and an external settingsd change flows back into the
-// control (the T-09.1b converge rule).
+// Desktop & Dock-pane tests (T-09.4; T292a restyle; T292b merged Workspace
+// Overview). Headless with `DF_SETTINGS_FIXTURE`, so the `Settings` singleton
+// serves the schema defaults and keeps writes in memory: no bus, no daemon,
+// deterministic. Every control is asserted to apply live to its `dock.*` key on
+// the same event-loop turn, and an external settingsd change flows back into
+// the control (the T-09.1b converge rule).
 //
-// T292a covers the mockup's section order and labels, the two advanced sheets
-// (their rows keep their keys), the footer actions, the single live Workspace
-// Overview entry, and the absence of the menu-bar row.
+// T292a covers the mockup's section order and labels, the advanced sheets
+// (their rows keep their keys), the footer actions, and the absence of the
+// menu-bar row. T292b covers the merged Workspace Overview section (five
+// toggles), its Advanced Workspace Overview sheet (workspace count, gestures,
+// hot corners), and the removed Mission Control pane's deep link landing on the
+// section.
 Item {
     id: stage
     width: 900
@@ -44,11 +47,18 @@ Item {
             Settings.set("dock.minimizeReaction", false);
             Settings.set("menu.global", true);
             Settings.set("defaults.browser", "");
+            Settings.set("overview.hotCornerTopLeft", "mission-control");
+            Settings.set("overview.hotCornerTopRight", "notification-center");
+            Settings.set("overview.hotCornerBottomLeft", "desktop-reveal");
+            Settings.set("overview.hotCornerBottomRight", "lock-screen");
             Settings.set("overview.hotCornerTopLeftModifier", "none");
             Settings.set("overview.hotCornerTopRightModifier", "none");
             Settings.set("overview.hotCornerBottomLeftModifier", "none");
             Settings.set("overview.hotCornerBottomRightModifier", "none");
             Settings.set("overview.switchToAppSpace", true);
+            Settings.set("gestures.missionControl", true);
+            Settings.set("gestures.spaceSwitch", true);
+            Settings.set("workspaces.count", 3);
         }
 
         function make() {
@@ -71,6 +81,31 @@ Item {
 
         function approx(a, b) {
             return Math.abs(a - b) < 0.001;
+        }
+
+        // The rendered, id-bearing rows of one group, in order. The merged
+        // Workspace Overview group starts with an absence note, which carries
+        // no `settingsId`.
+        function rowLabels(group) {
+            var labels = [];
+            var rows = group.rows.children;
+            for (var i = 0; i < rows.length; ++i) {
+                if (rows[i].settingsId === undefined)
+                    continue;
+                labels.push(rows[i].label);
+            }
+            return labels;
+        }
+
+        // T292b: the four corner rows of the Advanced Workspace Overview
+        // sheet, in order. They sit inside the sheet's width-constrained
+        // column, so a direct-children walk of the group skips them.
+        function cornerRows(pane) {
+            var ids = ["topLeft", "topRight", "bottomLeft", "bottomRight"];
+            var rows = [];
+            for (var i = 0; i < ids.length; ++i)
+                rows.push(pane.rowTargetFor(ids[i]));
+            return rows;
         }
 
         // The rendered group titles above the footer, in order.
@@ -106,15 +141,15 @@ Item {
         }
 
         // T292a: the mockup's five sections in order, under the toolbar.
+        // T292b: the last one is the merged Workspace Overview.
         function test_sections_follow_the_mockup_order_and_labels() {
             var shell = make();
             var pane = paneOf(shell);
             compare(renderedGroupTitles(pane).join(","),
                     ["Dock", "Desktop & Workspaces", "Widgets", "Windows",
-                     "Window Overview"].join(","));
+                     "Workspace Overview"].join(","));
 
             // Dock rows, in the mockup order and with the mockup labels.
-            var dockRows = pane.dockGroup.rows.children;
             var dockLabels = [
                 "Dock Size", "Dock Magnification Size",
                 "Dock position on screen", "Minimized window animation",
@@ -125,34 +160,24 @@ Item {
                 "Show indicators for open applications",
                 "Show suggested and recent apps in Dock"
             ];
-            compare(dockRows.length, dockLabels.length);
-            for (var d = 0; d < dockRows.length; ++d)
-                compare(dockRows[d].label, dockLabels[d],
-                        "Dock row " + d + " label");
+            compare(rowLabels(pane.dockGroup).join("|"), dockLabels.join("|"));
 
             // Desktop & Workspaces, with the Stage -> Workspace Focus rename.
-            var desktopRows = pane.desktopGroup.rows.children;
             var desktopLabels = [
                 "Show items", "Click wallpaper to show desktop",
                 "Workspace Focus", "Show recent apps in Workspace Focus",
                 "Show windows from an application"
             ];
-            compare(desktopRows.length, desktopLabels.length);
-            for (var s = 0; s < desktopRows.length; ++s)
-                compare(desktopRows[s].label, desktopLabels[s],
-                        "Desktop row " + s + " label");
+            compare(rowLabels(pane.desktopGroup).join("|"),
+                    desktopLabels.join("|"));
             compare(pane.desktopItemsOptions[1].label, "In Workspace Focus");
 
             // Widgets: the two disabled widget rows and the live browser row.
-            var widgetRows = pane.widgetsGroup.rows.children;
-            compare(widgetRows.length, 3);
-            compare(widgetRows[0].label, "Show Widgets");
-            compare(widgetRows[1].label, "Dim widgets on desktop");
-            compare(widgetRows[2].label, "Default web browser");
-            compare(widgetRows[2].settingsId, "defaultBrowser");
+            compare(rowLabels(pane.widgetsGroup).join("|"), ["Show Widgets",
+                    "Dim widgets on desktop", "Default web browser"].join("|"));
+            compare(pane.defaultBrowserRow.settingsId, "defaultBrowser");
 
             // Windows, with the Super modifier and both edge-tile labels.
-            var windowRows = pane.windowsGroup.rows.children;
             var windowLabels = [
                 "Prefer tabs when opening documents",
                 "Ask to keep changes when closing documents",
@@ -162,18 +187,30 @@ Item {
                 "Hold Super key while dragging windows to tile",
                 "Tiled windows have margins"
             ];
-            compare(windowRows.length, windowLabels.length);
-            for (var w = 0; w < windowRows.length; ++w)
-                compare(windowRows[w].label, windowLabels[w],
-                        "Windows row " + w + " label");
+            compare(rowLabels(pane.windowsGroup).join("|"),
+                    windowLabels.join("|"));
 
-            // The Single live Overview entry.
-            compare(pane.missionControlGroup.rows.children.length, 1);
-            compare(pane.overviewRow.label, "Workspace Overview");
-            compare(pane.hotCornersRow, undefined,
-                    "hot corners are a footer action, not an inline row");
-            compare(pane.shortcutsRow, undefined,
-                    "shortcuts are a footer action, not an inline row");
+            // T292b: the merged Workspace Overview section, five toggles.
+            compare(pane.missionControlGroup.title, "Workspace Overview");
+            compare(pane.missionControlGroup.sectionId, "Workspace Overview");
+            var overviewLabels = [
+                "Automatically rearrange Workspaces", "Switch to an app's Workspace",
+                "Group windows by application",
+                "Displays have separate Workspaces",
+                "Drag windows to the top to enter Workspace Overview"
+            ];
+            compare(rowLabels(pane.missionControlGroup).join("|"),
+                    overviewLabels.join("|"));
+            compare(collectRowIds(pane.missionControlGroup, []).join(","),
+                    ["rearrange", "switchToAppSpace",
+                     "groupByApp", "perDisplay", "dragToOpen"].join(","),
+                    "the five toggles are the section; nothing is duplicated");
+            // The controls are not duplicated inline: the workspace count, the
+            // gestures, and the corner list live in the advanced sheet.
+            compare(collectRowIds(pane.missionControlGroup, []).indexOf("workspaceCount"), -1);
+            compare(collectRowIds(pane.missionControlGroup, []).indexOf("topLeft"), -1);
+            compare(pane.overviewRow, undefined,
+                    "the temporary Workspace Overview entry is gone");
 
             // The footer carries the four actions in the mockup order.
             compare(pane.footer.row.children.length, 4);
@@ -185,7 +222,7 @@ Item {
                     "Open advanced window settings");
             compare(pane.shortcutsButton.text, "Shortcuts…");
             compare(pane.hotCornersButton.text, "Hot Corners…");
-            compare(pane.sourceRevision, "t292a");
+            compare(pane.sourceRevision, "t292b");
         }
 
         function test_size_slider_applies_live() {
@@ -351,18 +388,28 @@ Item {
         }
 
         // Rows inside a Dialog are not pane-body descendants once the Dialog
-        // adopts the overlay layer, so the three sheet rows are collected
-        // through the pane's row handles.
+        // adopts the overlay layer, so the sheet rows are collected through the
+        // pane's row handles (T292a; T292b adds the Workspace Overview sheet).
         function collectRowIds(item, out) {
             if (item.settingsId !== undefined
                     && String(item.settingsId).length > 0)
                 out.push(item.settingsId);
-            if (item.chooserOnHoverRowHandle !== undefined) {
+            if (item.windowRulesRowHandle !== undefined) {
                 var sheet = [item.chooserOnHoverRowHandle,
                              item.minimizeReactionRowHandle,
-                             item.windowRulesRowHandle];
+                             item.windowRulesRowHandle,
+                             item.workspaceCountRowHandle,
+                             item.swipeUpRowHandle,
+                             item.spaceSwitchRowHandle,
+                             // The four corner rows are plain SettingsRows;
+                             // rowTargetFor names them through the pane.
+                             item.rowTargetFor("topLeft"),
+                             item.rowTargetFor("topRight"),
+                             item.rowTargetFor("bottomLeft"),
+                             item.rowTargetFor("bottomRight")];
                 for (var k = 0; k < sheet.length; ++k) {
-                    if (sheet[k] !== null && out.indexOf(sheet[k].settingsId) < 0)
+                    if (sheet[k] !== null && sheet[k] !== undefined
+                            && out.indexOf(sheet[k].settingsId) < 0)
                         out.push(sheet[k].settingsId);
                 }
             }
@@ -372,10 +419,10 @@ Item {
             return out;
         }
 
-        // T276/T292a: the rendered rows are the executable map's Desktop & Dock
-        // inventory, not a second list. The Shortcuts…/Hot Corners… ids stay in
-        // the map (their Editor surfaces are still absent) but are rendered as
-        // footer actions, so they are checked as live footer buttons.
+        // T276/T292a/T292b: the rendered rows are the executable map's Desktop
+        // & Dock inventory, not a second list. The Shortcuts…/Hot Corners…
+        // footer actions keep their map ids (the shortcut editor is still
+        // absent; Hot Corners… opens the advanced sheet).
         function test_rows_match_the_executable_map() {
             var shell = make();
             var pane = paneOf(shell);
@@ -383,8 +430,8 @@ Item {
             var footerIds = { "shortcuts": pane.shortcutsButton,
                               "hotCorners": pane.hotCornersButton };
             var mapRows = SettingsMap.rowsFor("desktop-dock");
-            verify(mapRows.length === 31,
-                   "expected thirty-one map rows, got " + mapRows.length);
+            verify(mapRows.length === 42,
+                   "expected forty-two map rows, got " + mapRows.length);
             for (var i = 0; i < mapRows.length; ++i) {
                 var id = mapRows[i].id;
                 if (footerIds[id] !== undefined) {
@@ -439,7 +486,6 @@ Item {
             verifyDisabledReason(pane.dragToFillRow, "Drag to fill");
             verifyDisabledReason(pane.holdModifierRow, "Hold modifier to tile");
             verifyDisabledReason(pane.tiledMarginsRow, "Tiled margins");
-            compare(pane.missionControlGroup.rows.children.length, 1);
             compare(SettingsMap.rowFor("desktop-dock", "windowRules").absence,
                     "disabled-with-reason");
             verifyDisabledReason(pane.windowRulesRowHandle,
@@ -494,10 +540,12 @@ Item {
             tryVerify(function() { return !pane.advancedWindowsDialog.open; });
         }
 
-        // The map's rowSurface answers "dialog" for exactly the three sheet
-        // rows so a deep link can open the sheet and land on the row.
+        // The map's rowSurface answers "dialog" for exactly the sheet rows so a
+        // deep link can open the sheet and land on the row.
         function test_advanced_rows_are_dialog_rows() {
-            var dialogIds = ["chooserOnHover", "minimizeReaction", "windowRules"];
+            var dialogIds = ["chooserOnHover", "minimizeReaction", "windowRules",
+                             "workspaceCount", "swipeUp", "spaceSwitch",
+                             "topLeft", "topRight", "bottomLeft", "bottomRight"];
             var rows = SettingsMap.rowsFor("desktop-dock");
             for (var i = 0; i < rows.length; ++i) {
                 var surface = SettingsMap.rowSurface("desktop-dock", rows[i].id);
@@ -527,37 +575,168 @@ Item {
                     shell.paneBody.item.chooserOnHoverRowHandle);
         }
 
-        // -- T292a: the live Workspace Overview entry ----------------------
+        // -- T292b: the merged Workspace Overview --------------------------
 
-        function test_workspace_overview_entry_opens_the_existing_surface() {
+        // The five mockup toggles: two live keys, one read-only compositor
+        // fact, and two honest disabled rows.
+        function test_workspace_overview_toggles() {
             var shell = make();
             var pane = paneOf(shell);
-            compare(pane.missionControlGroup.title, "Window Overview");
-            compare(pane.overviewRow.settingsId, "overview");
-            compare(pane.overviewRow.label, "Workspace Overview");
-            verify(pane.overviewRow.disclosure);
-            verify(pane.overviewRow.enabled);
+            var group = pane.missionControlGroup;
 
-            // The alias and the entry share one landing.
+            compare(pane.rearrangeRow.settingsKey, "overview.autoRearrange");
+            compare(pane.groupByAppRow.settingsKey, "overview.groupByApp");
+            compare(pane.dragToOpenRow.settingsKey, "overview.dragToOpen");
+            verifyDisabledReason(pane.rearrangeRow, "Automatically rearrange Workspaces");
+            verifyDisabledReason(pane.groupByAppRow, "Group windows by application");
+            verifyDisabledReason(pane.dragToOpenRow,
+                                 "Drag windows to the top to enter Workspace Overview");
+            // Per-display workspaces is read-only: one workspace list per output.
+            compare(SettingsMap.rowFor("desktop-dock", "perDisplay").absence,
+                    "read-only");
+            verify(pane.perDisplayRow.enabled, "the per-display row states a fact");
+            verify(pane.perDisplayRow.description.length > 0);
+
+            // Switch to an app's Space is live and converges both ways.
+            compare(pane.switchToAppSpaceToggle.checked, true);
+            pane.switchToAppSpaceToggle.toggle();
+            compare(Settings.values["overview.switchToAppSpace"], false);
+            Settings.set("overview.switchToAppSpace", true);
+            compare(pane.switchToAppSpaceToggle.checked, true);
+            compare(pane.switchToAppSpaceRow.settingsKey,
+                    "overview.switchToAppSpace");
+
+            // The merged section carries no inline control that duplicates the
+            // advanced sheet.
+            verify(group.rows.children.length > 0);
+        }
+
+        function test_advanced_workspace_overview_sheet_keeps_the_real_controls() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.advancedOverviewDialog.open, false);
+            compare(pane.advancedOverviewDialog.title, "Advanced Workspace Overview");
+
+            pane.hotCornersButton.clicked();
+            tryVerify(function() { return pane.advancedOverviewDialog.open; });
+            var group = pane.advancedOverviewGroup;
+            compare(group.title, "Advanced Workspace Overview");
+            // The top three rows are the group's own; the four corner rows sit
+            // in the width-constrained column below the Hot Corners note.
+            compare(rowLabels(group).join("|"),
+                    ["Workspace count", "Swipe up to open",
+                     "Swipe between Workspaces"].join("|"));
+            var corners = cornerRows(pane);
+            compare(corners.length, 4);
+            compare(corners.map(function(row) { return row.label; }).join("|"),
+                    ["Top Left", "Top Right", "Bottom Left",
+                     "Bottom Right"].join("|"));
+            compare(pane.hotCornersDescription.text.length > 0, true);
+
+            // Workspace count.
+            compare(pane.workspaceCountSelect.currentIndex, 2); // three spaces
+            pane.workspaceCountSelect.activateIndex(4);         // five spaces
+            compare(Settings.values["workspaces.count"], 5);
+            Settings.set("workspaces.count", 2);
+            tryVerify(function() {
+                return pane.workspaceCountSelect.currentIndex === 1;
+            });
+
+            // Gestures.
+            compare(pane.gestureMissionToggle.checked, true);
+            pane.gestureMissionToggle.toggle();
+            compare(Settings.values["gestures.missionControl"], false);
+            Settings.set("gestures.missionControl", true);
+            compare(pane.gestureMissionToggle.checked, true);
+            pane.gestureSpaceToggle.toggle();
+            compare(Settings.values["gestures.spaceSwitch"], false);
+            Settings.set("gestures.spaceSwitch", true);
+            compare(pane.gestureSpaceToggle.checked, true);
+
+            // The four corners and their modifiers.
+            compare(pane.topLeftSelect.currentIndex, 1);        // Overview
+            compare(pane.bottomRightSelect.currentIndex, 4);    // Lock Screen
+            pane.topLeftSelect.activateIndex(0);                // none
+            compare(Settings.values["overview.hotCornerTopLeft"], "none");
+            pane.bottomLeftSelect.activateIndex(1);             // Overview
+            compare(Settings.values["overview.hotCornerBottomLeft"], "mission-control");
+            pane.topRightSelect.activateIndex(2);               // Notifications
+            compare(Settings.values["overview.hotCornerTopRight"], "notification-center");
+            pane.topRightModifierSelect.activateIndex(1);       // Command
+            compare(Settings.values["overview.hotCornerTopRightModifier"], "command");
+            Settings.set("overview.hotCornerBottomRight", "desktop-reveal");
+            tryVerify(function() {
+                return pane.bottomRightSelect.currentIndex === 3;
+            });
+
+            // The full action vocabulary the compositor's wire uses.
+            var expected = [
+                "none", "mission-control", "notification-center",
+                "desktop-reveal", "lock-screen", "launchpad",
+                "control-center", "show-dock", "menu-bar", "focus-dock"
+            ];
+            compare(pane.actionOptions.length, expected.length);
+            for (var i = 0; i < expected.length; ++i)
+                compare(pane.actionOptions[i].value, expected[i]);
+
+            // Deep links land on the sheet rows too. The reveal is deferred
+            // (one `Qt.callLater` after the dialog opens), so wait for the
+            // landing rather than for the sheet.
+            verify(shell.deepLink("settings://pane/desktop-dock/row/workspaceCount"));
+            tryVerify(function() {
+                return shell.paneBody.item.advancedOverviewDialog.open
+                        && shell.highlightTarget
+                           === shell.paneBody.item.workspaceCountRowHandle;
+            });
+            compare(shell.currentRowId, "workspaceCount");
+
+            pane.closeAdvancedOverview();
+            tryVerify(function() { return !pane.advancedOverviewDialog.open; });
+            compare(pane.advancedOverviewDialog.open, false);
+            compare(pane.advancedDockDialog.open, false);
+            compare(pane.advancedWindowsDialog.open, false);
+        }
+
+        // The former Mission Control pane is gone: its alias and deep link land
+        // on the merged section, and the pane id is not a top-level pane.
+        function test_mission_control_deep_link_lands_on_the_merged_section() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(SettingsPanes.paneById("mission-control"), null,
+                    "the Overview pane is not a top-level pane");
             compare(SettingsPanes.resolve("mission-control").paneId,
                     "desktop-dock");
             compare(SettingsPanes.resolve("mission-control").anchor,
                     "Workspace Overview");
             compare(SettingsPanes.resolve("overview").anchor,
                     "Workspace Overview");
+            compare(SettingsMap.rowsFor("mission-control").length, 0,
+                    "the map keeps no removed-pane inventory");
 
-            var seen = [];
-            pane.navigateRequested.connect(function(paneId) { seen.push(paneId); });
-            pane.overviewRow.disclosureClicked();
-            compare(seen.length, 1);
-            compare(seen[0], "mission-control");
-
-            // The alias deep link lands on the section, not a dead end.
-            shell.deepLink("settings://pane/mission-control");
+            verify(shell.deepLink("settings://pane/mission-control"));
             tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
             tryVerify(function() { return shell.highlightTarget !== null; });
+            compare(shell.highlightTarget, shell.paneBody.item.missionControlGroup);
             compare(shell.highlightTarget.sectionId, "Workspace Overview");
             verify(shell.highlightTarget.highlighted);
+
+            // The footer's Shortcuts… and Hot Corners… open existing surfaces
+            // and no inline duplicate lives in the pane.
+            var sections = [];
+            pane.sectionRequested.connect(function(paneId, section) {
+                sections.push(paneId + "/" + section);
+            });
+            pane.shortcutsButton.clicked();
+            compare(sections.join(","), "keyboard/shortcuts");
+
+            // The shell wires Shortcuts… to the Keyboard pane's section.
+            shell.openSection("keyboard", "shortcuts");
+            tryVerify(function() { return shell.currentPaneId === "keyboard"; });
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready
+                        && shell.highlightTarget !== null;
+            }, 5000);
+            compare(shell.currentPaneId, "keyboard");
         }
 
         function test_footer_actions_open_the_existing_surfaces() {
@@ -567,28 +746,14 @@ Item {
             var navigated = [];
             pane.navigateRequested.connect(function(paneId) { navigated.push(paneId); });
             pane.hotCornersButton.clicked();
-            compare(navigated.length, 1);
-            compare(navigated[0], "mission-control");
-
-            var sections = [];
-            pane.sectionRequested.connect(function(paneId, section) {
-                sections.push(paneId + "/" + section);
-            });
-            pane.shortcutsButton.clicked();
-            compare(sections.length, 1);
-            compare(sections[0], "keyboard/shortcuts");
+            compare(navigated.length, 0,
+                    "Hot Corners… stays on this pane");
+            tryVerify(function() { return pane.advancedOverviewDialog.open; });
+            pane.closeAdvancedOverview();
+            tryVerify(function() { return !pane.advancedOverviewDialog.open; });
 
             // No inline shortcut editor or hot-corner control is duplicated.
-            compare(collectRowIds(pane, []).indexOf("topLeft"), -1);
-
-            // The shell hands the shortcut action to the Keyboard pane.
-            shell.openSection("keyboard", "shortcuts");
-            tryVerify(function() { return shell.currentPaneId === "keyboard"; });
-            tryVerify(function() {
-                return shell.paneBody.status === Loader.Ready
-                        && shell.highlightTarget !== null;
-            }, 5000);
-            compare(shell.currentPaneId, "keyboard");
+            compare(collectRowIds(pane.missionControlGroup, []).indexOf("topLeft"), -1);
         }
 
         function test_default_browser_choices_apply_and_persist() {
@@ -621,12 +786,22 @@ Item {
                        "stageWindowMode", "showWidgets", "dimWidgets",
                        "defaultBrowser", "preferTabs", "askToKeepChanges",
                        "closeOnQuit", "dragToTile", "dragToFill", "tileModifier",
-                       "tileMargins", "overview", "hotCorners", "shortcuts",
-                       "chooserOnHover", "minimizeReaction", "windowRules"];
+                       "tileMargins", "chooserOnHover", "minimizeReaction",
+                       "windowRules", "rearrange", "switchToAppSpace",
+                       "groupByApp", "perDisplay", "dragToOpen", "hotCorners",
+                       "shortcuts", "workspaceCount", "swipeUp", "spaceSwitch",
+                       "topLeft", "topRight", "bottomLeft", "bottomRight"];
             var rows = SettingsMap.rowsFor("desktop-dock");
             compare(rows.length, ids.length);
             for (var r = 0; r < rows.length; ++r) {
                 compare(rows[r].id, ids[r], "row " + r + " order");
+                compare(rows[r].section,
+                        ids[r] === "workspaceCount" || ids[r] === "swipeUp"
+                        || ids[r] === "spaceSwitch" || ids[r] === "topLeft"
+                        || ids[r] === "topRight" || ids[r] === "bottomLeft"
+                        || ids[r] === "bottomRight"
+                        ? "Advanced Workspace Overview" : rows[r].section,
+                        ids[r] + " section");
                 verify(SettingsSearch.rowSynonymsFor("desktop-dock",
                                                      rows[r].id).length > 0,
                        rows[r].id + " must carry search synonyms");
@@ -636,6 +811,17 @@ Item {
                 return entry.paneId === "desktop-dock" && entry.targetRow === "stage";
             });
             verify(landed.length > 0, "'workspace focus' must find the renamed row");
+
+            // T292b: the moved names still land in the merged home.
+            var moved = ["mission control", "workspace overview", "hot corners",
+                         "swipe up", "workspace count", "switch to app space"];
+            for (var q = 0; q < moved.length; ++q) {
+                var found = SettingsSearch.search(moved[q]).filter(function(entry) {
+                    return entry.paneId === "desktop-dock";
+                });
+                verify(found.length > 0, "'" + moved[q]
+                       + "' must reach Desktop & Dock");
+            }
         }
 
         // T276: the measured 740×820 window must not clip or overflow the new
@@ -658,6 +844,8 @@ Item {
                     var row = rows[i];
                     if (row.control === undefined)
                         continue; // a group description, not a SettingsRow
+                    if (row.settingsId === undefined)
+                        continue; // the Workspace Overview absence note card
                     verify(row.width > 0, "row " + i + " in group " + g
                            + " must have width");
                     if (row.control.width === 0)
@@ -680,6 +868,45 @@ Item {
                        <= pane.width + 1,
                        "footer action " + b + " must stay inside the pane");
             }
+
+            // The advanced Workspace Overview sheet's rows stay inside their
+            // 480 pt card, with both selects visible on each corner row.
+            pane.openAdvancedOverview();
+            tryVerify(function() { return pane.advancedOverviewDialog.open; });
+            waitForRendering(stage);
+            var sheetRows = pane.advancedOverviewGroup.rows.children;
+            for (var s = 0; s < sheetRows.length; ++s) {
+                var sheetRow = sheetRows[s];
+                if (sheetRow.control === undefined)
+                    continue;
+                verify(sheetRow.control.x + sheetRow.control.width
+                       <= sheetRow.width + 1,
+                       "advanced row " + s + " control must stay inside the row");
+            }
+            compare(pane.workspaceCountSelect.width > 0, true);
+            var corners = cornerRows(pane);
+            compare(corners.length, 4);
+            for (var c = 0; c < corners.length; ++c) {
+                var row = corners[c];
+                // The two popups are reached through the pane's handles; the
+                // row's control slot (60% of the row) must hold both plus the
+                // spacing between them.
+                var first = [pane.topLeftSelect, pane.topRightSelect,
+                             pane.bottomLeftSelect, pane.bottomRightSelect][c];
+                var second = [pane.topLeftModifierSelect,
+                              pane.topRightModifierSelect,
+                              pane.bottomLeftModifierSelect,
+                              pane.bottomRightModifierSelect][c];
+                verify(row.control.width >= first.width + second.width,
+                       "corner row " + c + " must fit both popups (" +
+                       row.control.width + " vs " + first.width + "+" +
+                       second.width + ")");
+                var left = first.mapToItem(row, 0, 0).x;
+                var right = second.mapToItem(row, 0, 0).x + second.width;
+                verify(left >= 0 && right <= row.width + 1,
+                       "corner row " + c + " popups must stay inside the row");
+            }
+            pane.closeAdvancedOverview();
         }
     }
 }

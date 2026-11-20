@@ -3,7 +3,8 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Desktop & Dock pane (T-09.4; T276 completion; T292a restyle).
+// The Desktop & Dock pane (T-09.4; T276 completion; T292a restyle; T292b
+// merged Workspace Overview).
 //
 // The pane follows the mockup's section order and labels:
 //
@@ -14,17 +15,18 @@ import Dragonfruit.Settings
 //                           recent apps in Workspace Focus, windows from an app
 //   Widgets                 Show Widgets, Dim widgets, Default web browser
 //   Windows                 tabs, keep changes, close on quit, the tiling rows
-//   Window Overview         the temporary **Workspace Overview** entry until
-//                           T292b merges the former Mission Control surface
+//   Workspace Overview      the merged Overview / Workspaces / Hot Corners /
+//                           Shortcuts surface (T292b): five mockup toggles
 //   Footer                  Shortcuts… and Hot Corners… open the existing
 //                           surfaces; they are not duplicated inline.
 //
 // The Linux-only rows keep their real owners and keys but leave the main pane
-// for two advanced sheets (T292a): **Advanced Dock** owns the hover chooser and
-// the minimize reaction, **Advanced Windows** owns the application window
-// rules. A deep link to an advanced row opens its sheet through
-// `openRowSurface` / `rowTargetFor`, the same closed-dialog path Appearance
-// uses (see T290f).
+// for three advanced sheets: **Advanced Dock** owns the hover chooser and the
+// minimize reaction, **Advanced Windows** owns the application window rules
+// (T292a), and **Advanced Workspace Overview** owns the real workspace count,
+// the gesture toggles, and the four corner assignments (T292b). A deep link to
+// an advanced row opens its sheet through `openRowSurface` / `rowTargetFor`,
+// the same closed-dialog path Appearance uses (see T290f).
 //
 // Every live control is a stock design-system component bound to the `Settings`
 // singleton (never D-Bus directly) with the T-09.1b write-on-interaction /
@@ -91,17 +93,101 @@ Item {
 
     // T292a: the rows that live in a closed advanced sheet, in rendered order.
     // `SettingsMap.rowSurface()` answers "dialog" for exactly these ids.
+    // T292b: the merged Workspace Overview's real workspace count, its gesture
+    // rows, and the four corner assignments live in the Advanced Workspace
+    // Overview sheet, so a deep link opens that sheet and lands on the row.
     readonly property var advancedDockRowIds: ["chooserOnHover", "minimizeReaction"]
     readonly property var advancedWindowsRowIds: ["windowRules"]
+    readonly property var advancedOverviewRowIds: ["workspaceCount", "swipeUp",
+                                                   "spaceSwitch", "topLeft",
+                                                   "topRight", "bottomLeft",
+                                                   "bottomRight"]
+
+    // -- T292b: the merged Workspace Overview --------------------------------
+    // The compositor owns Overview, the workspace model, and corner detection;
+    // this pane is the configuration half, so every live control writes a
+    // settingsd key. The five mockup toggles are the section; the real
+    // workspace count, the gestures, and the four corner assignments moved
+    // here from the former Mission Control pane.
+    readonly property bool gestureMissionControl:
+        Settings.values["gestures.missionControl"] === true
+    readonly property bool gestureSpaceSwitch:
+        Settings.values["gestures.spaceSwitch"] === true
+    readonly property bool switchToAppSpace:
+        Settings.values["overview.switchToAppSpace"] !== false
+    readonly property int workspaceCount:
+        Settings.values["workspaces.count"] === undefined
+            ? 3 : Number(Settings.values["workspaces.count"])
+
+    // The corner assignments, spelled with the stable action vocabulary the
+    // compositor's wire uses. The modifiers gate the dwell.
+    readonly property string topLeft:
+        Settings.values["overview.hotCornerTopLeft"] || "mission-control"
+    readonly property string topRight:
+        Settings.values["overview.hotCornerTopRight"] || "notification-center"
+    readonly property string bottomLeft:
+        Settings.values["overview.hotCornerBottomLeft"] || "desktop-reveal"
+    readonly property string bottomRight:
+        Settings.values["overview.hotCornerBottomRight"] || "lock-screen"
+    readonly property string topLeftModifier:
+        Settings.values["overview.hotCornerTopLeftModifier"] || "none"
+    readonly property string topRightModifier:
+        Settings.values["overview.hotCornerTopRightModifier"] || "none"
+    readonly property string bottomLeftModifier:
+        Settings.values["overview.hotCornerBottomLeftModifier"] || "none"
+    readonly property string bottomRightModifier:
+        Settings.values["overview.hotCornerBottomRightModifier"] || "none"
+
+    // The full action vocabulary shared with the compositor. The first five
+    // keep their historical order so stored values stay stable; the additions
+    // map to the shell's existing input actions.
+    readonly property var actionOptions: [
+        { value: "none", label: qsTr("\u2013") },
+        { value: "mission-control", label: qsTr("Overview") },
+        { value: "notification-center", label: qsTr("Notifications") },
+        { value: "desktop-reveal", label: qsTr("Desktop") },
+        { value: "lock-screen", label: qsTr("Lock Screen") },
+        { value: "launchpad", label: qsTr("Applications") },
+        { value: "control-center", label: qsTr("Quick Settings") },
+        { value: "show-dock", label: qsTr("Show Dock") },
+        { value: "menu-bar", label: qsTr("Menu Bar") },
+        { value: "focus-dock", label: qsTr("Focus Dock") }
+    ]
+    readonly property var modifierOptions: [
+        { value: "none", label: qsTr("\u2013") },
+        { value: "command", label: qsTr("Command") },
+        { value: "shift", label: qsTr("Shift") },
+        { value: "option", label: qsTr("Option") },
+        { value: "control", label: qsTr("Control") }
+    ]
+    readonly property var workspaceCountOptions: {
+        var options = [];
+        for (var count = 1; count <= 16; ++count)
+            options.push({ value: count, label: String(count) });
+        return options;
+    }
+
+    // T292b: a corner row puts two popups in the control slot. The sheet card
+    // is narrower than the pane, so the two popups share one corner row's
+    // derived slot (60% of the row) instead of sizing the slot from one
+    // natural popup, which clipped the second popup off the card edge. A wide
+    // two-popup slot needs a wider card, so the dialog takes the measured
+    // 560 pt sheet width (capped to the window) rather than the 480 pt default.
+    readonly property real cornerPopupWidth: cornerColumn.cornerSlot > 0
+            ? (cornerColumn.cornerSlot - Theme.primitive.spacing.xs) / 2 : 0
+    readonly property real advancedSheetWidth: 560
 
     // Test surface (used by tst_settings_desktop_dock.qml).
     //
-    // The three advanced rows live inside a closed Dialog, and a Dialog adopts
-    // the window overlay layer, so they are reached through body-level
+    // The advanced rows live inside a closed Dialog, and a Dialog adopts the
+    // window overlay layer, so they are reached through body-level
     // accessors that stay valid whether the sheet is open or closed.
     property alias chooserOnHoverRowHandle: chooserOnHoverRow
     property alias minimizeReactionRowHandle: minimizeReactionRow
     property alias windowRulesRowHandle: windowRulesRow
+    property alias workspaceCountRowHandle: workspaceCountRow
+    property alias swipeUpRowHandle: swipeUpRow
+    property alias spaceSwitchRowHandle: spaceSwitchRow
     property alias sizeSlider: sizeSlider
     property alias magnificationSlider: magnificationSlider
     property alias positionSelect: positionSelect
@@ -137,7 +223,27 @@ Item {
     property alias holdModifierRow: holdModifierRow
     property alias tiledMarginsRow: tiledMarginsRow
     property alias missionControlGroup: missionControlGroup
-    property alias overviewRow: overviewRow
+    property alias rearrangeRow: rearrangeRow
+    property alias switchToAppSpaceRow: switchToAppSpaceRow
+    property alias switchToAppSpaceToggle: switchToAppSpaceToggle
+    property alias groupByAppRow: groupByAppRow
+    property alias perDisplayRow: perDisplayRow
+    property alias dragToOpenRow: dragToOpenRow
+    property alias overviewAbsenceNote: overviewAbsenceNote
+    property alias workspaceCountSelect: workspaceCountSelect
+    property alias gestureMissionToggle: gestureMissionToggle
+    property alias gestureSpaceToggle: gestureSpaceToggle
+    property alias topLeftSelect: topLeftSelect
+    property alias topRightSelect: topRightSelect
+    property alias bottomLeftSelect: bottomLeftSelect
+    property alias bottomRightSelect: bottomRightSelect
+    property alias topLeftModifierSelect: topLeftModifierSelect
+    property alias topRightModifierSelect: topRightModifierSelect
+    property alias bottomLeftModifierSelect: bottomLeftModifierSelect
+    property alias bottomRightModifierSelect: bottomRightModifierSelect
+    property alias hotCornersGroup: advancedOverviewGroup
+    property alias hotCornersDescription: hotCornersDescription
+    property alias absenceNote: overviewAbsenceNote
     property alias footer: footer
     property alias shortcutsButton: shortcutsButton
     property alias hotCornersButton: hotCornersButton
@@ -147,6 +253,8 @@ Item {
     property alias advancedWindowsButton: advancedWindowsButton
     property alias advancedWindowsDialog: advancedWindowsDialog
     property alias advancedWindowsGroup: advancedWindowsGroup
+    property alias advancedOverviewDialog: advancedOverviewDialog
+    property alias advancedOverviewGroup: advancedOverviewGroup
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -154,8 +262,8 @@ Item {
     // Fill the detail pane slot (see AppearancePane).
     width: parent ? parent.width : implicitWidth
 
-    // T292a: an invisible build canary, so a stale copy fails loudly.
-    readonly property string sourceRevision: "t292a"
+    // T292b: an invisible build canary, so a stale copy fails loudly.
+    readonly property string sourceRevision: "t292b"
 
     Component.onCompleted: Settings.refreshDefaultBrowsers()
 
@@ -185,12 +293,13 @@ Item {
                                 Settings.defaultBrowser, 0);
     }
 
-    // -- Advanced sheets (T292a) ---------------------------------------------
+    // -- Advanced sheets (T292a; T292b adds Advanced Workspace Overview) -----
 
     function isAdvancedRow(rowId) {
         var id = String(rowId);
         return root.advancedDockRowIds.indexOf(id) >= 0
-                || root.advancedWindowsRowIds.indexOf(id) >= 0;
+                || root.advancedWindowsRowIds.indexOf(id) >= 0
+                || root.advancedOverviewRowIds.indexOf(id) >= 0;
     }
 
     // The sheet that owns a row id, or "" for a main-pane row.
@@ -200,6 +309,8 @@ Item {
             return "dock";
         if (root.advancedWindowsRowIds.indexOf(id) >= 0)
             return "windows";
+        if (root.advancedOverviewRowIds.indexOf(id) >= 0)
+            return "overview";
         return "";
     }
 
@@ -211,6 +322,13 @@ Item {
         case "chooserOnHover": return chooserOnHoverRow;
         case "minimizeReaction": return minimizeReactionRow;
         case "windowRules": return windowRulesRow;
+        case "workspaceCount": return workspaceCountRow;
+        case "swipeUp": return swipeUpRow;
+        case "spaceSwitch": return spaceSwitchRow;
+        case "topLeft": return topLeftRow;
+        case "topRight": return topRightRow;
+        case "bottomLeft": return bottomLeftRow;
+        case "bottomRight": return bottomRightRow;
         }
         return null;
     }
@@ -228,10 +346,34 @@ Item {
     function openAdvancedWindows() {
         advancedWindowsDialog.show();
     }
+    function closeAdvancedWindows() {
+        advancedWindowsDialog.hide();
+    }
+    function openAdvancedOverview() {
+        advancedOverviewDialog.show();
+    }
+    function closeAdvancedOverview() {
+        advancedOverviewDialog.hide();
+    }
 
-    // The capture/T276 entry point for the existing hot-corner surface.
+    // T292b: the footer's Hot Corners… opens the advanced sheet that holds the
+    // four corner rows. The former Mission Control pane is gone, so the action
+    // stays on this pane instead of navigating to a removed surface.
     function openHotCorners() {
-        root.navigateRequested("mission-control");
+        root.openAdvancedOverview();
+    }
+
+    // A merged-section option index. Unknown values (a stored assignment the
+    // compositor no longer offers) fall back to the first entry.
+    function actionIndex(value) {
+        return root.optionIndex(root.actionOptions, value, 0);
+    }
+    function modifierIndex(value) {
+        return root.optionIndex(root.modifierOptions, value, 0);
+    }
+    function workspaceCountIndex() {
+        return Math.max(0, Math.min(root.workspaceCountOptions.length - 1,
+                                    root.workspaceCount - 1));
     }
 
     // T292a: the four footer actions share one row. These helpers derive the
@@ -258,19 +400,20 @@ Item {
         var item = natural > 0 ? even * available / natural : even;
         return Math.max(Theme.controls.button.height, Math.min(even, item));
     }
-    function closeAdvancedWindows() {
-        advancedWindowsDialog.hide();
-    }
 
     // The shell's closed-surface hook: open the owning sheet before it looks
     // for the row. Returns whether this pane owns the row.
     function openRowSurface(rowId) {
         if (!root.isAdvancedRow(rowId))
             return false;
-        if (root.advancedSheetFor(rowId) === "dock")
-            root.openAdvancedDock();
-        else
-            root.openAdvancedWindows();
+        switch (root.advancedSheetFor(rowId)) {
+        case "dock": root.openAdvancedDock();
+            break;
+        case "windows": root.openAdvancedWindows();
+            break;
+        case "overview": root.openAdvancedOverview();
+            break;
+        }
         return true;
     }
 
@@ -727,38 +870,134 @@ Item {
             }
         }
 
-        // ── Window Overview ───────────────────────────────────────────────
-        // T292a keeps one live entry into the former Mission Control surface;
-        // T292b merges its rows into this section and deletes that pane. The
-        // entry is a disclosure into the real surface, never a dead action.
+        // ── Workspace Overview (T292b) ────────────────────────────────────
+        // The mockup's one Workspace Overview section: the merged
+        // Overview/Workspaces/Hot Corners/Shortcuts surface. The five toggles
+        // are the section; the real workspace count, the gesture keys, and the
+        // four corner assignments live in the Advanced Workspace Overview
+        // sheet (opened by Hot Corners…), so neither the controls nor the
+        // corner list is duplicated.
         SettingsGroup {
             id: missionControlGroup
             width: parent.width
-            title: qsTr("Window Overview")
+            title: qsTr("Workspace Overview")
             sectionId: "Workspace Overview"
 
-            SettingsRow {
-                id: overviewRow
+            // T292b: with no settings daemon the toggles stay live on the
+            // built-in defaults (Overview itself is run by the compositor), so
+            // the section explains where the values come from. The note sits
+            // inside the card with the rows, never as a floating strip over
+            // the card edge.
+            SettingsGroup {
                 width: parent.width
-                label: qsTr("Workspace Overview")
-                description: qsTr("Workspaces, hot corners, gestures, and window "
-                                  + "arrangement.")
-                settingsId: "overview"
-                owner: "settingsd + compositor"
-                // T292a: the entry itself writes nothing (it opens the former
-                // Mission Control surface, which owns the `overview.*` keys).
-                // A navigation row carries no `settingsKey`; the map row names
-                // the `overview.*` family for search and the debug view.
-                settingsKey: ""
-                disclosure: true
+
+                SettingsAbsenceNotice {
+                    id: overviewAbsenceNote
+                    objectName: "workspaceOverviewAbsenceNote"
+                    // Inset with the rows so the note reads inside the card.
+                    x: Theme.controls.settingsRow.paddingH
+                    width: parent.width - 2 * x
+                    kind: "live-on-defaults"
+                    showWhenLive: true
+                    reason: qsTr("The settings daemon is not running, so these "
+                                 + "preferences apply from the built-in "
+                                 + "defaults. Overview itself is run by the "
+                                 + "compositor.")
+                }
+            }
+
+            SettingsRow {
+                id: rearrangeRow
+                width: parent.width
+                label: qsTr("Automatically rearrange Workspaces")
+                description: qsTr("Automatic Space reordering is not available "
+                                  + "yet.")
+                settingsId: "rearrange"
+                owner: "compositor"
+                settingsKey: "overview.autoRearrange"
+                enabled: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            SettingsKeyRow {
+                id: switchToAppSpaceRow
+                width: parent.width
+                label: qsTr("Switch to an app's Workspace")
+                settingsId: "switchToAppSpace"
+                owner: "settingsd -> compositor"
+                settingsKey: "overview.switchToAppSpace"
+                description: qsTr("Activating a window on another Space follows "
+                                  + "it there.")
+                controlData: Toggle {
+                    id: switchToAppSpaceToggle
+                    text: ""
+                    onToggled: (checked) =>
+                        Settings.set("overview.switchToAppSpace", checked)
+                }
+            }
+
+            SettingsRow {
+                id: groupByAppRow
+                width: parent.width
+                label: qsTr("Group windows by application")
+                description: qsTr("Grouping windows by application is not "
+                                  + "available yet.")
+                settingsId: "groupByApp"
+                owner: "compositor"
+                settingsKey: "overview.groupByApp"
+                enabled: false
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
+            }
+
+            // Read-only: the compositor always keeps one Space list per output,
+            // so the row states the fact instead of offering a fake toggle.
+            SettingsRow {
+                id: perDisplayRow
+                width: parent.width
+                label: qsTr("Displays have separate Workspaces")
+                description: qsTr("Each display keeps its own Space list in the "
+                                  + "compositor; a shared-workspace mode is not "
+                                  + "available.")
+                settingsId: "perDisplay"
+                owner: "compositor"
+                controlData: Text {
+                    text: qsTr("On")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                }
+            }
+
+            SettingsRow {
+                id: dragToOpenRow
+                width: parent.width
+                label: qsTr("Drag windows to the top to enter Workspace Overview")
+                description: qsTr("Drag-to-Overview is not available yet.")
+                settingsId: "dragToOpen"
+                owner: "compositor"
+                settingsKey: "overview.dragToOpen"
+                enabled: false
                 showSeparator: false
-                onDisclosureClicked: root.navigateRequested("mission-control")
+
+                controlData: Toggle {
+                    text: ""
+                    enabled: false
+                }
             }
         }
 
         // T292a: the mockup footer. Both actions open an existing surface —
         // there is no inline duplicate of the shortcut editor or the hot
         // corners — and the Advanced sheets hold the Linux-only rows.
+        // T292b: Hot Corners… opens the Advanced Workspace Overview sheet that
+        // holds the four corner assignments.
         SettingsFooter {
             id: footer
             objectName: "desktopDockFooter"
@@ -926,6 +1165,262 @@ Item {
         }
     }
 
+    // T292b: the Advanced Workspace Overview sheet. The real workspace count,
+    // the two gesture keys, and the four corner assignments moved here from
+    // the former Mission Control pane; the sheet is an organization change, so
+    // every row keeps its owner, key, order, and control.
+    Dialog {
+        id: advancedOverviewDialog
+        objectName: "desktopDockAdvancedOverviewDialog"
+        title: qsTr("Advanced Workspace Overview")
+        message: qsTr("Workspace count, gestures, and hot corners. Overview is "
+                      + "run by the compositor; these preferences are stored by "
+                      + "the settings daemon.")
+
+        // T292b: each corner row holds two popups, so this sheet asks for a
+        // wider card than the 480 pt default (the dialog still caps it to the
+        // window).
+        preferredWidth: root.advancedSheetWidth
+
+        contentData: Item {
+            implicitWidth: Math.min(root.advancedSheetWidth,
+                                    root.Window.width > 0 ? root.Window.width - 48
+                                                          : root.advancedSheetWidth)
+            implicitHeight: advancedOverviewGroup.implicitHeight
+            width: parent.width
+            height: implicitHeight
+
+            SettingsGroup {
+                id: advancedOverviewGroup
+                width: parent.width
+                title: qsTr("Advanced Workspace Overview")
+                sectionId: "Advanced Workspace Overview"
+
+                // ── Workspaces ────────────────────────────────────────────
+                SettingsKeyRow {
+                    id: workspaceCountRow
+                    width: parent.width
+                    label: qsTr("Workspace count")
+                    settingsId: "workspaceCount"
+                    owner: "settingsd -> compositor"
+                    settingsKey: "workspaces.count"
+                    description: qsTr("Normal workspaces every display starts "
+                                      + "with.")
+                    controlData: Select {
+                        id: workspaceCountSelect
+                        width: parent ? parent.width : implicitWidth
+                        accessibleName: qsTr("Workspace count")
+                        model: root.workspaceCountOptions
+                        onActivated: (index) => Settings.set(
+                                        "workspaces.count",
+                                        root.workspaceCountOptions[index].value)
+                    }
+                }
+
+                SettingsKeyRow {
+                    id: swipeUpRow
+                    width: parent.width
+                    label: qsTr("Swipe up to open")
+                    settingsId: "swipeUp"
+                    owner: "settingsd -> compositor"
+                    settingsKey: "gestures.missionControl"
+                    description: qsTr("Reveal every open window and workspace in "
+                                      + "the overview with a three-finger swipe.")
+                    controlData: Toggle {
+                        id: gestureMissionToggle
+                        text: ""
+                        onToggled: (checked) =>
+                            Settings.set("gestures.missionControl", checked)
+                    }
+                }
+
+                SettingsKeyRow {
+                    id: spaceSwitchRow
+                    width: parent.width
+                    label: qsTr("Swipe between Workspaces")
+                    settingsId: "spaceSwitch"
+                    owner: "settingsd -> compositor"
+                    settingsKey: "gestures.spaceSwitch"
+                    description: qsTr("Swipe left or right with three fingers to "
+                                      + "move between workspaces.")
+                    controlData: Toggle {
+                        id: gestureSpaceToggle
+                        text: ""
+                        onToggled: (checked) =>
+                            Settings.set("gestures.spaceSwitch", checked)
+                    }
+                }
+
+                // ── Hot Corners ───────────────────────────────────────────
+                Text {
+                    id: hotCornersDescription
+                    objectName: "hotCornersDescription"
+                    width: parent.width
+                    text: qsTr("Move the pointer to a corner to perform an "
+                               + "action. Choose \u2013 to leave a corner "
+                               + "inactive, or hold a modifier while entering "
+                               + "the corner.")
+                    color: Theme.color.textSecondary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                    wrapMode: Text.WordWrap
+                    leftPadding: Theme.controls.settingsRow.paddingH
+                    rightPadding: Theme.controls.settingsRow.paddingH
+                    topPadding: Theme.primitive.spacing.sm
+                    bottomPadding: Theme.primitive.spacing.xs
+                }
+
+                // T292b: the four corner rows share one measured column so
+                // both popups of a row fit inside the 480 pt sheet card.
+                Column {
+                    id: cornerColumn
+                    width: parent.width
+                    spacing: 0
+
+                    // The control slot SettingsRow derives for a corner row
+                    // (60% of the row), resolved once for the popups that
+                    // share it. The row's natural width is its content, so the
+                    // slot is measured by `cornerProbe` (one popup in a
+                    // throwaway row outside the four columns).
+                    readonly property real cornerSlot: cornerProbe.width
+
+                    SettingsRow {
+                        id: topLeftRow
+                        width: parent.width
+                        label: qsTr("Top Left")
+                        settingsId: "topLeft"
+                        controlData: Row {
+                            spacing: Theme.primitive.spacing.xs
+                            Select {
+                                id: topLeftSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Top Left hot corner")
+                                model: root.actionOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerTopLeft",
+                                                root.actionOptions[index].value)
+                            }
+                            Select {
+                                id: topLeftModifierSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Top Left hot corner modifier")
+                                model: root.modifierOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerTopLeftModifier",
+                                                root.modifierOptions[index].value)
+                            }
+                        }
+                    }
+
+                    SettingsRow {
+                        id: topRightRow
+                        width: parent.width
+                        label: qsTr("Top Right")
+                        settingsId: "topRight"
+                        controlData: Row {
+                            spacing: Theme.primitive.spacing.xs
+                            Select {
+                                id: topRightSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Top Right hot corner")
+                                model: root.actionOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerTopRight",
+                                                root.actionOptions[index].value)
+                            }
+                            Select {
+                                id: topRightModifierSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Top Right hot corner modifier")
+                                model: root.modifierOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerTopRightModifier",
+                                                root.modifierOptions[index].value)
+                            }
+                        }
+                    }
+
+                    SettingsRow {
+                        id: bottomLeftRow
+                        width: parent.width
+                        label: qsTr("Bottom Left")
+                        settingsId: "bottomLeft"
+                        controlData: Row {
+                            spacing: Theme.primitive.spacing.xs
+                            Select {
+                                id: bottomLeftSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Bottom Left hot corner")
+                                model: root.actionOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerBottomLeft",
+                                                root.actionOptions[index].value)
+                            }
+                            Select {
+                                id: bottomLeftModifierSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Bottom Left hot corner modifier")
+                                model: root.modifierOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerBottomLeftModifier",
+                                                root.modifierOptions[index].value)
+                            }
+                        }
+                    }
+
+                    SettingsRow {
+                        id: bottomRightRow
+                        width: parent.width
+                        label: qsTr("Bottom Right")
+                        settingsId: "bottomRight"
+                        showSeparator: false
+                        controlData: Row {
+                            spacing: Theme.primitive.spacing.xs
+                            Select {
+                                id: bottomRightSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Bottom Right hot corner")
+                                model: root.actionOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerBottomRight",
+                                                root.actionOptions[index].value)
+                            }
+                            Select {
+                                id: bottomRightModifierSelect
+                                width: root.cornerPopupWidth
+                                accessibleName: qsTr("Bottom Right hot corner modifier")
+                                model: root.modifierOptions
+                                onActivated: (index) => Settings.set(
+                                                "overview.hotCornerBottomRightModifier",
+                                                root.modifierOptions[index].value)
+                            }
+                        }
+                    }
+                }
+
+                // T292b: one corner popup at its natural width, in a throwaway
+                // row, measures the control slot once (60% of the row) so the
+                // four corner rows can share it. It sits outside the corner
+                // column, so the popups it sizes never feed back into it.
+                Item {
+                    visible: false
+                    width: parent.width
+                    height: 0
+
+                    SettingsRow {
+                        id: cornerProbeRow
+                        width: parent.width
+                        label: qsTr("Top Left")
+
+                        controlData: Select {
+                            id: cornerProbe
+                            model: root.actionOptions
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // The footer's text measurements (see `footerGlyphWidth`). One Text per
     // label, invisible and outside the pane column, so they never participate
     // in layout and never form a binding cycle with the buttons.
@@ -1027,5 +1522,69 @@ Item {
         target: defaultBrowserSelect
         property: "currentIndex"
         value: root.browserIndex()
+    }
+
+    // T292b: the merged Workspace Overview section and its advanced sheet.
+    // The controls write on interaction; these keep them in step with
+    // `Settings.values`, so an external settingsd change converges too.
+    Binding {
+        target: switchToAppSpaceToggle
+        property: "checked"
+        value: root.switchToAppSpace
+    }
+    Binding {
+        target: gestureMissionToggle
+        property: "checked"
+        value: root.gestureMissionControl
+    }
+    Binding {
+        target: gestureSpaceToggle
+        property: "checked"
+        value: root.gestureSpaceSwitch
+    }
+    Binding {
+        target: workspaceCountSelect
+        property: "currentIndex"
+        value: root.workspaceCountIndex()
+    }
+    Binding {
+        target: topLeftSelect
+        property: "currentIndex"
+        value: root.actionIndex(root.topLeft)
+    }
+    Binding {
+        target: topRightSelect
+        property: "currentIndex"
+        value: root.actionIndex(root.topRight)
+    }
+    Binding {
+        target: bottomLeftSelect
+        property: "currentIndex"
+        value: root.actionIndex(root.bottomLeft)
+    }
+    Binding {
+        target: bottomRightSelect
+        property: "currentIndex"
+        value: root.actionIndex(root.bottomRight)
+    }
+    Binding {
+        target: topLeftModifierSelect
+        property: "currentIndex"
+        value: root.modifierIndex(root.topLeftModifier)
+    }
+    Binding {
+        target: topRightModifierSelect
+        property: "currentIndex"
+        value: root.modifierIndex(root.topRightModifier)
+    }
+    Binding {
+        target: bottomLeftModifierSelect
+        property: "currentIndex"
+        value: root.modifierIndex(root.bottomLeftModifier)
+    }
+    Binding {
+        target: bottomRightModifierSelect
+        property: "currentIndex"
+        value: root.modifierIndex(root.bottomRightModifier)
     }
 }

@@ -269,7 +269,7 @@ Item {
                 width: parent.width
                 label: qsTr("Hot corners")
                 description: qsTr("The four corner assignments are shared with "
-                                  + "Overview; the sheet opens there.")
+                                  + "Workspace Overview in Desktop & Dock.")
                 settingsId: "hotCorners"
                 owner: "settingsd -> compositor/input"
                 settingsKey: "overview.hotCorner*"
@@ -279,7 +279,10 @@ Item {
                     id: hotCornersButton
                     text: qsTr("Open Hot Corners\u2026")
                     accessibleName: qsTr("Open the Hot Corners controls")
-                    onClicked: root.navigationRequested("mission-control")
+                    // T292b: the assignments live in Desktop & Dock's merged
+                    // Workspace Overview, in its Advanced Workspace Overview
+                    // sheet; the pane is the landed home (the row is gone).
+                    onClicked: root.navigationRequested("desktop-dock")
                 }
             }
         }

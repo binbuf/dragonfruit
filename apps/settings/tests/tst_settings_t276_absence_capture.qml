@@ -33,12 +33,18 @@ Item {
             grabImage(shell).save("docs/captures/t276-desktop-dock-absence-"
                                   + scheme + ".png");
 
-            shell.selectPane("mission-control");
-            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            // T292b: the former Overview pane is merged into Desktop & Dock ->
+            // Workspace Overview; the legacy deep link lands on the section,
+            // which shows its own absence note on the built-in defaults.
+            shell.deepLink("settings://pane/mission-control");
+            tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
+            tryVerify(function() { return shell.highlightTarget !== null; });
             waitForRendering(stage);
             var overview = shell.paneBody.item;
             verify(overview);
-            compare(overview.absenceNote.visible, true);
+            compare(overview.overviewAbsenceNote.visible, true);
+            for (var f = 0; f < 8; ++f)
+                waitForRendering(stage);
             grabImage(shell).save("docs/captures/t276-desktop-dock-overview-absence-"
                                   + scheme + ".png");
             shell.destroy();

@@ -1047,8 +1047,12 @@ QtObject {
             // The Linux-only Dock rows (`chooserOnHover`, `minimizeReaction`)
             // and the window-rules row keep their owners and keys but live in
             // the Advanced Dock / Advanced Windows sheets ("dialog" surface).
-            // The former Overview group is the temporary **Workspace Overview**
-            // entry; T292b merges the Mission Control rows into it.
+            // T292b: the merged **Workspace Overview** section renders the five
+            // mockup toggles; the real workspace count, the gesture keys, and
+            // the four corner assignments moved here from the removed
+            // Mission Control pane and live in the Advanced Workspace Overview
+            // sheet ("dialog" surface). The map keeps no `mission-control`
+            // inventory: the id is an alias to this pane.
             "desktop-dock": [
                 root.row("size", qsTr("Dock"), qsTr("Dock Size"), "slider",
                          "settingsd", "dock.size", "live-on-defaults", "shipped"),
@@ -1104,17 +1108,6 @@ QtObject {
                 root.row("tileMargins", qsTr("Windows"), qsTr("Tiled windows have margins"), "toggle",
                          "compositor (T242)", "tiling.margins", "disabled-with-reason", "shipped",
                          false, "compositor/window tiling (not implemented)"),
-                root.row("overview", qsTr("Workspace Overview"), qsTr("Workspace Overview"), "disclosure",
-                         "settingsd + compositor", "overview.*", "live-on-defaults", "shipped"),
-                // T292a: the Shortcuts… and Hot Corners… actions are the mockup
-                // footer, not pane rows. They keep their map ids under the
-                // Window Overview section so a deep link lands on the live
-                // Workspace Overview entry; the shortcut editor is still
-                // disabled.
-                root.row("hotCorners", qsTr("Workspace Overview"), qsTr("Hot Corners..."), "sheet",
-                         "settingsd + compositor", "overview.hotCorner*", "live-on-defaults", "shipped"),
-                root.row("shortcuts", qsTr("Workspace Overview"), qsTr("Shortcuts..."), "sheet",
-                         "compositor", "shortcuts.*", "disabled-with-reason", "shipped"),
                 // Advanced sheets.
                 root.row("chooserOnHover", qsTr("Advanced Dock"), qsTr("Open a window chooser by hovering"), "toggle",
                          "settingsd", "dock.chooserOnHover", "live-on-defaults", "shipped"),
@@ -1122,39 +1115,57 @@ QtObject {
                          "settingsd", "dock.minimizeReaction", "live-on-defaults", "shipped"),
                 root.row("windowRules", qsTr("Advanced Windows"), qsTr("Application window rules..."), "button",
                          "compositor", "windows.rules", "disabled-with-reason", "shipped",
-                         false, "compositor/window-rule engine (not implemented)")
-            ],
-            "mission-control": [
-                root.row("rearrange", qsTr("Overview"), qsTr("Automatically rearrange workspaces"), "toggle",
-                         "compositor (T240)", "overview.autoRearrange", "disabled-with-reason", "shipped"),
-                root.row("switchToAppSpace", qsTr("Overview"), qsTr("Switch to an application's workspace"), "toggle",
-                         "settingsd -> compositor", "overview.switchToAppSpace", "live-on-defaults", "shipped"),
-                root.row("groupByApp", qsTr("Overview"), qsTr("Group windows by application"), "toggle",
-                         "compositor (T240)", "overview.groupByApp", "disabled-with-reason", "shipped"),
-                root.row("perDisplay", qsTr("Overview"), qsTr("Displays have separate workspaces"), "info",
+                         false, "compositor/window-rule engine (not implemented)"),
+                // T292b: the merged Workspace Overview section, in rendered
+                // order. The five mockup toggles are the section; `perDisplay`
+                // is the read-only compositor fact.
+                root.row("rearrange", qsTr("Workspace Overview"), qsTr("Automatically rearrange Workspaces"), "toggle",
+                         "compositor", "overview.autoRearrange", "disabled-with-reason", "shipped",
+                         false, "compositor/overview (automatic reordering not implemented)"),
+                root.row("switchToAppSpace", qsTr("Workspace Overview"), qsTr("Switch to an app's Workspace"), "toggle",
+                         "settingsd -> compositor", "overview.switchToAppSpace", "live-on-defaults", "shipped",
+                         false, "compositor/workspace model, shell"),
+                root.row("groupByApp", qsTr("Workspace Overview"), qsTr("Group windows by application"), "toggle",
+                         "compositor", "overview.groupByApp", "disabled-with-reason", "shipped",
+                         false, "compositor/overview (grouping not implemented)"),
+                root.row("perDisplay", qsTr("Workspace Overview"), qsTr("Displays have separate Workspaces"), "info",
                          "compositor", "overview.perDisplay", "read-only", "shipped",
-                         false, "compositor/workspace model"),
-                root.row("dragToOpen", qsTr("Overview"), qsTr("Drag windows to the top to open Overview"), "toggle",
-                         "compositor (T240)", "overview.dragToOpen", "disabled-with-reason", "shipped"),
-                root.row("workspaceCount", qsTr("Workspaces"), qsTr("Workspace count"), "popup",
+                         false, "compositor/workspace model (one workspace list per output)"),
+                root.row("dragToOpen", qsTr("Workspace Overview"), qsTr("Drag windows to the top to enter Workspace Overview"), "toggle",
+                         "compositor", "overview.dragToOpen", "disabled-with-reason", "shipped",
+                         false, "compositor/overview (drag-to-Overview not implemented)"),
+                // The footer actions. Shortcuts… is the mockup footer action
+                // and opens the Keyboard pane's shortcut section; Hot Corners…
+                // opens the Advanced Workspace Overview sheet.
+                root.row("hotCorners", qsTr("Workspace Overview"), qsTr("Hot Corners..."), "sheet",
+                         "settingsd + compositor", "overview.hotCorner*", "live-on-defaults", "shipped",
+                         false, "compositor/input hot corners, shell"),
+                root.row("shortcuts", qsTr("Workspace Overview"), qsTr("Shortcuts..."), "sheet",
+                         "compositor", "shortcuts.*", "disabled-with-reason", "shipped",
+                         false, "keyboard/shortcuts (shortcut editor absent)"),
+                // The Advanced Workspace Overview sheet: the real workspace
+                // count, the gestures, and the four corner assignments.
+                root.row("workspaceCount", qsTr("Advanced Workspace Overview"), qsTr("Workspace count"), "popup",
                          "settingsd -> compositor", "workspaces.count", "live-on-defaults", "shipped",
                          false, "compositor/workspace model, shell"),
-                root.row("swipeUp", qsTr("Workspaces"), qsTr("Swipe up to open"), "toggle",
-                         "settingsd", "gestures.missionControl", "live-on-defaults", "shipped",
+                root.row("swipeUp", qsTr("Advanced Workspace Overview"), qsTr("Swipe up to open"), "toggle",
+                         "settingsd -> compositor", "gestures.missionControl", "live-on-defaults", "shipped",
                          false, "compositor/input"),
-                root.row("spaceSwitch", qsTr("Workspaces"), qsTr("Swipe between Workspaces"), "toggle",
-                         "settingsd", "gestures.spaceSwitch", "live-on-defaults", "shipped",
+                root.row("spaceSwitch", qsTr("Advanced Workspace Overview"), qsTr("Swipe between Workspaces"), "toggle",
+                         "settingsd -> compositor", "gestures.spaceSwitch", "live-on-defaults", "shipped",
                          false, "compositor/input"),
-                root.row("topLeft", qsTr("Hot Corners"), qsTr("Top Left"), "popup",
-                         "settingsd", "overview.hotCornerTopLeft", "live-on-defaults", "shipped"),
-                root.row("topRight", qsTr("Hot Corners"), qsTr("Top Right"), "popup",
-                         "settingsd", "overview.hotCornerTopRight", "live-on-defaults", "shipped"),
-                root.row("bottomLeft", qsTr("Hot Corners"), qsTr("Bottom Left"), "popup",
-                         "settingsd", "overview.hotCornerBottomLeft", "live-on-defaults", "shipped"),
-                root.row("bottomRight", qsTr("Hot Corners"), qsTr("Bottom Right"), "popup",
-                         "settingsd", "overview.hotCornerBottomRight", "live-on-defaults", "shipped"),
-                root.row("shortcuts", qsTr("Shortcuts"), qsTr("Shortcuts..."), "sheet",
-                         "compositor", "shortcuts.*", "disabled-with-reason", "shipped")
+                root.row("topLeft", qsTr("Advanced Workspace Overview"), qsTr("Top Left"), "popup",
+                         "settingsd -> compositor", "overview.hotCornerTopLeft", "live-on-defaults", "shipped",
+                         false, "compositor/input hot corners, shell"),
+                root.row("topRight", qsTr("Advanced Workspace Overview"), qsTr("Top Right"), "popup",
+                         "settingsd -> compositor", "overview.hotCornerTopRight", "live-on-defaults", "shipped",
+                         false, "compositor/input hot corners, shell"),
+                root.row("bottomLeft", qsTr("Advanced Workspace Overview"), qsTr("Bottom Left"), "popup",
+                         "settingsd -> compositor", "overview.hotCornerBottomLeft", "live-on-defaults", "shipped",
+                         false, "compositor/input hot corners, shell"),
+                root.row("bottomRight", qsTr("Advanced Workspace Overview"), qsTr("Bottom Right"), "popup",
+                         "settingsd -> compositor", "overview.hotCornerBottomRight", "live-on-defaults", "shipped",
+                         false, "compositor/input hot corners, shell")
             ],
             "displays": [
                 root.row("display", qsTr("Displays"), qsTr("Display"), "row+sheet",
@@ -1590,9 +1601,12 @@ QtObject {
           pane: "desktop-dock", rows: ["windowRules"], task: "T281" },
         { area: qsTr("Desktop"), setting: qsTr("Global app menu"),
           pane: "menu-bar", rows: ["globalMenu"], task: "T276" },
-        // T285 removed the top-level Overview pane. Its workspace rows move to
-        // Desktop & Dock -> Workspace Overview in T292; the audit entries for
-        // workspace count and per-display workspaces return with that body.
+        // T285 removed the top-level Overview pane; T292b merged its rows into
+        // Desktop & Dock -> Workspace Overview. Per-display workspaces is a
+        // compositor fact (`overview.perDisplay`, read-only) with no stored
+        // preference, so it carries no audit entry.
+        { area: qsTr("Desktop"), setting: qsTr("Workspace count"),
+          pane: "desktop-dock", rows: ["workspaceCount"], task: "T292b" },
         { area: qsTr("Appearance"), setting: qsTr("Icon theme"),
           pane: "appearance", rows: ["iconTheme"], task: "T274" },
         { area: qsTr("Appearance"), setting: qsTr("Cursor theme"),
@@ -1869,10 +1883,20 @@ QtObject {
 
     // T292a: the Desktop & Dock rows that live in the Advanced Dock and
     // Advanced Windows sheets. Their section titles are the stable key.
+    // T292b adds the Advanced Workspace Overview sheet (workspace count,
+    // gestures, and the four corner assignments moved from the removed
+    // Mission Control pane).
     readonly property var desktopDockDialogRows: ({
         "chooserOnHover": true,
         "minimizeReaction": true,
-        "windowRules": true
+        "windowRules": true,
+        "workspaceCount": true,
+        "swipeUp": true,
+        "spaceSwitch": true,
+        "topLeft": true,
+        "topRight": true,
+        "bottomLeft": true,
+        "bottomRight": true
     })
 
     // Where a row lives: "subpane", "dialog", or "pane". "" means the row

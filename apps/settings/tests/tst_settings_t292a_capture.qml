@@ -140,22 +140,24 @@ Item {
             waitForRendering(stage);
 
             // T285 removed the top-level Overview pane; the alias lands on
-            // Desktop & Dock -> Workspace Overview. The hot-corner sheet keeps
-            // its entry in the former Mission Control surface, reached through
-            // the pane's Hot Corners… footer action.
+            // Desktop & Dock -> Workspace Overview. T292b deleted the former
+            // Mission Control body, so the footer's Hot Corners… action opens
+            // the Advanced Workspace Overview sheet on this pane.
             shell.deepLink("settings://pane/mission-control");
             tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
             tryVerify(function() { return shell.highlightTarget !== null; });
             waitForRendering(stage);
-            var navigated = [];
-            pane.navigateRequested.connect(function(paneId) { navigated.push(paneId); });
-            pane.hotCornersButton.clicked();
-            compare(navigated[0], "mission-control");
-            // Let the fade-out and the next frame's fade-in settle before the
-            // grab, or the still can mix the two panels.
+            // Let the accent-wash fade and the next frame settle before the
+            // grab, or the still can mix the two states.
             for (var f = 0; f < 8; ++f)
                 waitForRendering(stage);
+            save(shell, "t292a-desktop-dock-merged-overview-" + scheme);
+
+            openSheet(pane, pane.advancedOverviewDialog);
             save(shell, "t292a-desktop-dock-hot-corners-" + scheme);
+            pane.closeAdvancedOverview();
+            tryVerify(function() { return !pane.advancedOverviewDialog.open; });
+            waitForRendering(stage);
 
             shell.destroy();
         }

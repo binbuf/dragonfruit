@@ -68,13 +68,23 @@ Item {
             scrollTo(shell, pane.missionControlGroup);
             save(shell, "t276-desktop-dock-default-browser-" + scheme);
 
-            var overview = showPane(shell, "mission-control");
-            shell.detailScroll.flickable.contentY = 0;
+            // T292b: the former Overview pane is merged into Desktop & Dock ->
+            // Workspace Overview; reaching it lands on the merged section, whose
+            // corner controls live in the Advanced Workspace Overview sheet.
+            shell.deepLink("settings://pane/mission-control");
+            tryVerify(function() { return shell.currentPaneId === "desktop-dock"; });
+            tryVerify(function() { return shell.highlightTarget !== null; });
             waitForRendering(stage);
             save(shell, "t276-desktop-dock-overview-" + scheme);
 
-            scrollTo(shell, overview.hotCornersGroup);
+            var overview = shell.paneBody.item;
+            overview.openAdvancedOverview();
+            tryVerify(function() { return overview.advancedOverviewDialog.open; });
+            for (var f = 0; f < 8; ++f)
+                waitForRendering(stage);
             save(shell, "t276-desktop-dock-hot-corners-" + scheme);
+            overview.closeAdvancedOverview();
+            waitForRendering(stage);
 
             shell.destroy();
         }

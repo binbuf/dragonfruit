@@ -58,6 +58,10 @@ Item {
     property string errorText: ""
     property alias controlData: controlSlot.data
     property alias control: controlSlot
+    // T292b: an explicit slot width for a control that must not size the slot
+    // from its own natural width (two popups sharing one corner row). -1
+    // keeps the derived 60%-of-the-row rule.
+    property real controlSlotWidth: -1
     property bool showSeparator: true
 
     // T223 map wiring. A row without an id is still rendered; it is simply not
@@ -304,7 +308,9 @@ Item {
             var implicit = item.implicitHeight;
             return implicit > 0 ? implicit : item.height;
         }
-        width: Math.min(root.width * 0.6, Math.max(0, controlSlot.naturalWidth))
+        width: root.controlSlotWidth >= 0
+               ? root.controlSlotWidth
+               : Math.min(root.width * 0.6, Math.max(0, controlSlot.naturalWidth))
         height: Math.max(0, controlSlot.naturalHeight)
 
         onChildrenChanged: root.syncControlLabel()
