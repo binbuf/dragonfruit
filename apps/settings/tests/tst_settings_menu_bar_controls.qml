@@ -5,10 +5,15 @@ import Dragonfruit
 import Dragonfruit.Settings
 import Dragonfruit.ControlCenter
 
-// Quick Settings pane tests (T227/T277). The pane consumes the shell's one
-// `ControlCenterRegistry` and writes the same `quickSettings.*` /
-// `menu.control.*` keys the live Quick Settings panel reads;
-// `tst_controlcenter.qml` asserts the panel side.
+// Menu Bar Controls sub-pane tests (T227/T277, moved in place by T293b). The
+// sub-pane consumes the shell's one `ControlCenterRegistry` and writes the
+// same `quickSettings.*` / `menu.control.*` keys the live Quick Settings panel
+// reads; `tst_controlcenter.qml` asserts the panel side.
+//
+// Most cases mount the body directly. The last group exercises the real shell:
+// Menu Bar -> Menu Bar Controls opens, the `control-center`/`quick-settings`
+// aliases land there, row deep links open the sub-pane, Back returns to the
+// Menu Bar list, and no top-level Quick Settings pane exists.
 Item {
     id: stage
     width: 1000
@@ -19,7 +24,7 @@ Item {
         name: "SettingsQuickSettings"
         when: windowShown
 
-        Component { id: quickSettingsComponent; QuickSettingsPane { } }
+        Component { id: quickSettingsComponent; MenuBarControlsPane { } }
 
         readonly property var defaultModules: [
             "wifi", "bluetooth", "now-playing", "airdrop", "stage-manager",
@@ -45,9 +50,9 @@ Item {
             Settings.set("menu.control.accessibility", true);
         }
 
-        // T285 removed the top-level Quick Settings pane. The component stays
-        // for T293 to fold into Menu Bar -> Menu Bar Controls, so these cases
-        // exercise the pane directly instead of through the shell.
+        // T285 removed the top-level Quick Settings pane; T293b moved its
+        // surface in place under Menu Bar. The direct cases below exercise the
+        // body; `test_*_through_the_shell` cases open it through the shell.
         function make(width, height) {
             var pane = createTemporaryObject(quickSettingsComponent, stage, {
                 width: width !== undefined ? width : stage.width,
@@ -82,14 +87,19 @@ Item {
             return out;
         }
 
-        // T277: the rendered rows are the executable map's Quick Settings
-        // inventory, not a second list.
+        // T277/T293b: the rendered rows are the executable map's Menu Bar
+        // Controls inventory (formerly the `control-center` rows), not a
+        // second list. The map carries no `control-center` row list any more.
         function test_rows_match_the_executable_map() {
             var shell = make();
             var pane = paneOf(shell);
             var rendered = collectIds(pane, []);
-            var mapRows = SettingsMap.rowsFor("control-center");
+            var mapRows = SettingsMap.rowsFor("menu-bar").filter(function(entry) {
+                return SettingsMap.subPaneForRow("menu-bar", entry.id)
+                        === "controls";
+            });
             verify(mapRows.length > 0);
+            compare(SettingsMap.rowsFor("control-center").length, 0);
             for (var i = 0; i < mapRows.length; ++i) {
                 verify(rendered.indexOf(mapRows[i].id) >= 0,
                        "map row " + mapRows[i].id + " has no rendered row");
@@ -391,6 +401,209 @@ Item {
                     defaultModules.join(","));
             compare(pane.pageCount, 1);
             compare(Settings.values["quickSettings.menuBarOnly"].length, 0);
+        }
+
+        // ── Through the shell: the in-place sub-pane (T293b) ──────────────
+
+        Component { id: shellComponent; SettingsShell { } }
+
+        // A fresh shell, then one full event-loop turn so no previous case's
+        // in-flight highlight timer or `Qt.callLater` reveal can leak into the
+        // next deep link.
+        function makeShell(width, height) {
+            var shell = createTemporaryObject(shellComponent, stage, {
+                width: width !== undefined ? width : 740,
+                height: height !== undefined ? height : 820
+            });
+            waitForRendering(stage);
+            verify(shell);
+            tryVerify(function() {
+                return shell.loadedPaneId === shell.currentPaneId
+                        && shell.paneBody.item !== null;
+            });
+            wait(50);
+            waitForRendering(stage);
+            return shell;
+        }
+
+        function showMenuBar(shell) {
+            shell.selectPane("menu-bar");
+            tryVerify(function() {
+                return shell.paneBody.status === Loader.Ready
+                        && shell.paneBody.item !== null;
+            });
+            waitForRendering(stage);
+            var list = shell.paneBody.item;
+            verify(list.listLayout !== undefined,
+                   "the Menu Bar pane body must be mounted");
+            return list;
+        }
+
+        function bodyOf(shell) {
+            return shell.paneBody.item;
+        }
+
+        // Wait for the in-place sub-pane body and return it.
+        function waitForControls(shell) {
+            tryVerify(function() {
+                var body = bodyOf(shell);
+                return body !== null && body.subPaneLoader !== undefined
+                        && body.subPaneLoader.status === Loader.Ready
+                        && body.subPaneLoader.item !== null;
+            });
+            waitForRendering(stage);
+            return bodyOf(shell).subPaneLoader.item;
+        }
+
+        function test_customize_controls_opens_the_in_place_sub_pane() {
+            var shell = makeShell();
+            var list = showMenuBar(shell);
+            compare(shell.currentSubPaneId, "");
+            compare(list.subPaneId, "");
+
+            list.customizeControlsButton.clicked();
+            var body = waitForControls(shell);
+            compare(body.subPaneId, "controls");
+            compare(shell.currentPaneId, "menu-bar");
+            compare(shell.currentSubPaneId, "controls");
+            compare(shell.paneTitle, "Menu Bar Controls");
+            compare(list.subPaneId, "controls");
+            compare(list.subPaneTitle, "Menu Bar Controls");
+            // The real body: the former Quick Settings surface, on the same
+            // registry. It is not a second module list.
+            compare(body.registry, ControlCenterRegistry);
+            compare(body.catalogueIds.length, 37);
+            verify(body.pagesGroup !== undefined);
+            verify(body.modulesGroup !== undefined);
+            verify(body.menuBarGroup !== undefined);
+            verify(body.previewGroup !== undefined);
+            verify(body.resetGroup !== undefined);
+            // The pane list is hidden while the sub-pane is open.
+            compare(list.listLayout.visible, false);
+            compare(list.subPaneLayout.visible, true);
+        }
+
+        // The aliases deep links land on the same in-place sub-pane.
+        function test_aliases_land_on_the_sub_pane() {
+            var shell = makeShell();
+            verify(shell.deepLink("settings://pane/control-center"));
+            tryVerify(function() {
+                return shell.currentSubPaneId === "controls";
+            });
+            compare(shell.currentPaneId, "menu-bar");
+            compare(shell.paneTitle, "Menu Bar Controls");
+            var body = waitForControls(shell);
+            compare(body.registry, ControlCenterRegistry);
+
+            shell.selectPane("general");
+            tryVerify(function() { return shell.loadedPaneId === "general"; });
+            waitForRendering(stage);
+            verify(shell.deepLink("settings://pane/quick-settings"));
+            tryVerify(function() {
+                return shell.currentSubPaneId === "controls";
+            });
+            compare(shell.currentPaneId, "menu-bar");
+            compare(shell.currentSubPaneId, "controls");
+            compare(shell.paneTitle, "Menu Bar Controls");
+        }
+
+        // Pages, spans, modules, and the preview all write the same
+        // `quickSettings.*` keys from inside the sub-pane.
+        function test_the_sub_pane_edits_pages_spans_modules_and_preview() {
+            var shell = makeShell();
+            showMenuBar(shell);
+            shell.openSubPane("controls");
+            var body = waitForControls(shell);
+            verify(body);
+            compare(shell.currentPaneId, "menu-bar");
+            compare(shell.currentSubPaneId, "controls");
+            body.addPage();
+            compare(body.pageCount, 2);
+            body.renamePage(1, "Work");
+            compare(Settings.values["quickSettings.pageNames"][1], "Work");
+            body.selectPage(0);
+
+            body.cycleSpan("wifi");
+            verify(Settings.values["quickSettings.spans"].join(",")
+                   .indexOf("wifi=") >= 0);
+
+            body.setModuleEnabled("storage", true);
+            verify(Settings.values["quickSettings.modules"]
+                   .indexOf("storage") >= 0);
+            body.setModuleEnabled("storage", false);
+            compare(Settings.values["quickSettings.modules"]
+                    .indexOf("storage"), -1);
+
+            // The live preview is the registry layout of the modules on the
+            // active page that are neither menu-bar-only, unknown, nor the
+            // footer action (the registry drops all three).
+            var expected = body.activeList.filter(function(id) {
+                return !body.isMenuBarOnly(id)
+                        && ControlCenterRegistry.module(id) !== null
+                        && body.spanOf(id) !== "footer";
+            });
+            verify(body.previewLayout.length > 0);
+            compare(body.previewLayout.length, expected.length);
+        }
+
+        function test_back_returns_to_the_menu_bar_list() {
+            var shell = makeShell();
+            var list = showMenuBar(shell);
+            shell.openSubPane("controls");
+            waitForControls(shell);
+            compare(shell.currentSubPaneId, "controls");
+
+            list.subPaneBackButton.clicked();
+            waitForRendering(stage);
+            compare(shell.currentSubPaneId, "");
+            compare(shell.paneTitle, "Menu Bar");
+            compare(list.listLayout.visible, true);
+            compare(list.subPaneLayout.visible, false);
+        }
+
+        // A search/deep-link result for a moved row opens the sub-pane and
+        // lands on the rendered row.
+        function test_a_row_deep_link_opens_the_sub_pane() {
+            var shell = makeShell();
+            showMenuBar(shell);
+            verify(shell.deepLink("settings://pane/menu-bar/row/pages"));
+            var body = waitForControls(shell);
+            compare(shell.currentSubPaneId, "controls");
+            // The row landed (`revealPending` consumed it); the accent wash
+            // is hold-timed, so `currentRowId` is the stable assertion.
+            compare(shell.currentRowId, "pages");
+            verify(body.pagesGroup !== undefined);
+            // The remaining rows are landable too.
+            compare(SettingsMap.rowSurface("menu-bar", "preview"), "subpane");
+            compare(SettingsMap.rowSurface("menu-bar", "reset"), "subpane");
+            compare(SettingsMap.rowSurface("menu-bar", "overflow"), "dialog");
+            compare(SettingsMap.rowSurface("menu-bar", "search"), "pane");
+            compare(SettingsMap.isRowLandable("menu-bar", "screenMirroring"),
+                    false);
+        }
+
+        // The former Quick Settings pane is gone: no catalog entry, no pane
+        // case, and the `quickSettings.*` / `menu.control.*` keys the shell
+        // status items read are untouched by the move.
+        function test_no_top_level_quick_settings_and_the_panel_keys_are_unchanged() {
+            var shell = makeShell();
+            compare(SettingsPanes.paneById("control-center"), null);
+            compare(SettingsPanes.indexOf("control-center"), -1);
+            var ids = shell.sidebarSections.reduce(function(out, section) {
+                return out.concat((section.items || []).map(function(item) {
+                    return item.id;
+                }));
+            }, []);
+            compare(ids.indexOf("control-center"), -1);
+            compare(ids.indexOf("menu-bar") >= 0, true);
+            // The Control Center panel keys are the same ones the sub-pane
+            // writes; the move adds and removes none.
+            compare(Settings.values["menu.control.controlCenter"], true);
+            compare(Settings.values["menu.control.search"], true);
+            compare(ControlCenterRegistry.menuBarIds.length > 0, true);
+            verify(shell.deepLink("settings://pane/control-center"));
+            tryVerify(function() { return shell.currentSubPaneId === "controls"; });
+            compare(Settings.values["menu.control.controlCenter"], true);
         }
     }
 }

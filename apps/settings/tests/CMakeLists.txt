@@ -132,22 +132,22 @@ qt_import_qml_plugins(tst_settings_panes_capture)
 # Quick Settings-pane tests (T227): the module list, menu-bar-only set,
 # reorder, and per-display absence. The panel side is in
 # `shell/tests/tst_controlcenter.qml`.
-qt_add_executable(tst_settings_quick_settings
-    tst_settings_quick_settings.cpp
+qt_add_executable(tst_settings_menu_bar_controls
+    tst_settings_menu_bar_controls.cpp
 )
-target_link_libraries(tst_settings_quick_settings PRIVATE
+target_link_libraries(tst_settings_menu_bar_controls PRIVATE
     Qt6::QuickTest
     dragonfruit-design-systemplugin
     dragonfruit-settings-uiplugin
 )
-qt_import_qml_plugins(tst_settings_quick_settings)
+qt_import_qml_plugins(tst_settings_menu_bar_controls)
 
 add_test(
-    NAME tst_settings_quick_settings
-    COMMAND tst_settings_quick_settings
-        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_quick_settings.qml
+    NAME tst_settings_menu_bar_controls
+    COMMAND tst_settings_menu_bar_controls
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_menu_bar_controls.qml
 )
-set_tests_properties(tst_settings_quick_settings PROPERTIES
+set_tests_properties(tst_settings_menu_bar_controls PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )

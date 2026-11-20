@@ -1216,6 +1216,13 @@ per-control options, tray allowances, and Linux-only rows.
 > [ADR 0305](adr/0305-menu-bar-restyle-os-glyph.md) and
 > `settings-business-logic-map.md` §5.9.
 
+> **T293b supersedes the T277 Quick Settings placement.** §4.9 no longer has a
+> top-level pane: its table is the body of **Menu Bar → Menu Bar Controls**
+> (Customize Controls… and the `control-center`/`quick-settings` deep links),
+> reusing the same `quickSettings.*` keys and `ControlCenterRegistry`. The main
+> pane's **Menu Bar Controls** section stays the status-item list. See
+> [ADR 0306](adr/0306-menu-bar-controls-sub-pane.md).
+
 ### 4.11 Search — T265
 
 Owner: search service + app-index + settingsd. Absence: preferences stay

@@ -150,6 +150,10 @@ Item {
             verify(mapRows.length > 0);
             for (var i = 0; i < mapRows.length; ++i) {
                 var row = mapRows[i];
+                // T293b: the Menu Bar Controls sub-pane rows render in its
+                // own body; `tst_settings_menu_bar_controls` asserts those.
+                if (SettingsMap.subPaneForRow("menu-bar", row.id) === "controls")
+                    continue;
                 // An omitted *control* still renders the disabled row that
                 // says why (Display); the other omissions never render.
                 if (row.state === "omitted" && row.id !== "display") {
@@ -489,30 +493,34 @@ Item {
             pane.addControlsDialog.accept();
         }
 
-        function test_customize_controls_opens_the_quick_settings_surface() {
+        // T293b: the footer action opens the in-place Menu Bar Controls
+        // sub-pane — the former Quick Settings surface, mounted inside this
+        // pane (no alias, no pane swap).
+        function test_customize_controls_opens_the_menu_bar_controls_sub_pane() {
             var shell = make();
             var pane = paneOf(shell);
             compare(pane.customizeControlsButton.text, "Customize Controls…");
+            compare(pane.subPaneId, "");
             // The footer action calls `customizeControls()`, which emits the
             // pane's `sectionRequested("menu-bar", "controls")`; the shell's
             // Connections answers it with `openSubPane`.
             pane.customizeControls();
-            tryVerify(function() { return shell.aliasSubPaneId === "controls"; }, 3000);
+            tryVerify(function() { return pane.subPaneId === "controls"; });
             tryVerify(function() {
-                return shell.paneBody.status === Loader.Ready
-                        && shell.paneBody.item !== null
-                        && shell.paneBody.item.registry !== undefined;
-            });
-            // The alias lands on the existing Quick Settings surface; the
-            // shell keeps the Menu Bar pane selected.
+                return pane.subPaneLoader.status === Loader.Ready
+                        && pane.subPaneLoader.item !== null;
+            }, 5000);
             compare(shell.currentPaneId, "menu-bar");
             compare(shell.currentSubPaneId, "controls");
             compare(shell.paneTitle, "Menu Bar Controls");
-            verify(shell.paneBody.item.registry !== undefined,
-                   "the Customize action opens the real Quick Settings surface");
-            shell.closeSubPane();
+            verify(pane.subPaneLoader.item.registry !== undefined,
+                   "the Customize action opens the real registry-backed surface");
+            compare(pane.listLayout.visible, false);
+            pane.subPaneBackButton.clicked();
             waitForRendering(stage);
             compare(shell.currentSubPaneId, "");
+            compare(pane.subPaneId, "");
+            compare(pane.listLayout.visible, true);
         }
 
         function test_advanced_rows_live_in_the_sheet() {

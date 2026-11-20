@@ -258,9 +258,13 @@ Item {
                 if (sections[sections.length - 1] !== rows[i].section)
                     sections.push(rows[i].section);
             }
+            // T293b: the footer actions follow the Allow block under the
+            // Menu Bar Controls title, then the in-place sub-pane's own rows
+            // (same title, `controls` surface), then the Advanced sheet.
             compare(sections.join("|"),
                     "Menu Bar Behaviour|OS Menu Glyph|Menu Bar Controls|"
-                    + "Allow in the Menu Bar|Menu Bar Controls|Advanced Menu Bar");
+                    + "Allow in the Menu Bar|Menu Bar Controls|Allow in the Menu Bar|"
+                    + "Menu Bar Controls|Advanced Menu Bar");
 
             var glyph = SettingsMap.rowFor("menu-bar", "osGlyph");
             verify(glyph !== null);
@@ -269,19 +273,49 @@ Item {
             compare(glyph.key, "menu.osGlyph");
             compare(SettingsMap.rowSurface("menu-bar", "osGlyph"), "pane");
 
-            // The controls list uses the mockup labels, not the internal names.
+            // The controls list uses the mockup labels, not the internal
+            // names. T293b: the list is the status-item section (its rows own
+            // `menu.control.*`); the moved Quick Settings rows reuse the same
+            // ids on the `controls` surface and are filtered out here, then
+            // asserted below.
+            // Some ids exist on both surfaces: the status item here and the
+            // moved control on `controls`. They are disambiguated by key —
+            // the sub-pane rows write `quickSettings.*` (its Wi-Fi etc. are
+            // `quickSettings.modules`) — so the list keeps exactly the rows
+            // that render on this pane.
             var labels = SettingsMap.rowsFor("menu-bar")
                 .filter(function(row) {
                     return row.section === "Menu Bar Controls"
+                            // A moved id is the sub-pane one only when its
+                            // key is a `quickSettings.*` key (the status
+                            // items own `menu.control.*` / `menu.clock.*`).
+                            && String(row.key).indexOf("quickSettings.") !== 0
+                            && row.control !== "omit"
                             && row.id !== "addControls"
                             && row.id !== "customizeControls"
                             && row.id !== "reset";
                 }).map(function(row) { return row.label; }).join(",");
+            // `controlCenter` renders on the pane inside the Allow section
+            // (`rowSurface` is "pane"), so it is not in this list; the Allow
+            // section's own literal is asserted below.
             compare(labels, "Clock,Search,Wi-Fi,Bluetooth,Battery,Focus,Sound,"
-                            + "Accessibility,Quick Settings,Display,Workspaces,"
+                            + "Accessibility,Display,Workspaces,"
                             + "Now Playing,Text Input,Backups,Timer");
-            // No top-level Quick Settings row and no Screen Casting row.
-            compare(SettingsMap.rowFor("menu-bar", "screenMirroring"), null);
+            var cc = SettingsMap.rowFor("menu-bar", "controlCenter");
+            verify(cc !== null);
+            compare(cc.label, "Quick Settings");
+            compare(cc.section, "Allow in the Menu Bar");
+            compare(SettingsMap.rowSurface("menu-bar", "controlCenter"), "pane");
+            // The sub-pane rows carry the same title but a different surface.
+            compare(SettingsMap.subPaneForRow("menu-bar", "pages"), "controls");
+            compare(SettingsMap.subPaneForRow("menu-bar", "controlCenter"), "");
+            // No top-level Quick Settings row list and no live Screen Casting
+            // row: the latter is a recorded omission on the sub-pane.
+            compare(SettingsMap.rowsFor("control-center").length, 0);
+            var casting = SettingsMap.rowFor("menu-bar", "screenMirroring");
+            verify(casting !== null);
+            compare(casting.state, "omitted");
+            compare(casting.reason.length > 0, true);
 
             var advanced = ["overflow", "globalMenu", "perDisplayPanel"];
             for (var a = 0; a < advanced.length; ++a) {
@@ -311,17 +345,23 @@ Item {
             verify(display.reason.indexOf("Quick Settings") >= 0);
         }
 
-        // T293a: Customize Controls… with no in-place body goes through the
-        // existing Quick Settings surface (`menu-bar/controls` alias). Every
-        // Quick Settings row is landable there.
-        function test_menu_bar_controls_alias_is_landable() {
+        // T293b: every former Quick Settings row now lives under `menu-bar`
+        // as the in-place `controls` sub-pane, and the aliases land there.
+        function test_menu_bar_controls_rows_are_landable() {
             var rows = SettingsMap.rowsFor("menu-bar");
+            var controls = 0;
             for (var i = 0; i < rows.length; ++i) {
-                if (rows[i].section !== "Quick Settings")
+                if (SettingsMap.subPaneForRow("menu-bar", rows[i].id) !== "controls")
+                    continue;
+                controls += 1;
+                if (rows[i].state !== "shipped")
                     continue;
                 compare(SettingsMap.rowSurface("menu-bar", rows[i].id),
-                        "subpane");
+                        "subpane", rows[i].id);
             }
+            verify(controls >= 18, "the sub-pane carries the moved rows");
+            // No top-level Quick Settings row list survives.
+            compare(SettingsMap.rowsFor("control-center").length, 0);
             var shell = make();
             verify(shell.deepLink("settings://pane/menu-bar"));
             tryVerify(function() { return shell.currentPaneId === "menu-bar"; });

@@ -120,7 +120,8 @@ The map has **26 shipped panes in the 27-entry reduced sidebar** after T285
 `mission-control`, and `control-center` left the top-level catalog:
 `SettingsPanes.aliases`/`SettingsMap.aliases` land
 `mission-control`/`overview` on Desktop & Dock → Workspace Overview,
-`control-center`/`quick-settings` on Menu Bar → Menu Bar Controls,
+`control-center`/`quick-settings` on Menu Bar → Menu Bar Controls (the
+in-place sub-pane, T293b),
 `internet-accounts` on `online-accounts`, and `storage` on General → Storage;
 `biometrics` is refused. `SettingsPanes.removed`/`SettingsMap.removed` carry
 the reasons and the debug view shows them. `vpn` is always visible, so the
@@ -249,7 +250,8 @@ is optional and appears only while GOA answers).
   `Glass.wallpaperTint`; `ScrollView` consumes `Theme.scrollBars`. The Settings
   app mirrors the same bindings in `SettingsShell.qml`, so the pane and the
   live shell restyle on the same `Changed` signal.
-- **Quick Settings** is a customization surface, not a second panel. It writes
+- **Quick Settings** (now Menu Bar → Menu Bar Controls, T293b) is a
+  customization surface, not a second panel. It writes
   the ordered `quickSettings.modules` list and the `quickSettings.menuBarOnly`
   set. `ControlCenter.qml` filters and orders its live tile model from the same
   keys; removing a module hides it immediately, and a menu-bar-only item leaves
@@ -842,13 +844,32 @@ shadow, hover/open plate, and a File Edit View sample. Dragonfruit is the
 default and the Reset value; Space/Return select the focused row and the
 arrows move the selection.
 
-Customize Controls… opens the existing Quick Settings surface through the
-`menu-bar/controls` alias; T293b replaces that with the in-place Menu Bar
-Controls sub-pane. The Linux-only rows (`menu.overflow`, `menu.global`,
-`quickSettings.perDisplay`) live in the **Advanced Menu Bar** sheet. Reset Menu
+Customize Controls… opens the in-place **Menu Bar Controls** sub-pane (T293b):
+the former Quick Settings body (`shell/control-center/MenuBarControlsPane.qml`)
+in place of the pane list, with a ‹ Menu Bar back button. The Linux-only rows
+(`menu.overflow`, `menu.global`, `quickSettings.perDisplay`) live in the
+**Advanced Menu Bar** sheet. Reset Menu
 Bar… restores the behaviour keys, the glyph, the clock options, every control
 visibility, the per-control options, the tray allowances, and the Linux-only
 rows. `make t293a-settings-menu-bar-capture` writes six surfaces per scheme.
+
+## The T293b Menu Bar Controls sub-pane (ADR 0306)
+
+The former Quick Settings pane is now **Menu Bar → Menu Bar Controls**, an
+in-place sub-pane rather than a top-level pane. `MenuBarPane` keeps the pane
+list in `listColumn` and mounts the body through `subPaneLoader`; only one
+column is visible, `subPaneId === "controls"` and the toolbar title reads
+"Menu Bar Controls". **Customize Controls…** and the `control-center` /
+`quick-settings` deep links open the sub-pane; **‹ Menu Bar** (or Back) returns
+to the list. The body is `shell/control-center/MenuBarControlsPane.qml` — the
+same `quickSettings.*` keys, the same `ControlCenterRegistry`, the same
+Pages, Control sizes, Page names, Modules, Menu Bar Only, preview, Add
+Controls…, per-display and Reset sections. It is registered in
+`Dragonfruit.ControlCenter` because importing `Dragonfruit.Settings` from
+`MenuBarPane` would be a cycle. The map moved the former `control-center` rows
+under `menu-bar` (`subPaneForRow` → `controls`, `rowSurface` → `subpane`) and
+keeps no `control-center` row list. `make
+t293b-settings-menu-bar-controls-capture` writes six stills per scheme.
 
 ## The T276 Desktop & Dock and Overview panes (ADR 0277)
 

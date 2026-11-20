@@ -665,9 +665,20 @@ or recorded as `omitted` rows with a reason, and an omitted row is never
 search-indexed.
 
 <a id="pane-control-center"></a>
-### 5.8 Quick Settings
+### 5.8 Menu Bar Controls (formerly Quick Settings)
 
 Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
+
+T293b: this surface is no longer a top-level pane. It is the in-place
+**Menu Bar → Menu Bar Controls** sub-pane of §5.9, reached from **Customize
+Controls…** and from the `settings://pane/control-center` /
+`settings://pane/quick-settings` deep links. Its map rows live under
+`menu-bar` (`subPaneForRow("menu-bar", id)` returns `"controls"`,
+`rowSurface` returns `"subpane"`); the keys, owners, and the
+`ControlCenterRegistry` are unchanged. The main pane's **Menu Bar Controls**
+section is still the status-item list. The sub-pane's Reset row keeps the
+"Reset Quick Settings" label (it restores the panel surface); the footer's
+**Reset Menu Bar…** keeps "Menu Bar" in its label.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
@@ -742,7 +753,7 @@ T293a renders the mockup order: **Menu Bar Behaviour**, **OS Menu Glyph**,
 | Menu Bar Controls | Timer | Omit (`timer`) | — | No timer service or clock timer |
 | Allow in the Menu Bar | Third-party items | List | StatusNotifier registry + `menu.tray.hidden` | Allow/deny each live item; empty state when none |
 | Footer | Add Controls… | Button | `menu.control.*` | The Add Controls sheet |
-| Footer | Customize Controls… | Button | `quickSettings.*` | Opens the Quick Settings surface through the `menu-bar/controls` alias until T293b |
+| Footer | Customize Controls… | Button | `quickSettings.*` | Opens the in-place Menu Bar Controls sub-pane (T293b) |
 | Footer | Advanced… | Button | — | The Advanced Menu Bar sheet |
 | Footer | Reset Menu Bar… | Button | `menu.*`, `power.showPercentage`, `quickSettings.perDisplay` | Restores every key this pane writes |
 | Advanced Menu Bar | Overflow policy | Popup | `menu.overflow` | Automatic or always-show overflow (Linux-only) |
@@ -768,6 +779,17 @@ StatusNotifier view and writes `menu.tray.hidden`, which the shell's
 compositor's active-workspace projection, and `menu.global` is the existing
 global-menu toggle.
 
+**T293b status.** The Menu Bar Controls sub-pane is
+`shell/control-center/MenuBarControlsPane.qml` (registered in
+`Dragonfruit.ControlCenter`), mounted by `MenuBarPane.subPaneLoader`. The
+former `control-center` row list is deleted from the map; the rows keep their
+ids and keys under `menu-bar`. `screenMirroring` and `nowPlaying` are
+`omitted` (they named `menu.control.*` keys the body never wrote). A deep link
+to any sub-pane row opens the sub-pane before it lands; the Wi-Fi, Bluetooth,
+Focus, Sound, Battery, and Display ids exist twice (status item and moved
+control), so `rowFor` returns the first and `subPaneForRow` prefers the
+sub-pane.
+
 **T293a status.** The pane follows the mockup order above and the former
 standalone "Menu Bar Behavior", "Screen Casting", "Notifications", and "Reset"
 rows are gone. The OS Menu Glyph is one radio group
@@ -780,9 +802,7 @@ shadow, the bar's hover/open plate, and a File Edit View sample). Dragonfruit
 is the install default and the Reset value. The three Linux-only rows moved
 into the **Advanced Menu Bar** sheet (`menuBarDialogRows`, `rowSurface` =
 `dialog`); the footer's Advanced… opens it and a row deep link opens it before
-landing. Customize Controls… opens the existing Quick Settings surface through
-the `menu-bar/controls` alias (`SettingsShell` mounts `QuickSettingsPane` with
-`subPaneId: "controls"`); T293b replaces that with the in-place sub-pane.
+landing. Customize Controls… opens the in-place Menu Bar Controls sub-pane (T293b).
 
 <a id="pane-search"></a>
 ### 5.10 Search (Search-equivalent)

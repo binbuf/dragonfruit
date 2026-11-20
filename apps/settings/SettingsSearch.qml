@@ -64,10 +64,14 @@ QtObject {
                           "read and speak", "physical", "physical and motor",
                           "pointer control", "accessibility shortcut", "hotkey",
                           "key binding", "accessibility"],
+        // T293b: the former Quick Settings pane is the in-place **Menu Bar
+        // Controls** sub-pane, so its names are Menu Bar words and the pane
+        // result lands on `menu-bar` (advanced by `deepLink`/`openSubPane`).
         "menu-bar": ["menu bar controls", "control center", "quick settings",
-                     "controls", "tiles", "modules", "status items", "clock",
-                     "menu extras", "menu bar items", "menu bar behaviour",
-                     "os menu glyph", "allow in the menu bar", "advanced menu bar",
+                     "quick settings controls",
+                     "status items", "clock", "menu extras", "menu bar items",
+                     "menu bar behaviour", "os menu glyph",
+                     "allow in the menu bar", "advanced menu bar",
                      "reset menu bar"],
         "search": ["spotlight", "index", "indexing", "web search", "shortcut"],
         "privacy": ["security", "permissions", "camera", "microphone", "location",
@@ -299,6 +303,26 @@ QtObject {
         "vpn/vpn.add": ["add vpn", "new vpn", "wireguard", "openvpn"],
         // T293a: the Menu Bar rows. The mockup's section names are searchable
         // words, and each omitted control keeps the words a user would type.
+        // T293b: the former Quick Settings rows move here with the
+        // **Menu Bar Controls** sub-pane, so their words stay searchable under
+        // Menu Bar instead of a removed top-level pane.
+        "menu-bar/pages": ["quick settings pages", "panel pages", "pages",
+                           "quick settings page name", "add a page"],
+        "menu-bar/spans": ["control sizes", "spans", "tile size",
+                           "resize controls", "quick settings sizes"],
+        "menu-bar/pageNames": ["page names", "rename page",
+                               "quick settings page name"],
+        // No bare "modules"/"tiles"/"controls": a one-word query would float
+        // every sub-pane row above its own pane result.
+        "menu-bar/modules": ["quick settings modules", "edit controls",
+                             "quick settings layout", "control center modules"],
+        "menu-bar/menuBarItems": ["menu bar only", "menu bar items",
+                                  "keep in the menu bar",
+                                  "hide from quick settings"],
+        "menu-bar/preview": ["quick settings preview", "panel preview",
+                             "tile grid"],
+        "menu-bar/screenMirroring": ["screen casting", "screen sharing",
+                                     "airplay", "mirror screen"],
         "menu-bar/suggestions": ["menu bar gallery", "suggestions",
                                  "suggest apps"],
         "menu-bar/osGlyph": ["os glyph", "menu bar logo", "menu bar icon",
@@ -800,9 +824,27 @@ QtObject {
             score += 30;
         else if (entry.kind === "section")
             score += 20;
+        else if (root.demotedTwin(entry, query))
+            score += 5;
         else
             score += 10;
         return { score: score, primary: primary > 0 };
+    }
+
+    // T293b: a row that is a same-name twin of its pane's own name word
+    // ("Dark mode" beside the Appearance pane, "Theme" in its Theme section)
+    // must not jump ahead of that pane. The lower bonus lets the pane win
+    // while a better field on another row still sorts above it.
+    function demotedTwin(entry, query) {
+        if (entry.kind !== "row" || entry.nLabel !== query)
+            return false;
+        for (var i = 0; i < root.entries.length; ++i) {
+            var other = root.entries[i];
+            if (other.paneId === entry.paneId && other.kind !== "row"
+                    && other.nLabel === query)
+                return true;
+        }
+        return false;
     }
 
     function isPaneNameMatch(entry, query, queryCompact) {

@@ -50,7 +50,13 @@ Item {
             displays.advancedPopup.hide();
             wait(250);
 
-            var quick = showPane(shell, "control-center");
+            shell.selectPane("menu-bar");
+            var menuBar = showPane(shell, "menu-bar");
+            shell.openSubPane("controls");
+            tryVerify(function() {
+                return menuBar.subPaneLoader.status === Loader.Ready
+                        && menuBar.subPaneLoader.item !== null;
+            });
             waitForRendering(stage);
             grabImage(shell).save("docs/captures/t227-quick-settings-absence.png");
         }

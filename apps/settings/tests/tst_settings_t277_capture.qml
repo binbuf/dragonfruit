@@ -76,7 +76,14 @@ Item {
             prepare();
             var shell = make();
 
-            var quick = showPane(shell, "control-center");
+            var menuBar = showPane(shell, "menu-bar");
+            shell.openSubPane("controls");
+            tryVerify(function() {
+                return menuBar.subPaneLoader.status === Loader.Ready
+                        && menuBar.subPaneLoader.item !== null;
+            });
+            var quick = menuBar.subPaneLoader.item;
+            verify(quick);
             scrollTo(shell, quick.modulesGroup);
             save(shell, "t277-quick-settings-modules-" + scheme);
 

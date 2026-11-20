@@ -175,7 +175,12 @@ Item {
             // synonym again.
             var dark = SettingsSearch.search("dark mode");
             verify(dark.length > 0);
-            compare(dark[0].kind, "pane");
+            // T293b moves on: the sub-pane's "Dark mode" row now owns the
+            // label, so this ranking case is the one open item recorded in
+            // the T293b hand-off.
+            if (dark[0].kind !== "pane")
+                fail("search ranking: T293b moved `menu-bar/darkMode` ahead of "
+                     + "the Appearance pane; see the T293b hand-off");
             compare(dark[0].paneId, "appearance");
 
             // T290d: the Appearance pane now has a Theme section, so an exact

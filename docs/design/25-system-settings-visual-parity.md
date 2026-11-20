@@ -724,11 +724,22 @@ plate, File Edit View sample), a focus ring, and an AT-SPI radio role; the
 group follows `SettingsRadioGroup`'s keys (Space/Return selects the focused
 row, the arrows move the selection). Dragonfruit is the install default and
 the Reset value. The three Linux-only rows live in the **Advanced Menu Bar**
-sheet, and Customize Controls… opens the existing Quick Settings surface
-through the `menu-bar/controls` alias until T293b lands the in-place sub-pane.
+sheet, and Customize Controls… opens the Menu Bar Controls surface.
 `make t293a-settings-menu-bar-capture` writes the main pane, the glyph group,
 the controls list, the footer/third-party list, the Reset result, and the
 advanced sheet in light/dark.
+
+T293b lands the in-place **Menu Bar Controls** sub-pane. Customize Controls…
+and the `control-center`/`quick-settings` deep links open it in place of the
+pane list (Pages, Control sizes, Page names, Modules, Menu Bar Only, the live
+preview, Add Controls…, Show on all displays, and Reset Quick Settings), with
+a **‹ Menu Bar** back button and the toolbar title "Menu Bar Controls". The
+body is the former `QuickSettingsPane.qml` (now
+`shell/control-center/MenuBarControlsPane.qml`): the same `quickSettings.*`
+keys and the same `ControlCenterRegistry`, never a second module list. The
+main pane's **Menu Bar Controls** section stays the status-item list; the
+sub-pane's rows are map rows under `menu-bar` with `rowSurface` = `subpane`.
+`make t293b-settings-menu-bar-controls-capture` writes six stills per scheme.
 
 ### 5.8 Search
 
@@ -909,7 +920,7 @@ before the task is marked done.
 | Privacy categories | Keep the categories with a real portal owner; omit reference-only/ownerless categories with map reasons. | T298a/T298b |
 | device management | Omitted; no Linux MDM/profile owner in scope. | T287 |
 | Search history/telemetry | Omitted; no search-history or telemetry owner. | T294 |
-| Menu Bar controls | Now Playing, Text Input, Backups, and Timer are omitted until a real status item exists. | T293a/T293b |
+| Menu Bar controls | Now Playing, Text Input, Backups, and Timer are omitted until a real status item exists. The former Quick Settings surface is the in-place Menu Bar Controls sub-pane (same `quickSettings.*` keys and the one registry). | T293a/T293b |
 | Game Controllers Home Button | Omitted unless a real controller-service consumer exists. | T300d |
 | Linux-only rows | Appearance icon/cursor/material, Dock hover/minimize, window rules, Menu Bar overflow/global menu, Search web/indexing, and Sound per-app volume stay reachable in advanced sheets. | T290/T292a/T293a/T294/T297a |
 | Accent palette and icons | Use the design-system palette and Phosphor/Tabler glyphs, not the mockup's reference hex values or SVG paths. | T286/T290 |

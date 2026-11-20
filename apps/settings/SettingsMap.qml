@@ -41,7 +41,9 @@ QtObject {
     // the mockup sidebar order: Connectivity, Desktop, Input. `storage` stays
     // a shipped pane body but is hidden from the sidebar and aliased to
     // General -> Storage. `mission-control` and `control-center` are no longer
-    // top-level panes; their ids are documented in `aliases`/`removed`.
+    // top-level panes; their ids are documented in `aliases`/`removed`. T293b
+    // moved the former Quick Settings surface's rows under `menu-bar` (the
+    // `controls` sub-pane), so the map keeps no `control-center` row list.
     readonly property var panes: [
         { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi", group: "connectivity",
           shipped: true,
@@ -868,62 +870,12 @@ QtObject {
                          "shell/compositor shortcut engine",
                          "accessibility.shortcut", "live-on-defaults", "shipped")
             ],
-            "control-center": [
-                root.row("modules", qsTr("Quick Settings"), qsTr("Modules"), "list",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("wifi", qsTr("Quick Settings"), qsTr("Wi-Fi"), "checkbox",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("bluetooth", qsTr("Quick Settings"), qsTr("Bluetooth"), "checkbox",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("focus", qsTr("Quick Settings"), qsTr("Focus"), "checkbox",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("screenMirroring", qsTr("Quick Settings"), qsTr("Screen casting"), "checkbox",
-                         "settingsd", "menu.control.screenMirroring", "live-on-defaults"),
-                root.row("nowPlaying", qsTr("Quick Settings"), qsTr("Now Playing"), "checkbox",
-                         "settingsd", "menu.control.nowPlaying", "live-on-defaults"),
-                root.row("sound", qsTr("Quick Settings"), qsTr("Sound"), "checkbox",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("display", qsTr("Quick Settings"), qsTr("Display"), "checkbox",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("battery", qsTr("Quick Settings"), qsTr("Battery"), "checkbox",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("darkMode", qsTr("Quick Settings"), qsTr("Dark mode"), "checkbox",
-                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
-                root.row("stage", qsTr("Quick Settings"), qsTr("Stage"), "checkbox",
-                         "settingsd", "menu.control.stageManager", "live-on-defaults"),
-                root.row("screenRecording", qsTr("Quick Settings"), qsTr("Screen recording"), "checkbox",
-                         "settingsd", "menu.control.screenRecording", "live-on-defaults"),
-                root.row("keyboardBrightness", qsTr("Quick Settings"), qsTr("Keyboard brightness"), "checkbox",
-                         "settingsd", "menu.control.keyboardBrightness", "live-on-defaults"),
-                root.row("hearing", qsTr("Quick Settings"), qsTr("Hearing"), "checkbox",
-                         "settingsd", "menu.control.hearing", "live-on-defaults"),
-                root.row("menuBarItems", qsTr("Quick Settings"), qsTr("Menu bar items"), "list",
-                         "settingsd", "quickSettings.menuBarOnly", "live-on-defaults", "shipped"),
-                root.row("pages", qsTr("Quick Settings"), qsTr("Pages"), "list",
-                         "settingsd", "quickSettings.pageCount", "live-on-defaults", "shipped"),
-                root.row("spans", qsTr("Quick Settings"), qsTr("Control sizes"), "list",
-                         "settingsd", "quickSettings.spans", "live-on-defaults", "shipped"),
-                root.row("pageNames", qsTr("Quick Settings"), qsTr("Page names"), "list",
-                         "settingsd", "quickSettings.pageNames", "live-on-defaults", "shipped"),
-                root.row("preview", qsTr("Quick Settings"), qsTr("Preview"), "preview",
-                         "settingsd + shell/control-center", "quickSettings.modules",
-                         "live-on-defaults", "shipped"),
-                root.row("perDisplay", qsTr("Quick Settings"), qsTr("Show on all displays"), "toggle",
-                         "settingsd -> shell", "quickSettings.perDisplay",
-                         "disabled-with-reason", "shipped"),
-                root.row("otherModules", qsTr("Quick Settings"), qsTr("Other modules"), "list",
-                         "settingsd", "quickSettings.modules", "live-on-defaults"),
-                root.row("addControls", qsTr("Quick Settings"), qsTr("Add controls..."), "sheet",
-                         "settingsd + shell/control-center", "quickSettings.modules",
-                         "live-on-defaults", "shipped"),
-                root.row("reset", qsTr("Quick Settings"), qsTr("Reset Quick Settings"), "button",
-                         "settingsd", "quickSettings.modules + menu.control.*",
-                         "live-on-defaults", "shipped")
-            ],
             "menu-bar": [
                 // T293a: the mockup order — Menu Bar Behaviour, OS Menu
                 // Glyph, Menu Bar Controls, Allow in the Menu Bar, then the
                 // Advanced Menu Bar sheet.
+                // T293b: the in-place **Menu Bar Controls** sub-pane (the
+                // former Quick Settings rows) follows the Allow section.
                 root.row("autoHide", qsTr("Menu Bar Behaviour"), qsTr("Automatically hide and show the menu bar"), "popup",
                          "settingsd", "menu.autoHide", "live-on-defaults", "shipped"),
                 root.row("background", qsTr("Menu Bar Behaviour"), qsTr("Show menu bar background"), "toggle",
@@ -951,7 +903,7 @@ QtObject {
                          "settingsd", "menu.control.volume", "live-on-defaults", "shipped"),
                 root.row("accessibility", qsTr("Menu Bar Controls"), qsTr("Accessibility"), "checkbox",
                          "settingsd", "menu.control.accessibility", "live-on-defaults", "shipped"),
-                root.row("controlCenter", qsTr("Menu Bar Controls"), qsTr("Quick Settings"), "checkbox",
+                root.row("controlCenter", qsTr("Allow in the Menu Bar"), qsTr("Quick Settings"), "checkbox",
                          "settingsd", "menu.control.controlCenter", "live-on-defaults", "shipped"),
                 root.row("display", qsTr("Menu Bar Controls"), qsTr("Display"), "checkbox",
                          "omit", "omit", "disabled-with-reason", "omitted",
@@ -983,6 +935,62 @@ QtObject {
                          "live-on-defaults", "shipped"),
                 root.row("reset", qsTr("Menu Bar Controls"), qsTr("Reset Menu Bar…"), "button",
                          "settingsd", "menu.* + power.showPercentage + quickSettings.perDisplay",
+                         "live-on-defaults", "shipped"),
+                // T293b: the in-place **Menu Bar Controls** sub-pane (the
+                // former Quick Settings surface, reached from Customize
+                // Controls… and the `control-center`/`quick-settings` deep
+                // links). The rows keep their ids, owners, and `quickSettings.*`
+                // keys; only their home and section change. `screenMirroring`
+                // and `nowPlaying` name a `menu.control.*` key the Pane never
+                // consumed, so they are recorded as omissions here instead of
+                // a dead `planned` row (T293b audit).
+                root.row("pages", qsTr("Menu Bar Controls"), qsTr("Pages"), "list",
+                         "settingsd", "quickSettings.pageCount", "live-on-defaults", "shipped"),
+                root.row("spans", qsTr("Menu Bar Controls"), qsTr("Control sizes"), "list",
+                         "settingsd", "quickSettings.spans", "live-on-defaults", "shipped"),
+                root.row("pageNames", qsTr("Menu Bar Controls"), qsTr("Page names"), "list",
+                         "settingsd", "quickSettings.pageNames", "live-on-defaults", "shipped"),
+                root.row("modules", qsTr("Menu Bar Controls"), qsTr("Modules"), "list",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("wifi", qsTr("Menu Bar Controls"), qsTr("Wi-Fi"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("bluetooth", qsTr("Menu Bar Controls"), qsTr("Bluetooth"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("focus", qsTr("Menu Bar Controls"), qsTr("Focus"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("sound", qsTr("Menu Bar Controls"), qsTr("Sound"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("display", qsTr("Menu Bar Controls"), qsTr("Display"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("battery", qsTr("Menu Bar Controls"), qsTr("Battery"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("darkMode", qsTr("Menu Bar Controls"), qsTr("Dark mode"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                // The Audio/accessibility modules the registry also owns; the
+                // body writes the same `quickSettings.modules` list for them.
+                root.row("keyboardBrightness", qsTr("Menu Bar Controls"), qsTr("Keyboard brightness"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("hearing", qsTr("Menu Bar Controls"), qsTr("Hearing"), "checkbox",
+                         "settingsd", "quickSettings.modules", "live-on-defaults", "shipped"),
+                root.row("screenMirroring", qsTr("Menu Bar Controls"), qsTr("Screen casting"), "omit",
+                         "omit", "omit", "omitted", "omitted",
+                         false, "", qsTr("No screen-casting control or menu-bar item exists in this build; screen sharing starts from the portal picker.")),
+                root.row("nowPlaying", qsTr("Menu Bar Controls"), qsTr("Now Playing"), "omit",
+                         "omit", "omit", "omitted", "omitted",
+                         false, "", qsTr("No media control exists yet; the shell has no player provider to control.")),
+                root.row("menuBarItems", qsTr("Menu Bar Controls"), qsTr("Menu bar items"), "list",
+                         "settingsd", "quickSettings.menuBarOnly", "live-on-defaults", "shipped"),
+                root.row("preview", qsTr("Menu Bar Controls"), qsTr("Preview"), "preview",
+                         "settingsd + shell/control-center", "quickSettings.modules",
+                         "live-on-defaults", "shipped"),
+                root.row("perDisplay", qsTr("Menu Bar Controls"), qsTr("Show on all displays"), "toggle",
+                         "settingsd -> shell", "quickSettings.perDisplay",
+                         "disabled-with-reason", "shipped"),
+                root.row("addControls", qsTr("Menu Bar Controls"), qsTr("Add controls..."), "sheet",
+                         "settingsd + shell/control-center", "quickSettings.modules",
+                         "live-on-defaults", "shipped"),
+                root.row("reset", qsTr("Menu Bar Controls"), qsTr("Reset Quick Settings"), "button",
+                         "settingsd", "quickSettings.modules + menu.control.*",
                          "live-on-defaults", "shipped"),
                 // The Advanced Menu Bar sheet.
                 root.row("overflow", qsTr("Advanced Menu Bar"), qsTr("Overflow policy"), "popup",
@@ -1788,12 +1796,24 @@ QtObject {
     }
 
     function rowFor(paneId, rowId) {
+        // T293b: the first row with an id wins. Menu Bar reuses the former
+        // Quick Settings row ids (Wi-Fi, Bluetooth, Focus, ...) on the
+        // `controls` sub-pane after the main pane's status-item rows, so an id
+        // is unique only from the top; `subPaneForRow` still maps the id.
         var list = root.rowsFor(paneId);
         for (var i = 0; i < list.length; ++i) {
             if (list[i].id === rowId)
                 return list[i];
         }
         return null;
+    }
+
+    // Every row with the id, in catalog order (Menu Bar carries the status
+    // item and its sub-pane counterpart under one id).
+    function rowsWithId(paneId, rowId) {
+        return root.rowsFor(paneId).filter(function(entry) {
+            return entry.id === rowId;
+        });
     }
 
     function visibleRowsFor(paneId) {
@@ -1872,10 +1892,47 @@ QtObject {
     }
 
     // The sub-pane id that renders a row, or "" when the row is not inside an
-    // in-place General or Accessibility sub-pane.
+    // in-place General, Accessibility, or Menu Bar sub-pane.
+    // T293b: the Menu Bar Controls sub-pane owns the former Quick Settings
+    // rows; every other Menu Bar row stays on the pane (or its sheet).
+    readonly property var menuBarControlRows: ({
+        "pages": true,
+        "spans": true,
+        "pageNames": true,
+        "modules": true,
+        "wifi": true,
+        "bluetooth": true,
+        "focus": true,
+        "sound": true,
+        "display": true,
+        "battery": true,
+        "darkMode": true,
+        "keyboardBrightness": true,
+        "hearing": true,
+        "screenMirroring": true,
+        "nowPlaying": true,
+        "menuBarItems": true,
+        "preview": true,
+        "perDisplay": true,
+        "addControls": true,
+        "reset": true
+    })
+
     function subPaneForRow(paneId, rowId) {
-        if ((paneId !== "general" && paneId !== "accessibility") || !rowId)
+        if ((paneId !== "general" && paneId !== "accessibility"
+                && paneId !== "menu-bar") || !rowId)
             return "";
+        if (paneId === "menu-bar") {
+            // `wifi`, `bluetooth`, `focus`, `sound`, `battery`, and `display`
+            // exist twice: the status item on the pane and the moved control
+            // on this sub-pane. Any occurrence on the sub-pane wins.
+            var occurrences = root.rowsWithId(paneId, rowId);
+            for (var o = 0; o < occurrences.length; ++o) {
+                if (root.menuBarControlRows[String(rowId)] === true)
+                    return "controls";
+            }
+            return "";
+        }
         var row = root.rowFor(paneId, rowId);
         if (row === null)
             return "";
@@ -1937,12 +1994,8 @@ QtObject {
         "perDisplayPanel": true
     })
 
-    // T293a: the Menu Bar rows whose section is the Quick Settings surface.
-    // They render in `QuickSettingsPane` through the `menu-bar/controls`
-    // alias; T293b drops this branch when the in-place sub-pane lands.
-    readonly property var menuBarAliasSections: ({
-        "Quick Settings": true
-    })
+    // T293b: `menuBarControlRows` (above) is the one table for the Menu Bar
+    // Controls sub-pane.
 
     // Where a row lives: "subpane", "dialog", or "pane". "" means the row
     // cannot be landed and must not be indexed or deep-linked.
@@ -1950,9 +2003,6 @@ QtObject {
         var row = root.rowFor(paneId, rowId);
         if (row === null)
             return "";
-        if (paneId === "menu-bar"
-                && root.menuBarAliasSections[row.section] === true)
-            return "subpane";
         if (root.subPaneForRow(paneId, rowId).length > 0)
             return "subpane";
         if (paneId === "appearance"
@@ -1973,13 +2023,7 @@ QtObject {
         var row = root.rowFor(paneId, rowId);
         if (row === null || row.state !== "shipped")
             return false;
-        var surface = root.rowSurface(paneId, rowId);
-        // T293a: the Menu Bar Controls surface is the existing Quick Settings
-        // pane reached through the `menu-bar/controls` alias until T293b moves
-        // it in place. Its rows land there, not on the Menu Bar pane.
-        if (surface === "subpane" && paneId === "menu-bar")
-            return true;
-        return surface.length > 0;
+        return root.rowSurface(paneId, rowId).length > 0;
     }
 
     // A row is valid when it names an owner and an absence path. An omitted

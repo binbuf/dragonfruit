@@ -29,7 +29,7 @@ cd "$(dirname "$0")/.."
 BUILD="${BUILD_DIR:-build}"
 TESTS="$BUILD/apps/settings/tests"
 
-if [ ! -x "$TESTS/tst_settings_quick_settings" ]; then
+if [ ! -x "$TESTS/tst_settings_menu_bar_controls" ]; then
     echo "capture-t277-quick-settings-menu-bar: pane test not built — run make build" >&2
     exit 1
 fi
@@ -41,7 +41,7 @@ dbus-run-session -- env \
     QT_QUICK_BACKEND=software \
     DF_SETTINGS_FIXTURE=1 \
     QML2_IMPORT_PATH="$BUILD/qml" \
-    "$TESTS/tst_settings_quick_settings" \
+    "$TESTS/tst_settings_menu_bar_controls" \
     -input apps/settings/tests/tst_settings_t277_capture.qml
 
 for scheme in light dark; do

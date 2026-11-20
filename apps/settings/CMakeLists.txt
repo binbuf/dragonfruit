@@ -26,7 +26,6 @@ set(DF_SETTINGS_QML_FILES
     SettingsMenu.qml
     PaneLoader.qml
     AppearancePane.qml
-    QuickSettingsPane.qml
     SearchPane.qml
     ScreenSaverPane.qml
     WallpaperPane.qml

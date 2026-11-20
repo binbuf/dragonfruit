@@ -4,20 +4,29 @@ import Dragonfruit
 import Dragonfruit.Settings
 import Dragonfruit.ControlCenter
 
-// The Quick Settings pane (T227, completed by T277).
+// The Menu Bar Controls sub-pane (T227, completed by T277; moved in place by
+// T293b as the former Quick Settings pane).
 //
-// The pane is a management surface, not a second Quick Settings. It reads the
+// The sub-pane opens from the Menu Bar pane's Customize Controls… action, from
+// the status-item rows, and from the `control-center`/`quick-settings` deep
+// links. It is a management surface, not a second Quick Settings: it reads the
 // one `ControlCenterRegistry` the live panel and the shell's Edit Controls
 // surface use, and writes only the durable `quickSettings.*` / `menu.control.*`
 // keys settingsd owns. Every change is visible in the live preview below and
 // in the shell panel immediately; there is no second module list here.
 //
-// The pane deliberately keeps the module catalogue in categories (the same 22
-// categories Edit Controls uses), pages with names, per-control spans, the
+// The sub-pane deliberately keeps the module catalogue in categories (the same
+// 22 categories Edit Controls uses), pages with names, per-control spans, the
 // menu-bar-only set, and one Reset that restores the whole surface. A module
 // with no provider is listed with the registry's reason and is never addable.
 Item {
     id: root
+
+    // The Mounted-as-a-sub-pane handles `MenuBarPane` forwards to the shell.
+    // They are informational here: this surface has no sub-panes of its own.
+    property string subPaneId: "controls"
+    property string subPaneTitle: qsTr("Menu Bar Controls")
+    signal subPaneLoaded(string subPaneId)
 
     readonly property var registry: ControlCenterRegistry
     readonly property var categories: ControlCenterRegistry.categories
@@ -768,7 +777,7 @@ Item {
                                     visible: modelData !== "edit-controls"
                                     objectName: "quickSettingsToggle-" + modelData
                                     text: ""
-                                    accessibleName: qsTr("Show %1 in Quick Settings")
+                                    accessibleName: qsTr("Show %1 in the panel")
                                         .arg(root.moduleLabel(modelData))
                                     checked: root.moduleEnabled(modelData)
                                     enabled: root.isAddable(modelData)
