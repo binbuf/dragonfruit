@@ -750,6 +750,86 @@ TestCase {
             compare(menu.openSubmenuIndex, -1, "a departed row cannot open a child later");
         }
 
+        function test_context_menu_opens_on_the_pointer_row() {
+            var cm = make(contextMenuComponent, {
+                model: [ { label: "One" }, { label: "Two" },
+                         { label: "Three" }, { label: "Four" },
+                         { label: "Five" }, { label: "Six" } ]
+            });
+            // A bottom-edge press clamps the card upward. The row under the
+            // actual cursor, not row zero, must be selected from the first
+            // frame.
+            var pointerY = stage.height - 10;
+            cm.showAt(stage.width - 10, pointerY);
+            waitForRendering(stage);
+            var expected = cm.rowIndexAtY(pointerY - cm.y);
+            verify(expected >= 0, "the pointer is over a row");
+            compare(cm.highlightedIndex, expected);
+        }
+
+        function test_context_menu_opens_on_its_checked_row() {
+            var cm = make(contextMenuComponent, {
+                model: [ { label: "Small" }, { label: "Medium", checked: true },
+                         { label: "Large" } ]
+            });
+            // An anchored menu (a Select) opens below the control, so the
+            // pointer is not over a row; the live checked value is the
+            // meaningful initial selection.
+            cm.show();
+            waitForRendering(stage);
+            compare(cm.highlightedIndex, 1);
+        }
+
+        function test_context_menu_leave_clears_an_open_submenu_parent() {
+            var menu = make(contextMenuComponent, {
+                x: 10, y: 10,
+                model: [ { label: "Options", type: "submenu",
+                           submenu: [ { label: "One" } ] } ]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var row = findChild(menu, "menuRow0");
+            mouseMove(row, 20, row.height / 2);
+            tryCompare(menu, "openSubmenuIndex", 0);
+            mouseMove(stage, stage.width - 1, stage.height - 1);
+            wait(Theme.controls.contextMenu.submenuDelay + 50);
+            compare(menu.highlightedIndex, -1,
+                    "leaving the menu must clear the opener highlight");
+        }
+
+        function test_context_menu_leave_cancels_a_pending_sibling_dwell() {
+            var menu = make(contextMenuComponent, {
+                x: 10, y: 10,
+                model: [ { label: "Options", type: "submenu",
+                           submenu: [ { label: "One" } ] },
+                         { label: "Other" } ]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var row = findChild(menu, "menuRow0");
+            mouseMove(row, 20, row.height / 2);
+            tryCompare(menu, "openSubmenuIndex", 0);
+            var sibling = findChild(menu, "menuRow1");
+            menu.dwellInterval = 5000;
+            console.log("probe before", menu.openSubmenuIndex,
+                        menu.highlightedIndex, menu.pendingHoverIndex,
+                        sibling.x, sibling.y, sibling.width, sibling.height);
+            mouseMove(sibling, sibling.width / 2, sibling.height / 2);
+            compare(menu.pendingHoverIndex, 1,
+                    "open=" + menu.openSubmenuIndex
+                    + " hi=" + menu.highlightedIndex
+                    + " pending=" + menu.pendingHoverIndex
+                    + " row=" + sibling.x + "," + sibling.y
+                    + " " + sibling.width + "x" + sibling.height);
+            mouseMove(stage, stage.width - 1, stage.height - 1);
+            menu.dwellInterval = Theme.controls.contextMenu.submenuDelay;
+            wait(Theme.controls.contextMenu.submenuDelay + 50);
+            compare(menu.openSubmenuIndex, 0,
+                    "the departed sibling must not commit");
+            compare(menu.highlightedIndex, -1,
+                    "the pointer left the menu");
+        }
+
         function test_context_menu_regions_keep_the_submenu_detached() {
         var cm = make(contextMenuComponent, {
             model: [ { label: "Options", type: "submenu",

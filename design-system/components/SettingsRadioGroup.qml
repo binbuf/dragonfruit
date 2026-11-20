@@ -42,6 +42,12 @@ FocusScope {
         next = Math.max(0, Math.min(root.count - 1, next));
         if (next === root.currentIndex)
             return;
+        // Move the selection and the roving focus together, so Space/Return
+        // confirms the newly selected option instead of the one the user
+        // arrowed away from.
+        var item = root.repeater.itemAt(next);
+        if (item)
+            item.forceActiveFocus();
         root.currentIndex = next;
         root.activated(next);
     }
@@ -81,6 +87,9 @@ FocusScope {
                 activeFocusOnTab: true
 
                 function choose() {
+                    // A pointer pick is also the keyboard focus, so the focus
+                    // ring and the selected dot never disagree.
+                    optionRow.forceActiveFocus();
                     root.select(optionRow.index);
                 }
 

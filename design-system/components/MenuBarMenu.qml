@@ -360,8 +360,8 @@ Item {
     function onMainRowHovered(index) {
         levels.hover(0, index);
     }
-    function onMainRowLeft() {
-        levels.leave(0);
+    function onMainRowLeft(index) {
+        levels.leave(0, index);
     }
     function enterSubmenu() {
         levels.enterChild(0);
@@ -643,7 +643,7 @@ Item {
                         checkSize: Theme.controls.titlebar.fontSize
                         shortcutGap: Theme.controls.menuBarMenu.shortcutGap
                         onRowHovered: (index) => root.onMainRowHovered(index)
-                        onRowLeft: root.onMainRowLeft()
+                        onRowLeft: (index) => root.onMainRowLeft(index)
                         onRowActivated: (index) => root.activate(index)
                     }
                 }

@@ -252,7 +252,7 @@ impl WindowMenu {
             })
             .collect();
 
-        WindowMenu {
+        let mut menu = WindowMenu {
             window,
             anchor,
             rect,
@@ -260,11 +260,33 @@ impl WindowMenu {
             submenu_rect,
             submenu,
             open_submenu: false,
-            // The design-system ContextMenu highlights the first row on open.
-            highlighted: Some(0),
+            highlighted: None,
             submenu_highlighted: None,
             scheme,
+        };
+        // A menu that flips or slides away from the press point must select
+        // the row actually under the pointer. A press in the panel padding
+        // keeps the design-system default of the first row.
+        menu.highlighted = menu.initial_highlight(anchor);
+        menu
+    }
+
+    /// The top-level row under the pointer that opened the menu.
+    ///
+    /// A flipped or clamped panel can leave the press point in the panel
+    /// padding or on its border. Clamp the point into the row content instead
+    /// of persisting the first-row default, so the nearest row under the
+    /// initial cursor is the one selected.
+    fn initial_highlight(&self, anchor: Point<i32, Logical>) -> Option<usize> {
+        if let Some(index) = self.row_at(anchor) {
+            return Some(index);
         }
+        let left = self.rect.loc.x + MENU_PADDING;
+        let top = self.rect.loc.y + MENU_PADDING;
+        let right = self.rect.loc.x + self.rect.size.w - MENU_PADDING - 1;
+        let bottom = self.rect.loc.y + self.rect.size.h - MENU_PADDING - 1;
+        let inside = Point::from((anchor.x.clamp(left, right), anchor.y.clamp(top, bottom)));
+        self.row_at(inside).or(Some(0))
     }
 
     /// Whether `point` is inside the top-level panel.

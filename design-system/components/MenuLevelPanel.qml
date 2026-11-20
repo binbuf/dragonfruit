@@ -232,8 +232,10 @@ Item {
                         if (panel.levels)
                             panel.levels.hover(panel.level, index);
                     }
-                    onRowLeft: if (panel.levels)
-                                    panel.levels.leave(panel.level)
+                    onRowLeft: (index) => {
+                        if (panel.levels)
+                            panel.levels.leave(panel.level, index);
+                    }
                     onRowActivated: (index) => {
                         if (panel.levels)
                             panel.levels.activateAt(panel.level, index);

@@ -387,21 +387,21 @@ QtObject {
             dwellTimer.start();
     }
 
-    function leave(level) {
-        // A row leaving only retires a dwell that row's own level armed. A
-        // submenu row leaving must not cancel the parent level's pending
-        // sibling change; entering the child already does that explicitly.
-        if (root.pendingLevel !== level)
+    function leave(level, index) {
+        // A new sibling may have claimed the pointer before the old row's
+        // leave arrives. Only the departing row itself may retire the dwell it
+        // armed; otherwise the enter and leave order would cancel the new
+        // selection.
+        var wasPending = root.pendingLevel === level
+                         && root.pendingIndex === index;
+        if (wasPending)
+            root.cancelPending();
+        // A departed row cannot leave a stale highlight behind. The deferred
+        // clear is cancelled by a sibling enter or by entering the open child,
+        // so only a pointer that truly left that row reaches the clear.
+        var shown = root.highlightIndexAt(level);
+        if (!wasPending && shown !== index && shown >= 0)
             return;
-        // Entering the open child cancels the pending sibling change; a
-        // departed row with no child open cannot open one later.
-        if (root.openIndexAt(level) >= 0)
-            return;
-        root.cancelPending();
-        // Defer the highlight clear one event-loop turn: a pointer crossing
-        // into a sibling delivers that sibling's enter immediately, and the
-        // timer is cancelled there. Only a pointer that truly left the menu
-        // reaches the clear.
         root.hoverLeaveLevel = level;
         hoverLeaveTimer.restart();
     }
@@ -564,8 +564,8 @@ QtObject {
             root.hoverLeaveLevel = -1;
             if (level < 0 || root.pendingLevel === level)
                 return;
-            if (root.openIndexAt(level) >= 0)
-                return;
+            // Entering an open child cancels this deferred clear; a pointer
+            // that truly leaves the menu must not leave the opener row lit.
             root.setHighlight(level, -1);
         }
     }

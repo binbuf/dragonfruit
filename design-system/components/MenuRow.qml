@@ -28,7 +28,7 @@ Item {
     property real constrainedWidth: -1
 
     signal rowHovered(int index)
-    signal rowLeft()
+    signal rowLeft(int index)
     signal rowActivated(int index)
 
     readonly property bool isSeparator: root.entry.type === "separator"
@@ -141,7 +141,7 @@ Item {
             if (hovered)
                 root.rowHovered(root.entry.index);
             else
-                root.rowLeft();
+                root.rowLeft(root.entry.index);
         }
     }
 

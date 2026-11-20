@@ -406,6 +406,8 @@ FocusScope {
             onHoveredChanged: {
                 if (hovered && row.isRow)
                     root.hoveredIndex = row.entry.index;
+                else if (root.hoveredIndex === row.entry.index)
+                    root.hoveredIndex = -1;
             }
         }
 

@@ -39,6 +39,11 @@ Item {
     property Item anchorItem: null
     property real anchorOffset: Theme.controls.popup.offset
     property Item previousFocusItem: null
+    // The pointer point that opened a pointer-anchored menu, in parent
+    // coordinates. It is consumed once when the menu opens so the row under
+    // the cursor is selected immediately instead of showing row zero until
+    // the first motion event (which reads as a jump/flicker).
+    property real pointerOpenY: -1
     // The rectangle, in parent coordinates, this menu family may occupy.
     // Callers that commit a single popover rectangle (the Dock) pass the
     // intersection of the output area and the render budget. When unset the
@@ -301,6 +306,9 @@ Item {
     // Place a pointer-opened menu at a point and clamp it into the host
     // rectangle. Anchored menus are placed by `placeAtAnchor()` instead.
     function showAt(x, y) {
+        // Keep the pointer point before clamping. A menu that flips or slides
+        // up still highlights the row the cursor is actually over.
+        root.pointerOpenY = y;
         var bounds = root.effectiveRect;
         if (bounds) {
             var w = Math.min(root.desiredWidth, root.availableWidth);
@@ -419,8 +427,8 @@ Item {
     function onMainRowHovered(index) {
         levels.hover(0, index);
     }
-    function onMainRowLeft() {
-        levels.leave(0);
+    function onMainRowLeft(index) {
+        levels.leave(0, index);
     }
     function enterSubmenu() {
         levels.enterChild(0);
@@ -432,6 +440,35 @@ Item {
     function rowY(index) {
         return levels.rowY(0, index, Theme.controls.contextMenu.rowHeight,
                            Theme.controls.contextMenu.padding);
+    }
+    // The root row at a y coordinate, including the click that opened a
+    // pointer menu. A point in the padding or outside the card is not a row.
+    function rowIndexAtY(y) {
+        var padding = Theme.controls.contextMenu.padding;
+        var top = padding;
+        for (var i = 0; i < root.entries.length; ++i) {
+            var height = root.entries[i].type === "separator"
+                         ? padding : Theme.controls.contextMenu.rowHeight;
+            if (y >= top && y < top + height)
+                return i;
+            top += height;
+        }
+        return -1;
+    }
+    // The row a menu selects on open: the row under a pointer-open point when
+    // it names one, otherwise the checked/current row (a Select opens on its
+    // live value), otherwise the first row through the normal move path.
+    function initialHighlightIndex() {
+        if (root.pointerOpenY >= 0) {
+            var at = root.rowIndexAtY(root.pointerOpenY - root.y);
+            if (at >= 0)
+                return at;
+        }
+        for (var i = 0; i < root.entries.length; ++i) {
+            if (root.entries[i].checked === true)
+                return i;
+        }
+        return -1;
     }
     // The row's top offset in the scrolled viewport. A nested panel follows
     // its parent row while the menu scrolls.
@@ -509,7 +546,15 @@ Item {
             root.syncFromLevels();
             if (rowView.flickable)
                 rowView.flickable.contentY = 0;
-            levels.move(0, 1);
+            // Open on the row the cursor is over (a pointer-opened menu) or
+            // on the checked/current value (a Select). Only fall back to the
+            // first row when neither names one.
+            var initial = root.initialHighlightIndex();
+            root.pointerOpenY = -1;
+            if (initial >= 0)
+                levels.setHighlight(0, initial);
+            else
+                levels.move(0, 1);
             root.forceActiveFocus();
             root.opened();
         } else {
@@ -604,7 +649,7 @@ Item {
                     constrainedWidth: parent ? parent.width : -1
                     highlighted: root.highlightedIndex === modelData.index
                     onRowHovered: (index) => root.onMainRowHovered(index)
-                    onRowLeft: root.onMainRowLeft()
+                    onRowLeft: (index) => root.onMainRowLeft(index)
                     onRowActivated: (index) => root.activate(index)
                 }
             }
