@@ -8,6 +8,10 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Added
 
+- **Fullscreen screenshot shortcut.** Cmd+Shift+3 now captures the current
+  desktop view immediately and saves a timestamped PNG on the Desktop. The
+  region/window shortcut still opens the selection overlay, and portal captures
+  still save to `Pictures/Screenshots`.
 - **Power confirmation.** The system menu's Restart and Shut Down now open a
   modal confirmation dialog with the matching power or restart glyph, a
   60-second countdown, and Cancel plus the action as the default button. Escape

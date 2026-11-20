@@ -56,6 +56,18 @@ private slots:
         QVERIFY(mime->urls().contains(QUrl::fromLocalFile(result.path)));
     }
 
+    void deliveringToDesktopUsesTheDesktopDirectory()
+    {
+        ScreenshotWriter writer;
+        const QImage image = sample();
+        QCOMPARE(ScreenshotWriter::desktopDirectory(), m_dir.path());
+        const ScreenshotWriter::Result result = writer.deliverToDesktop(image);
+        QVERIFY(result.saved);
+        QVERIFY(result.copied);
+        QVERIFY(QFileInfo::exists(result.path));
+        QCOMPARE(QFileInfo(result.path).absolutePath(), m_dir.path());
+    }
+
     void copyPutssTheImageOnTheClipboard()
     {
         const QImage image = sample();
@@ -78,6 +90,7 @@ private slots:
     {
         QVERIFY(!ScreenshotWriter::save(QImage(), m_dir.filePath("x.png")));
         QVERIFY(!ScreenshotWriter::save(sample(), QString()));
+        QVERIFY(ScreenshotWriter::savePath(QDateTime::currentDateTime(), QString()).isEmpty());
         QVERIFY(!ScreenshotWriter::copy(QImage()));
         // A copy without a file path is still a valid image copy.
         QVERIFY(ScreenshotWriter::copy(sample(), QString()));

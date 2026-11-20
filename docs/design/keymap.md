@@ -53,7 +53,7 @@ are listed here for reference.
 | `Ctrl+Up` | Overview |
 | `Ctrl+Down` | Desktop Reveal |
 | `Super+Tab` | App switcher |
-| `Super+Shift+3` / `Super+Shift+4` | Screenshot |
+| `Super+Shift+3` / `Super+Shift+4` | Screenshot (fullscreen to Desktop / region overlay) |
 | `Super+Ctrl+Q` | Lock screen |
 | `Ctrl+Shift+N` | Notifications |
 

@@ -26,14 +26,23 @@ QString ScreenshotWriter::saveDirectory()
     return pictures + QStringLiteral("/Screenshots");
 }
 
+QString ScreenshotWriter::desktopDirectory()
+{
+    // The same override keeps headless tests and capture fixtures on one
+    // predictable directory for both destinations.
+    const QString override = qEnvironmentVariable("DF_SCREENSHOT_DIR");
+    if (!override.isEmpty())
+        return override;
+    return QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+}
+
 QString ScreenshotWriter::baseName(const QDateTime &now)
 {
     return QStringLiteral("Screenshot_") + now.toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
 }
 
-QString ScreenshotWriter::savePath(const QDateTime &now)
+QString ScreenshotWriter::savePath(const QDateTime &now, const QString &directory)
 {
-    const QString directory = saveDirectory();
     if (directory.isEmpty())
         return QString();
     QDir dir(directory);
@@ -44,6 +53,11 @@ QString ScreenshotWriter::savePath(const QDateTime &now)
                                  + QStringLiteral(".png"));
     }
     return candidate;
+}
+
+QString ScreenshotWriter::savePath(const QDateTime &now)
+{
+    return savePath(now, saveDirectory());
 }
 
 bool ScreenshotWriter::save(const QImage &image, const QString &path)
@@ -71,12 +85,26 @@ bool ScreenshotWriter::copy(const QImage &image, const QString &filePath)
     return true;
 }
 
-ScreenshotWriter::Result ScreenshotWriter::deliver(const QImage &image) const
+ScreenshotWriter::Result ScreenshotWriter::deliver(const QImage &image,
+                                                   const QString &directory) const
 {
     Result result;
-    result.path = savePath();
+    result.path = savePath(QDateTime::currentDateTime(), directory);
     result.saved = save(image, result.path);
     if (result.saved)
         result.copied = copy(image, result.path);
     return result;
+}
+
+ScreenshotWriter::Result ScreenshotWriter::deliver(const QImage &image) const
+{
+    return deliver(image, saveDirectory());
+}
+
+ScreenshotWriter::Result ScreenshotWriter::deliverToDesktop(const QImage &image) const
+{
+    QString directory = desktopDirectory();
+    if (directory.isEmpty())
+        directory = saveDirectory();
+    return deliver(image, directory);
 }

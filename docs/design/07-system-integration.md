@@ -1874,8 +1874,10 @@ interface and the second interactive one. Contract frozen in ADR
 - **The mode is a Dragonfruit option extension.** A `mode` string option
   (`fullscreen`/`region`/`window`) lets the desktop shortcut and the headless
   tests request a selection; a standard frontend that omits it is `fullscreen`
-  (or `region` when `interactive`). The desktop's Super+Shift+3/4 shortcut drives
-  the same overlay without a portal request (`beginLocal`).
+  (or `region` when `interactive`). Super+Shift+4 drives the selection overlay
+  without a portal request (`beginLocal`). Super+Shift+3 bypasses the overlay
+  and asks for the whole output immediately (ADR
+  [0307](adr/0307-screenshot-shortcut-immediate-desktop-save.md)).
 - **The selection UI is a shell overlay.** `Dragonfruit.Screenshot`/
   `SelectionOverlay.qml` is a pure view — full-output scrim, a mode badge, a
   region drag with live pixel dimensions, a window crosshair, Escape cancel and
@@ -1893,11 +1895,14 @@ interface and the second interactive one. Contract frozen in ADR
   The request is only reachable by the authenticated shell (the portal
   presenter), so no client-facing grab protocol exists and the
   `check-no-capture-grab` gate stays green. `ScreenshotWriter` (dockcore) then
-  saves the image into `Pictures/Screenshots` and copies it (and the saved
-  `file://` URI) to the clipboard; a waiting portal request is completed with
-  the saved URI. The nested backend implements the render; DRM and headless
-  answer `screenshot_failed`. Contract in ADR
-  [0079](adr/0079-screenshot-capture-delivery-and-save-copy.md).
+  saves the image and copies it (and the saved `file://` URI) to the clipboard.
+  The Cmd+Shift+3 fullscreen shortcut writes to the XDG Desktop directory;
+  portal requests and the region/window flows write to `Pictures/Screenshots`
+  (`DF_SCREENSHOT_DIR` overrides both for tests and fixtures). A waiting portal
+  request is completed with the saved URI. The nested backend implements the
+  render; DRM and headless answer `screenshot_failed`. Contract in ADRs
+  [0079](adr/0079-screenshot-capture-delivery-and-save-copy.md) and
+  [0307](adr/0307-screenshot-shortcut-immediate-desktop-save.md).
 - `portal/tests/screenshot.rs` drives the blocking round trip for each mode
   with a test client as the presenter; `tst_screenshot` (bridge: mode,
   selection hand-off, cancel, and a round-trip against a fake

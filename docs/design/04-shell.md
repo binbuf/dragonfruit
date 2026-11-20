@@ -1151,11 +1151,15 @@ out of their nearest screen edge (reduced motion fades them in place), and
 
 ## Screenshot and screen recording
 
-The capture UI is a shell surface; the capture itself goes through the portal
-capture path (single-frame and PipeWire streams — see
-[07-system-integration.md](07-system-integration.md)), and the keybind is a
-compositor global shortcut. Screenshot and OSD feedback follow the same
-design-system motion rules as the rest of the chrome.
+The capture itself goes through the portal capture path (single-frame and
+PipeWire streams — see [07-system-integration.md](07-system-integration.md)),
+and the keybind is a compositor global shortcut. Cmd+Shift+3 captures the whole
+output immediately and saves a timestamped PNG on the Desktop, with no
+selection surface; Cmd+Shift+4 opens the region/window selection overlay and
+saves to `Pictures/Screenshots` (ADR
+[0307](adr/0307-screenshot-shortcut-immediate-desktop-save.md)). Screenshot and
+OSD feedback follow the same design-system motion rules as the rest of the
+chrome.
 
 ## Authentication agent
 

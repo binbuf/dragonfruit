@@ -46,6 +46,15 @@ too large for one still frame; (b) is forbidden by policy and the gate.
   answers any waiting portal request with the saved URI via
   `ScreenshotBridge::complete`.
 
+## Update — ADR [0307](0307-screenshot-shortcut-immediate-desktop-save.md)
+
+The local Cmd+Shift+3 fullscreen shortcut no longer opens the selection
+overlay or writes to `Pictures/Screenshots`. It requests the same compositor
+capture with a zero rectangle and saves the result to the XDG Desktop through
+`ScreenshotWriter::deliverToDesktop()`. Portal requests and the region/window
+flows keep the `Pictures/Screenshots` destination and the overlay described
+above.
+
 ## Consequences
 
 - The nested backend implements capture; the DRM backend (untested hardware)

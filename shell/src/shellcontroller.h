@@ -818,8 +818,11 @@ private:
     void renderScreenshot();
     void scheduleScreenshotRender();
     void startScreenshotFixture();
-    // The desktop shortcut path: open the overlay in `mode`.
+    // The region/window shortcut path: open the overlay in `mode`.
     void startScreenshot(const QString &mode);
+    // The fullscreen shortcut path (Cmd+Shift+3): capture the active output
+    // immediately, with no selection overlay, and write it to the Desktop.
+    void captureFullscreenScreenshot();
     // ScreenCast source picker (T-13.4a): map the centered picker surface,
     // feed it the compositor's monitor/window projection, commit its frames,
     // and unmap it when the request resolves.
@@ -1225,6 +1228,9 @@ private:
     ClipboardHistory *m_clipboard = nullptr;
     // The compositor's temporary capture file while a capture is in flight.
     QString m_capturePath;
+    // The in-flight capture is the Cmd+Shift+3 fullscreen shortcut, so the
+    // saved copy belongs on the Desktop rather than Pictures/Screenshots.
+    bool m_captureToDesktop = false;
     QQuickWindow *m_screenshotWindow = nullptr;
     QQuickItem *m_screenshotItem = nullptr;
     int m_screenshotWidth = 0;

@@ -5789,6 +5789,30 @@ void ShellController::startScreenshot(const QString &mode)
     m_screenshot->beginLocal(mode);
 }
 
+void ShellController::captureFullscreenScreenshot()
+{
+    if (!m_protocol) {
+        onScreenshotFailed(tr("The compositor capture path is unavailable."));
+        return;
+    }
+    // One capture at a time: a second press while the compositor is still
+    // producing the frame is ignored rather than replacing the destination.
+    if (!m_capturePath.isEmpty())
+        return;
+
+    m_captureToDesktop = true;
+    m_capturePath = QDir::tempPath() + QStringLiteral("/dragonfruit-screenshot-")
+                    + QString::number(QCoreApplication::applicationPid()) + QLatin1Char('-')
+                    + QString::number(QDateTime::currentMSecsSinceEpoch())
+                    + QStringLiteral(".png");
+    // Zero width/height means the whole active output. The compositor renders
+    // the current frame's elements in a second offscreen pass, so the desktop
+    // is captured as it is now; there is no overlay to hide first.
+    if (!m_protocol->captureScreenshot(m_capturePath, 0, 0, 0, 0,
+                                       QStringLiteral("fullscreen")))
+        onScreenshotFailed(tr("The compositor capture path is unavailable."));
+}
+
 void ShellController::startScreenshotFixture()
 {
     const QString value = qEnvironmentVariable("DF_SCREENSHOT_FIXTURE");
@@ -5824,6 +5848,9 @@ void ShellController::onScreenshotCaptureRequested(const QString &mode, int x, i
     // (portal-presenter-only capture; T-13.3b) into a temporary PNG. The
     // overlay is unmapped first so it is not part of the capture.
     hideScreenshot();
+    // A selection/portal capture always lands in Pictures/Screenshots, even
+    // if a fullscreen shortcut capture was in flight.
+    m_captureToDesktop = false;
     if (!m_protocol) {
         onScreenshotFailed(tr("The compositor capture path is unavailable."));
         return;
@@ -5850,8 +5877,13 @@ void ShellController::onScreenshotSaved(const QString &path)
         onScreenshotFailed(tr("The captured image could not be read."));
         return;
     }
-    // Save into Pictures/Screenshots and copy to the clipboard (T-13.3b).
-    const ScreenshotWriter::Result result = m_screenshotWriter->deliver(image);
+    // The fullscreen shortcut drops the file on the Desktop; portal requests
+    // and the region/window flows keep using Pictures/Screenshots. Both copy
+    // the image to the clipboard (T-13.3b).
+    const ScreenshotWriter::Result result =
+        m_captureToDesktop ? m_screenshotWriter->deliverToDesktop(image)
+                           : m_screenshotWriter->deliver(image);
+    m_captureToDesktop = false;
     if (!path.isEmpty())
         QFile::remove(path);
     m_capturePath.clear();
@@ -5875,6 +5907,7 @@ void ShellController::onScreenshotFailed(const QString &reason)
         QFile::remove(m_capturePath);
         m_capturePath.clear();
     }
+    m_captureToDesktop = false;
     if (m_screenshot && m_screenshot->active())
         m_screenshot->cancel();
 }
@@ -8140,8 +8173,10 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // T-12.3b).
         lockScreen();
     } else if (action == QLatin1String("screenshot")) {
-        // T-13.3a: Cmd+Shift+3 captures the whole output.
-        startScreenshot(QStringLiteral("fullscreen"));
+        // Cmd+Shift+3 captures the whole output immediately and drops the
+        // file on the Desktop, like the desktop's own screenshot shortcut.
+        // No selection overlay is involved.
+        captureFullscreenScreenshot();
     } else if (action == QLatin1String("screenshot-region")) {
         // T-13.3a: Cmd+Shift+4 opens the region selection.
         startScreenshot(QStringLiteral("region"));
