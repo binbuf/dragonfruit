@@ -244,6 +244,94 @@ Item {
             compare(rows.length, 16);
         }
 
+        // T293a: the Menu Bar rows follow the mockup order; the three
+        // Linux-only rows live in the Advanced Menu Bar sheet; the omitted
+        // mockup rows carry their reason and are never landable; and the
+        // Quick Settings Controls… action lands on the alias sub-pane.
+        function test_menu_bar_rows_follow_the_mockup_order() {
+            var rows = SettingsMap.rowsFor("menu-bar");
+            // The three footer actions live in the Menu Bar Controls group
+            // and follow the Allow section, so they form a second block with
+            // the same section title.
+            var sections = [];
+            for (var i = 0; i < rows.length; ++i) {
+                if (sections[sections.length - 1] !== rows[i].section)
+                    sections.push(rows[i].section);
+            }
+            compare(sections.join("|"),
+                    "Menu Bar Behaviour|OS Menu Glyph|Menu Bar Controls|"
+                    + "Allow in the Menu Bar|Menu Bar Controls|Advanced Menu Bar");
+
+            var glyph = SettingsMap.rowFor("menu-bar", "osGlyph");
+            verify(glyph !== null);
+            compare(glyph.section, "OS Menu Glyph");
+            compare(glyph.control, "radio");
+            compare(glyph.key, "menu.osGlyph");
+            compare(SettingsMap.rowSurface("menu-bar", "osGlyph"), "pane");
+
+            // The controls list uses the mockup labels, not the internal names.
+            var labels = SettingsMap.rowsFor("menu-bar")
+                .filter(function(row) {
+                    return row.section === "Menu Bar Controls"
+                            && row.id !== "addControls"
+                            && row.id !== "customizeControls"
+                            && row.id !== "reset";
+                }).map(function(row) { return row.label; }).join(",");
+            compare(labels, "Clock,Search,Wi-Fi,Bluetooth,Battery,Focus,Sound,"
+                            + "Accessibility,Quick Settings,Display,Workspaces,"
+                            + "Now Playing,Text Input,Backups,Timer");
+            // No top-level Quick Settings row and no Screen Casting row.
+            compare(SettingsMap.rowFor("menu-bar", "screenMirroring"), null);
+
+            var advanced = ["overflow", "globalMenu", "perDisplayPanel"];
+            for (var a = 0; a < advanced.length; ++a) {
+                var row = SettingsMap.rowFor("menu-bar", advanced[a]);
+                verify(row !== null, advanced[a] + " must stay in the map");
+                compare(row.section, "Advanced Menu Bar");
+                compare(SettingsMap.rowSurface("menu-bar", advanced[a]),
+                        "dialog");
+                verify(SettingsMap.isRowLandable("menu-bar", advanced[a]));
+                verify(row.owner.length > 0 && row.key.length > 0);
+            }
+
+            var omitted = ["suggestions", "nowPlaying", "textInput", "backups",
+                           "timer"];
+            for (var o = 0; o < omitted.length; ++o) {
+                var gone = SettingsMap.rowFor("menu-bar", omitted[o]);
+                verify(gone !== null, omitted[o] + " must be recorded");
+                compare(gone.state, "omitted");
+                compare(gone.label.length > 0, true);
+                compare(gone.reason.length > 0, true);
+                compare(SettingsMap.isRowLandable("menu-bar", omitted[o]),
+                        false);
+            }
+            // Display is an omitted row that still renders its exact reason.
+            var display = SettingsMap.rowFor("menu-bar", "display");
+            compare(display.state, "omitted");
+            verify(display.reason.indexOf("Quick Settings") >= 0);
+        }
+
+        // T293a: Customize Controls… with no in-place body goes through the
+        // existing Quick Settings surface (`menu-bar/controls` alias). Every
+        // Quick Settings row is landable there.
+        function test_menu_bar_controls_alias_is_landable() {
+            var rows = SettingsMap.rowsFor("menu-bar");
+            for (var i = 0; i < rows.length; ++i) {
+                if (rows[i].section !== "Quick Settings")
+                    continue;
+                compare(SettingsMap.rowSurface("menu-bar", rows[i].id),
+                        "subpane");
+            }
+            var shell = make();
+            verify(shell.deepLink("settings://pane/menu-bar"));
+            tryVerify(function() { return shell.currentPaneId === "menu-bar"; });
+            compare(shell.currentSubPaneId, "");
+            verify(shell.deepLink("settings://pane/quick-settings"));
+            tryVerify(function() { return shell.currentSubPaneId === "controls"; });
+            compare(shell.currentPaneId, "menu-bar");
+            compare(shell.paneTitle, "Menu Bar Controls");
+        }
+
         // -- Every visible row has an owner/key/absence path -------------------
 
         function test_every_visible_row_has_an_owner() {

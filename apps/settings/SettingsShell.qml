@@ -71,9 +71,20 @@ Item {
     readonly property bool aboutOpen: root.currentPaneId === "general"
                                       && paneBody.item !== null
                                       && paneBody.item.subPaneId === "about"
+    // T293a: the alias sub-pane under Menu Bar. `menu-bar/controls` mounts the
+    // Quick Settings surface here until T293b moves it in place; the pane body
+    // resolver and the history entry both read it.
+    property string aliasSubPaneId: ""
+    // Bumped whenever the Menu Bar body has to be re-resolved in place.
+    property int paneBodyRevision: 0
+    property string quickSettingsSubPaneId: "controls"
+    readonly property string quickSettingsSubPaneTitle: qsTr("Menu Bar Controls")
+
     readonly property string currentSubPaneId:
-        paneBody.item !== null && paneBody.item.subPaneId !== undefined
-            ? String(paneBody.item.subPaneId) : ""
+        root.aliasSubPaneId.length > 0
+            ? root.aliasSubPaneId
+            : (paneBody.item !== null && paneBody.item.subPaneId !== undefined
+                ? String(paneBody.item.subPaneId) : "")
     readonly property bool subPaneOpen: root.currentSubPaneId.length > 0
     // The toolbar title and the compositor/taskbar title both follow the
     // current pane (or its open sub-pane), never a constant.
@@ -432,9 +443,23 @@ Item {
     function openSubPane(id) {
         if (!id || id.length === 0)
             return;
+        // T293a: the Menu Bar Controls alias mounts the Quick Settings body
+        // itself, so the sub-pane id is state the resolver reads, not a call
+        // into a body.
+        if (root.currentPaneId === "menu-bar" && id === "controls") {
+            root.quickSettingsSubPaneId = "controls";
+            root.aliasSubPaneId = "controls";
+            // The body resolver switches to the Quick Settings surface on this
+            // id; PaneLoader only answers a pane-id change, so ask it again.
+            root.paneBodyRevision += 1;
+            paneBody.remount();
+            root.pendingSubPaneId = "";
+            return;
+        }
         if (root.loadedPaneId === root.currentPaneId
                 && paneBody.item !== null
-                && paneBody.item.openSubPane !== undefined) {
+                && paneBody.item.openSubPane !== undefined
+                && paneBody.item.subPaneId !== undefined) {
             paneBody.item.openSubPane(id);
             root.pendingSubPaneId = "";
             return;
@@ -443,6 +468,16 @@ Item {
     }
 
     function closeSubPane() {
+        if (root.aliasSubPaneId.length > 0) {
+            root.aliasSubPaneId = "";
+            // Re-resolve the Menu Bar body in place (the pane id does not
+            // change, so PaneLoader is not asked by its pane id).
+            if (root.currentPaneId === "menu-bar" && paneBody.item !== null
+                    && paneBody.item.registry !== undefined) {
+                root.paneBodyRevision += 1;
+                paneBody.remount();
+            }
+        }
         if (paneBody.item !== null
                 && paneBody.item.closeSubPane !== undefined)
             paneBody.item.closeSubPane();
@@ -466,6 +501,7 @@ Item {
         root.trace("selectPane " + id);
         root.clearPendingHighlight();
         root.pendingSubPaneId = "";
+        root.aliasSubPaneId = "";
         root.currentRowId = "";
         // Move focus off the outgoing body before the Loader destroys it; a
         // control that is about to be destroyed must never keep focus.
@@ -482,6 +518,16 @@ Item {
     function openSection(paneId, section) {
         if (!paneId || paneId.length === 0)
             return;
+        // T293a: the Menu Bar sections are the pane's own surfaces; leaving
+        // them must also unmount a Menu Bar Controls alias body.
+        if (paneId === root.currentPaneId && root.aliasSubPaneId.length > 0) {
+            root.aliasSubPaneId = "";
+            if (paneId === "menu-bar" && paneBody.item !== null
+                    && paneBody.item.registry !== undefined) {
+                root.paneBodyRevision += 1;
+                paneBody.remount();
+            }
+        }
         root.selectPane(paneId);
         root.pendingPaneId = paneId;
         root.pendingSection = section || "";
@@ -925,6 +971,11 @@ Item {
     // cases; T292b deleted the Overview body (merged into Desktop & Dock),
     // and the remaining bodies fold into their new homes in T293/T299.
     function paneComponent(id) {
+        // T293a: the `menu-bar/controls` alias (Customize Controls… and the
+        // legacy Quick Settings deep links) opens the existing Quick Settings
+        // surface until T293b moves it into the pane.
+        if (id === "menu-bar" && root.aliasSubPaneId === "controls")
+            return quickSettingsPaneComponent;
         switch (id) {
         case "appearance":
             return appearancePaneComponent;
@@ -1224,7 +1275,23 @@ Item {
 
     Component {
         id: quickSettingsPaneComponent
-        QuickSettingsPane { }
+        QuickSettingsPane {
+            // T293a: the `menu-bar/controls` alias mounts this body, so the
+            // shell's one sub-pane handle opens it and closeSubPane leaves.
+            // The surface has no sub-panes of its own, so an unknown id keeps
+            // the current one.
+            property string subPaneId: root.quickSettingsSubPaneId
+            property string subPaneTitle: root.quickSettingsSubPaneTitle
+            signal subPaneLoaded(string subPaneId)
+            function openSubPane(id) {
+                if (String(id).length > 0)
+                    root.quickSettingsSubPaneId = String(id);
+            }
+            function closeSubPane() {
+                root.closeSubPane();
+            }
+            Component.onCompleted: root.subPaneLoaded(subPaneId)
+        }
     }
 
     Component {
@@ -1688,6 +1755,14 @@ Item {
                                 root.selectPane(paneId);
                             }
                             function onSectionRequested(paneId, section) {
+                                // T293a: Menu Bar's "Customize Controls…" asks
+                                // for the Menu Bar Controls surface; it is an
+                                // alias, not another pane, so it must not leave
+                                // this pane.
+                                if (paneId === root.currentPaneId) {
+                                    root.openSubPane(section);
+                                    return;
+                                }
                                 root.openSection(paneId, section);
                             }
                             function onSubPaneLoaded(subPaneId) {
@@ -1702,6 +1777,10 @@ Item {
                             id: paneBody
                             width: parent.width
                             paneId: root.currentPaneId
+                            // T293a: the Menu Bar alias swaps its body in
+                            // place, so the loader also re-resolves here.
+                            property int bodyRevision: root.paneBodyRevision
+                            onBodyRevisionChanged: root.remount()
                             componentFor: root.paneComponent
                             onLoaded: {
                                 root.loadedPaneId = root.currentPaneId;

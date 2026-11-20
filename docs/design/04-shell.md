@@ -247,6 +247,18 @@ overflow affordance is present and every third-party item starts in it.
 Overview). Display and Screen Casting are shown disabled with the
 exact "no menu-bar item" reason rather than as dead toggles.
 
+**T293a status.** The pane follows the mockup order (Behaviour, OS Menu Glyph,
+Menu Bar Controls, Allow in the Menu Bar) with one footer (Add Controls…,
+Customize Controls…, Advanced…, Reset Menu Bar…). Screen Casting and
+Notifications left the list; Display stays the one disabled row; Now Playing,
+Text Input, Backups, and Timer are map omissions. The OS glyph is one radio
+group of `SettingsGlyphOptionRow`s whose strips are the real bar height and the
+real `Theme.controls.menuBar.iconSize` mark. `Customize Controls…` mounts the
+Quick Settings surface through `SettingsShell.openSubPane("controls")` (the
+`menu-bar/controls` alias) until T293b; the Linux-only rows (`menu.overflow`,
+`menu.global`, `quickSettings.perDisplay`) move to the Advanced Menu Bar
+sheet. See [ADR 0305](adr/0305-menu-bar-restyle-os-glyph.md).
+
 The system menu and application menu are **shell-owned chrome**, not part of
 the application's exported model: an app that exports nothing still gets a
 complete menu bar, and an app that exports menus gets them *after* the fixed

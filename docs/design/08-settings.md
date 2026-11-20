@@ -825,6 +825,31 @@ answers `dialog` for the seven sheet rows so a row deep link opens the sheet.
 footer, the advanced sheet, and the absence pair in light and dark
 (`docs/captures/t292b-workspace-overview-*.png`, ten stills).
 
+## The T293a Menu Bar restyle (ADR 0305)
+
+Menu Bar follows the mockup order: **Menu Bar Behaviour** (auto-hide,
+background, recent items), **OS Menu Glyph**, **Menu Bar Controls** (Clock with
+Options…, Search, Wi-Fi, Bluetooth, Battery, Focus, Sound, Accessibility,
+Quick Settings, Workspaces; Display is the disabled row with its exact
+reason), and **Allow in the Menu Bar** (the live third-party StatusNotifier
+list and its empty state). The footer carries **Add Controls…**, **Customize
+Controls…**, **Advanced…**, and **Reset Menu Bar…**.
+
+The OS Menu Glyph is one radio group of `SettingsGlyphOptionRow`s: each row's
+strip is the real menu-bar height, at least 184 pt wide, and draws the real
+`Theme.controls.menuBar.iconSize` mark with the bar's wallpaper-contrast
+shadow, hover/open plate, and a File Edit View sample. Dragonfruit is the
+default and the Reset value; Space/Return select the focused row and the
+arrows move the selection.
+
+Customize Controls… opens the existing Quick Settings surface through the
+`menu-bar/controls` alias; T293b replaces that with the in-place Menu Bar
+Controls sub-pane. The Linux-only rows (`menu.overflow`, `menu.global`,
+`quickSettings.perDisplay`) live in the **Advanced Menu Bar** sheet. Reset Menu
+Bar… restores the behaviour keys, the glyph, the clock options, every control
+visibility, the per-control options, the tray allowances, and the Linux-only
+rows. `make t293a-settings-menu-bar-capture` writes six surfaces per scheme.
+
 ## The T276 Desktop & Dock and Overview panes (ADR 0277)
 
 T276 completes the macOS Desktop & Dock page and the Linux Overview surface.

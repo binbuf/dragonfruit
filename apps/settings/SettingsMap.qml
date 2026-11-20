@@ -921,50 +921,79 @@ QtObject {
                          "live-on-defaults", "shipped")
             ],
             "menu-bar": [
-                root.row("autoHide", qsTr("Menu Bar"), qsTr("Auto-hide menu bar"), "popup",
+                // T293a: the mockup order — Menu Bar Behaviour, OS Menu
+                // Glyph, Menu Bar Controls, Allow in the Menu Bar, then the
+                // Advanced Menu Bar sheet.
+                root.row("autoHide", qsTr("Menu Bar Behaviour"), qsTr("Automatically hide and show the menu bar"), "popup",
                          "settingsd", "menu.autoHide", "live-on-defaults", "shipped"),
-                root.row("background", qsTr("Menu Bar"), qsTr("Show menu bar background"), "toggle",
+                root.row("background", qsTr("Menu Bar Behaviour"), qsTr("Show menu bar background"), "toggle",
                          "settingsd", "menu.showBackground", "live-on-defaults", "shipped"),
-                root.row("osGlyph", qsTr("Menu Bar"), qsTr("OS menu glyph"), "radio",
-                         "settingsd -> shell", "menu.osGlyph", "live-on-defaults", "shipped"),
-                root.row("recentItems", qsTr("Menu Bar"), qsTr("Recent items"), "stepper",
+                root.row("recentItems", qsTr("Menu Bar Behaviour"), qsTr("Recent documents, applications, and servers"), "stepper",
                          "settingsd", "menu.recentItems", "live-on-defaults", "shipped"),
-                root.row("addControls", qsTr("Menu Bar"), qsTr("Add menu-bar controls..."), "sheet",
-                         "settingsd + registry", "menu.control.*", "live-on-defaults"),
-                root.row("clock", qsTr("Menu Bar"), qsTr("Clock"), "checkbox+options",
+                root.row("suggestions", qsTr("Menu Bar Behaviour"), qsTr("Show suggestions in the menu bar gallery"), "toggle",
+                         "omit", "omit", "omitted", "omitted",
+                         false, "", qsTr("The menu-bar gallery has no owner: the shell's menu bar has no suggestion surface.")),
+                root.row("osGlyph", qsTr("OS Menu Glyph"), qsTr("OS Menu Glyph"), "radio",
+                         "settingsd -> shell/MenuBar", "menu.osGlyph", "live-on-defaults", "shipped"),
+                root.row("clock", qsTr("Menu Bar Controls"), qsTr("Clock"), "checkbox+options",
                          "settingsd", "menu.clock.showDate/showSeconds", "live-on-defaults", "shipped"),
-                root.row("search", qsTr("Menu Bar"), qsTr("Search"), "checkbox",
-                         "settingsd", "menu.control.search", "live-on-defaults"),
-                root.row("wifi", qsTr("Menu Bar"), qsTr("Wi-Fi"), "checkbox",
+                root.row("search", qsTr("Menu Bar Controls"), qsTr("Search"), "checkbox",
+                         "settingsd", "menu.control.search", "live-on-defaults", "shipped"),
+                root.row("wifi", qsTr("Menu Bar Controls"), qsTr("Wi-Fi"), "checkbox",
                          "settingsd", "menu.control.wifi", "live-on-defaults", "shipped"),
-                root.row("bluetooth", qsTr("Menu Bar"), qsTr("Bluetooth"), "checkbox",
+                root.row("bluetooth", qsTr("Menu Bar Controls"), qsTr("Bluetooth"), "checkbox",
                          "settingsd", "menu.control.bluetooth", "live-on-defaults", "shipped"),
-                root.row("battery", qsTr("Menu Bar"), qsTr("Battery"), "checkbox+options",
+                root.row("battery", qsTr("Menu Bar Controls"), qsTr("Battery"), "checkbox+options",
                          "settingsd", "menu.control.battery", "live-on-defaults", "shipped"),
-                root.row("focus", qsTr("Menu Bar"), qsTr("Focus"), "checkbox+popup",
+                root.row("focus", qsTr("Menu Bar Controls"), qsTr("Focus"), "checkbox+options",
                          "settingsd", "menu.control.focus", "live-on-defaults", "shipped"),
-                root.row("screenMirroring", qsTr("Menu Bar"), qsTr("Screen casting"), "checkbox+popup",
-                         "settingsd", "menu.control.screenMirroring", "live-on-defaults"),
-                root.row("display", qsTr("Menu Bar"), qsTr("Display"), "checkbox+popup",
-                         "settingsd", "menu.control.display", "live-on-defaults"),
-                root.row("sound", qsTr("Menu Bar"), qsTr("Sound"), "checkbox+popup",
+                root.row("sound", qsTr("Menu Bar Controls"), qsTr("Sound"), "checkbox+options",
                          "settingsd", "menu.control.volume", "live-on-defaults", "shipped"),
-                root.row("thirdParty", qsTr("Menu Bar"), qsTr("Third-party items"), "list",
-                         "StatusNotifier registry", "menu.tray.hidden", "delegated"),
-                root.row("overflow", qsTr("Menu Bar"), qsTr("Overflow policy"), "popup",
-                         "settingsd -> shell/MenuBar", "menu.overflow",
-                         "live-on-defaults", "shipped", false, "shell/MenuBar"),
-                root.row("workspaces", qsTr("Menu Bar"), qsTr("Workspace indicator"), "toggle",
+                root.row("accessibility", qsTr("Menu Bar Controls"), qsTr("Accessibility"), "checkbox",
+                         "settingsd", "menu.control.accessibility", "live-on-defaults", "shipped"),
+                root.row("controlCenter", qsTr("Menu Bar Controls"), qsTr("Quick Settings"), "checkbox",
+                         "settingsd", "menu.control.controlCenter", "live-on-defaults", "shipped"),
+                root.row("display", qsTr("Menu Bar Controls"), qsTr("Display"), "checkbox",
+                         "omit", "omit", "disabled-with-reason", "omitted",
+                         false, "", qsTr("Display has no menu-bar item; the Display module lives in Quick Settings.")),
+                root.row("workspaces", qsTr("Menu Bar Controls"), qsTr("Workspaces"), "toggle",
                          "settingsd -> shell/MenuBar", "menu.control.workspaces",
                          "live-on-defaults", "shipped", false, "shell/MenuBar"),
-                root.row("globalMenu", qsTr("Menu Bar"), qsTr("Show application menus in the menu bar"), "toggle",
+                root.row("nowPlaying", qsTr("Menu Bar Controls"), qsTr("Now Playing"), "checkbox",
+                         "omit", "omit", "omitted", "omitted",
+                         false, "", qsTr("No media status item exists yet; the shell has no player provider to control.")),
+                root.row("textInput", qsTr("Menu Bar Controls"), qsTr("Text Input"), "checkbox",
+                         "omit", "omit", "omitted", "omitted",
+                         false, "", qsTr("No input-method status item exists yet; the input source is chosen in Keyboard.")),
+                root.row("backups", qsTr("Menu Bar Controls"), qsTr("Backups"), "checkbox",
+                         "omit", "omit", "omitted", "omitted",
+                         false, "", qsTr("No backup status item exists yet; backups are set in General > Backups.")),
+                root.row("timer", qsTr("Menu Bar Controls"), qsTr("Timer"), "checkbox",
+                         "omit", "omit", "omitted", "omitted",
+                         false, "", qsTr("No timer service or clock timer exists yet.")),
+                root.row("thirdParty", qsTr("Allow in the Menu Bar"), qsTr("Third-party items"), "list",
+                         "StatusNotifier registry", "menu.tray.hidden", "delegated"),
+                // Footer actions (they follow the last section; their map
+                // group is the Menu Bar Controls block so search lists them
+                // with the controls they change).
+                root.row("addControls", qsTr("Menu Bar Controls"), qsTr("Add Controls…"), "sheet",
+                         "settingsd + registry", "menu.control.*", "live-on-defaults", "shipped"),
+                root.row("customizeControls", qsTr("Menu Bar Controls"), qsTr("Customize Controls…"), "button",
+                         "settingsd -> shell/control-center", "quickSettings.*",
+                         "live-on-defaults", "shipped"),
+                root.row("reset", qsTr("Menu Bar Controls"), qsTr("Reset Menu Bar…"), "button",
+                         "settingsd", "menu.* + power.showPercentage + quickSettings.perDisplay",
+                         "live-on-defaults", "shipped"),
+                // The Advanced Menu Bar sheet.
+                root.row("overflow", qsTr("Advanced Menu Bar"), qsTr("Overflow policy"), "popup",
+                         "settingsd -> shell/MenuBar", "menu.overflow",
+                         "live-on-defaults", "shipped", false, "shell/MenuBar"),
+                root.row("globalMenu", qsTr("Advanced Menu Bar"), qsTr("Show application menus in the menu bar"), "toggle",
                          "settingsd -> shell/MenuBar", "menu.global",
                          "live-on-defaults", "shipped", false, "shell/MenuBar, services/menu-broker"),
-                root.row("perDisplayPanel", qsTr("Menu Bar"), qsTr("Show on every display"), "toggle",
+                root.row("perDisplayPanel", qsTr("Advanced Menu Bar"), qsTr("Show on every display"), "toggle",
                          "settingsd -> shell", "quickSettings.perDisplay",
-                         "disabled-with-reason", "shipped"),
-                root.row("reset", qsTr("Menu Bar"), qsTr("Reset Quick Settings"), "button",
-                         "settingsd", "menu.control.*", "live-on-defaults", "shipped")
+                         "disabled-with-reason", "shipped", false, "shell (one menu-bar surface per session)")
             ],
             "search": [
                 root.row("results", qsTr("Search"), qsTr("Search results"), "checkboxes",
@@ -1899,12 +1928,31 @@ QtObject {
         "bottomRight": true
     })
 
+    // T293a: the Menu Bar rows that live in the Advanced Menu Bar sheet. The
+    // sheet is an organization change, so the ids (not localized section
+    // titles) are the stable table.
+    readonly property var menuBarDialogRows: ({
+        "overflow": true,
+        "globalMenu": true,
+        "perDisplayPanel": true
+    })
+
+    // T293a: the Menu Bar rows whose section is the Quick Settings surface.
+    // They render in `QuickSettingsPane` through the `menu-bar/controls`
+    // alias; T293b drops this branch when the in-place sub-pane lands.
+    readonly property var menuBarAliasSections: ({
+        "Quick Settings": true
+    })
+
     // Where a row lives: "subpane", "dialog", or "pane". "" means the row
     // cannot be landed and must not be indexed or deep-linked.
     function rowSurface(paneId, rowId) {
         var row = root.rowFor(paneId, rowId);
         if (row === null)
             return "";
+        if (paneId === "menu-bar"
+                && root.menuBarAliasSections[row.section] === true)
+            return "subpane";
         if (root.subPaneForRow(paneId, rowId).length > 0)
             return "subpane";
         if (paneId === "appearance"
@@ -1913,6 +1961,9 @@ QtObject {
         if (paneId === "desktop-dock"
                 && root.desktopDockDialogRows[rowId] === true)
             return "dialog";
+        if (paneId === "menu-bar"
+                && root.menuBarDialogRows[rowId] === true)
+            return "dialog";
         return "pane";
     }
 
@@ -1920,8 +1971,15 @@ QtObject {
     // can open the surface that renders it.
     function isRowLandable(paneId, rowId) {
         var row = root.rowFor(paneId, rowId);
-        return row !== null && row.state === "shipped"
-                && root.rowSurface(paneId, rowId).length > 0;
+        if (row === null || row.state !== "shipped")
+            return false;
+        var surface = root.rowSurface(paneId, rowId);
+        // T293a: the Menu Bar Controls surface is the existing Quick Settings
+        // pane reached through the `menu-bar/controls` alias until T293b moves
+        // it in place. Its rows land there, not on the Menu Bar pane.
+        if (surface === "subpane" && paneId === "menu-bar")
+            return true;
+        return surface.length > 0;
     }
 
     // A row is valid when it names an owner and an absence path. An omitted

@@ -20,6 +20,7 @@ set(DF_SETTINGS_QML_FILES
     SettingsAbsence.qml
     SettingsAbsenceNotice.qml
     SettingsKeyRow.qml
+    SettingsGlyphOptionRow.qml
     ShortcutRecorder.qml
     AccessibilityGeneralPane.qml
     SettingsMenu.qml
@@ -169,6 +170,7 @@ df_qml_lint(app-settings
     SettingsAbsence.qml
     SettingsAbsenceNotice.qml
     SettingsKeyRow.qml
+    SettingsGlyphOptionRow.qml
     ShortcutRecorder.qml
     AccessibilityGeneralPane.qml
     SettingsMenu.qml

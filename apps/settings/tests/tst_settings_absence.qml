@@ -667,10 +667,18 @@ Item {
             compare(Settings.values["menu.recentItems"], 0);
             pane.clockSecondsToggle.toggle();
             compare(Settings.values["menu.clock.showSeconds"], true);
+            // T293a: Search is the first control; Wi-Fi is the next one.
             var toggle = findChild(pane.controlsRepeater.itemAt(0),
                                    "menuBarControlToggle");
             toggle.toggle();
+            compare(Settings.values["menu.control.search"], false);
+            var wifi = findChild(pane.controlsRepeater.itemAt(1),
+                                 "menuBarControlToggle");
+            wifi.toggle();
             compare(Settings.values["menu.control.wifi"], false);
+            // The OS glyph radio group still works with no daemon.
+            pane.glyphRepeater.itemAt(1).choose();
+            compare(Settings.values["menu.osGlyph"], "tux");
         }
 
         // The General list never collapses. With no bridge host both halves are

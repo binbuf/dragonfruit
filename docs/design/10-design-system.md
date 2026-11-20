@@ -114,7 +114,11 @@ Slow/Fast labels), `SettingsModeTile`, `SettingsWallTile`,
 `SettingsSidebarStatusRow` (the update row). `SettingsNavPill` is the 78 x 36
 back/forward control with a 1 x 18 pt divider, and `SettingsHelpButton` is the
 24 pt circle. Every component lands in `design-system/components/`; a pane
-never keeps a local copy.
+never keeps a local copy. One documented exception: `apps/settings/
+SettingsGlyphOptionRow.qml` (T293a) is the Menu Bar pane's OS-glyph radio row
+with an actual-size menu-bar strip, which is pane vocabulary rather than a
+shared component; it reuses the design-system `SystemMenuGlyph`, `FocusRing`,
+and menu-bar tokens and adds nothing to the library.
 
 `Sidebar` gained opt-in geometry/state properties for the same reason:
 `rowHeight`, `rowRadius`, `padding`, `sectionSpacer`, `selectionStyle`

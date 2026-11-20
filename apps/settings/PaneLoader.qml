@@ -57,6 +57,25 @@ Item {
     onPaneIdChanged: root.showPane()
     Component.onCompleted: root.showPane()
 
+    // T293a: a pane whose body resolver switches for the *same* pane id (the
+    // Menu Bar Controls alias) asks for a fresh mount of that id.
+    function remount() {
+        var id = root.paneId;
+        if (id.length === 0)
+            return;
+        var current = root.item;
+        root.cache[id] = null;
+        delete root.cache[id];
+        root.item = null;
+        root.status = Loader.Loading;
+        root.shownPaneId = "";
+        if (current !== null) {
+            current.visible = false;
+            current.destroy();
+        }
+        root.showPane();
+    }
+
     function showPane() {
         if (root.paneId.length === 0) {
             root.item = null;

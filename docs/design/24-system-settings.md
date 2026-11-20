@@ -1205,6 +1205,17 @@ Linux-only rows are live: `menu.overflow` (`automatic`/`always`),
 reason. Reset restores the behavior keys, clock options, visibility marks,
 per-control options, tray allowances, and Linux-only rows.
 
+> **T293a supersedes the T277 Menu Bar layout.** The pane now renders the
+> mockup order — **Menu Bar Behaviour**, **OS Menu Glyph**, **Menu Bar
+> Controls**, **Allow in the Menu Bar** — with one footer (**Add Controls…**,
+> **Customize Controls…**, **Advanced…**, **Reset Menu Bar…**). The Screen
+> Casting and Notifications rows are gone (Now Playing, Text Input, Backups,
+> and Timer are map omissions; Display keeps its disabled row and reason), the
+> OS glyph is one radio group of actual-size strips, and the Linux-only rows
+> live in the **Advanced Menu Bar** sheet. See
+> [ADR 0305](adr/0305-menu-bar-restyle-os-glyph.md) and
+> `settings-business-logic-map.md` §5.9.
+
 ### 4.11 Search — T265
 
 Owner: search service + app-index + settingsd. Absence: preferences stay

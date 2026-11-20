@@ -3,31 +3,45 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Menu Bar pane (T-15.9b, completed by T277).
+// The Menu Bar pane (T-15.9b, T277, restyled by T293a).
 //
-// The pane and the Quick Settings Menu Bar tile are one functional unit. The
-// menu bar is shell-native: the shell's `MenuBar` owns the chrome, the status
-// row, and the clock, the menu-broker resolves the focused app's menus, and
-// settingsd owns the durable preferences. This pane is the configuration half
-// and writes only settingsd keys, so every control applies live and persists:
+// The menu bar is shell-native: the shell's `MenuBar` owns the chrome, the
+// status row, and the clock, the menu-broker resolves the focused app's
+// menus, and settingsd owns the durable preferences. This pane is the
+// configuration half and writes only settingsd keys, so every control applies
+// live and persists.
 //
-//   * `menu.autoHide`, `menu.showBackground`, and `menu.recentItems` are the
-//     behavior rows;
-//   * `menu.clock.showDate` / `menu.clock.showSeconds` are the Clock options;
-//   * `menu.control.<id>` gates each status item. The shell applies it in
-//     `applyStatusItems` (additive with the adapter's own availability), so a
-//     control shows only when its daemon is present *and* the user wants it;
-//   * `menu.control.focusAlways`, `menu.control.volumeWhenActive`, and
-//     `power.showPercentage` are the per-control options;
-//   * `menu.tray.hidden` is the "Allow in the Menu Bar" set for third-party
-//     StatusNotifier items;
-//   * `menu.overflow` and `menu.control.workspaces` are the Linux-only rows.
+// T293a follows the mockup order:
+//
+//   1. Menu Bar Behaviour — `menu.autoHide`, `menu.showBackground`,
+//      `menu.recentItems`. The mockup's "Show suggestions in the menu bar
+//      gallery" row is a map omission (no owner).
+//   2. OS Menu Glyph — a real radio group over `menu.osGlyph`
+//      (`dragonfruit` default, `tux` alternate). Each row carries an
+//      actual-size menu-bar strip: the real bar height and the real
+//      `Theme.controls.menuBar.iconSize` mark.
+//   3. Menu Bar Controls — Clock + Clock Options, Search, Wi-Fi, Bluetooth,
+//      Battery, Focus, Sound, Accessibility, Quick Settings, and Workspaces,
+//      each with its own options. Display stays a disabled row with its exact
+//      reason; Now Playing, Text Input, Backups, and Timer are map omissions.
+//   4. Allow in the Menu Bar — the live third-party StatusNotifier list and
+//      its empty state (`menu.tray.hidden`). The mockup's File Manager, Music,
+//      and Sync Agent names are examples, never fixed rows.
+//
+// The footer owns Add Controls…, Customize Controls…, Advanced…, and Reset
+// Menu Bar…. Customize Controls… opens the existing Quick Settings surface
+// through its alias (`menu-bar/controls`); T293b replaces it with the Menu Bar
+// Controls sub-pane. The Linux-only rows (`menu.overflow`, `menu.global`,
+// `quickSettings.perDisplay`) live in the Advanced Menu Bar sheet with their
+// real owners and reasons.
 //
 // A control with no menu-bar provider is shown disabled with the exact reason
-// and is never advertised as live. The Display and Screen Casting controls
-// live in Quick Settings, not in the menu bar.
+// and is never advertised as live.
 Item {
     id: root
+
+    // Pane-to-pane navigation (the existing signal shape every pane uses).
+    signal sectionRequested(string paneId, string section)
 
     // ── Behavior keys ───────────────────────────────────────────────────
     readonly property string autoHide:
@@ -52,10 +66,26 @@ Item {
 
     readonly property var glyphOptions: [
         { value: "dragonfruit", label: qsTr("Dragonfruit"),
-          description: qsTr("The Dragonfruit mark.") },
+          description: qsTr("The default mark. Each preview is the menu bar's "
+                            + "real height and glyph size.") },
         { value: "tux", label: qsTr("Tux"),
-          description: qsTr("The Linux penguin mark.") }
+          description: qsTr("The traditional Linux penguin, for a familiar "
+                            + "desktop look.") }
     ]
+
+    readonly property int glyphIndex: {
+        for (var i = 0; i < root.glyphOptions.length; ++i) {
+            if (root.glyphOptions[i].value === root.osGlyph)
+                return i;
+        }
+        return 0;
+    }
+
+    function setGlyph(index) {
+        var option = root.glyphOptions[index];
+        if (option !== undefined)
+            Settings.set("menu.osGlyph", option.value);
+    }
 
     readonly property var autoHideOptions: [
         { value: "never", label: qsTr("Never") },
@@ -78,32 +108,49 @@ Item {
         { value: "always", label: qsTr("Always show the overflow menu") }
     ]
 
-    // The Menu Bar Controls list. `options` opens the per-control options;
-    // `disabled` is an honest absence (no menu-bar item exists), never a fake
-    // toggle. Clock is the one separate row with its own options.
+    // The Menu Bar Controls list, in the mockup order. `options` opens the
+    // per-control options; `disabled` is an honest absence (no menu-bar item
+    // exists), never a fake toggle. Clock is the first row and owns its own
+    // options. Workspaces is the Linux-only active-workspace indicator.
     readonly property var controlRows: [
+        { key: "menu.control.search", label: qsTr("Search") },
         { key: "menu.control.wifi", label: qsTr("Wi-Fi") },
         { key: "menu.control.bluetooth", label: qsTr("Bluetooth") },
         { key: "menu.control.battery", label: qsTr("Battery"),
           options: "battery" },
-        { key: "menu.control.volume", label: qsTr("Sound"),
-          options: "sound" },
-        { key: "menu.control.search", label: qsTr("Search") },
-        { key: "menu.control.notifications", label: qsTr("Notifications") },
         { key: "menu.control.focus", label: qsTr("Focus"),
           options: "focus" },
+        { key: "menu.control.volume", label: qsTr("Sound"),
+          options: "sound" },
+        { key: "menu.control.accessibility", label: qsTr("Accessibility") },
+        { key: "menu.control.controlCenter", label: qsTr("Quick Settings") },
         { key: "menu.control.display", label: qsTr("Display"),
           disabled: true,
           reason: qsTr("Display has no menu-bar item; the Display module "
                       + "lives in Quick Settings.") },
-        { key: "menu.control.screenMirroring", label: qsTr("Screen Casting"),
-          disabled: true,
-          reason: qsTr("Screen casting has no menu-bar item; start casting "
-                      + "from Quick Settings.") },
-        { key: "menu.control.accessibility", label: qsTr("Accessibility") },
-        { key: "menu.control.controlCenter", label: qsTr("Quick Settings") },
         { key: "menu.control.workspaces", label: qsTr("Workspaces") }
     ]
+
+    // T293a: the mockup controls with no status item. Each is a map omission
+    // with its reason; the pane never renders a disabled placeholder toggle
+    // for one.
+    readonly property var omittedControls: [
+        { id: "nowPlaying", label: qsTr("Now Playing"),
+          reason: qsTr("No media status item exists yet; the shell has no "
+                      + "player provider to control.") },
+        { id: "textInput", label: qsTr("Text Input"),
+          reason: qsTr("No input-method status item exists yet; the input "
+                      + "source is chosen in Keyboard.") },
+        { id: "backups", label: qsTr("Backups"),
+          reason: qsTr("No backup status item exists yet; backups are set in "
+                      + "General > Backups.") },
+        { id: "timer", label: qsTr("Timer"),
+          reason: qsTr("No timer service or clock timer exists yet.") }
+    ]
+
+    // The mockup Behaviour row with no Linux owner.
+    readonly property string omittedBehaviourReason:
+        qsTr("The menu-bar gallery has no owner in this desktop.")
 
     readonly property var thirdPartyItems: Settings.thirdPartyMenuBarItems
     readonly property bool thirdPartyAvailable: Settings.thirdPartyMenuBarAvailable
@@ -184,6 +231,25 @@ Item {
             Settings.set(key, checked);
     }
 
+    function openControlOptions(kind) {
+        controlOptionsDialog.optionKind = String(kind);
+        controlOptionsDialog.show();
+    }
+
+    // The options button behind a control row ("" for a row without options).
+    function controlOptionsButton(index) {
+        var row = root.controlsRepeater.itemAt(index);
+        if (row === undefined || row === null)
+            return null;
+        for (var i = 0; i < row.children.length; ++i) {
+            var child = row.children[i];
+            if (child.objectName !== undefined
+                    && String(child.objectName).indexOf("menuBarControlOptions-") === 0)
+                return child;
+        }
+        return null;
+    }
+
     // ── Third-party StatusNotifier items ────────────────────────────────
     readonly property var hiddenTray: {
         var value = Settings.values["menu.tray.hidden"];
@@ -206,7 +272,7 @@ Item {
         Settings.setList("menu.tray.hidden", hidden);
     }
 
-    // ── Linux-only rows ─────────────────────────────────────────────────
+    // ── Linux-only rows (the Advanced Menu Bar sheet) ───────────────────
     readonly property string overflowPolicy:
         Settings.values["menu.overflow"] !== undefined
             ? String(Settings.values["menu.overflow"]) : "automatic"
@@ -217,6 +283,11 @@ Item {
     readonly property bool perDisplayPanel:
         Settings.values["quickSettings.perDisplay"] === true
 
+    // The rows that live in the closed Advanced Menu Bar sheet, in rendered
+    // order. `SettingsMap.rowSurface()` answers "dialog" for exactly these
+    // ids, so a deep link opens the sheet and lands on the row.
+    readonly property var advancedRowIds: ["overflow", "globalMenu", "perDisplayPanel"]
+
     function overflowIndex() {
         for (var i = 0; i < root.overflowOptions.length; ++i) {
             if (root.overflowOptions[i].value === root.overflowPolicy)
@@ -225,29 +296,82 @@ Item {
         return 0;
     }
 
+    function isAdvancedRow(rowId) {
+        return root.advancedRowIds.indexOf(String(rowId)) >= 0;
+    }
+
+    // A Dialog adopts the window overlay layer, so the shell cannot find its
+    // rows by walking the pane body; the pane names them here.
+    function advancedRowFor(rowId) {
+        switch (String(rowId)) {
+        case "overflow": return overflowRow;
+        case "globalMenu": return globalMenuRow;
+        case "perDisplayPanel": return perDisplayPanelRow;
+        }
+        return null;
+    }
+
+    function rowTargetFor(rowId) {
+        return root.isAdvancedRow(rowId) ? root.advancedRowFor(rowId) : null;
+    }
+
+    function openAdvancedMenuBar() {
+        advancedDialog.show();
+    }
+    function closeAdvancedMenuBar() {
+        advancedDialog.hide();
+    }
+
+    // The shell's closed-surface hook: open the owning sheet before it looks
+    // for the row.
+    function openRowSurface(rowId) {
+        if (!root.isAdvancedRow(rowId))
+            return false;
+        root.openAdvancedMenuBar();
+        return true;
+    }
+
+    // The footer's Customize Controls… opens the existing Quick Settings
+    // surface through its deep-link alias until T293b lands the in-place Menu
+    // Bar Controls sub-pane. The shell registers a handler for it.
+    function customizeControls() {
+        root.sectionRequested("menu-bar", "controls");
+    }
+
     // ── Reset ───────────────────────────────────────────────────────────
+    // Reset Menubar covers every key this pane writes: the behaviour rows,
+    // the OS glyph, the clock options, control visibility, the per-control
+    // options, the third-party allowances, and the Linux-only rows.
+    readonly property var resetKeys: [
+        { key: "menu.autoHide", value: "full-screen" },
+        { key: "menu.showBackground", value: true },
+        { key: "menu.recentItems", value: 10 },
+        { key: "menu.osGlyph", value: "dragonfruit" },
+        { key: "menu.clock.showDate", value: true },
+        { key: "menu.clock.showSeconds", value: false },
+        { key: "menu.control.clock", value: true },
+        { key: "menu.control.focusAlways", value: false },
+        { key: "menu.control.volumeWhenActive", value: false },
+        { key: "power.showPercentage", value: false },
+        { key: "menu.overflow", value: "automatic" },
+        { key: "menu.global", value: true },
+        { key: "quickSettings.perDisplay", value: false }
+    ]
+
     function resetMenuBar() {
-        Settings.set("menu.autoHide", "full-screen");
-        Settings.set("menu.showBackground", true);
-        Settings.set("menu.recentItems", 10);
-        Settings.set("menu.osGlyph", "dragonfruit");
-        Settings.set("menu.clock.showDate", true);
-        Settings.set("menu.clock.showSeconds", false);
-        Settings.set("menu.control.clock", true);
-        Settings.set("menu.control.focusAlways", false);
-        Settings.set("menu.control.volumeWhenActive", false);
-        Settings.set("power.showPercentage", false);
-        Settings.set("menu.overflow", "automatic");
+        for (var i = 0; i < root.resetKeys.length; ++i)
+            Settings.set(root.resetKeys[i].key, root.resetKeys[i].value);
         Settings.setList("menu.tray.hidden", []);
-        Settings.set("menu.global", true);
-        Settings.set("quickSettings.perDisplay", false);
-        for (var i = 0; i < root.controlRows.length; ++i) {
-            var row = root.controlRows[i];
+        for (var r = 0; r < root.controlRows.length; ++r) {
+            var row = root.controlRows[r];
             if (row.disabled === true)
                 continue;
             Settings.set(row.key, true);
         }
+        root.resetRequested();
     }
+
+    signal resetRequested()
 
     // ── Test surface ────────────────────────────────────────────────────
     property alias autoHideSelect: autoHideSelect
@@ -258,21 +382,29 @@ Item {
     property alias clockDateToggle: clockDateToggle
     property alias clockSecondsToggle: clockSecondsToggle
     property alias clockVisibilityToggle: clockVisibilityToggle
+    property alias glyphGroup: glyphGroup
     property alias glyphRepeater: glyphRepeater
+    property alias glyphKeyAdapter: glyphKeyAdapter
     property alias controlsRepeater: controlsRepeater
     property alias absenceNote: absenceNote
     property alias thirdPartyRepeater: thirdPartyRepeater
     property alias thirdPartyGroup: thirdPartyGroup
+    property alias thirdPartyEmptyNote: thirdPartyEmptyNote
     property alias addControlsButton: addControlsButton
     property alias addControlsDialog: addControlsDialog
+    property alias customizeControlsButton: customizeControlsButton
     property alias controlOptionsDialog: controlOptionsDialog
     property alias controlOptionsToggle: controlOptionsToggle
     property alias overflowSelect: overflowSelect
-    property alias workspacesToggle: workspacesToggle
     property alias globalMenuToggle: globalMenuToggle
     property alias perDisplayPanelRow: perDisplayPanelRow
+    property alias advancedDialog: advancedDialog
+    property alias footer: footer
     property alias resetButton: resetButton
+    property alias behaviorGroup: behaviorGroup
+    property alias controlsGroup: controlsGroup
     property alias clockRow: clockRow
+    property alias advancedDockRowHandle: overflowRow
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -294,7 +426,53 @@ Item {
         return root.autoHideOptions.length - 1;
     }
 
+    // T293a: the footer has four actions; the shared row shrinks them together
+    // so nothing overflows the content column at the measured window width.
+    readonly property real footerAvailableWidth:
+        width - 2 * Theme.controls.settingsRow.paddingH
+    readonly property real footerNaturalWidth:
+        4 * (2 * Theme.controls.button.paddingH + footerMeasure0.contentWidth)
+        + 3 * Theme.primitive.spacing.sm
+    function footerItemWidth() {
+        var count = 4;
+        var gaps = (count - 1) * Theme.primitive.spacing.sm;
+        var even = (root.footerAvailableWidth - gaps) / count;
+        var widest = Math.max(footerMeasure0.contentWidth,
+                              footerMeasure1.contentWidth,
+                              footerMeasure2.contentWidth);
+        var natural = widest + 2 * Theme.controls.button.paddingH;
+        var item = natural > 0
+                ? even * root.footerNaturalWidth / (count * natural + gaps)
+                : even;
+        return Math.max(Theme.controls.button.height, Math.min(even, item));
+    }
+
     Component.onCompleted: Settings.refreshThirdPartyMenuBarItems()
+
+    // Hidden natural-width measurements for the footer derivation. They sit
+    // off-screen so the Row never sizes from the buttons' own widths (that
+    // would loop).
+    Text {
+        id: footerMeasure0
+        visible: false
+        x: -10000
+        text: qsTr("Customize Controls…")
+        font.pixelSize: Theme.controls.button.fontSize
+    }
+    Text {
+        id: footerMeasure1
+        visible: false
+        x: -10000
+        text: qsTr("Add Controls…")
+        font.pixelSize: Theme.controls.button.fontSize
+    }
+    Text {
+        id: footerMeasure2
+        visible: false
+        x: -10000
+        text: qsTr("Reset Menu Bar…")
+        font.pixelSize: Theme.controls.button.fontSize
+    }
 
     Column {
         id: content
@@ -317,88 +495,181 @@ Item {
             }
         }
 
-        // ── Behavior ────────────────────────────────────────────────────
+        // ── Menu Bar Behaviour ──────────────────────────────────────────
         SettingsGroup {
             id: behaviorGroup
             width: parent.width
+            title: qsTr("Menu Bar Behaviour")
+            sectionId: "Menu Bar Behaviour"
 
-            SettingsRow {
+            Column {
                 width: parent.width
-                label: qsTr("Automatically hide and show the menu bar")
-                settingsId: "autoHide"
-                owner: "settingsd -> shell/MenuBar"
-                settingsKey: "menu.autoHide"
-                controlData: Select {
-                    id: autoHideSelect
-                    accessibleName: qsTr("Automatically hide and show the menu bar")
-                    model: root.autoHideOptions
-                    onActivated: (index) => Settings.set(
-                        "menu.autoHide", root.autoHideOptions[index].value)
+                spacing: Theme.controls.settingsGroup.rowGap
+
+                SettingsRow {
+                    width: parent.width
+                    label: qsTr("Automatically hide and show the menu bar")
+                    settingsId: "autoHide"
+                    owner: "settingsd -> shell/MenuBar"
+                    settingsKey: "menu.autoHide"
+                    controlData: Select {
+                        id: autoHideSelect
+                        accessibleName: qsTr("Automatically hide and show the menu bar")
+                        model: root.autoHideOptions
+                        onActivated: (index) => Settings.set(
+                            "menu.autoHide", root.autoHideOptions[index].value)
+                    }
                 }
-            }
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Show menu bar background")
-                settingsId: "background"
-                owner: "settingsd -> shell/MenuBar"
-                settingsKey: "menu.showBackground"
-                controlData: Toggle {
-                    id: backgroundToggle
-                    accessibleName: qsTr("Show menu bar background")
-                    onToggled: (checked) => Settings.set(
-                        "menu.showBackground", checked)
+                SettingsRow {
+                    width: parent.width
+                    label: qsTr("Show menu bar background")
+                    settingsId: "background"
+                    owner: "settingsd -> shell/MenuBar"
+                    settingsKey: "menu.showBackground"
+                    controlData: Toggle {
+                        id: backgroundToggle
+                        accessibleName: qsTr("Show menu bar background")
+                        onToggled: (checked) => Settings.set(
+                            "menu.showBackground", checked)
+                    }
                 }
-            }
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Recent documents, applications, and servers")
-                settingsId: "recentItems"
-                owner: "settingsd -> shell/MenuBar"
-                settingsKey: "menu.recentItems"
-                showSeparator: false
-                controlData: Select {
-                    id: recentSelect
-                    accessibleName: qsTr("Recent documents, applications, and servers")
-                    model: root.recentOptions
-                    onActivated: (index) => Settings.set(
-                        "menu.recentItems", root.recentOptions[index].value)
+                SettingsRow {
+                    width: parent.width
+                    label: qsTr("Recent documents, applications, and servers")
+                    settingsId: "recentItems"
+                    owner: "settingsd -> shell/MenuBar"
+                    settingsKey: "menu.recentItems"
+                    showSeparator: false
+                    controlData: Select {
+                        id: recentSelect
+                        accessibleName: qsTr("Recent documents, applications, and servers")
+                        model: root.recentOptions
+                        onActivated: (index) => Settings.set(
+                            "menu.recentItems", root.recentOptions[index].value)
+                    }
                 }
             }
         }
 
         // ── OS Menu Glyph ───────────────────────────────────────────────
+        // One AT-SPI radio group: the two rows are radio buttons, each with
+        // an actual-size menu-bar strip. Clicking anywhere selects; the
+        // keyboard uses Space/Return (arrows move and select).
         SettingsGroup {
             id: glyphGroup
-            width: parent.width
-            title: qsTr("OS Menu Glyph")
+            objectName: "menuBarGlyphGroup"
 
-            Text {
-                objectName: "menuBarGlyphDescription"
-                property string settingsId: "osGlyph"
-                width: parent.width
-                text: qsTr("Choose the mark at the far left of the menu bar. "
-                           + "Each preview is shown at the menu bar's real "
-                           + "size with the same shadow and hover treatment.")
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-                leftPadding: Theme.controls.settingsRow.paddingH
-                rightPadding: Theme.controls.settingsRow.paddingH
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
+            HoverHandler {
+                id: groupHover
             }
 
-            Repeater {
-                id: glyphRepeater
-                model: root.glyphOptions
+            width: parent.width
+            title: qsTr("OS Menu Glyph")
+            sectionId: "OS Menu Glyph"
+            // The adapter below hosts the radio group's keyboard navigation.
+            activeFocusOnTab: false
 
-                delegate: GlyphChoiceRow {
-                    required property int index
+            onActiveFocusChanged: if (activeFocus && glyphRepeater.count > 0)
+                glyphRepeater.itemAt(root.glyphIndex).forceActiveFocus()
 
+            Accessible.role: Accessible.Grouping
+            Accessible.name: qsTr("OS Menu Glyph")
+            Accessible.description: qsTr("Choose the mark at the far left of "
+                                         + "the menu bar.")
+
+            Column {
+                width: parent.width
+                spacing: Theme.controls.settingsGroup.rowGap
+
+                // T293a: the group's radio keyboard. Space/Return select the
+                // focused row; Up/Down/Left/Right move the selection like
+                // `SettingsRadioGroup`, and the focus follows it.
+                Item {
+                    id: glyphKeyAdapter
+                    width: 0
+                    height: 0
+
+                    function moveFocus(delta) {
+                        var count = glyphRepeater.count;
+                        if (count === 0)
+                            return true;
+                        var next = Math.max(0, Math.min(count - 1,
+                                                       root.glyphIndex + delta));
+                        if (next === root.glyphIndex)
+                            return true;
+                        // The selection and the roving focus move together.
+                        glyphRepeater.itemAt(next).forceActiveFocus();
+                        root.setGlyph(next);
+                        return true;
+                    }
+
+                    // Space/Return select the focused row; Up/Down/Left/Right
+                    // move the selection (the `SettingsRadioGroup` rule).
+                    function handleKey(key) {
+                        switch (key) {
+                        case Qt.Key_Down:
+                        case Qt.Key_Right:
+                            return glyphKeyAdapter.moveFocus(1);
+                        case Qt.Key_Up:
+                        case Qt.Key_Left:
+                            return glyphKeyAdapter.moveFocus(-1);
+                        case Qt.Key_Space:
+                        case Qt.Key_Return:
+                        case Qt.Key_Enter:
+                            // Space/Return confirm the *focused* row, like
+                            // `SettingsRadioGroup`.
+                            var at = root.glyphIndex;
+                            for (var i = 0; i < glyphRepeater.count; ++i) {
+                                var row = glyphRepeater.itemAt(i);
+                                if (row !== null && row.activeFocus)
+                                    at = i;
+                            }
+                            root.setGlyph(at);
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+
+                Text {
+                    objectName: "menuBarGlyphDescription"
+                    property string settingsId: "osGlyph"
                     width: parent.width
-                    showSeparator: index < glyphRepeater.count - 1
+                    text: qsTr("Choose the mark at the far left of the menu bar. "
+                               + "Dragonfruit is the default; Tux gives a "
+                               + "traditional Linux look. Each preview is shown at "
+                               + "the menu bar's real size and shadow.")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                    wrapMode: Text.WordWrap
+                    leftPadding: Theme.controls.settingsRow.paddingH
+                    rightPadding: Theme.controls.settingsRow.paddingH
+                    topPadding: Theme.primitive.spacing.xs
+                    bottomPadding: Theme.primitive.spacing.xs
+                }
+
+                Repeater {
+                    id: glyphRepeater
+                    model: root.glyphOptions
+
+                    delegate: SettingsGlyphOptionRow {
+                        required property var modelData
+                        required property int index
+
+                        objectName: "menuBarGlyphRow-" + index
+                        width: parent.width
+                        label: modelData.label
+                        description: modelData.description
+                        glyph: modelData.value
+                        settingsKey: "menu.osGlyph"
+                        selected: index === root.glyphIndex
+                        keyTarget: glyphKeyAdapter
+                        openSample: groupHover.hovered && index === root.glyphIndex
+                        showSeparator: index < glyphRepeater.count - 1
+                        onChosen: root.setGlyph(index)
+                    }
                 }
             }
         }
@@ -408,318 +679,256 @@ Item {
             id: controlsGroup
             width: parent.width
             title: qsTr("Menu Bar Controls")
+            sectionId: "Menu Bar Controls"
 
-            Text {
-                objectName: "menuBarControlsDescription"
+            Column {
                 width: parent.width
-                text: qsTr("System and app controls can be configured to "
-                           + "appear in both Quick Settings and the menu bar.")
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-                leftPadding: Theme.controls.settingsRow.paddingH
-                rightPadding: Theme.controls.settingsRow.paddingH
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
-            }
+                spacing: Theme.controls.settingsGroup.rowGap
 
-            // The one Clock row, with its options. It is not duplicated in
-            // the control list below.
-            SettingsRow {
-                id: clockRow
-                width: parent.width
-                label: qsTr("Clock")
-                description: qsTr("Show the date and time in the menu bar.")
-                settingsId: "clock"
-                owner: "settingsd -> shell/MenuBar"
-                settingsKey: "menu.control.clock"
-                controlData: Row {
-                    spacing: Theme.primitive.spacing.xs
-
-                    Toggle {
-                        id: clockVisibilityToggle
-                        text: ""
-                        accessibleName: qsTr("Show the clock in the menu bar")
-                        checked: root.controlVisible("menu.control.clock")
-                        onToggled: (checked) =>
-                            Settings.set("menu.control.clock", checked)
-                    }
-
-                    Button {
-                        id: clockOptionsButton
-                        objectName: "menuBarClockOptionsButton"
-                        text: qsTr("Options\u2026")
-                        accessibleName: qsTr("Clock options")
-                        onClicked: clockDialog.show()
-                    }
-                }
-            }
-
-            Repeater {
-                id: controlsRepeater
-                model: root.controlRows
-
-                delegate: SettingsRow {
-                    required property var modelData
-                    required property int index
-
-                    property alias toggle: controlToggle
+                Text {
+                    objectName: "menuBarControlsDescription"
                     width: parent.width
-                    label: modelData.label
-                    description: root.controlDisabled(modelData)
-                        ? root.controlReason(modelData) : ""
-                    settingsId: root.controlSettingsId(modelData.key)
-                    owner: "settingsd -> shell/MenuBar"
-                    settingsKey: modelData.key
-                    enabled: !root.controlDisabled(modelData)
-                    showSeparator: index < controlsRepeater.count - 1
+                    text: qsTr("System controls you keep in the menu bar. "
+                               + "Customize Controls… edits the Quick Settings "
+                               + "layout that these controls mirror.")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                    wrapMode: Text.WordWrap
+                    leftPadding: Theme.controls.settingsRow.paddingH
+                    rightPadding: Theme.controls.settingsRow.paddingH
+                    topPadding: Theme.primitive.spacing.xs
+                    bottomPadding: Theme.primitive.spacing.xs
+                }
 
+                // The first control is the one Clock row, with its options. It is
+                // not duplicated in the list below.
+                SettingsRow {
+                    id: clockRow
+                    width: parent.width
+                    label: qsTr("Clock")
+                    description: qsTr("Show the date and time in the menu bar.")
+                    settingsId: "clock"
+                    owner: "settingsd -> shell/MenuBar"
+                    settingsKey: "menu.control.clock"
                     controlData: Row {
                         spacing: Theme.primitive.spacing.xs
 
                         Toggle {
-                            id: controlToggle
-                            objectName: "menuBarControlToggle"
+                            id: clockVisibilityToggle
                             text: ""
-                            enabled: !root.controlDisabled(modelData)
-                            accessibleName: modelData.label
+                            accessibleName: qsTr("Show the clock in the menu bar")
+                            checked: root.controlVisible("menu.control.clock")
                             onToggled: (checked) =>
-                                Settings.set(modelData.key, checked)
+                                Settings.set("menu.control.clock", checked)
                         }
 
                         Button {
-                            objectName: "menuBarControlOptions-" + index
-                            visible: modelData.options !== undefined
-                            enabled: !root.controlDisabled(modelData)
+                            id: clockOptionsButton
+                            objectName: "menuBarClockOptionsButton"
                             text: qsTr("Options\u2026")
-                            accessibleName: qsTr("%1 options").arg(modelData.label)
-                            onClicked: {
-                                root.controlOptionsDialog.optionKind =
-                                    String(modelData.options);
-                                root.controlOptionsDialog.show();
-                            }
+                            accessibleName: qsTr("Clock options")
+                            onClicked: clockDialog.show()
                         }
                     }
-
-                    Binding {
-                        target: controlToggle
-                        property: "checked"
-                        value: root.controlVisible(modelData.key)
-                    }
                 }
-            }
 
-            Text {
-                objectName: "menuBarOverflowDescription"
-                width: parent.width
-                text: qsTr("Items that do not fit move into the overflow "
-                           + "menu; they are never clipped. Only the active "
-                           + "display owns the application menu.")
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                wrapMode: Text.WordWrap
-                leftPadding: Theme.controls.settingsRow.paddingH
-                rightPadding: Theme.controls.settingsRow.paddingH
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
-            }
+                Repeater {
+                    id: controlsRepeater
+                    model: root.controlRows
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Add controls\u2026")
-                description: qsTr("Choose which system controls appear in the "
-                                  + "menu bar.")
-                settingsId: "addControls"
-                owner: "settingsd + shell/MenuBar"
-                settingsKey: ""
-                showSeparator: false
+                    delegate: SettingsRow {
+                        required property var modelData
+                        required property int index
 
-                controlData: Button {
-                    id: addControlsButton
-                    objectName: "menuBarAddControls"
-                    text: qsTr("Add Controls\u2026")
-                    onClicked: addControlsDialog.show()
+                        property alias toggle: controlToggle
+                        // T293a: the Workspaces row's own toggle, exposed on
+                        // the pane without a second control.
+                        property alias workspacesToggleAlias: controlToggle
+                        width: parent.width
+                        label: modelData.label
+                        description: root.controlDisabled(modelData)
+                            ? root.controlReason(modelData) : ""
+                        settingsId: root.controlSettingsId(modelData.key)
+                        owner: "settingsd -> shell/MenuBar"
+                        settingsKey: modelData.key
+                        enabled: !root.controlDisabled(modelData)
+                        showSeparator: index < controlsRepeater.count - 1
+
+                        controlData: Row {
+                            spacing: Theme.primitive.spacing.xs
+
+                            Toggle {
+                                id: controlToggle
+                                objectName: "menuBarControlToggle"
+                                text: ""
+                                enabled: !root.controlDisabled(modelData)
+                                accessibleName: modelData.label
+                                onToggled: (checked) =>
+                                    Settings.set(modelData.key, checked)
+                            }
+
+                            Button {
+                                objectName: "menuBarControlOptions-" + index
+                                visible: modelData.options !== undefined
+                                enabled: !root.controlDisabled(modelData)
+                                text: qsTr("Options\u2026")
+                                accessibleName: qsTr("%1 options").arg(modelData.label)
+                                onClicked: root.openControlOptions(
+                                               String(modelData.options))
+                            }
+                        }
+
+                        Binding {
+                            target: controlToggle
+                            property: "checked"
+                            value: root.controlVisible(modelData.key)
+                        }
+                    }
                 }
             }
         }
 
-        // ── Third-party StatusNotifier items ────────────────────────────
+        // ── Allow in the Menu Bar ───────────────────────────────────────
         SettingsGroup {
             id: thirdPartyGroup
             width: parent.width
             title: qsTr("Allow in the Menu Bar")
+            sectionId: "Allow in the Menu Bar"
 
-            SettingsRow {
+            Column {
                 width: parent.width
-                label: qsTr("Third-party items")
-                description: root.thirdPartyAvailable
-                    ? qsTr("Third-party applications can add their own "
-                           + "StatusNotifier items. Turn one off to keep it "
-                           + "out of the menu bar; its application keeps "
-                           + "running.")
-                    : qsTr("The StatusNotifier host is not running, so no "
-                           + "third-party items are available.")
-                settingsId: "thirdParty"
-                owner: "StatusNotifier registry"
-                settingsKey: ""
-                showSeparator: root.thirdPartyItems.length > 0
-            }
+                spacing: Theme.controls.settingsGroup.rowGap
 
-            Repeater {
-                id: thirdPartyRepeater
-                model: root.thirdPartyItems
-
-                delegate: SettingsRow {
-                    required property var modelData
-                    required property int index
+                SettingsRow {
                     width: parent.width
-                    label: modelData.label !== undefined
-                        ? String(modelData.label) : String(modelData.name)
-                    description: String(modelData.name)
-                    settingsId: "thirdParty-" + index
+                    label: qsTr("Third-party items")
+                    description: root.thirdPartyAvailable
+                        ? qsTr("Applications can add their own menu-bar items. "
+                               + "Turn one off to keep it out of the menu bar; its "
+                               + "application keeps running.")
+                        : qsTr("The menu-bar item host is not running, so no "
+                               + "third-party items are available.")
+                    settingsId: "thirdParty"
                     owner: "StatusNotifier registry"
-                    settingsKey: "menu.tray.hidden"
-                    showSeparator: index < thirdPartyRepeater.count - 1
+                    settingsKey: ""
+                    showSeparator: root.thirdPartyItems.length > 0
+                }
 
-                    controlData: Toggle {
-                        objectName: "menuBarThirdPartyToggle-" + index
-                        text: ""
-                        accessibleName: qsTr("Allow %1 in the menu bar")
-                            .arg(String(modelData.label))
-                        checked: root.trayAllowed(String(modelData.name))
-                        onToggled: (checked) =>
-                            root.setTrayAllowed(String(modelData.name), checked)
+                Repeater {
+                    id: thirdPartyRepeater
+                    model: root.thirdPartyItems
+
+                    delegate: SettingsRow {
+                        required property var modelData
+                        required property int index
+                        width: parent.width
+                        label: modelData.label !== undefined
+                            ? String(modelData.label) : String(modelData.name)
+                        description: String(modelData.name)
+                        settingsId: "thirdParty-" + index
+                        owner: "StatusNotifier registry"
+                        settingsKey: "menu.tray.hidden"
+                        showSeparator: index < thirdPartyRepeater.count - 1
+
+                        controlData: Toggle {
+                            objectName: "menuBarThirdPartyToggle-" + index
+                            text: ""
+                            accessibleName: qsTr("Allow %1 in the menu bar")
+                                .arg(String(modelData.label))
+                            checked: root.trayAllowed(String(modelData.name))
+                            onToggled: (checked) =>
+                                root.setTrayAllowed(String(modelData.name), checked)
+                        }
                     }
                 }
-            }
 
-            Text {
-                visible: root.thirdPartyAvailable
-                         && root.thirdPartyItems.length === 0
-                width: parent.width
-                text: qsTr("No third-party menu-bar items are installed.")
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                leftPadding: Theme.controls.settingsRow.paddingH
-                rightPadding: Theme.controls.settingsRow.paddingH
-                topPadding: Theme.primitive.spacing.xs
-                bottomPadding: Theme.primitive.spacing.xs
+                Text {
+                    id: thirdPartyEmptyNote
+                    objectName: "menuBarThirdPartyEmpty"
+                    visible: root.thirdPartyAvailable
+                             && root.thirdPartyItems.length === 0
+                    width: parent.width
+                    text: qsTr("No third-party menu-bar items are installed.")
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                    leftPadding: Theme.controls.settingsRow.paddingH
+                    rightPadding: Theme.controls.settingsRow.paddingH
+                    topPadding: Theme.primitive.spacing.xs
+                    bottomPadding: Theme.primitive.spacing.xs
+                }
             }
         }
 
-        // ── Linux-only rows ─────────────────────────────────────────────
-        SettingsGroup {
-            id: linuxGroup
+        // ── Footer ──────────────────────────────────────────────────────
+        SettingsFooter {
+            id: footer
+            objectName: "menuBarFooter"
             width: parent.width
-            title: qsTr("Menu Bar Behavior")
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Overflow policy")
-                description: qsTr("Automatic moves items into the overflow "
-                                  + "menu only when the measured bar runs out "
-                                  + "of room. Always keeps the overflow menu "
-                                  + "visible and moves third-party items into "
-                                  + "it first.")
-                settingsId: "overflow"
-                owner: "settingsd -> shell/MenuBar"
-                settingsKey: "menu.overflow"
-                controlData: Select {
-                    id: overflowSelect
-                    objectName: "menuBarOverflowPolicy"
-                    accessibleName: qsTr("Overflow policy")
-                    model: root.overflowOptions
-                    onActivated: (index) => Settings.set(
-                        "menu.overflow", root.overflowOptions[index].value)
-                }
+            readonly property real itemWidth: root.footerItemWidth()
+
+            Button {
+                id: addControlsButton
+                objectName: "menuBarAddControls"
+                variant: "ghost"
+                width: footer.itemWidth
+                implicitWidth: footer.itemWidth
+                text: qsTr("Add Controls…")
+                accessibleName: qsTr("Add menu-bar controls")
+                onClicked: addControlsDialog.show()
             }
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Workspace indicator")
-                description: qsTr("Show the active workspace number in the "
-                                  + "menu bar. It is live from the compositor "
-                                  + "and hidden when only one workspace exists.")
-                settingsId: "workspaces"
-                owner: "settingsd -> shell/MenuBar"
-                settingsKey: "menu.control.workspaces"
-                controlData: Toggle {
-                    id: workspacesToggle
-                    objectName: "menuBarWorkspaces"
-                    text: ""
-                    accessibleName: qsTr("Show the workspace indicator")
-                    checked: root.workspacesVisible
-                    onToggled: (checked) =>
-                        Settings.set("menu.control.workspaces", checked)
-                }
+            Button {
+                id: customizeControlsButton
+                objectName: "menuBarCustomizeControls"
+                variant: "ghost"
+                width: footer.itemWidth
+                implicitWidth: footer.itemWidth
+                text: qsTr("Customize Controls…")
+                accessibleName: qsTr("Edit the Quick Settings layout")
+                onClicked: root.customizeControls()
             }
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Show application menus in the menu bar")
-                description: qsTr("When off, first-party applications keep "
-                                  + "their own local menus.")
-                settingsId: "globalMenu"
-                owner: "settingsd -> shell/MenuBar"
-                settingsKey: "menu.global"
-                controlData: Toggle {
-                    id: globalMenuToggle
-                    objectName: "menuBarGlobalMenu"
-                    text: ""
-                    accessibleName: qsTr("Show application menus in the menu bar")
-                    checked: root.globalMenuEnabled
-                    onToggled: (checked) => Settings.set("menu.global", checked)
-                }
+            Button {
+                id: advancedButton
+                objectName: "menuBarAdvanced"
+                variant: "ghost"
+                width: footer.itemWidth
+                implicitWidth: footer.itemWidth
+                text: qsTr("Advanced…")
+                accessibleName: qsTr("Open advanced menu bar settings")
+                onClicked: root.openAdvancedMenuBar()
             }
 
-            SettingsRow {
-                id: perDisplayPanelRow
-                width: parent.width
-                label: qsTr("Show on every display")
-                description: qsTr("Disabled: the shell ships one Quick "
-                                  + "Settings and menu-bar surface. Per-display "
-                                  + "panels need a compositor overlay per "
-                                  + "output.")
-                settingsId: "perDisplayPanel"
-                owner: "settingsd -> shell"
-                settingsKey: "quickSettings.perDisplay"
-                enabled: false
-                showSeparator: false
-                controlData: Toggle {
-                    text: ""
-                    checked: root.perDisplayPanel
-                    enabled: false
-                    accessibleName: qsTr("Show on every display")
-                }
+            Button {
+                id: resetButton
+                objectName: "menuBarReset"
+                variant: "ghost"
+                width: footer.itemWidth
+                implicitWidth: footer.itemWidth
+                text: qsTr("Reset Menu Bar…")
+                accessibleName: qsTr("Reset the menu bar")
+                onClicked: root.resetMenuBar()
             }
         }
 
-        // ── Reset ───────────────────────────────────────────────────────
-        SettingsGroup {
+        Item {
             width: parent.width
-            title: qsTr("Reset")
+            height: 0
+        }
+    }
 
-            SettingsRow {
-                width: parent.width
-                label: qsTr("Reset Quick Settings")
-                description: qsTr("Restores the menu-bar behavior, clock "
-                                  + "options, control visibility, per-control "
-                                  + "options, third-party allowances, and the "
-                                  + "Linux-only rows.")
-                settingsId: "reset"
-                owner: "settingsd"
-                settingsKey: ""
-                showSeparator: false
-
-                controlData: Button {
-                    id: resetButton
-                    objectName: "menuBarReset"
-                    text: qsTr("Reset")
-                    accessibleName: qsTr("Reset the menu bar")
-                    onClicked: root.resetMenuBar()
-                }
+    // The Workspaces row's toggle (the Linux-only active-workspace
+    // indicator). It lives in the controls Repeater, so the pane names it.
+    function workspacesToggle() {
+        for (var i = 0; i < root.controlRows.length; ++i) {
+            if (root.controlRows[i].key === "menu.control.workspaces") {
+                var row = root.controlsRepeater.itemAt(i);
+                return row !== null && row !== undefined
+                        ? row.workspacesToggleAlias : null;
             }
         }
+        return null;
     }
 
     // The per-control options sheet. One dialog carries the one option the
@@ -820,7 +1029,8 @@ Item {
     }
 
     // The Add Controls sheet: the same visibility keys as the list, without a
-    // second control catalogue.
+    // second control catalogue. A control with no menu-bar item stays disabled
+    // with its reason.
     Dialog {
         id: addControlsDialog
         objectName: "menuBarAddControlsDialog"
@@ -872,6 +1082,96 @@ Item {
         }
     }
 
+    // T293a: the Advanced Menu Bar sheet. The three Linux-only rows keep
+    // their real owner, key, and reason; the sheet is an organization change.
+    Dialog {
+        id: advancedDialog
+        objectName: "menuBarAdvancedDialog"
+        title: qsTr("Advanced Menu Bar")
+        message: qsTr("Menu-bar behaviour that is specific to this desktop. A "
+                      + "row the shell cannot provide stays visible and "
+                      + "disabled with the reason.")
+
+        // The overflow row holds a popup beside its label, so the sheet asks
+        // for a wider card than the 480 pt default (T292b's `preferredWidth`).
+        preferredWidth: 560
+
+        contentData: Item {
+            implicitWidth: Math.min(560, Math.max(480, root.Window.width > 0
+                                                  ? root.Window.width - 48 : 560))
+            implicitHeight: advancedGroup.implicitHeight
+            width: parent.width
+            height: implicitHeight
+
+            SettingsGroup {
+                id: advancedGroup
+                width: parent.width
+                title: qsTr("Advanced Menu Bar")
+                sectionId: "Advanced Menu Bar"
+
+                SettingsKeyRow {
+                    id: overflowRow
+                    width: parent.width
+                    label: qsTr("Overflow policy")
+                    settingsId: "overflow"
+                    owner: "settingsd -> shell/MenuBar"
+                    settingsKey: "menu.overflow"
+                    description: qsTr("Items that do not fit move into the "
+                                      + "overflow menu; they are never "
+                                      + "clipped.")
+                    controlData: Select {
+                        id: overflowSelect
+                        objectName: "menuBarOverflowPolicy"
+                        accessibleName: qsTr("Overflow policy")
+                        model: root.overflowOptions
+                        onActivated: (index) => Settings.set(
+                            "menu.overflow", root.overflowOptions[index].value)
+                    }
+                }
+
+                SettingsKeyRow {
+                    id: globalMenuRow
+                    width: parent.width
+                    label: qsTr("Show application menus in the menu bar")
+                    settingsId: "globalMenu"
+                    owner: "settingsd -> shell/MenuBar"
+                    settingsKey: "menu.global"
+                    description: qsTr("When off, first-party applications keep "
+                                      + "their own local menus. Only the active "
+                                      + "display owns the application menu.")
+                    controlData: Toggle {
+                        id: globalMenuToggle
+                        objectName: "menuBarGlobalMenu"
+                        text: ""
+                        accessibleName: qsTr("Show application menus in the menu bar")
+                        checked: root.globalMenuEnabled
+                        onToggled: (checked) => Settings.set("menu.global", checked)
+                    }
+                }
+
+                SettingsKeyRow {
+                    id: perDisplayPanelRow
+                    width: parent.width
+                    label: qsTr("Show on every display")
+                    settingsId: "perDisplayPanel"
+                    owner: "settingsd -> shell"
+                    settingsKey: "quickSettings.perDisplay"
+                    description: qsTr("Disabled: the shell ships one menu-bar "
+                                      + "surface per session. Per-display panels "
+                                      + "need a compositor overlay per output.")
+                    enabled: false
+                    showSeparator: false
+                    controlData: Toggle {
+                        text: ""
+                        checked: root.perDisplayPanel
+                        enabled: false
+                        accessibleName: qsTr("Show on every display")
+                    }
+                }
+            }
+        }
+    }
+
     // Keep the controls in step with external changes.
     Binding {
         target: autoHideSelect
@@ -902,173 +1202,5 @@ Item {
         target: overflowSelect
         property: "currentIndex"
         value: root.overflowIndex()
-    }
-
-    // One OS-menu glyph choice: a radio row with a real-size menu-bar preview.
-    // The preview uses the same `SystemMenuGlyph` and wallpaper-contrast shadow
-    // as the bar, so the row is a faithful miniature rather than a generic
-    // icon tile.
-    component GlyphChoiceRow: Item {
-        id: choice
-
-        required property var modelData
-        property bool showSeparator: true
-
-        readonly property bool selected:
-            root.osGlyph === choice.modelData.value
-        readonly property bool lightLettering: {
-            var c = Theme.color.textPrimary;
-            return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) > 0.5;
-        }
-        readonly property color labelShadowColor:
-            choice.lightLettering ? Theme.controls.wallpaperText.shadowColorOnDark
-                                  : Theme.controls.wallpaperText.shadowColorOnLight
-        readonly property real labelShadowOpacity:
-            choice.lightLettering ? Theme.controls.wallpaperText.shadowOpacityOnDark
-                                  : Theme.controls.wallpaperText.shadowOpacityOnLight
-        readonly property color glyphShadowColor:
-            Qt.rgba(choice.labelShadowColor.r, choice.labelShadowColor.g,
-                    choice.labelShadowColor.b, choice.labelShadowOpacity * 0.9)
-
-        function choose() {
-            Settings.set("menu.osGlyph", choice.modelData.value);
-        }
-
-        width: parent ? parent.width : implicitWidth
-        implicitHeight: Theme.controls.settingsRow.height
-        activeFocusOnTab: true
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.controls.settingsGroup.radius
-            color: Qt.rgba(Theme.color.textPrimary.r, Theme.color.textPrimary.g,
-                           Theme.color.textPrimary.b, 0.05)
-            visible: choiceHover.hovered
-            antialiasing: true
-        }
-
-        Rectangle {
-            id: radioOuter
-            x: Theme.controls.settingsRow.paddingH
-            anchors.verticalCenter: parent.verticalCenter
-            width: 16
-            height: 16
-            radius: width / 2
-            color: "transparent"
-            border.width: Theme.controls.window.borderWidth
-            border.color: choice.selected ? Theme.color.accent : Theme.color.textTertiary
-            antialiasing: true
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 8
-                height: 8
-                radius: width / 2
-                color: Theme.color.accent
-                visible: choice.selected
-                antialiasing: true
-            }
-        }
-
-        Column {
-            id: choiceLabelColumn
-            anchors.left: radioOuter.right
-            anchors.leftMargin: Theme.primitive.spacing.md
-            anchors.right: previewPlate.left
-            anchors.rightMargin: Theme.primitive.spacing.md
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Theme.primitive.spacing.xxs
-
-            Text {
-                width: parent.width
-                text: choice.modelData.label
-                color: Theme.color.textPrimary
-                font.pixelSize: Theme.controls.button.fontSize
-                elide: Text.ElideRight
-            }
-
-            Text {
-                width: parent.width
-                text: choice.modelData.description
-                color: Theme.color.textTertiary
-                font.pixelSize: Theme.primitive.font.sizeSm
-                elide: Text.ElideRight
-            }
-        }
-
-        Rectangle {
-            id: previewPlate
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.controls.settingsRow.paddingH
-            anchors.verticalCenter: parent.verticalCenter
-            width: 112
-            height: Theme.controls.menuBar.height
-            radius: Theme.controls.menuBar.radius
-            color: Theme.color.chrome
-            border.width: Theme.controls.window.borderWidth
-            border.color: Theme.color.border
-            antialiasing: true
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: Theme.controls.menuBar.iconSize
-                        + 2 * Theme.controls.menuBarMenu.barPaddingH
-                height: Theme.controls.menuBarMenu.barHeight
-                radius: Theme.controls.focusRing.radius
-                color: Qt.rgba(Theme.color.textPrimary.r,
-                               Theme.color.textPrimary.g,
-                               Theme.color.textPrimary.b,
-                               Theme.controls.menuBar.hoverOpacity)
-                visible: choiceHover.hovered || choice.activeFocus
-                antialiasing: true
-            }
-
-            SystemMenuGlyph {
-                anchors.centerIn: parent
-                glyph: choice.modelData.value
-                size: Theme.controls.menuBar.iconSize
-                color: Theme.color.textPrimary
-                shadowColor: choice.glyphShadowColor
-                shadowOffset: Qt.point(0, Theme.controls.wallpaperText.shadowOffsetY)
-            }
-        }
-
-        Rectangle {
-            visible: choice.showSeparator
-            anchors.left: parent.left
-            anchors.leftMargin: Theme.controls.settingsRow.paddingH
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.controls.settingsRow.paddingH
-            anchors.bottom: parent.bottom
-            height: Theme.controls.window.borderWidth
-            color: Theme.color.separator
-        }
-
-        HoverHandler { id: choiceHover }
-
-        TapHandler {
-            onTapped: choice.choose()
-        }
-
-        FocusRing {
-            target: choice
-            shown: choice.activeFocus
-        }
-
-        Keys.onPressed: (event) => {
-            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
-                    || event.key === Qt.Key_Enter) {
-                choice.choose();
-                event.accepted = true;
-            }
-        }
-
-        Accessible.role: Accessible.RadioButton
-        Accessible.name: choice.modelData.label
-        Accessible.description: choice.modelData.description
-        Accessible.checkable: true
-        Accessible.checked: choice.selected
-        Accessible.focusable: true
-        Accessible.onPressAction: choice.choose()
     }
 }

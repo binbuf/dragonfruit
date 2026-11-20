@@ -715,42 +715,74 @@ menu-bar-only set, and the `menu.control.*` marks the surface owns.
 
 Owner: `settingsd` → shell/menu bar. Absence: live on defaults; no error.
 
-| macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
+T293a renders the mockup order: **Menu Bar Behaviour**, **OS Menu Glyph**,
+**Menu Bar Controls**, **Allow in the Menu Bar**, then the footer.
+
+| Mockup block / row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Automatically hide and show the menu bar | Auto-hide menu bar | Popup | existing: `menu.autoHide` | Always/never/in fullscreen |
-| Show menu bar background | Show menu bar background | Toggle | existing: `menu.showBackground` | Veil on/off; the glass task owns the material |
-| — | OS menu glyph | Radio + preview | `menu.osGlyph` | Dragonfruit or Tux; previewed at real menu-bar size with the bar's shadow |
-| Recent documents, applications, and servers | Recent items | Stepper | existing: `menu.recentItems` | Count 0–50 |
-| Add Controls… | Add menu-bar controls… | Sheet | `settingsd` + registry | Add/remove/reorder |
-| Clock | Clock | Checkbox + options | existing: `menu.clock.showDate`/`showSeconds` | Date/time/seconds; Calendar popover |
-| Search | Search | Checkbox | `menu.control.search` | Show/hide |
-| Wi-Fi | Wi-Fi | Checkbox | existing: `menu.control.wifi` | Show/hide |
-| Bluetooth | Bluetooth | Checkbox | existing: `menu.control.bluetooth` | Show/hide |
-| Battery | Battery | Checkbox + options | existing: `menu.control.battery` + `power.showPercentage` | Show percentage/energy |
-| Nearby Transfer | — | Omit | — | No permissive equivalent |
-| Focus | Focus | Checkbox + options | existing: `menu.control.focus` + `menu.control.focusAlways` | Show when active, or always |
-| Screen Casting | Screen Casting | Disabled row | `menu.control.screenMirroring` | No menu-bar item; start casting from Quick Settings |
-| Display | Display | Disabled row | `menu.control.display` | No menu-bar item; the Display module lives in Quick Settings |
-| Sound | Sound | Checkbox + options | existing: `menu.control.volume` + `menu.control.volumeWhenActive` | Show always, or hide while muted |
-| — | Third-party items | List | StatusNotifier registry + `menu.tray.hidden` | Allow/deny each live item |
-| — | Overflow policy | Popup | `menu.overflow` | Automatic or always-show overflow (Linux-only) |
-| — | Workspace indicator | Toggle | `menu.control.workspaces` | Live active-Space projection (Linux-only) |
-| — | Show application menus | Toggle | `menu.global` | Linux-only; first-party local menus when off |
-| — | Show on every display | Disabled row | `quickSettings.perDisplay` | One shell surface; per-display needs a compositor overlay per output |
-| — | Reset Quick Settings | Button | `menu.control.*` + options | Restore the menu-bar surface |
+| Menu Bar Behaviour | Automatically hide and show the menu bar | Popup | `menu.autoHide` | Never / Always / In Full Screen Only |
+| Menu Bar Behaviour | Show menu bar background | Toggle | `menu.showBackground` | Veil on/off; the glass task owns the material |
+| Menu Bar Behaviour | Recent documents, applications, and servers | Stepper | `menu.recentItems` | Count 0–50 |
+| Menu Bar Behaviour | Show suggestions in the menu bar gallery | Omit (`suggestions`) | — | No owner: the shell has no suggestion surface |
+| OS Menu Glyph | OS Menu Glyph | Radio group + actual-size strip | `menu.osGlyph` | Dragonfruit (default) or Tux; real bar height, real glyph size, wallpaper-contrast shadow, hover/open plate |
+| Menu Bar Controls | Clock | Checkbox + options | `menu.control.clock` + `menu.clock.showDate`/`showSeconds` | Date/time/seconds |
+| Menu Bar Controls | Search | Checkbox | `menu.control.search` | Show/hide |
+| Menu Bar Controls | Wi-Fi | Checkbox | `menu.control.wifi` | Show/hide |
+| Menu Bar Controls | Bluetooth | Checkbox | `menu.control.bluetooth` | Show/hide |
+| Menu Bar Controls | Battery | Checkbox + options | `menu.control.battery` + `power.showPercentage` | Show percentage/energy |
+| Menu Bar Controls | Focus | Checkbox + options | `menu.control.focus` + `menu.control.focusAlways` | Show when active, or always |
+| Menu Bar Controls | Sound | Checkbox + options | `menu.control.volume` + `menu.control.volumeWhenActive` | Show always, or hide while muted |
+| Menu Bar Controls | Accessibility | Checkbox | `menu.control.accessibility` | Show/hide |
+| Menu Bar Controls | Quick Settings | Checkbox | `menu.control.controlCenter` | Show/hide |
+| Menu Bar Controls | Display | Disabled row | — | No menu-bar item; the Display module lives in Quick Settings |
+| Menu Bar Controls | Workspaces | Toggle | `menu.control.workspaces` | Live active-workspace projection (Linux-only) |
+| Menu Bar Controls | Now Playing | Omit (`nowPlaying`) | — | No media status item; no player provider |
+| Menu Bar Controls | Text Input | Omit (`textInput`) | — | No input-method status item; Keyboard owns the source |
+| Menu Bar Controls | Backups | Omit (`backups`) | — | No backup status item; General > Backups owns it |
+| Menu Bar Controls | Timer | Omit (`timer`) | — | No timer service or clock timer |
+| Allow in the Menu Bar | Third-party items | List | StatusNotifier registry + `menu.tray.hidden` | Allow/deny each live item; empty state when none |
+| Footer | Add Controls… | Button | `menu.control.*` | The Add Controls sheet |
+| Footer | Customize Controls… | Button | `quickSettings.*` | Opens the Quick Settings surface through the `menu-bar/controls` alias until T293b |
+| Footer | Advanced… | Button | — | The Advanced Menu Bar sheet |
+| Footer | Reset Menu Bar… | Button | `menu.*`, `power.showPercentage`, `quickSettings.perDisplay` | Restores every key this pane writes |
+| Advanced Menu Bar | Overflow policy | Popup | `menu.overflow` | Automatic or always-show overflow (Linux-only) |
+| Advanced Menu Bar | Show application menus in the menu bar | Toggle | `menu.global` | Linux-only; first-party local menus when off |
+| Advanced Menu Bar | Show on every display | Disabled row | `quickSettings.perDisplay` | One shell surface; per-display needs a compositor overlay per output |
+
+The mockup's File Manager, Music, and Sync Agent rows are examples of
+third-party items, never fixed rows; the list is always the live
+StatusNotifier view. An omitted row is recorded `omitted` with
+`owner`/`key` = `omit` and is never search-indexed; the Display row is
+`omitted` but still renders the disabled row that states its reason, so a user
+sees why the mockup item is not available.
 
 **T277 status.** The pane has one Clock row with the visibility mark and the
 Clock Options sheet (declared inside the pane, so the T266 dialog adopts the
 window overlay). Battery, Focus, and Sound have per-control option sheets
 (`power.showPercentage`, `menu.control.focusAlways`,
-`menu.control.volumeWhenActive`). Display and Screen Casting are listed
-disabled with the exact "no menu-bar item" reason. The third-party list is the
-live app-index StatusNotifier view and writes `menu.tray.hidden`, which the
-shell's `applyStatusItems` reads. The Linux-only rows are live: `menu.overflow`
-maps to `StatusItemRegistry.forceOverflow`, `menu.control.workspaces` maps to
-the compositor's active-Space projection, and `menu.global` is the existing
-global-menu toggle. Reset restores the behavior keys, clock options,
-visibility marks, per-control options, tray allowances, and Linux-only rows.
+`menu.control.volumeWhenActive`). Display is listed disabled with the exact "no
+menu-bar item" reason. The third-party list is the live app-index
+StatusNotifier view and writes `menu.tray.hidden`, which the shell's
+`applyStatusItems` reads. The Linux-only rows are live: `menu.overflow` maps to
+`StatusItemRegistry.forceOverflow`, `menu.control.workspaces` maps to the
+compositor's active-workspace projection, and `menu.global` is the existing
+global-menu toggle.
+
+**T293a status.** The pane follows the mockup order above and the former
+standalone "Menu Bar Behavior", "Screen Casting", "Notifications", and "Reset"
+rows are gone. The OS Menu Glyph is one radio group
+(`SettingsGlyphOptionRow`): clicking anywhere selects, Space/Return selects
+from the keyboard, the row paints the focus ring, and every row is one AT-SPI
+radio button inside a labelled group. Each row's preview is an actual-size
+strip (`Theme.controls.menuBar.height` tall, at least 184 pt, the real
+`Theme.controls.menuBar.iconSize` mark with the bar's wallpaper-contrast
+shadow, the bar's hover/open plate, and a File Edit View sample). Dragonfruit
+is the install default and the Reset value. The three Linux-only rows moved
+into the **Advanced Menu Bar** sheet (`menuBarDialogRows`, `rowSurface` =
+`dialog`); the footer's Advanced… opens it and a row deep link opens it before
+landing. Customize Controls… opens the existing Quick Settings surface through
+the `menu-bar/controls` alias (`SettingsShell` mounts `QuickSettingsPane` with
+`subPaneId: "controls"`); T293b replaces that with the in-place sub-pane.
 
 <a id="pane-search"></a>
 ### 5.10 Search (Search-equivalent)

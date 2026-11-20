@@ -706,6 +706,30 @@ Center panel are unchanged.
 The Linux-only rows (overflow policy, global app menu, per-display panel) move
 to an Advanced Menu Bar sheet. They have real owners; they are not deleted.
 
+T293a lands the restyle. The pane renders **Menu Bar Behaviour**, **OS Menu
+Glyph**, **Menu Bar Controls**, and **Allow in the Menu Bar** in that order and
+ends with one footer carrying **Add Controls…**, **Customize Controls…**,
+**Advanced…**, and **Reset Menu Bar…** (four ghost actions sharing one
+derived width, the same approach §5.6 uses). The former standalone "Menu Bar
+Behavior" group, the Screen Casting row, the Notifications row, and the Reset
+card are gone. The mockup's suggestion row and the four controls with no
+status item (Now Playing, Text Input, Backups, Timer) are map `omitted` rows
+with reasons; Display is an `omitted` row that still renders the disabled row
+with its exact reason, because the user must see why the mockup item is not
+there. The OS Menu Glyph is the pane's one radio group: its rows are
+`SettingsGlyphOptionRow`, each with an actual-size strip (real
+`Theme.controls.menuBar.height`, at least 184 pt wide, real
+`Theme.controls.menuBar.iconSize` mark, wallpaper-contrast shadow, hover/open
+plate, File Edit View sample), a focus ring, and an AT-SPI radio role; the
+group follows `SettingsRadioGroup`'s keys (Space/Return selects the focused
+row, the arrows move the selection). Dragonfruit is the install default and
+the Reset value. The three Linux-only rows live in the **Advanced Menu Bar**
+sheet, and Customize Controls… opens the existing Quick Settings surface
+through the `menu-bar/controls` alias until T293b lands the in-place sub-pane.
+`make t293a-settings-menu-bar-capture` writes the main pane, the glyph group,
+the controls list, the footer/third-party list, the Reset result, and the
+advanced sheet in light/dark.
+
 ### 5.8 Search
 
 | Mockup block | Target |
@@ -836,6 +860,12 @@ in the Menu Bar pane, after Menu Bar Behaviour and before Menu Bar Controls.
 The improved area replaces the current two small preview plates with the
 actual-size strip and the clearer radio behavior. The rest of the Menu Bar
 pane follows §5.7.
+
+Landed in T293a: the strip is a fixed 184 pt so it reads the same at every
+window width and never scales the mark; the sample menus sit inside the strip
+at `Theme.controls.menuBar.fontSize`, so the preview documents the real bar
+rather than a second one. The strip clips at its right edge under an
+unusually narrow pane; it never shrinks the glyph.
 
 ## 7. Evidence and acceptance
 
