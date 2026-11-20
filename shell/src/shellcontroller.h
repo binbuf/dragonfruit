@@ -98,7 +98,7 @@ private slots:
     void onAppAccelerator(const QString &appId, const QString &action, const QString &source,
                           quint32 serial);
     void onControlCenterRequested();
-    // Control Center panel (T-11.3a): the overlay surface, pointer/keyboard
+    // Quick Settings panel (T-11.3a): the overlay surface, pointer/keyboard
     // stream, and the tile gestures.
     void onControlCenterClosed();
     void onControlCenterConfigured(int width, int height, quint32 serial);
@@ -106,7 +106,7 @@ private slots:
     void onControlCenterPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onControlCenterPointerLeft();
     void onControlCenterKeyboardFocused(bool focused);
-    // Notification Center (T204/T231): the Notifications menu-bar extra, its
+    // Notifications (T204/T231): Notifications menu-bar extra, its
     // own overlay surface and pointer/keyboard stream, and the service-backed
     // history.
     void onNotificationCenterStateClosed(const QString &reason);
@@ -265,40 +265,40 @@ private slots:
     // power-mode write. Both forward one explicit request to the bridge host.
     void onSinkSelected(int id);
     void onPowerProfileSelected(const QString &profile);
-    // T-15.3b: the Control Center Sound tile reflects the routing state; the
+    // T-15.3b: the Quick Settings Sound tile reflects the routing state; the
     // routing writes are raised from the Settings pane, not the compact tile.
     void onSoundSettingsRequested();
     void onKeyboardSettingsRequested();
     void onMissionControlSettingsRequested();
-    // T-15.6b: the Control Center Battery tile is a status summary; the
+    // T-15.6b: the Quick Settings Battery tile is a status summary; the
     // Settings link is an entry point only until T-16.
     void onBatterySettingsRequested();
-    // T-15.8b: the Control Center Lock Screen tile is a policy summary; the
+    // T-15.8b: the Quick Settings Lock Screen tile is a policy summary; the
     // Settings link is an entry point only until T-16.
     void onLockScreenSettingsRequested();
-    // T-15.9b: the Control Center Menu Bar tile is a configuration summary;
+    // T-15.9b: the Quick Settings Menu Bar tile is a configuration summary;
     // the Settings link is an entry point only until T-16.
     void onMenuBarSettingsRequested();
-    // T-15.10b: the Control Center Software Update tile. `check`/`install`/
+    // T-15.10b: the Quick Settings Software Update tile. `check`/`install`/
     // `restart` are the three explicit update writes; the Settings link opens
     // the General pane where the same controls live.
     void onUpdatesCheckRequested();
     void onUpdatesInstallRequested();
     void onUpdatesRebootRequested();
     void onUpdatesSettingsRequested();
-    // T-15.11b: the Control Center Users tile is a read-only summary; the
+    // T-15.11b: the Quick Settings Users tile is a read-only summary; the
     // Settings link is an entry point only until T-16.
     void onUsersSettingsRequested();
-    // T-15.12b: the Control Center Printers tile is a read-only summary; the
+    // T-15.12b: the Quick Settings Printers tile is a read-only summary; the
     // Settings link is an entry point only until T-16.
     void onPrintersSettingsRequested();
-    // T-15.13b: the Control Center Privacy tile is a read-only summary; the
+    // T-15.13b: the Quick Settings Privacy tile is a read-only summary; the
     // Settings link is an entry point only until T-16.
     void onPrivacySettingsRequested();
-    // T-15.14b: the Control Center Accessibility tile is a read-only summary;
+    // T-15.14b: the Quick Settings Accessibility tile is a read-only summary;
     // the Settings link is an entry point only until T-16.
     void onAccessibilitySettingsRequested();
-    // T-15.15b: the Control Center Network advanced (VPN) tile is a read-only
+    // T-15.15b: the Quick Settings Network advanced (VPN) tile is a read-only
     // summary; the Settings link is an entry point only until T-16.
     void onVpnSettingsRequested();
     // T232: the Quick Settings panel's footer link to the customization pane.
@@ -312,7 +312,7 @@ private slots:
     void onControlCenterScreenshotRequested();
     void onControlCenterScreencastRequested();
     void onFocusModeSetRequested(const QString &mode);
-    // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
+    // T-15.1b: the Quick Settings Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.
     void onBluetoothToggleRequested(bool enabled);
@@ -321,7 +321,7 @@ private slots:
     // T232: discovery and pairing from the Bluetooth status menu.
     void onBluetoothDiscoveringToggleRequested(bool discovering);
     void onBluetoothPairRequested(const QString &address);
-    // T-15.2b: the Control Center Storage tile. Mount/unmount a volume and
+    // T-15.2b: the Quick Settings Storage tile. Mount/unmount a volume and
     // eject a drive through the bridge host; the Settings link is an entry
     // point only until T-16.
     void onStorageMountRequested(const QString &volumePath);
@@ -452,7 +452,7 @@ private slots:
     void onDockPopupPointerMoved(qreal x, qreal y);
     void onDockPopupPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onDockPopupPointerLeft();
-    // Mission Control overview chrome (T-11 Slice B).
+    // Overview overview chrome (T-11 Slice B).
     void onOverviewConfigured(int width, int height, quint32 serial);
     void onOverviewChanged(bool active);
     void onOverviewProgress(qreal progress, const QString &action);
@@ -723,7 +723,7 @@ private:
     // A preferred-scale or output-scale change: rerender every mapped scene.
     void onChromeScaleChanged(qreal scale);
     void rerenderChrome();
-    // Mission Control overview chrome (T-11 Slice B): re-read the workspace /
+    // Overview overview chrome (T-11 Slice B): re-read the workspace /
     // minimized-window projection from the protocol into the QML, and commit
     // the transparent chrome surface while the overview is open.
     void refreshOverviewData();
@@ -759,7 +759,7 @@ private:
     // card height (T-11.1b).
     void applyBannerInputRegion();
     void renderBanner();
-    // Notification Center (T204): map/unmap the top-right overlay, push the
+    // Notifications (T204): map/unmap the top-right overlay, push the
     // normalized service history, and commit its frames. The pure
     // `NotificationCenter` state owns selection and action validation.
     void toggleNotificationCenter();
@@ -775,7 +775,7 @@ private:
     void scheduleWidgetGalleryRender();
     void applyWidgetGalleryData();
     void updateNotificationCenterGeometry();
-    // Control Center panel (T-11.3a): seed the panel's tile state, map/unmap
+    // Quick Settings panel (T-11.3a): seed the panel's tile state, map/unmap
     // the top-right overlay surface, and commit its frames from the scene
     // graph (the banner/Dock FR-14 path).
     void toggleControlCenter();
@@ -1080,7 +1080,7 @@ private:
     QQuickItem *m_item = nullptr;
     QQuickWindow *m_dockWindow = nullptr;
     QQuickItem *m_dockItem = nullptr;
-    // Mission Control overview chrome (T-11 Slice B): a third offscreen scene
+    // Overview overview chrome (T-11 Slice B): a third offscreen scene
     // rendered into the full-output `overlay` surface while the overview is
     // open. The compositor draws the live window surfaces underneath.
     QQuickWindow *m_overviewWindow = nullptr;
@@ -1141,7 +1141,7 @@ private:
     bool m_bannerPresent = false;
     bool m_bannerExiting = false;
     int m_bannerExitGeneration = 0;
-    // Notification Center (T204): the pure service-history state and a
+    // Notifications (T204): the pure service-history state and a
     // top-right overlay scene, unmapped until the clock, keyboard action or
     // configured hot corner opens it.
     NotificationCenter *m_notificationCenter = nullptr;
@@ -1166,7 +1166,7 @@ private:
     Qt::MouseButtons m_widgetGalleryButtons = Qt::NoButton;
     bool m_widgetGalleryKeyboardFocused = false;
     bool m_widgetGallerySceneGraphCommitLogged = false;
-    // Control Center panel (T-11.3a): a top-right overlay scene, unmapped
+    // Quick Settings panel (T-11.3a): a top-right overlay scene, unmapped
     // until the panel opens.
     QQuickWindow *m_controlCenterWindow = nullptr;
     QQuickItem *m_controlCenterItem = nullptr;

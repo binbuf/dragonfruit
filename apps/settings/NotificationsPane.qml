@@ -3,29 +3,29 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Notifications pane (T-15.7b).
+// Notifications pane (T-15.7b).
 //
-// The pane and the Control Center Focus tile are one functional unit over the
+// The pane and the Quick Settings Focus tile are one functional unit over the
 // notification service: this pane reads the Focus/DND policy and the observed
 // per-app notification list through the bridge host's notifications adapter
-// (T-15.7a/b), and it owns the four global "Notification Center" presentation
+// (T-15.7a/b), and it owns the four global "Notifications" presentation
 // preferences as settingsd keys (ADR 0131) — every control applies live.
 //
 // The Focus mode and the per-app allow list are the sibling Focus pane's
 // edits; they share this same adapter view. The per-app "Application
 // Notifications" rows here are the observed inventory, so they carry no
-// disclosure chevron (the macOS per-app detail sheet is Apple-only surface
+// disclosure chevron (the macOS per-app detail sheet is reference-only surface
 // with no Linux provider yet); the state subtext names whether the app is on
 // the allow list.
 //
 // Deviations from the macOS capture (ADR 0122), recorded so later tasks do not
 // re-litigate them:
-//   * the header's `Learn more...` link is omitted (Apple-only, ADR 0118);
+//   * the header's `Learn more...` link is omitted (reference-only, ADR 0118);
 //   * `Show previews` maps onto the three settingsd choices
 //     (`Always`/`When Unlocked`/`Never`); the sleeping/locked/mirroring rows
 //     are settingsd booleans rather than the capture's mixed popup/toggle
 //     shapes, so one control vocabulary covers all three;
-//   * the Apple Account/sidebar row and the `?` help control are omitted
+//   * the Account/sidebar row and the `?` help control are omitted
 //     project-wide.
 Item {
     id: root
@@ -291,7 +291,7 @@ Item {
             }
         }
 
-        // ── Notification Center ───────────────────────────────────────────
+        // ── Notifications ───────────────────────────────────────────
         SettingsGroup {
             id: centerGroup
             width: parent.width

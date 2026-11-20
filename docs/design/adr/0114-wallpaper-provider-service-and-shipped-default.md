@@ -53,4 +53,4 @@ plus a `Preload` to the wallpaper API. T-18.1a is the implementation slice.
   precedence onto this interface; T-18.2 calls `Preload` when the pane opens;
   T-18.3 verifies licensing and the absence matrix.
 - The new HTTP dependency is permissive only; no copyleft is added
-  ([licensing.md](../../licensing.md)). Fetched images remain unshipped.
+  ([licensing.md](../licensing.md)). Fetched images remain unshipped.

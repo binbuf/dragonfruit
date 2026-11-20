@@ -4,7 +4,7 @@
 // The General pane never touches D-Bus: it binds the `Settings` singleton, and
 // the bridge forwards reads and writes here. The live `DbusUpdatesClient`
 // talks to the bridge host's `org.dragonfruit.SystemStatus1.Updates` interface
-// (the same adapter the Control Center tile reads), and `MockUpdatesClient`
+// (the same adapter the Quick Settings tile reads), and `MockUpdatesClient`
 // serves a deterministic fixture for the headless pane tests
 // (`DF_UPDATES_FIXTURE`). Absence is a normal state: `available()` is false and
 // the view is empty — never an error.

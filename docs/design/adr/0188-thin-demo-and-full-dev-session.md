@@ -21,7 +21,7 @@ Two pressures conflict:
 - The **loop demo and CI** want to be thin, deterministic, and free of a
   session-bus dependency. `make e2e` runs `make demo --headless`; it must not
   need a bus, host daemons, or the network.
-- **Driving the real UI** (Settings panes, Control Center, notifications, the
+- **Driving the real UI** (Settings panes, Quick Settings, notifications, the
   wallpaper provider) wants those services present. Today the harness starts
   `dragonfruit-app-index`, `dragonfruit-menu-broker`, and (nested only)
   `dragonfruit-wallpaperd`, but not `dragonfruit-settingsd` or
@@ -57,7 +57,7 @@ That logic is duplicated across roughly thirty scripts.
   when `gdbus` is unavailable.
 - **Fixtures are a first-class opt-in.** `--fixtures` (or
   `make dev-full FIXTURES=1`) exports the deterministic `DF_*_FIXTURE` pane
-  data to the session, so Settings and Control Center render populated on a
+  data to the session, so Settings and Quick Settings render populated on a
   host without BlueZ/UDisks2/WirePlumber/UPower. Host daemon absence stays a
   normal state.
 - **`make demo` is unchanged in contract.** Its nested session is now core

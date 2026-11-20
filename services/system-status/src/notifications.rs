@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! The Notifications and Focus half of the bridge host (T-15.7b).
+//! Notifications and Focus half of the bridge host (T-15.7b).
 //!
 //! The notification service (`services/notifications`) is reached by the
 //! `dragonfruit-notify-adapter` adapter (T-15.7a); the Settings app and the
@@ -51,7 +51,7 @@ impl<S: NotificationsSource> NotificationsHost<S> {
         self.adapter.refresh();
     }
 
-    /// The notifications view the pane and tile render.
+    /// Notifications view the pane and tile render.
     pub fn view(&self) -> Value {
         notifications_view(&self.adapter)
     }
@@ -125,7 +125,7 @@ impl<S: NotificationsSource> NotificationsHost<S> {
     }
 }
 
-/// Build the notifications view from an adapter.
+/// Build Notifications view from an adapter.
 ///
 /// The three contract states map straight through: `unavailable` hides the
 /// item, `error` shows it visible and inert, `available` carries the Focus

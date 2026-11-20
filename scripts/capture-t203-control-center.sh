@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T203 Control Center material capture.
+# T203 Quick Settings material capture.
 #
 # Runs the real nested compositor on the replacement rail and captures the
-# compositor's own render for the collapsed and expanded Control Center in
+# compositor's own render for the collapsed and expanded Quick Settings in
 # Light/Dark, Increase Contrast, Reduce Transparency and an absent-adapter
 # case. Every case is captured over a neutral mid-grey and a fine grid so the
 # outer/module/list attenuation and the moving expanded region are visible.
@@ -43,7 +43,7 @@ trap cleanup EXIT
 if [ -z "$HOST_RUNTIME" ]; then
     echo "capture-t203: XDG_RUNTIME_DIR is unset — writing OPEN" >&2
     cat >"$OUTDIR/t203-control-center.open.txt" <<EOF
-T203 Control Center materials — live capture
+T203 Quick Settings materials — live capture
 timestamp: $(date -Is)
 verdict: OPEN
 reason: XDG_RUNTIME_DIR is not set; no nested compositor can run.
@@ -75,7 +75,7 @@ if [ "$FORCE_KWIN" = "1" ] || [ -z "$HOST_DISPLAY" ] \
     else
         echo "capture-t203: no host Wayland session and no kwin_wayland — writing OPEN" >&2
         cat >"$OUTDIR/t203-control-center.open.txt" <<EOF
-T203 Control Center materials — live capture
+T203 Quick Settings materials — live capture
 timestamp: $(date -Is)
 verdict: OPEN
 reason: no usable host Wayland session and kwin_wayland is not installed.

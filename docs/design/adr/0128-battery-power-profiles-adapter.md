@@ -72,7 +72,7 @@ daemons).
 - `PowerData` and `PowerDeviceData` gain public fields; every in-tree struct
   literal was updated. `system-status`'s `battery_view` is unchanged and does
   not yet project the profiles half.
-- T-15.6b adds the Settings pane and Control Center tile over the status bridge
+- T-15.6b adds the Settings pane and Quick Settings tile over the status bridge
   host and may extend `battery_view` (or add a sibling interface) with the
   profile list and the `SetActiveProfile` write. Until then the adapter is the
   contract/model, exercised by its own crate tests.

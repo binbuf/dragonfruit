@@ -2,7 +2,7 @@
 //! The UDisks2 storage and removable-media adapter: drives, volumes, mount
 //! state, and explicit mount/unmount/eject (T-15.2a).
 //!
-//! The Settings Storage pane and the Control Center tile do not talk to
+//! The Settings Storage pane and the Quick Settings tile do not talk to
 //! UDisks2. They read a [`StorageAdapter`], which holds the last state the
 //! daemon pushed and exposes the three-state contract from
 //! `dragonfruit-system-adapters` ([07-system-integration.md]): available,

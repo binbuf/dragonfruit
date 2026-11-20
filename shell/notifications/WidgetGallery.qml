@@ -5,7 +5,7 @@ import Dragonfruit
 // The widget gallery (T234): a separate 1027×552 pt window with a 240 pt
 // category sidebar and the 19 measured categories.
 //
-// The gallery is deliberately not a sheet inside Notification Center
+// The gallery is deliberately not a sheet inside Notifications
 // (structural review §5.4 rule 4). It renders the catalogue the shell owns,
 // previews widgets at the gallery thumbnail size (102×102 pt, not the live
 // 164 pt panel size), and raises add/remove/size requests. The shell owns the

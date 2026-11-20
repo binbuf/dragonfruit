@@ -20,7 +20,7 @@ alpha and neutral tint; the muted sidebar's small chroma pickup has no channel.
 - **Four app-local presets.** `settingsSidebar`, `settingsToolbar`,
   `filesSidebar` and `filesToolbar` are `chrome`/`solid` presets with no blur
   and no slider response. The measured values are stored verbatim; Settings
-  Dark is explicitly `adapted` from the Finder dark pair. The Files surfaces
+  Dark is explicitly `adapted` from the Files dark pair. The Files surfaces
   stay independent in both schemes. They are QML-only; the compositor never
   resolves them because it never draws an app's sidebar/toolbar.
 - **Client alpha, not a sampled pass.** `AppWindow.chromeTransparent` removes

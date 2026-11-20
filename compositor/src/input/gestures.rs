@@ -36,7 +36,7 @@ pub struct GestureConfig {
     /// Whether horizontal swipes may switch Spaces
     /// (`gestures.spaceSwitch`, T-08.2c).
     pub space_switch: bool,
-    /// Whether vertical swipes/pinches may open Mission Control / reveal
+    /// Whether vertical swipes/pinches may open Overview / reveal
     /// (`gestures.missionControl`, T-08.2c).
     pub mission_control: bool,
 }
@@ -57,7 +57,7 @@ impl Default for GestureConfig {
 
 impl GestureConfig {
     /// Whether the policy admits `action`. The master switch gates
-    /// everything; otherwise Space switches and Mission Control/Desktop
+    /// everything; otherwise Space switches and Overview/Desktop
     /// Reveal are gated per family (T-08.2c).
     pub const fn admits(self, action: InputAction) -> bool {
         if !self.enabled {
@@ -443,7 +443,7 @@ impl GestureRecognizer {
                 (InputAction::WorkspaceNext, -delta.x)
             }
             (3 | 4, GestureAxis::Horizontal) => (InputAction::WorkspacePrev, delta.x),
-            // Four-finger vertical swipes open Mission Control / reveal.
+            // Four-finger vertical swipes open Overview / reveal.
             (4, GestureAxis::Vertical) if delta.y < 0.0 => (InputAction::MissionControl, -delta.y),
             (4, GestureAxis::Vertical) => (InputAction::DesktopReveal, delta.y),
             _ => return None,
@@ -633,7 +633,7 @@ mod tests {
         assert!(recognizer.update_swipe((-50.0, 5.0).into(), 10).is_none());
         recognizer.cancel();
 
-        // Space switches off, Mission Control still on.
+        // Space switches off, Overview still on.
         let mut recognizer = GestureRecognizer::new(GestureConfig {
             space_switch: false,
             ..Default::default()
@@ -644,7 +644,7 @@ mod tests {
         recognizer.begin_swipe(4, 0);
         assert!(recognizer.update_swipe((2.0, -60.0).into(), 10).is_some());
 
-        // Mission Control off, Space switches still on.
+        // Overview off, Space switches still on.
         let mut recognizer = GestureRecognizer::new(GestureConfig {
             mission_control: false,
             ..Default::default()

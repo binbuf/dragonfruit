@@ -22,17 +22,17 @@ height:
 
 | Style | Chrome | Dragonfruit id | Notes |
 |---|---:|---|---|
-| Borderless / panel | 0 pt | `borderless` | HUDs, Quick Look-style panels, overlays |
+| Borderless / panel | 0 pt | `borderless` | HUDs, Preview-style panels, overlays |
 | Titled, no toolbar | 32 pt | `titlebar` | Minimum real chrome; content underlaps with `.fullSizeContentView` |
 | `.unifiedCompact` | 40 pt | `unifiedCompact` | Shorter toolbar row |
 | `.expanded` | 48 pt | `expanded` | Title above the toolbar row |
 | `.unified` | 52 pt | `unified` | Default modern toolbar |
-| `.unified` + icon-and-label | 66 pt | `unified` + labelled row | Disk Utility; not a separate style |
+| `.unified` + icon-and-label | 66 pt | `unified` + labelled row | Disks; not a separate style |
 | `.preference` | 88 pt | `preference` | Title row plus centred preference toolbar |
 
-Real apps confirm the variants: TextEdit, Finder Get Info and About use 32 pt;
-Finder, Safari, System Settings, Photos, Activity Monitor and Calculator use
-52 pt; Disk Utility uses 66 pt; Pages' template chooser is 38–43 pt; a Pages
+Real apps confirm the variants: TextEdit, Files Get Info and About use 32 pt;
+Files, Safari, System Settings, Photos, System Monitor and Calculator use
+52 pt; Disks uses 66 pt; Pages' template chooser is 38–43 pt; a Pages
 document is 70 pt (28 pt title row + 42 pt toolbar); Safari Settings is 88 pt
 (32 pt title row + 56 pt toolbar).
 
@@ -44,9 +44,9 @@ against the reference MacBook Pro. The measured insets are 8 pt in a 32 pt bar
 and 18 pt in a 52 pt bar, applied to the frame on both axes, and the spacing
 is 23 pt centre-to-centre. Drawing the 16 pt frame as the circle is what made
 the lights look oversized. Tab, path, status and format bars are
-content, not chrome: Finder adds a 28 pt tab bar, a 30 pt path bar and a 28 pt
+content, not chrome: Files adds a 28 pt tab bar, a 30 pt path bar and a 28 pt
 status bar inside the content area. Hiding the toolbar is a mode change that
-also hides the Finder sidebar and moves the status bar.
+also hides the Files sidebar and moves the status bar.
 
 Do not hard-code 52 pt for utility windows, and do not derive a window's style
 from its size: Calculator is compact but uses a 52 pt unified toolbar. T230b
@@ -83,7 +83,7 @@ and QML marks match. The
 existing hover reveal, disabled/focused fills, keyboard activation, and
 window-action routing are unchanged.
 
-Accessory bars are content: `component.accessoryBar` records the Finder
+Accessory bars are content: `component.accessoryBar` records the Files
 tab/path/status heights (28/30/28 pt) and the TextEdit format bar (20 pt).
 They are not added to `WindowStyle.height()`. The Files path bar consumes the
 30 pt token; tab/status/format bars land with their owning app tasks.

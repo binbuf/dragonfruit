@@ -1,4 +1,4 @@
-# 0060 — Control Center panel surface and compositor-owned brightness
+# 0060 — Quick Settings panel surface and compositor-owned brightness
 
 ## Status
 
@@ -6,12 +6,12 @@ accepted
 
 ## Context
 
-T-11.3a is the first Control Center slice. It needs a transient top-right
+T-11.3a is the first Quick Settings slice. It needs a transient top-right
 panel surface distinct from the notification banner and the Dock popover, and
 it needs the Display tile's brightness control, which the design assigns to
 the compositor ([04-shell.md](../04-shell.md), [07-system-integration.md](../07-system-integration.md)).
 Before this task there was no per-output brightness state or request anywhere
-in the compositor, and the Control Center entry point in the shell only
+in the compositor, and the Quick Settings entry point in the shell only
 logged. T-11.3b extends the same panel and T-15 fills more tiles, so the
 surface and ownership decisions are frozen here.
 

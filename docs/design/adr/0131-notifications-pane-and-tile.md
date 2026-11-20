@@ -1,4 +1,4 @@
-# 0131 — The Notifications and Focus panes and tile
+# 0131 — Notifications and Focus panes and tile
 
 ## Status
 
@@ -6,14 +6,14 @@ accepted
 
 ## Context
 
-T-15.7a landed the Notifications and Focus projection adapter
+T-15.7a landed Notifications and Focus projection adapter
 (`dragonfruit-notify-adapter`) over the existing notification service, and left
 two seams for this task: a bridge-host view and the four global presentation
 preferences the macOS reference shows have no owner. The reference
 (`docs/reference/macos/SystemSettings_Notifiations.md`, ADR
-[0122](0122-tahoe-interface-language-across-chrome.md)) shows a `Notifications`
-pane (header card, a `Notification Center` group, and per-app rows) and a
-sibling `Focus` pane that shares the same service state. The Control Center
+[0122](0122-reference-interface-language-across-chrome.md)) shows a `Notifications`
+pane (header card, a `Notifications` group, and per-app rows) and a
+sibling `Focus` pane that shares the same service state. The Quick Settings
 already carries a Focus/DND tile from T-11.3b.
 
 The decision needed: where the global preferences live, and how the pane, the
@@ -39,10 +39,10 @@ queue, the history, or the Focus admission rule (ADR
   They are desktop preferences, not notification-service policy, so they belong
   with the other settingsd keys; the pane writes them through `Settings.set`.
 - **Two panes ship together.** `NotificationsPane.qml` owns the header-card
-  content (the shell's `PaneHeader` draws it), the `Notification Center` group,
+  content (the shell's `PaneHeader` draws it), the `Notifications` group,
   and the read-only per-app inventory; `FocusPane.qml` owns the mode selector
   and the per-app allow list. Both bind the same adapter view, so either pane
-  reflects the other's writes and the Control Center Focus tile. The per-app
+  reflects the other's writes and the Quick Settings Focus tile. The per-app
   allow list is a whole-list replace in the service, so `setFocusApp` reads the
   current list, changes one entry, and writes it back.
 - **The tile is the existing T-11.3b Focus tile.** It already reflects the
@@ -59,7 +59,7 @@ queue, the history, or the Focus admission rule (ADR
 - The four preferences are **stored policy**: they round-trip through
   settingsd and the pane reflects them, but the notification service does not
   yet consult them to gate a banner. That enforcement is a follow-up recorded
-  in `docs/PROGRESS.md`; the rows are still the capture's controls and are not
+  in the local progress notes; the rows are still the capture's controls and are not
   dead (they have an owner and a stored effect).
 - The interface table, the settings-keys doc, and the absent-daemon matrix now
   include the Notifications/Focus surface (`tst_settings_notifications.qml`,

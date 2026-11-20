@@ -36,7 +36,7 @@ those as live toggles would violate the no-fake-controls rule.
    model and each tile's visibility from those keys. The static Column keeps
    the built-in scene order; the ordered model is the contract the T235
    expanded-module layout consumes. Per-display panels are disabled with a
-   T235 reason (one Control Center surface today).
+   T235 reason (one Quick Settings surface today).
 
 3. **Search ships the durable T246 contract, not a fake index.** Categories,
    indexed locations, shortcut, web search, and `menu.control.search` are
@@ -63,7 +63,7 @@ those as live toggles would violate the no-fake-controls rule.
 
 - A new Appearance preference must be added to the theme/glass/sidebar
   consumer, the Settings local binding, `settingsSchemaDefaults()`, and
-  `docs/settings-keys.md`; the schema-doc test keeps the table honest.
+  `docs/design/settings-keys.md`; the schema-doc test keeps the table honest.
 - A future Quick Settings reorder that changes the live scene order can replace
   the static Column with the ordered model without changing the key contract.
 - Promoting a Displays advanced row means implementing the compositor/colord

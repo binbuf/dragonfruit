@@ -12,8 +12,8 @@ reduced-motion variant, and no flat approximations left in shipped chrome. The
 material contract is already frozen — the token-driven backdrop pass
 ([0013](0013-backdrop-blur-pass.md)), the Dock's own glass layers
 ([0102](0102-dock-material-role-and-qml-glass-layers.md)), a reduced-motion
-sweep ([0155](0155-compositor-magnifier.md)), and the Tahoe interface language
-([0122](0122-tahoe-interface-language-across-chrome.md)) — and the design-system
+sweep ([0155](0155-compositor-magnifier.md)), and the reference interface language
+([0122](0122-reference-interface-language-across-chrome.md)) — and the design-system
 gallery `--strict` gate already enforces the component goldens, including their
 `_reduced` twins. What was missing was one **premium-gate review artifact** that
 compares the *live* chrome, not just components, in both schemes and under

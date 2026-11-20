@@ -52,7 +52,7 @@ would also stall bring-up for a surface the user has not opened.
   absence is invisible at first run.
 - Packaging must install the three built-ins (`Default.jpg`, `Lagoon.jpg`,
   `Midnight.jpg`) and list them (MIT/`NOTICE`); fetched images are still never
-  bundled ([licensing.md](../../licensing.md)).
+  bundled ([licensing.md](../licensing.md)).
 - T-18.1a installs and resolves the default and implements lazy/`Preload`;
   T-18.1b adds `wallpaper.builtinDefault` and the System Settings/shell wiring;
   T-18.2 calls `Preload` when the pane opens; T-18.3 verifies the licensing and

@@ -1229,7 +1229,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md later controlled Control Center light outer fit alpha 0.265 / tint 0.373; REPORT.md 3.5/Appendix A give the 8 pt blur, 0.30 rim and 6 pt/24 pt capsule-end lens";
+                pub const PROVENANCE: &str = "REFERENCE.md later controlled Quick Settings light outer fit alpha 0.265 / tint 0.373; REPORT.md 3.5/Appendix A give the 8 pt blur, 0.30 rim and 6 pt/24 pt capsule-end lens";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.265_f32;
@@ -1250,7 +1250,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md later controlled Control Center dark outer fit alpha 0.489 / tint 0.677; blur/rim/lens reuse the light capsule fit because the dark end caustic was not separately measured";
+                pub const PROVENANCE: &str = "REFERENCE.md later controlled Quick Settings dark outer fit alpha 0.489 / tint 0.677; blur/rim/lens reuse the light capsule fit because the dark end caustic was not separately measured";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.489_f32;
@@ -1276,7 +1276,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md controlled Control Center expanded-outer fit alpha 0.286 / tint 0.257 (SURFACE-REVIEW 6.2/6.4); the sheet grows the outer panel behind the module";
+                pub const PROVENANCE: &str = "REFERENCE.md controlled Quick Settings expanded-outer fit alpha 0.286 / tint 0.257 (SURFACE-REVIEW 6.2/6.4); the sheet grows the outer panel behind the module";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.286_f32;
@@ -1528,7 +1528,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md light System Settings sidebar/toolbar 0.986/0.857 and 0.961/0.965; Finder 0.985/0.858 and 0.994/0.922. Named near-opaque 0.975/0.91";
+                pub const PROVENANCE: &str = "REFERENCE.md light System Settings sidebar/toolbar 0.986/0.857 and 0.961/0.965; Files 0.985/0.858 and 0.994/0.922. Named near-opaque 0.975/0.91";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.975_f32;
@@ -1544,7 +1544,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md dark Finder sidebar/toolbar 0.935/0.218 and 0.900/0.247. Named near-opaque 0.918/0.233";
+                pub const PROVENANCE: &str = "REFERENCE.md dark Files sidebar/toolbar 0.935/0.218 and 0.900/0.247. Named near-opaque 0.918/0.233";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.918_f32;
@@ -1581,7 +1581,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Finder dark sidebar 0.935/0.218 (REFERENCE.md) because System Settings and Finder share the near-opaque source-list material.";
+                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Files dark sidebar 0.935/0.218 (REFERENCE.md) because System Settings and Files share the near-opaque source-list material.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.935_f32;
@@ -1618,7 +1618,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "adapted";
-                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Finder dark toolbar 0.900/0.247 (REFERENCE.md).";
+                pub const PROVENANCE: &str = "T206 Settings Dark is not independently measured; adapted from the measured Files dark toolbar 0.900/0.247 (REFERENCE.md).";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.9_f32;
@@ -1639,7 +1639,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "T206 REFERENCE.md light Finder sidebar 0.985/0.858. The muted sidebar shows the measured small chroma pickup; the scalar preset cannot carry it (ADR 0225).";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light Files sidebar 0.985/0.858. The muted sidebar shows the measured small chroma pickup; the scalar preset cannot carry it (ADR 0225).";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.985_f32;
@@ -1655,7 +1655,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Finder sidebar 0.935/0.218.";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Files sidebar 0.935/0.218.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.935_f32;
@@ -1676,7 +1676,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "T206 REFERENCE.md light Finder toolbar 0.994/0.922.";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md light Files toolbar 0.994/0.922.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.994_f32;
@@ -1692,7 +1692,7 @@ pub mod glass {
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Finder toolbar 0.900/0.247.";
+                pub const PROVENANCE: &str = "T206 REFERENCE.md dark Files toolbar 0.900/0.247.";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub mod calibration {
                     pub const NEUTRAL_ALPHA: f32 = 0.9_f32;

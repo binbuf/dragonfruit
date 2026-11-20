@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | accepted (2026-11-09) |
 | **Scope** | Files folder icons, desktop and sidebar places, Trash, the Files app icon, and the Applications launcher |
-| **Related** | [interface-naming-and-licensing.md](../interface-naming-and-licensing.md), [licensing.md](../../licensing.md), [10-design-system.md](../10-design-system.md), [ADR 0166](0166-first-party-app-icons.md), [ADR 0185](0185-tabler-line-icons.md) |
+| **Related** | [interface-naming-and-licensing.md](../interface-naming-and-licensing.md), [licensing.md](../licensing.md), [10-design-system.md](../10-design-system.md), [ADR 0166](0166-first-party-app-icons.md), [ADR 0185](0185-tabler-line-icons.md) |
 
 ## Context
 
@@ -39,7 +39,7 @@ and licensing exception, not a change to the no-Apple-artwork rule.
   independently. The full GPL-3.0 text ships in
   `assets/icons/whitesur/COPYING` and `LICENSES/GPL-3.0-only.txt`; the
   provenance record is `assets/icons/whitesur/README.md`; `NOTICE`, the asset
-  manifest, and `docs/licensing.md` carry the row. Any binary distribution
+  manifest, and `docs/design/licensing.md` carry the row. Any binary distribution
   must ship the license, the provenance record, and the corresponding upstream
   source.
 - **Record the exception explicitly.** A new copyleft icon set is a review

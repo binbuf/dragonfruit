@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the Bluetooth half of the host (T-15.1b): the view the
-//! Settings pane and Control Center tile decode, plus the four explicit writes
+//! Settings pane and Quick Settings tile decode, plus the four explicit writes
 //! applied once through the adapter.
 
 use dragonfruit_bluetooth::{

@@ -10,6 +10,6 @@ Full text: [LICENSES/MIT.txt](LICENSES/MIT.txt).
 Every source file carries an `SPDX-License-Identifier: MIT` header, and
 every crate/package directory carries a `LICENSE` file. Third-party
 dependencies keep their own licenses — see [NOTICE](NOTICE) and
-[docs/licensing.md](docs/licensing.md).
+[docs/design/licensing.md](docs/design/licensing.md).
 
 Copyright (c) 2026 Dragonfruit contributors.

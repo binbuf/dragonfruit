@@ -1943,7 +1943,7 @@ impl DfState {
         }
     }
 
-    /// Broadcast Mission Control state.
+    /// Broadcast Overview state.
     pub fn broadcast_overview(&mut self) {
         let sessions = self.manager_sessions();
         let active = self.overview.overview_active();

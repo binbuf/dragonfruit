@@ -1,6 +1,6 @@
 # The Testing Ladder
 
-From [../docs/design/11-session-and-dev-workflow.md](../docs/design/11-session-and-dev-workflow.md):
+From [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md):
 development climbs a ladder, fast iteration at the bottom, hostile
 environments at the top. Never test a change higher on the ladder than
 it needs; never ship a change that has only been tested lower.
@@ -97,8 +97,8 @@ dbus-run-session -- target/debug/dragonfruit-compositor --backend nested
 
 T-12.6c automates this rung (`dragonfruit dev --real --user dfdev`, no host
 logout) and T-12.6b automates the same-user display-manager round-trip
-([design](design/11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
-[ADR 0053](design/adr/0053-real-session-dev-harness.md)):
+([design](11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
+[ADR 0053](adr/0053-real-session-dev-harness.md)):
 
 ```bash
 dragonfruit dev --real --plan --user dfdev   # preflight + free-VT plan only
@@ -114,7 +114,7 @@ user collides over `XDG_RUNTIME_DIR`/portals), and starts the session as a
 safe next to the host desktop. The one real start → switch → return → teardown
 cycle runs on the T-159…T-161 hardware rail; the pure logic is pinned by
 `cargo test -p dragonfruit-dev` (`second_vt::tests`) and
-[ADR 0175](design/adr/0175-second-vt-dev-harness.md). `make second-vt-validation`
+[ADR 0175](adr/0175-second-vt-dev-harness.md). `make second-vt-validation`
 records the refusal, the mocked selection, and (on a free seat) the real cycle.
 
 The step-by-step T-03 hardware runs (bring-up, input, multi-GPU, soak, the demo

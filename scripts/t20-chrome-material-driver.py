@@ -15,7 +15,7 @@ path, then screenshots the nested window with Spectacle.
     move:X:Y             absolute pointer motion
     key:CODE:down|up     a raw keyboard key down/up (evdev code)
     chord:C,C,C          press then release keys in order (Ctrl+Alt+C opens
-                         the Control Center)
+                         the Quick Settings)
     drag:X0:Y0:X1:Y1     pointer drag (presents the OSD from a slider)
     menu:Y:X0:X1:STEP:NAME
                          probe left-to-right clicks at bar row Y until one opens

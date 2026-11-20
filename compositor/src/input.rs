@@ -17,7 +17,7 @@
 //! * one outbox/audit log for every trigger ([`dispatch`]).
 //!
 //! Window move/resize semantics remain T-04's job; the workspace and
-//! Mission Control animations that consume these progress events are T-05
+//! Overview animations that consume these progress events are T-05
 //! and T-11.
 
 pub mod action;
@@ -238,7 +238,7 @@ fn sync_pointer_focus_before_button(
 ///
 /// The forced edge cursor only applies when a window edge is the topmost
 /// pointer target: chrome (the menu bar, Dock, overlays), a compositor menu,
-/// the app switcher, or Mission Control wins instead. An active grab keeps
+/// the app switcher, or Overview wins instead. An active grab keeps
 /// whatever cursor started the interaction.
 fn refresh_resize_cursor(
     state: &mut DfState,
@@ -686,7 +686,7 @@ where
                     state.focus_chrome_surface(&surface);
                 } else {
                     let is_left = button_event.button == 0x110; /* BTN_LEFT */
-                    // Mission Control owns the scene: a left press hit-tests
+                    // Overview owns the scene: a left press hit-tests
                     // the *live* grid transform and begins a drag of that
                     // live representation (T-05.3). A press that never crosses
                     // the drag threshold resolves as the T-05.2 selection
@@ -782,7 +782,7 @@ where
                 }
             }
 
-            // Release of a Mission Control live-representation drag (T-05.3):
+            // Release of an Overview live-representation drag (T-05.3):
             // a drag that ended on another Space's strip card moves the window
             // there; a press that never moved is the T-05.2 selection.
             if button_event.state == ButtonState::Released

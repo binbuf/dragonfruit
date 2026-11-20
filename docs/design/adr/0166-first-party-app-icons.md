@@ -10,7 +10,7 @@ one-SVG-per-app contract is unchanged.
 ## Context
 
 Track 19 gives our first-party applications Phosphor-based artwork (T-19.1d):
-the Dock's **Files** tile (our Finder) and the **System Settings** app icon.
+the Dock's **Files** tile (our Files) and the **System Settings** app icon.
 Both must appear in three places that resolve artwork differently:
 
 - the Dock / Applications drawer, which render an app-index themed `iconPath`

@@ -25,14 +25,14 @@ by the CMake build.
 
 The full reference — semantics, the refusal matrix, deviations from the
 `wlr-*` precedents, and how the Rust and Qt bindings are generated — is in
-[docs/private-protocols.md](.//private-protocols.md). The versioning
-policy is in [docs/ipc-versioning.md](.//ipc-versioning.md).
+[docs/design/private-protocols.md](../docs/design/private-protocols.md). The versioning
+policy is in [docs/design/ipc-versioning.md](../docs/design/ipc-versioning.md).
 
 ## Rules
 
 - **MIT license** for every protocol XML, so any third party (including
   other compositors and toolkits) may implement them freely
-  (docs/licensing.md).
+  (docs/design/licensing.md).
 - **Lockstep set:** compositor, shell, and protocol XMLs ship together per
   release. Every XML carries a `dragonfruit lockstep-version: N` marker that
   must match `df_ipc::LOCKSTEP_VERSION` — enforced by the

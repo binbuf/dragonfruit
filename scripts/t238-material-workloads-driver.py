@@ -275,7 +275,7 @@ def focus_cycle(synth, windows, logical, duration_s):
 
 
 def mission_control(synth, duration_s):
-    # Ctrl+Up opens Mission Control; Ctrl+Up again closes it.
+    # Ctrl+Up opens Overview; Ctrl+Up again closes it.
     synth.send("key 29 down")
     synth.send("key 103 down")
     synth.send("key 103 up")

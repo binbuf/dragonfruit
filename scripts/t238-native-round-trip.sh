@@ -123,7 +123,7 @@ supervise() {
                 result=1
             fi
         fi
-        printf 'Handoff exit status: %s\n' "$result"
+        printf 'device continuity exit status: %s\n' "$result"
         exit "$result"
     }
 
@@ -270,7 +270,7 @@ sudo systemd-run --quiet --collect --wait --service-type=exec --expand-environme
     /usr/bin/bash -c "$supervisor_source" t238-handoff "$root" "$evidence" "$desktop" "$EUID" "$desktop_gid" \
     "$duration" "$trials" "$runtime_limit" "${LD_LIBRARY_PATH:-}" "$handoff_unit" || status=$?
 if ((status)); then
-    printf 'Handoff exited with status %s. Evidence is in %s\n' "$status" "$evidence" >&2
+    printf 'device continuity exited with status %s. Evidence is in %s\n' "$status" "$evidence" >&2
     if [[ -s "$evidence/handoff.log" ]]; then
         tail -20 "$evidence/handoff.log" >&2
     fi

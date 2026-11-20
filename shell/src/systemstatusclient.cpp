@@ -970,7 +970,7 @@ void MockSystemStatusClient::refreshBattery()
     view.insert(QStringLiteral("chargeCycles"), 112);
     view.insert(QStringLiteral("timeToEmpty"), QJsonValue::Null);
     view.insert(QStringLiteral("timeToFull"), 5400);
-    // T-15.6b: the power-profiles half, so the Control Center tile renders the
+    // T-15.6b: the power-profiles half, so the Quick Settings tile renders the
     // active profile without a power-profiles-daemon on the host.
     view.insert(QStringLiteral("profilesAvailable"), true);
     view.insert(QStringLiteral("activeProfile"), m_activeProfile);

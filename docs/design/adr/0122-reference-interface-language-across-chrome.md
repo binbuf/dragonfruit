@@ -1,4 +1,4 @@
-# 0122 — The macOS Tahoe interface language extends across every piece of chrome
+# 0122 — The reference design interface language extends across every piece of chrome
 
 ## Status
 
@@ -6,33 +6,33 @@ accepted
 
 ## Context
 
-The 2026-09 reference capture set under `docs/reference/macos/` is macOS
-**Tahoe** (the About capture reads `macOS Tahoe 26.6.2`). The first named
-capture, the Dock, already adopted the Tahoe floating-glass language
-([0091](0091-dock-tahoe-floating-glass-language.md), [0102](0102-dock-material-role-and-qml-glass-layers.md)).
-The remaining captures — the fifteen System Settings panes, the Apple menu and
-the Wi-Fi/Bluetooth status menus, Spotlight, About This Mac, Finder, the
-Applications grid, Activity Monitor, and the desktop — were reviewed with the
+The 2026-09 reference capture set under `docs/reference/macos/` is the
+reference platform (the About capture reads `26.6.2`). The first named
+capture, the Dock, already adopted the reference floating-glass language
+([0091](0091-dock-floating-glass-language.md), [0102](0102-dock-material-role-and-qml-glass-layers.md)).
+The remaining captures — the fifteen System Settings panes, the system menu and
+the Wi-Fi/Bluetooth status menus, Search, About This System, Files, the
+Applications grid, System Monitor, and the desktop — were reviewed with the
 project's vision model in September 2026 and distilled into one note per image
 (`docs/reference/macos/<Name>.md`, local only).
 
 Those notes are the reference for the remaining work: T-15 panes and tiles,
 T-16 polish, and the T-17 premium gate. Without one shared statement of the
-Tahoe language, every pane ticket re-derives window chrome, sidebar styling,
+reference language, every pane ticket re-derives window chrome, sidebar styling,
 materials, and control vocabulary on its own and drifts. This decision lifts
-the Dock's Tahoe rule to the whole surface and fixes the Linux adaptations
+the Dock's reference rule to the whole surface and fixes the Linux adaptations
 once.
 
 It sits inside [10-design-system.md](../10-design-system.md)'s "Visual
-direction": Tahoe is the **interaction and visual reference**, reproduced with
-Dragonfruit's own symbols, strings, materials, and tokens — never Apple's
-bitmap output or branding.
+direction": the reference is the **interaction and visual guide**, reproduced with
+Dragonfruit's own symbols, strings, materials, and tokens — never the
+reference platform's bitmap output or branding.
 
 ## Decision
 
-- **Tahoe is the reference for all chrome, not just the Dock.** Menu-bar
-  menus, settings windows, dialogs/sheets, Spotlight, Control Center, the
-  Applications grid, and app toolbars follow the Tahoe language captured in
+- **The reference covers all chrome, not just the Dock.** Menu-bar
+  menus, settings windows, dialogs/sheets, Search, Quick Settings, the
+  Applications grid, and app toolbars follow the reference language captured in
   `docs/reference/macos/*.md`; measurements are taken from the captures, not
   invented.
 - **One material language.** Surfaces are layered glass driven by the
@@ -68,21 +68,21 @@ bitmap output or branding.
   submenu chevrons, and shortcut hints. System and status menus carry the
   captured rows (see [macos-ui-inventory.md](../../reference/macos-ui-inventory.md));
   item sizes are uniform and behave identically in light and dark.
-- **Overlays.** Spotlight is a solid light pill (placeholder `Spotlight
-  Search`) with a trailing quick-action strip of circular icon buttons;
-  Control Center is a floating rounded panel with an on/off toggle header and
+- **Overlays.** Search is a solid light pill (placeholder `Search`)
+  with a trailing quick-action strip of circular icon buttons;
+  Quick Settings is a floating rounded panel with an on/off toggle header and
   icon-tile rows; the OSD is a floating capsule. Sheet-like quick settings
   keep a `... Settings...` entry into the full pane.
 - **Dialogs and sheets.** Rounded, centered content, a primary and a secondary
-  button, and no title bar text unless the capture shows one (About This Mac
+  button, and no title bar text unless the capture shows one (About This System
   has none). The About dialog is the model: illustration, device name and
   generation, a right-aligned label/value block, a primary `More Info...`
-  button, and a legal footer with the Apple text replaced.
-- **Linux adaptations (decided here, per pane).** Command/Control/Option
-  glyphs become Dragonfruit's keymap labels (Super etc., [keymap.md](../../keymap.md));
-  Apple-only rows and services are dropped (Apple Account/iCloud, AppleCare,
-  AirDrop & Continuity, Apple Intelligence & Siri, Screen Time, Touch ID
-  payments); `About This System` replaces the Apple name;
+  button, and a legal footer with the reference text replaced.
+- **Linux adaptations (decided here, per pane).** Super/Ctrl/Alt
+  glyphs become Dragonfruit's keymap labels (Super etc., [keymap.md](../keymap.md));
+  reference-only rows and services are dropped (account services, support plans,
+  Nearby Transfer and device continuity, on-device AI and voice assistants, usage limits, payment
+  services); `About This System` replaces the reference name;
   `Software Update` reads the distro provider; host daemons that are absent
   degrade to a normal empty/disabled state (ADR
   [0028](0028-audio-adapter-over-wireplumber-cli.md)); all artwork, sounds,
@@ -102,8 +102,8 @@ bitmap output or branding.
 - The design-system components already own the language; panes consume them.
   `make check-design-tokens` and the gallery goldens enforce the tokens, and
   the T-17 visual floor reviews the surface against this ADR.
-- A true liquid-glass refraction pass is still a future material-track item
+- A true Glass refraction pass is still a future material-track item
   (as in ADR 0091); this decision ships the token-driven approximation and
-  says so. (Now scheduled by [ADR 0182](0182-tahoe-liquid-glass-material-pass.md).)
-- Apple/Mac-only concepts remain out of scope; the Linux deviations above are
+  says so. (Now scheduled by [ADR 0182](0182-glass-material-pass.md).)
+- Reference-only concepts remain out of scope; the Linux deviations above are
   normative so later tickets do not re-litigate them.

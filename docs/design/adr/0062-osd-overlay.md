@@ -8,7 +8,7 @@ accepted
 
 T-11.4a adds the brief volume/brightness overlay the T-11 track promises
 ([11-control-center-notifications.md](../tracks/11-control-center-notifications.md)).
-The Control Center (T-11.3a/b) already provides the user gestures that change
+The Quick Settings (T-11.3a/b) already provides the user gestures that change
 volume (`SystemStatusClient`) and brightness (settingsd `display.brightness`);
 the notification service owns Focus/DND. Nothing owned the transient OSD, and
 the design's legacy OSD policy is specific: appear on the active output, respect
@@ -65,7 +65,7 @@ path).
   every output. A single-output session is exact. Pinning it to the
   compositor's active output is a later enhancement.
 - Hardware volume/brightness keys are not wired to the OSD in this slice
-  (there is no compositor input action yet); the Control Center and the menu-bar
+  (there is no compositor input action yet); the Quick Settings and the menu-bar
   gestures are the triggers. A later task can route media keys into the same
   `showOsd` seam.
 - T-11.4b adds the keyboard/AT-SPI pass and commits the OSD/DND capture set;

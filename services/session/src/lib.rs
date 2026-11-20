@@ -54,7 +54,7 @@ pub use suspend::{
 };
 
 /// Planned well-known name on the user session bus
-/// (docs/ipc-versioning.md).
+/// (docs/design/ipc-versioning.md).
 pub const DBUS_NAME: &str = "org.dragonfruit.Session1";
 
 #[cfg(test)]

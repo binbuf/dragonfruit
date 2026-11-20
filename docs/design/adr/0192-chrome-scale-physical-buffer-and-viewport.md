@@ -46,7 +46,7 @@ coordinates. Only the attached buffer and its `wl_surface.set_buffer_scale` /
   (which are not layer surfaces) follow `df_output.scale` directly.
 - **Unmapped surfaces reset.** Hide paths set buffer scale 1 and unset the
   viewport, so a later configure cannot inherit stale physical geometry.
-- **The Control Center fits the logical output.** At 1.5x/2x the logical output
+- **The Quick Settings fits the logical output.** At 1.5x/2x the logical output
   is shorter than the 1x design; the panel now takes
   `min(1164, output height - bar - gap)` and its content scrolls instead of
   running past the screen edge.

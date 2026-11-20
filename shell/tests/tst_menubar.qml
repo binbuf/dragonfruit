@@ -2717,7 +2717,7 @@ Item {
 
         function test_the_clock_opens_the_date_and_time_panel() {
             // T231: the clock is a registry item and its click opens the
-            // calendar panel; Notifications is the Notification Center entry.
+            // calendar panel; Notifications is Notifications entry.
             var bar = make(menuBarComponent, {
                 statusItems: [],
                 showDate: true

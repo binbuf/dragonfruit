@@ -353,7 +353,7 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             keysyms::KEY_D,
             InputAction::ToggleDock,
         ),
-        // T-11.3a: open the Control Center panel. macOS has no default chord;
+        // T-11.3a: open the Quick Settings panel. macOS has no default chord;
         // Control-Option-C is our desktop's binding (the Settings Keyboard pane
         // rebinds it in T-16).
         Shortcut::new(
@@ -361,7 +361,7 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             keysyms::KEY_C,
             InputAction::ControlCenter,
         ),
-        // T-19.2: open the Applications drawer. F4 is the macOS Launchpad
+        // T-19.2: open the Applications drawer. F4 is the macOS Applications
         // chord; the Settings Keyboard pane rebinds it in T-16.
         Shortcut::new(RoleMods::EMPTY, keysyms::KEY_F4, InputAction::ShowApps),
     ];

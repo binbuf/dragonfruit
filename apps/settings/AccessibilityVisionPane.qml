@@ -9,7 +9,7 @@ import Dragonfruit.Settings
 // list. It keeps only rows with a real Linux owner: the read-only AT-SPI
 // screen-reader/bridge status, the compositor magnifier, the settingsd display
 // accommodations, the motion keys, and the speech-dispatcher delegate. Every
-// Apple-only row is omitted in `SettingsMap` with a reason instead of being
+// reference-only row is omitted in `SettingsMap` with a reason instead of being
 // rendered as an inert control.
 //
 // A row is one of the honest shapes from ADR 0276: a settingsd control, a

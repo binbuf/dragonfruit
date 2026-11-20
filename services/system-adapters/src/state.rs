@@ -22,7 +22,7 @@ impl AdapterId {
     pub const POWER: AdapterId = AdapterId("battery");
     /// Keyboard/mouse/trackpad inventory (libinput).
     pub const INPUT: AdapterId = AdapterId("input");
-    /// Mission Control and hot corners (compositor overview).
+    /// Overview and hot corners (compositor overview).
     pub const MISSION_CONTROL: AdapterId = AdapterId("mission-control");
     /// Notifications and the recorded history (notification service).
     pub const NOTIFICATIONS: AdapterId = AdapterId("notifications");

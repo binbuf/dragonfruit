@@ -18,15 +18,15 @@ Phosphor and introduced the tintable `PhosphorIcon` primitive (ADR
   launcher, the Applications drawer, the OSD, and the small chrome marks — were
   still drawn by the hand-authored `Icon.qml` bars/Canvas, or by Phosphor's
   solid weight where an outline reads better.
-- The Tahoe material pass (ADR [0182](0182-tahoe-liquid-glass-material-pass.md))
+- The reference material pass (ADR [0182](0182-glass-material-pass.md))
   raised the visual floor of the chrome, but the glyph language did not move
   with it: the hand-drawn marks are visibly less consistent than the rest of
   the surface.
 
 Tabler Icons is an MIT-licensed, 5,000+ glyph set with a consistent 24 px
 outline grid, round caps/joins, and a small filled set. Its outline weight is
-the right match for a Tahoe-like line language, and its permissive license
-fits the repo-wide MIT policy (see [licensing.md](../../licensing.md)).
+the right match for a Glass-like line language, and its permissive license
+fits the repo-wide MIT policy (see [licensing.md](../licensing.md)).
 
 Qt 6.11 has no `QtSvg` module in this toolchain, and the two obvious tint
 mechanisms are unreliable: `Image` over an SVG does not tint, and
@@ -66,7 +66,7 @@ mechanism therefore has to render under **both** scene graphs, exactly as
   `PhosphorIcon` in the `fill` weight; the first-party app icons are generated
   from Tabler's filled `folders`/`settings` marks. The split is deliberate:
   **Tabler = line glyphs, Phosphor = filled Settings-tile glyphs.**
-- **The menu bar, Dock launcher, Applications drawer, OSD, Control Center, and
+- **The menu bar, Dock launcher, Applications drawer, OSD, Quick Settings, and
   first-party app artwork migrate now.** The menu-bar battery keeps its
   continuous level by composing the Tabler `battery` outline with a token
   `Rectangle` fill overlay inside the cell (the software renderer does not clip
@@ -89,9 +89,9 @@ mechanism therefore has to render under **both** scene graphs, exactly as
 
 ## Consequences
 
-- The line surfaces gain a consistent, Tahoe-like outline language without
+- The line surfaces gain a consistent, Glass-like outline language without
   touching every call site: the `Icon` facade is the one migration point, and
-  the dynamic names from Files/Control Center keep working through the same
+  the dynamic names from Files/Quick Settings keep working through the same
   map.
 - A new line glyph is a file drop into `assets/icons/tabler/` plus
   `scripts/gen-tabler-glyphs.py`; a new legacy name is one row in the

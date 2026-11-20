@@ -1,4 +1,4 @@
-# 0222 — Control Center outer, module and expanded-list materials are separate regions
+# 0222 — Quick Settings outer, module and expanded-list materials are separate regions
 
 - Status: accepted
 - Date: 2026-11-06
@@ -6,7 +6,7 @@
 
 ## Context
 
-The Control Center was one Popup-material rectangle with every tile painted on
+The Quick Settings was one Popup-material rectangle with every tile painted on
 top as an opaque `surfaceSunken` block. The reference is three materials: a
 tall outer plate, each module capsule, and a darker expanded list. The measured
 Wi-Fi Light fit (0.391/0.317) is the *effective* response of a module on the
@@ -16,7 +16,7 @@ the alpha and miss the observed composite.
 
 ## Decision
 
-- The Control Center declares independently keyed material regions on its
+- The Quick Settings declares independently keyed material regions on its
   `control-center` layer surface: one `outer` region (`controlCenterOuter`),
   one `module-*` region per visible tile (`controlCenterModule`), and an
   `expanded-wifi` / `expanded-bluetooth` region (`controlCenterExpanded`) when

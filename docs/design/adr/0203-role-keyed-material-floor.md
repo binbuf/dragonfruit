@@ -13,7 +13,7 @@ drawer joins the glass floor without becoming persistent chrome; see
 
 T-04's degrade ladder selected one global tier and applied it to every chrome
 surface. T-21.2c needs the Dock and menu bar to be **persistent chrome** that
-does not silently lose its material when a transient overlay (Mission Control,
+does not silently lose its material when a transient overlay (Overview,
 the Applications drawer, an OSD) pushes the global selection to `Minimal`.
 The compositor already had `MaterialRole::{Chrome, Dock, Popup, Drawer}` and a
 v3 `df_output.material_state` event carrying one global snapshot. The open

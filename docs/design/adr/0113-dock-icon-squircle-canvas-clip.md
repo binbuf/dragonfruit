@@ -51,4 +51,4 @@ documents for shadows).
   behavior, not a promise to squircle the icon's inner artwork.
 - `VectorImage` is now a fallback tier rather than the primary path; on systems
   without the SVG image-format plugin the icon still renders but is not masked.
-- True liquid-glass refraction and animated squircle morphs remain deferred.
+- True Glass refraction and animated squircle morphs remain deferred.

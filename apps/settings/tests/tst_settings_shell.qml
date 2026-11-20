@@ -214,7 +214,7 @@ Item {
                 compare(shell.detailSheet.bottomRightRadius,
                         Theme.controls.settingsWindow.radius);
 
-                // Dark Settings is the explicit Finder-derived adaptation.
+                // Dark Settings is the explicit Files-derived adaptation.
                 Settings.set("appearance.colorScheme", "dark");
                 tryCompare(Theme, "dark", true);
                 waitForRendering(stage);

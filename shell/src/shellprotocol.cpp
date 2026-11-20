@@ -713,7 +713,7 @@ void ShellProtocol::clearBannerPanelRegions()
         df_layer_surface_clear_panel_regions(m_bannerLayer);
 }
 
-// --- Notification Center overlay (T204) ------------------------------------
+// --- Notifications overlay (T204) ------------------------------------
 
 bool ShellProtocol::createNotificationCenterSurface(int width, int height, int topMargin)
 {
@@ -834,7 +834,7 @@ bool ShellProtocol::hideNotificationCenter()
     return true;
 }
 
-// --- Control Center overlay (T-11.3a) --------------------------------------
+// --- Quick Settings overlay (T-11.3a) --------------------------------------
 
 bool ShellProtocol::createControlCenterSurface(int width, int height, int topMargin)
 {

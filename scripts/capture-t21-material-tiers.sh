@@ -204,7 +204,7 @@ capture_overlay dockpopover "$SETTLE" \
 capture_overlay menupopover "$SETTLE" \
     DF_STATUS_FIXTURE=1 DF_MENUBAR_MENU_FIXTURE=0
 
-# Control Center.
+# Quick Settings.
 capture_overlay controlcenter "$SETTLE" \
     DF_STATUS_FIXTURE=1 DF_CONTROL_CENTER_FIXTURE=hold
 

@@ -4,14 +4,14 @@
 - **Date:** 2026-09-28
 - **Context:** [07-system-integration.md](../07-system-integration.md),
   [08-settingsd-live-settings.md](../tracks/08-settingsd-live-settings.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md),
+  ADR [0122](0122-reference-interface-language-across-chrome.md),
   ADR [0127](0127-mission-control-pane-and-tile.md),
   ADR [0132](0132-lock-screen-policy-adapter.md)
 
 ## Context
 
 T-15.8a shipped `dragonfruit-lock-adapter`, a read-only projection over the
-session idle/lock engine and the compositor lock. Like Mission Control
+session idle/lock engine and the compositor lock. Like Overview
 (T-15.5b), this subsystem has **no external daemon**: the session owns the idle
 timing (`idle.*` keys, ADR [0070](0070-idle-timer-engine-and-policy.md)), the
 compositor owns the one fail-secure lock (ADR [0067](0067-session-lock-protocol-and-ui.md)),
@@ -27,7 +27,7 @@ so the pane reuses them rather than inventing a second spelling.
 
 ## Decision
 
-The pane and the Control Center tile are one functional unit, and both are
+The pane and the Quick Settings tile are one functional unit, and both are
 shell-native where the runtime is concerned.
 
 1. **Settingsd keys, revision 15.** A new `lock` group declares
@@ -37,7 +37,7 @@ shell-native where the runtime is concerned.
    spellings, and the defaults mirror `LockDisplay::default()`. The pane binds
    the timing rows to the existing `idle.blank`/`idle.lock` keys, which the
    session idle engine already applies live (`IdlePolicy::from_keys`).
-   `docs/settings-keys.md` documents every row and the schema-doc test keeps the
+   `docs/design/settings-keys.md` documents every row and the schema-doc test keeps the
    table honest.
 2. **The pane writes keys, never the adapter.** `apps/settings/LockScreenPane.qml`
    has a display-off popup, a require-password popup, the four display toggles,
@@ -61,7 +61,7 @@ lock mirror); driving the lock hot path from the pane (the compositor owns it).
 
 ## Consequences
 
-- The Control Center panel grows from 360×1040 to 360×1120 to fit the new tile;
+- The Quick Settings panel grows from 360×1040 to 360×1120 to fit the new tile;
   the fit test and the T-15.8b capture assert it.
 - The four `lock.*` keys persist and apply live in settingsd, and the timing
   keys already drive the session engine, but the lock-screen renderer does not
@@ -69,10 +69,10 @@ lock mirror); driving the lock hot path from the pane (the compositor owns it).
   buttons. A later task wires `lock.*` into `shell/lock/LockScreen.qml` (and the
   shell subscription) and extends `df_toplevel_manager` only if the compositor
   needs it — the preference is the single source of truth until then.
-- The pane drops the Apple-only rows the capture shows: `Login window shows`
+- The pane drops the reference-only rows the capture shows: `Login window shows`
   (no login-window provider) and `Accessibility Options...` (the Accessibility
   pane is not shipped, so the link would be a dead control), plus the
-  project-wide Apple Account/sidebar row and `?` help
-  (ADR [0122](0122-tahoe-interface-language-across-chrome.md)). The battery/AC
+  project-wide Account/sidebar row and `?` help
+  (ADR [0122](0122-reference-interface-language-across-chrome.md)). The battery/AC
   display-off pair is the single `Turn display off when inactive` row, the
   Linux adaptation ADR [0132](0132-lock-screen-policy-adapter.md) fixed.

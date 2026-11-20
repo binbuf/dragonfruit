@@ -23,7 +23,7 @@ Downloads stack proves the popover pattern.
   menu open the folder in Files; double-click opens it in Files directly.
 - **The folder name is not crammed into the artwork.** The entry renders a
   designed folder silhouette; the name appears in the hover name label
-  (T-14.7i/ADR [0091](0091-dock-tahoe-floating-glass-language.md)) and is
+  (T-14.7i/ADR [0091](0091-dock-floating-glass-language.md)) and is
   elided cleanly in the popover.
 - **Any folder can be pinned.** A folder dropped on the Dock is pinned as a
   stack, persisted as a path list in a new settingsd-owned key
@@ -38,7 +38,7 @@ Downloads stack proves the popover pattern.
 
 ## Consequences
 
-- `settingsd` gains a schema key and `docs/settings-keys.md` is updated; the
+- `settingsd` gains a schema key and `docs/design/settings-keys.md` is updated; the
   Dock never scans or watches directories itself, it consumes `files-core`.
 - The Downloads stack becomes a special case of the general folder stack
   (same widget, same behavior), reducing duplicate code.

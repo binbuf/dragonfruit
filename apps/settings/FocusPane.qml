@@ -6,9 +6,9 @@ import Dragonfruit.Settings
 // The Focus pane (T-15.7b; rebuilt by T278).
 //
 // Focus is the notification service's suppression policy: the mode and the
-// per-app allow list are the same state the Notifications pane's
+// per-app allow list are the same state Notifications pane's
 // "Application Notifications" inventory reads, projected by the T-15.7a
-// adapter and served by the bridge host. The Control Center Focus tile writes
+// adapter and served by the bridge host. The Quick Settings Focus tile writes
 // the same policy, so the surfaces stay in step with no extra plumbing.
 //
 // T278 replaces the three duplicate state surfaces (a profile selector, a
@@ -23,7 +23,7 @@ import Dragonfruit.Settings
 //
 // Deviations from the macOS capture (ADR 0122): there is no Focus capture in
 // the reference set, so this follows the shared Settings language rather than
-// the Apple-only "allowed people" sheet; the Apple Account/sidebar row and the
+// the reference-only "allowed people" sheet; the Account/sidebar row and the
 // `?` help control are omitted project-wide. Filters are the Linux adaptation
 // of "Focus Filters" (ADR 0279).
 Item {

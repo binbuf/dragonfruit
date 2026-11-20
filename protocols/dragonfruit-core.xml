@@ -7,7 +7,7 @@
   dragonfruit lockstep-version: 1
 
   This file ships with the compositor and shell as a lockstep set
-  (docs/ipc-versioning.md). Within a stable release the protocol is
+  (docs/design/ipc-versioning.md). Within a stable release the protocol is
   additive-only: new events and requests may be added; existing ones
   never change meaning or disappear.
 

@@ -318,7 +318,7 @@ Item {
     Component {
         id: wallTileComponent
         SettingsWallTile {
-            label: "Sonoma"
+            label: "Sample Theme"
             selected: true
         }
     }

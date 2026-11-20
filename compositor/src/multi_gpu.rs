@@ -133,7 +133,7 @@ pub fn format_allowed(renders_locally: bool, linear: bool) -> bool {
 /// a texture that lives on another GPU. This decision is pure so it can be
 /// asserted without two cards.
 ///
-/// [ADR 0182]: ../../docs/design/adr/0182-tahoe-liquid-glass-material-pass.md
+/// [ADR 0182]: ../../docs/design/adr/0182-glass-material-pass.md
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SceneRoute {
     /// The output's GPU owns the scene texture: the blur/glass pass composes

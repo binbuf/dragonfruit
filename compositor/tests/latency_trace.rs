@@ -249,7 +249,7 @@ fn latency_instrument_emits_one_frame_samples_and_the_scanout_template_reads_sta
     proc.signal(SIGUSR1);
     let first = proc.sample();
 
-    // A real input through the normal router: Ctrl+Up (Mission Control)
+    // A real input through the normal router: Ctrl+Up (Overview)
     // requests a redraw, so the next presented frame must emit a sample.
     proc.send("key 29 down\nkey 103 down\nkey 29 up\nkey 103 up\n");
     std::thread::sleep(Duration::from_millis(400));

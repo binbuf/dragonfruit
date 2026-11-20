@@ -637,7 +637,7 @@ Item {
         anchors.fill: parent
         radius: root.cornerRadius
         // The compositor material's scrim: resolved preset alpha/tint in the
-        // fill so the sampled backdrop and liquid-glass pass read through.
+        // fill so the sampled backdrop and Glass pass read through.
         color: root.surfaceFill
         border.width: Theme.controls.window.borderWidth
         border.color: Glass.increaseContrast ? Theme.color.textPrimary : Theme.color.border

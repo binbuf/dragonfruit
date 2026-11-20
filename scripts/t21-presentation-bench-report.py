@@ -57,8 +57,8 @@ SCENARIO_HEADINGS = {
     "dock-popover-open": "Dock popover open",
     "dock-popover-close": "Dock popover close",
     "app-launch": "app launch + window appear",
-    "mission-control": "Mission Control (10+ windows)",
-    "mission-control-close": "Mission Control close",
+    "mission-control": "Overview (10+ windows)",
+    "mission-control-close": "Overview close",
     "fullscreen": "fullscreen client",
     "fullscreen-exit": "fullscreen exit",
     "sweep": "Dock sweep",
@@ -819,7 +819,7 @@ def main():
     add(f"- command: `{args.command}`")
     add(
         "- scenario set: idle {} s, Dock sweep {} s, menu/popover, app launch,"
-        " Mission Control (10+ windows), fullscreen".format(args.idle_s, args.sweep_s)
+        " Overview (10+ windows), fullscreen".format(args.idle_s, args.sweep_s)
     )
     add(
         "- opt-in switches: `DRAGONFRUIT_CHROME_STATS=1`,"
@@ -979,7 +979,7 @@ def main():
     )
     add("")
     add(
-        "The Mission Control overview fallback's 18 432 000 copy bytes over 2"
+        "The Overview overview fallback's 18 432 000 copy bytes over 2"
         " shm commits is 9 216 000 bytes per frame, exactly one 1920x1200x4"
         " full-surface copy; every measured dmabuf row reports zero copy bytes."
     )
@@ -992,13 +992,13 @@ def main():
     )
     add("")
     add(
-        "**Full-rail verification (T192c):** the T192b Mission Control"
+        "**Full-rail verification (T192c):** the T192b Overview"
         " teardown crash is fixed. The shell no longer deletes windows that"
         " the chrome producers own, and the producer destroys its slot"
         " targets before `QQuickRenderControl::invalidate()`. A verification"
         " run with the overview surface included"
         " (`CHROME_GPU_SURFACES=dock,dock-popup,menubar,menubar-popup,overview`)"
-        " and the 10-window Mission Control scenario completes and tears down"
+        " and the 10-window Overview scenario completes and tears down"
         " cleanly with zero shm commits and zero copy bytes. The measured run"
         " keeps the overview on the deliberate shm fallback so the fallback"
         " rate stays visible next to the dmabuf rows; the zero-fallback"

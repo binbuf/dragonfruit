@@ -7,12 +7,12 @@ push `main`, tag, push the tag, and verify the published assets.
 This is a release procedure, not a branching model. Releases are cut from
 `main`; the tag is the release. `scripts/package.sh` derives the package
 version from the tag, and
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) publishes
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) publishes
 the assets when a `v*` tag is pushed.
 
-Related: [`packaging/README.md`](../packaging/README.md),
-[`docs/ipc-versioning.md`](ipc-versioning.md), and
-[`AGENTS.md`](../AGENTS.md) (staging rules).
+Related: [`packaging/README.md`](../../packaging/README.md),
+[`ipc-versioning.md`](ipc-versioning.md), and
+[`AGENTS.md`](../../AGENTS.md) (staging rules).
 
 ## 1. What the version is — and what it is not
 
@@ -40,7 +40,7 @@ Do **not** bump these during a product release:
 | `packaging/fedora/dragonfruit.spec` (`%{df_version}`) | Passed by `scripts/package.sh` |
 | `qt_add_qml_module(... VERSION 1.0)` in shell, apps, design-system | QML module/API version, not the product version |
 | `design-system/tokens/tokens.json` → `"version"` | Token-schema revision, not the product version |
-| `LOCKSTEP_VERSION` in `protocols/df-ipc/src/lib.rs` | Private-protocol set version; bump only for a protocol-set change, in the same commit as the XMLs (see `docs/ipc-versioning.md`) |
+| `LOCKSTEP_VERSION` in `protocols/df-ipc/src/lib.rs` | Private-protocol set version; bump only for a protocol-set change, in the same commit as the XMLs (see `docs/design/ipc-versioning.md`) |
 | `SCHEMA_VERSION` in `services/settingsd/src/schema.rs` | Settings schema revision; bump only when keys/migrations change |
 | `STATE_VERSION` in `services/session/src/dev_session.rs` | Dev-session state-file schema |
 | `rust-toolchain.toml`, Smithay pin, Qt floor | Toolchain/dependency decisions, not the product version |
@@ -409,7 +409,7 @@ gh release edit "v$NEW" --prerelease
 - Keep the new `## [Unreleased]` section at the top of `CHANGELOG.md`; add to
   it as work lands.
 - If the release changes the roadmap state, update
-  [`docs/design/STATUS.md`](design/STATUS.md) and the relevant design doc in
+  [`docs/design/STATUS.md`](STATUS.md) and the relevant design doc in
   the same follow-up change. Do not mechanically rewrite every historical
   `v0.2.0` reference.
 - Announce only after the release assets and checksums are verified.

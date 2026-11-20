@@ -58,7 +58,7 @@
 //! # Not modelled yet
 //!
 //! The richer macOS `Clock Options...` rows (day of week, 24-hour, flashing
-//! separators) and the Apple-only controls (AirDrop, Screen Mirroring) are
+//! separators) and the reference-only controls (Nearby Transfer, Screen Casting) are
 //! deliberately omitted: the shell clock renders only the date and seconds
 //! today, and the others have no Linux equivalent. They are recorded as
 //! follow-ups rather than shipped as dead controls.

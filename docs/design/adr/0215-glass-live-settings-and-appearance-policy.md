@@ -42,7 +42,7 @@ through the trusted shell bridge.
    in the legacy and replacement looks. Reduce Transparency wins over the
    slider and disables sampling; Increase Contrast is applied after the fill
    decision, including on the opaque plate. Reduce Motion stays a separate
-   motion-only key, and the existing Accent, Auto scheme and Control Center
+   motion-only key, and the existing Accent, Auto scheme and Quick Settings
    Dark Mode paths are unchanged.
 
 ## Consequences

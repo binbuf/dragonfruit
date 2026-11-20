@@ -58,7 +58,7 @@ contract rather than inventing a private association store.
 - Opening no longer silently fails when `mimeapps.list` is stale; the fallback
   chain is testable headlessly (`tst_files_open`, `tst_files_thumbnails`).
 - This ADR records an implementation decision; it does not make the rest of
-  the Finder design shipped. Tabs, copy/move, undo, progress/conflicts, Open
+  the Files design shipped. Tabs, copy/move, undo, progress/conflicts, Open
   With, and Files menu publication remain open (G-04).
 
 ## References

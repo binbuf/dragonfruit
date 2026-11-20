@@ -6,7 +6,7 @@ Accepted (T-16.3b).
 
 ## Context
 
-T-16.3a (`docs/xwayland-scaling.md`, ADR 0152) closed the integer half of the
+T-16.3a (`docs/design/xwayland-scaling.md`, ADR 0152) closed the integer half of the
 fractional-scaling policy and explicitly deferred two things to T-16.3b:
 per-surface viewport downscale, and "chrome sizing". Validating T-16.3a at an
 output scale above 1 exposed the concrete chrome bug: the nested backend
@@ -64,7 +64,7 @@ were oversized or clipped.
   `wp_viewporter`. It therefore ignores the preferred scale and its chrome is
   upscaled at a fractional output scale. Making the shell render at the output
   scale (an integer buffer scale, or a fractional viewport destination) is a
-  shell-side follow-up recorded in `docs/PROGRESS.md`.
+  shell-side follow-up recorded in the local progress notes.
 - Multi-monitor outputs with different scales still choose the Xwayland
   integer scale once per session from the primary (ADR 0152); per-output
   Xwayland scale remains open.

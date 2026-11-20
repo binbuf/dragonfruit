@@ -2,7 +2,7 @@
 //! Private shell protocols (T-07): generated server bindings.
 //!
 //! The XMLs live in `protocols/` and ship as a lockstep set with the
-//! compositor and shell (docs/ipc-versioning.md). `wayland-scanner`
+//! compositor and shell (docs/design/ipc-versioning.md). `wayland-scanner`
 //! compiles them into the server-side objects and message enums; the
 //! request handling and event broadcasting live in [`crate::shell`].
 //!

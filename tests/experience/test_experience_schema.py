@@ -71,9 +71,9 @@ class ExperienceSchemaTests(unittest.TestCase):
                 "about-panel", "about-page", "about-dark", "about-localized",
             },
             "Q-AD": {
-                "spotlight-grid", "spotlight-list", "suggestions",
+                "search-grid", "search-list", "suggestions",
                 "search-focused", "category-chips", "no-results",
-                "launch-motion", "spotlight-keyboard", "iphone-apps",
+                "launch-motion", "search-keyboard", "mobile-apps",
             },
             "S-NC": {
                 "panel-layout", "banner-stack", "widget-stack",
@@ -109,7 +109,7 @@ class ExperienceSchemaTests(unittest.TestCase):
             "OPEN-DRAWER-01", "OPEN-DRAWER-02",
             "OPEN-NC-01", "OPEN-NC-02",
             "OPEN-CC-01", "OPEN-CC-02", "OPEN-CC-03",
-            "OPEN-FINDER-01", "OPEN-FINDER-02", "OPEN-FINDER-03",
+            "OPEN-FILES-01", "OPEN-FILES-02", "OPEN-FILES-03",
         )
         for open_id in open_ids:
             rows = [

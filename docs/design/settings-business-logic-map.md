@@ -8,7 +8,7 @@
 | **Companions** | [22-total-experience.md](22-total-experience.md), [distro-compatibility.md](distro-compatibility.md), [interface-naming-and-licensing.md](interface-naming-and-licensing.md) |
 
 > **2026-11-14 review.** This map remains the executable owner/absence
-> contract. The pane-by-pane target, including the complete macOS Tahoe row
+> contract. The pane-by-pane target, including the complete the reference design row
 > inventory, the Linux adaptations, the visual/behaviour contract, and the
 > findings that the first pass did not close, is
 > [24-system-settings.md](24-system-settings.md). A row that this map marks
@@ -65,12 +65,12 @@ absence path.
 |---|---|---|
 | `settingsd` | Dragonfruit settings daemon | Appearance, Dock, menu bar, workspaces, input prefs, lock policy |
 | `compositor` | Rust/Smithay compositor | Outputs, windows, workspaces, input, gestures, hot corners, lock, magnifier, materials |
-| `shell` | Qt Quick shell | Menu bar, Dock, Control Center, notifications, OSD, switcher, overview, search UI, drawer, lock UI |
+| `shell` | Qt Quick shell | Menu bar, Dock, Quick Settings, notifications, OSD, switcher, overview, search UI, drawer, lock UI |
 | `host service` | Existing Linux daemon | NetworkManager, BlueZ, PipeWire/WirePlumber, UPower, UDisks2, CUPS, SANE, accountsservice, colord, fprintd, PackageKit, GOA, evolution-data-server |
 | `portal` | xdg-desktop-portal | Permissions, file chooser, screenshot, screencast, settings, global shortcuts |
 | `distro adapter` | Dragonfruit Rust trait | Package manager, updates, firewall, time sync, locale, users/groups, bootloader |
 | `third-party` | Optional external app/service | Orca, ibus/fcitx5, restic/Pika, Tracker/Baloo, GNOME Online Accounts |
-| `omit` | Not shipped | iCloud, Siri, Screen Time, Wallet, Game Center, Find My, AirDrop/Continuity |
+| `omit` | Not shipped | cloud account, voice assistant, usage limits, Wallet, game services, device location, Nearby Transfer and device continuity |
 
 ## 4. Pane catalog
 
@@ -79,7 +79,7 @@ app's sidebar may group panes differently, but the catalog is complete.
 
 | # | macOS pane | Dragonfruit pane | Disposition | Primary owner |
 |---|---|---|---|---|
-| 1 | Apple Account | — | Omit | Apple service |
+| 1 | Account | — | Omit | Apple service |
 | 2 | Wi-Fi | Wi-Fi | Ship | NetworkManager |
 | 3 | Bluetooth | Bluetooth | Ship | BlueZ |
 | 4 | Network | Network | Ship/Adapt | NetworkManager + firewall adapter |
@@ -89,36 +89,36 @@ app's sidebar may group panes differently, but the catalog is complete.
 | 6.1 | About | About This System | Ship | host info + distro adapter |
 | 6.2 | Software Update | Software Update | Ship | PackageKit/distro adapter |
 | 6.3 | Storage | Storage | Ship | UDisks2 + filesystem usage |
-| 6.4 | AirDrop & Handoff | — | Omit (optional LocalSend/KDE Connect later) | No permissive drop-in |
+| 6.4 | Nearby Transfer & device continuity | — | Omit (optional LocalSend/KDE Connect later) | No permissive drop-in |
 | 6.5 | Login Items & Extensions | Login Items & Extensions | Ship/Adapt | XDG autostart + systemd user units + portals |
 | 6.6 | Language & Region | Language & Region | Ship/Adapt | `localectl`/locale + `settingsd` formats |
 | 6.7 | Date & Time | Date & Time | Ship/Adapt | `timedatectl`/chrony + `settingsd` formats |
 | 6.8 | Sharing | Sharing | Adapt/Delegate | Samba/NFS/portal screen share |
-| 6.9 | Time Machine | Backup | Adapt/Delegate | restic/Pika Backup/Timeshift |
+| 6.9 | Backup | Backup | Adapt/Delegate | restic/Pika Backup/Timeshift |
 | 6.10 | Transfer or Reset | Reset | Adapt | `settingsd` reset; no factory reset |
 | 6.11 | Startup Disk | Startup Disk | Adapt (read-only) | UDisks2/bootloader adapter |
-| 6.12 | Device Management | — | Omit | MDM is Apple-specific |
+| 6.12 | device management | — | Omit | MDM is Apple-specific |
 | 6.13 | AutoFill & Passwords | Passwords & Autofill | Adapt/Delegate | Secret Service/password manager |
 | 7 | Appearance | Appearance | Ship | `settingsd` + compositor |
 | 8 | Accessibility | Accessibility | Ship/Delegate | `settingsd` + compositor + Orca/speech-dispatcher |
-| 9 | Control Center | Menu Bar → Menu Bar Controls | Moved under Menu Bar | `settingsd` + shell + adapters |
-| 10 | Siri & Spotlight | Search | Adapt | Search service + `settingsd`; Siri omitted |
+| 9 | Quick Settings | Menu Bar → Menu Bar Controls | Moved under Menu Bar | `settingsd` + shell + adapters |
+| 10 | voice assistant & Search | Search | Adapt | Search service + `settingsd`; voice assistant omitted |
 | 11 | Privacy & Security | Privacy & Security | Ship/Adapt | Portals + polkit + LUKS + firewall adapter |
 | 12 | Desktop & Dock | Desktop & Dock | Ship | `settingsd` → compositor/shell |
-| 12.1 | Mission Control | Desktop & Dock → Workspace Overview | Moved under Desktop & Dock | `settingsd` + compositor |
+| 12.1 | Overview | Desktop & Dock → Workspace Overview | Moved under Desktop & Dock | `settingsd` + compositor |
 | 13 | Displays | Displays | Ship/Adapt | Compositor + colord/display adapter |
 | 14 | Wallpaper | Wallpaper | Ship | `settingsd` + `wallpaperd` + compositor |
 | 15 | Screen Saver | Screen Saver | Ship | Shell/compositor + `settingsd` |
 | 16 | Notifications | Notifications | Ship | Notification service + `settingsd` |
 | 17 | Sound | Sound | Ship | PipeWire/WirePlumber + `settingsd` |
 | 18 | Focus | Focus | Ship | Notification service + `settingsd` |
-| 19 | Screen Time | — | Omit | Apple-specific |
+| 19 | usage limits | — | Omit | Apple-specific |
 | 20 | Lock Screen | Lock Screen | Ship | `settingsd` + compositor/lock + logind |
-| 21 | Touch ID & Password | — | Removed (no fingerprint feature) | — |
+| 21 | Fingerprint & Password | — | Removed (no fingerprint feature) | — |
 | 22 | Users & Groups | Users & Groups | Ship/Adapt | accountsservice + distro adapter + polkit |
-| 23 | Internet Accounts | Online Accounts (`online-accounts`) | Adapt/Delegate; title keeps the generic name, `internet-accounts` is an alias | GNOME Online Accounts if present; else absent state |
-| 24 | Game Center | — | Omit | Apple service |
-| 25 | Wallet & Apple Pay | — | Omit | Apple service |
+| 23 | Online Accounts | Online Accounts (`online-accounts`) | Adapt/Delegate; title keeps the generic name, `internet-accounts` is an alias | GNOME Online Accounts if present; else absent state |
+| 24 | game services | — | Omit | Apple service |
+| 25 | payments | — | Omit | Apple service |
 | 26 | Printers & Scanners | Printers & Scanners | Ship | CUPS + SANE |
 | 27 | Keyboard | Keyboard | Ship/Adapt | `settingsd` + compositor input + ibus/fcitx5 |
 | 28 | Mouse | Mouse | Ship | `settingsd` + compositor input |
@@ -172,13 +172,13 @@ Settings debug view reads it directly; T223's search index reads the same rows.
 
 | Executable omitted id | Reference pane | Why |
 |---|---|---|
-| `vendor-account` | Apple Account | Vendor account service; no Linux equivalent |
-| `nearby-transfer` | AirDrop & Handoff | No permissive drop-in; optional LocalSend/KDE Connect later |
-| `managed-devices` | Device Management | Mobile-device management is vendor-specific |
-| `usage-limits` | Screen Time | Vendor parental controls; not shipped |
-| `game-service` | Game Center | Vendor game service; no equivalent |
-| `wallet` | Wallet & Apple Pay | Vendor payment service; not shipped |
-| `device-location` | Find My | Vendor device-location service; not shipped |
+| `vendor-account` | Account | Vendor account service; no Linux equivalent |
+| `nearby-transfer` | Nearby Transfer & device continuity | No permissive drop-in; optional LocalSend/KDE Connect later |
+| `managed-devices` | device management | Mobile-device management is vendor-specific |
+| `usage-limits` | usage limits | Vendor parental controls; not shipped |
+| `game-service` | game services | Vendor game service; no equivalent |
+| `wallet` | payments | Vendor payment service; not shipped |
+| `device-location` | device location | Vendor device-location service; not shipped |
 
 ## 5. Row-level mapping
 
@@ -355,7 +355,7 @@ absence path; the executable rows are in `SettingsMap.qml`.
 |---|---|---|---|---|
 | Storage bar chart | Storage chart | Chart | UDisks2 + filesystem usage | `storage.usage` from `df`; stacked categories plus the free remainder, legend, total/used/free in GiB |
 | Categories | Categories | List | filesystem usage | Per-category byte totals and a share bar; never double-counting one device |
-| Manage… | Show Detail | Button | Files/Storage | Live delegate to the file manager; formatting and partitioning stay in the disk utility |
+| Manage… | Show Detail | Button | Files/Storage | Live delegate to the file manager; formatting and partitioning stay in Disks |
 | — | Volumes | List | UDisks2 | Mount/unmount with capacity; absent UDisks2 keeps the group and its reason |
 | — | Removable media | List | UDisks2 | Eject; absent → note |
 | Recommendations | Recommendations | List | filesystem usage | Derived from live byte totals; empty Trash and review categories |
@@ -413,7 +413,7 @@ toggle and authentication is the Options sheet, never a duplicated suffix
 (T270). The Services group keeps its title and absence note when systemd is
 absent.
 
-#### 5.5.8 Backups (Time Machine)
+#### 5.5.8 Backups (Backup)
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
@@ -432,10 +432,10 @@ the policy rows stay live (T270).
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Startup Disk | Startup disk | Info + list + Restart | UDisks2/bootloader adapter | Read-only; the boot disk first, every disk with its size in GiB; Restart is one confirmed logind request; no bootloader rewrite (T270) |
-| Transfer or Reset | Transfer | Delegates | distro tools | No migration assistant ships; the transfer assistant row is disabled with its reason (T270/T287) |
+| Transfer or Reset | Transfer | Delegates | distro tools | No migration tool ships; the transfer assistant row is disabled with its reason (T270/T287) |
 | Transfer or Reset | Reset | Destructive button | `settingsd` | `org.dragonfruit.Settings1.Reset`; typed `RESET` confirmation; resets Dragonfruit settings only, never personal files or host configuration (T270) |
 | Erase All Content… | Erase All Content and Settings | Info | — | Omitted with a Linux reason: erasing every file and account is an operating-system reinstall (T270) |
-| Device Management | — | Omit | — | MDM is Apple-specific |
+| device management | — | Omit | — | MDM is Apple-specific |
 
 #### 5.5.10 Passwords & Keys
 
@@ -453,7 +453,7 @@ shows the available provider or a note; it does not store secrets itself.
 `timedatectl`/`localectl`, XDG autostart, systemd user/system units, the
 restic/Pika/Timeshift detection, `df` usage, and `findmnt` startup-disk reads.
 The native/PackageKit update provider is attached to the bridge host; the
-Settings pane and the Control Center tile read the same `Updates` view. Each
+Settings pane and the Quick Settings tile read the same `Updates` view. Each
 sub-pane carries its own state and absence note; Storage was still a
 first-class sidebar pane at T226 and the General row navigated to it. The
 About `More Info…` button is live; the regulatory link is the one delegated
@@ -474,7 +474,7 @@ its content is T270.
 
 **T287 status.** The rendered General list is the mockup intro plus 11
 `SettingsBigRow`s with category tiles and the Passwords & Keys/Backups sub
-lines; Device Management is a `state: "omitted"` map row with the reason “no
+lines; device management is a `state: "omitted"` map row with the reason “no
 Linux MDM/profile owner in scope”. The ownerless mockup rows are omissions,
 not disabled controls: Energy Compliance, Beta Updates, AutoFill Passwords and
 Keys, Delete After Use, Text in Images, Applications, Translation Languages,
@@ -497,7 +497,7 @@ defaults; no error banner.
 | Folder color | Folder color | Swatch popup | `appearance.folderColor` | Files/Theme folder glyph; Automatic keeps the artwork; design-system palette only |
 | Sidebar icon size | Sidebar icon size | Popup | `appearance.sidebarIconSize` | Small/medium/large |
 | Allow wallpaper tinting | Tint window background with wallpaper color | Toggle | `appearance.wallpaperTint` | Materials adapt to wallpaper |
-| Liquid Glass | Glass tint | Slider | existing: `appearance.transparency` | 0..1; attached menus only; measured 0.5255 midpoint; disabled under Reduce Transparency |
+| Glass | Glass tint | Slider | existing: `appearance.transparency` | 0..1; attached menus only; measured 0.5255 midpoint; disabled under Reduce Transparency |
 | Show scroll bars | Show scroll bars | Stacked radio | `appearance.scrollBars` | Automatic/when-scrolling/always, visually distinct |
 | Click in the scroll bar to | Click in the scroll bar to | Stacked radio | `appearance.scrollBarClick` | Jump to spot or next page |
 | — | Icon theme | Popup (Advanced Appearance) | `appearance.iconTheme` | Installed-theme provider; explicit theme wins over the style |
@@ -549,7 +549,7 @@ omission. The screen reader is a status plus `Open Orca`, never a toggle
 recorded shortcut are live over the v12 `set_accessibility_policy` request.
 
 T291a status: the long scroll is replaced by the mockup intro and a big list of
-in-place sub-panes ([adr/0297](../adr/0297-accessibility-big-list-and-vision.md)).
+in-place sub-panes ([adr/0297](adr/0297-accessibility-big-list-and-vision.md)).
 Vision ships first; Physical and Motor, Hearing, Speech, and General follow in
 T291b–T291e. The Vision sub-pane groups its rows under **Screen Reader**,
 **Zoom**, **Display**, **Motion**, and **Read & Speak**. A Vision row with no
@@ -640,7 +640,7 @@ settingsd row live.
 | Live Speech | Live speech | Action | speech-dispatcher/espeak-ng | Delegated; `Speak Sample` disabled when absent |
 | Personal Voice | Personal voice | — | — | Omitted: no equivalent |
 | Vocal Shortcuts | Vocal shortcuts | — | — | Omitted: no equivalent |
-| Siri | — | — | — | Omitted |
+| voice assistant | — | — | — | Omitted |
 
 #### 5.7.5 General
 
@@ -649,18 +649,18 @@ settingsd row live.
 | Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | Live compositor shortcut engine; opens this pane |
 
 <a id="pane-control-center"></a>
-### 5.8 Control Center
+### 5.8 Quick Settings
 
 Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Control Center modules | Modules | List | `settingsd` | Show/hide, order |
+| Quick Settings modules | Modules | List | `settingsd` | Show/hide, order |
 | Wi-Fi | Wi-Fi | Checkbox | existing: `menu.control.wifi` | Module + menu-bar item |
 | Bluetooth | Bluetooth | Checkbox | existing: `menu.control.bluetooth` | Module + menu-bar item |
-| AirDrop | — | Omit | — | No permissive equivalent |
+| Nearby Transfer | — | Omit | — | No permissive equivalent |
 | Focus | Focus | Checkbox | `menu.control.focus` | Module + menu-bar item |
-| Screen Mirroring | Screen mirroring | Checkbox | `menu.control.screenMirroring` | Module + menu-bar item |
+| Screen Casting | Screen casting | Checkbox | `menu.control.screenMirroring` | Module + menu-bar item |
 | Now Playing | Now Playing | Checkbox | `menu.control.nowPlaying` | Module |
 | Sound | Sound | Checkbox | existing: `menu.control.volume` | Module + menu-bar item |
 | Display | Display | Checkbox | `menu.control.display` | Brightness module |
@@ -670,7 +670,7 @@ Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
 | Screen Recording | Screen recording | Checkbox | `menu.control.screenRecording` | Module |
 | Keyboard Brightness | Keyboard brightness | Checkbox | `menu.control.keyboardBrightness` | Module |
 | Hearing | Hearing | Checkbox | `menu.control.hearing` | Module |
-| Menu Bar Only | Menu bar items | List | existing: `menu.control.*` | Clock, Search, Wi-Fi, Bluetooth, Battery, Focus, Screen Mirroring, Display, Sound |
+| Menu Bar Only | Menu bar items | List | existing: `menu.control.*` | Clock, Search, Wi-Fi, Bluetooth, Battery, Focus, Screen Casting, Display, Sound |
 | Other Modules | Other modules | List | `settingsd` | Accessibility shortcuts, etc. |
 | Add Controls… | Add controls… | Sheet | `settingsd` + registry | Customization |
 | — | Pages | List + add/rename/delete/select | `quickSettings.pageCount` / `pageNames` | Live |
@@ -679,7 +679,7 @@ Owner: `settingsd` + shell `ControlCenterPolicy` + adapters.
 | — | Reset Quick Settings | Button | `quickSettings.*` + `menu.control.*` | Live |
 
 **T227 status.** The pane ships the ordered module list and the menu-bar-only
-set. `quickSettings.modules` is the live Control Center order (removing an id
+set. `quickSettings.modules` is the live Quick Settings order (removing an id
 hides that module immediately); `quickSettings.menuBarOnly` removes an item
 from the panel while its existing `menu.control.*` mark stays in the menu bar.
 
@@ -707,13 +707,13 @@ Owner: `settingsd` → shell/menu bar. Absence: live on defaults; no error.
 | Recent documents, applications, and servers | Recent items | Stepper | existing: `menu.recentItems` | Count 0–50 |
 | Add Controls… | Add menu-bar controls… | Sheet | `settingsd` + registry | Add/remove/reorder |
 | Clock | Clock | Checkbox + options | existing: `menu.clock.showDate`/`showSeconds` | Date/time/seconds; Calendar popover |
-| Spotlight | Search | Checkbox | `menu.control.search` | Show/hide |
+| Search | Search | Checkbox | `menu.control.search` | Show/hide |
 | Wi-Fi | Wi-Fi | Checkbox | existing: `menu.control.wifi` | Show/hide |
 | Bluetooth | Bluetooth | Checkbox | existing: `menu.control.bluetooth` | Show/hide |
 | Battery | Battery | Checkbox + options | existing: `menu.control.battery` + `power.showPercentage` | Show percentage/energy |
-| AirDrop | — | Omit | — | No permissive equivalent |
+| Nearby Transfer | — | Omit | — | No permissive equivalent |
 | Focus | Focus | Checkbox + options | existing: `menu.control.focus` + `menu.control.focusAlways` | Show when active, or always |
-| Screen Mirroring | Screen Casting | Disabled row | `menu.control.screenMirroring` | No menu-bar item; start casting from Quick Settings |
+| Screen Casting | Screen Casting | Disabled row | `menu.control.screenMirroring` | No menu-bar item; start casting from Quick Settings |
 | Display | Display | Disabled row | `menu.control.display` | No menu-bar item; the Display module lives in Quick Settings |
 | Sound | Sound | Checkbox + options | existing: `menu.control.volume` + `menu.control.volumeWhenActive` | Show always, or hide while muted |
 | — | Third-party items | List | StatusNotifier registry + `menu.tray.hidden` | Allow/deny each live item |
@@ -721,7 +721,7 @@ Owner: `settingsd` → shell/menu bar. Absence: live on defaults; no error.
 | — | Workspace indicator | Toggle | `menu.control.workspaces` | Live active-Space projection (Linux-only) |
 | — | Show application menus | Toggle | `menu.global` | Linux-only; first-party local menus when off |
 | — | Show on every display | Disabled row | `quickSettings.perDisplay` | One shell surface; per-display needs a compositor overlay per output |
-| — | Reset Control Center | Button | `menu.control.*` + options | Restore the menu-bar surface |
+| — | Reset Quick Settings | Button | `menu.control.*` + options | Restore the menu-bar surface |
 
 **T277 status.** The pane has one Clock row with the visibility mark and the
 Clock Options sheet (declared inside the pane, so the T266 dialog adopts the
@@ -737,13 +737,13 @@ global-menu toggle. Reset restores the behavior keys, clock options,
 visibility marks, per-control options, tray allowances, and Linux-only rows.
 
 <a id="pane-search"></a>
-### 5.10 Search (Spotlight-equivalent)
+### 5.10 Search (Search-equivalent)
 
-Owner: search service + `app-index` + `settingsd`. Siri is omitted.
+Owner: search service + `app-index` + `settingsd`. voice assistant is omitted.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Siri | — | Omit | — | Apple service |
+| voice assistant | — | Omit | — | Apple service |
 | Search results | Search results | Checkboxes | `search.categories` | Applications, files, folders, actions, calculations, definitions, web |
 | Show Search in menu bar | Show Search in menu bar | Toggle | `menu.control.search` | Menu-bar item |
 | Search privacy | Search privacy | Disclosure | `search.indexLocations` | Include/exclude folders |
@@ -791,7 +791,7 @@ the difference.
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | Allow applications from | Software sources | Popup | distro adapter + Flatpak | Distro repositories read-only; Flatpak remotes writable |
-| FileVault | Disk encryption | Info | LUKS adapter | Read-only status; unlock/recovery delegated |
+| Disk Encryption | Disk encryption | Info | LUKS adapter | Read-only status; unlock/recovery delegated |
 | Lockdown Mode | Hardening mode | Info | SELinux/AppArmor + Secure Boot | Read-only status; no fake toggle |
 | Extensions | Extensions | List | portal extensions | Read-only inventory |
 | Advanced… | Advanced… | Sheet | adapters | Firewall, network, etc. |
@@ -847,7 +847,7 @@ adds the default-browser delegate.
 | Hold modifier to tile | Hold Option while dragging to tile | Toggle | `tiling.modifier` | Disabled: tiling is T242 |
 | Tiled windows have margins | Tiled windows have margins | Toggle | `tiling.margins` | Disabled: tiling is T242 |
 | — | Application window rules… | Button | `windows.rules` | Disabled: the compositor window-rule engine is not present (T281) |
-| Mission Control | Overview | Disclosure | `overview.*` | Opens the Overview pane |
+| Overview | Overview | Disclosure | `overview.*` | Opens the Overview pane |
 | Hot Corners… | Hot Corners… | Disclosure | `overview.hotCorner*` | Opens the Overview pane |
 | Shortcuts… | Shortcuts… | Sheet | `shortcuts.*` | Disabled: shortcut editor not implemented |
 | Default web browser | Default web browser | Popup | `defaults.browser` + default-apps delegate | Live: app-index `WebBrowser` records, applied by `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full matrix |
@@ -856,7 +856,7 @@ adds the default-browser delegate.
 ### 5.12.1 Overview (the `mission-control` pane)
 
 Owner: `settingsd` → compositor. Absence: live on defaults; the absence note
-names the missing daemon. T276 adds the Mission Control and workspace rows.
+names the missing daemon. T276 adds the Overview and workspace rows.
 
 | Row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|
@@ -885,11 +885,11 @@ controls live on defaults; output rows show `No display`/`Unavailable`.
 | — | Show all resolutions | Toggle | `display.scale` | View filter over the five steps; not persisted |
 | Brightness | Brightness | Slider | existing: `display.brightness` | Live; the compositor owns the applied level |
 | Automatically adjust brightness | Automatically adjust brightness | Toggle | `display.autoBrightness` | Disabled: no ambient-light sensor input |
-| True Tone | Ambient color | Toggle | `display.adaptiveColor` | Disabled: no white-point sensor |
+| Adaptive Color | Ambient color | Toggle | `display.adaptiveColor` | Disabled: no white-point sensor |
 | Preset | Preset | Popup | colord | Disabled: colord not integrated |
 | Refresh rate | Refresh rate | Info + popup | compositor | Real current rate; switching disabled |
 | When connected to a projector | Projector mode | Popup | compositor | Only when the host marks a TV/projector output; otherwise an absence row with the reason; disabled until a content-type policy exists |
-| Night Shift | Night Light… | Sheet | `display.nightLight` | Toggle/schedule/temperature disabled: no gamma LUT |
+| Night Light | Night Light… | Sheet | `display.nightLight` | Toggle/schedule/temperature disabled: no gamma LUT |
 | Advanced… | Advanced… | Sheet | compositor/colord | Arrangement, Rotation, Use as, Resolution list, HDR, VRR, overscan; no duplicate brightness |
 | Arrangement | Arrangement | Canvas | compositor | Read-only cards of the real outputs; Arrange disabled |
 | Rotation | Rotation | Popup | existing: `display.rotation` | 0/90/180/270 |
@@ -983,7 +983,7 @@ Owner: notification service + `settingsd`.
 | Allow notifications | Allow | Toggle | notification service | Per-app |
 | Banners | Style | Popup | notification service | Banner/alert/none |
 | Show on lock screen | Lock screen | Toggle | `notifications.appOptions` | Stored per app |
-| Notification Center count | Notification Center | Popup | `notifications.appOptions` | Off/1/5/10 |
+| Notifications count | Notifications | Popup | `notifications.appOptions` | Off/1/5/10 |
 | Show previews | Previews | Popup | `notifications.appOptions` | Always/when unlocked/never |
 | Notification grouping | Grouping | Popup | `notifications.appOptions` | Automatic/by app/off |
 | Sounds | Sound | Toggle | notification service | Per-app |
@@ -995,7 +995,7 @@ policy: the notification service has no display-sleep/locked/mirroring
 input, so the pane says so instead of claiming they apply live. The
 **Application Notifications** list is the service's observed inventory; the
 whole row opens one sheet with the four service-owned choices (Allow, Style,
-Sound, Badge) and the four extra options (Lock screen, Notification Center
+Sound, Badge) and the four extra options (Lock screen, Notifications
 count, Previews, Grouping), stored per app in `notifications.appOptions`.
 The status text appears once. The **Focus** link stays available when the
 service is absent.
@@ -1102,10 +1102,10 @@ Owner: `fprintd` + PAM + distro adapter. Absence: note; no fingerprint write.
 |---|---|---|---|---|
 | Change Password… | Change password… | Button | PAM/distro adapter | Auth required |
 | Finger 1 / Add Fingerprint | Fingerprints | List + add | fprintd | Enroll/delete; absent → note |
-| Use Touch ID to unlock | Use fingerprint to unlock | Toggle | PAM + `settingsd` | Live |
-| Use Touch ID for purchases | — | Omit | — | Apple service |
-| Use Touch ID for autofill | Use fingerprint for authentication | Toggle | PAM | Live |
-| Use Touch ID for fast user switching | — | Omit | — | No display-manager fingerprint switch hook |
+| Use Fingerprint to unlock | Use fingerprint to unlock | Toggle | PAM + `settingsd` | Live |
+| Use Fingerprint for purchases | — | Omit | — | Apple service |
+| Use Fingerprint for autofill | Use fingerprint for authentication | Toggle | PAM | Live |
+| Use Fingerprint for fast user switching | — | Omit | — | No display-manager fingerprint switch hook |
 
 **T228 status.** fprintd lists/enrolls/deletes fingerprints over its system-bus
 API; AccountsService `SetPassword` (polkit-authorized) changes the password and
@@ -1160,7 +1160,7 @@ shows an explicit "Online accounts are not installed" note.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Internet Accounts | Online accounts | List | GOA | Provider list |
+| Online Accounts | Online accounts | List | GOA | Provider list |
 | Add Account… | Add account… | Sheet | GOA | OAuth/provider flow |
 | Mail/Contacts/Calendars/Notes | Sync toggles | Toggles | GOA | Per-account |
 | — | Remove account | Button | GOA | Confirmation |
@@ -1174,7 +1174,7 @@ are all gone — not a dead entry.
 
 <a id="pane-printers"></a>
 **T279 status.** The pane stays visible when GOA is absent: it states
-"Internet accounts are not installed" and offers a delegate action that names
+"Online accounts are not installed" and offers a delegate action that names
 the distribution package. With GOA present, each account adds a Details sheet
 (provider, identity, capabilities), a Sign in again action backed by GOA's
 `EnsureCredentials`, and the existing sync toggles/removal confirmation. No
@@ -1271,7 +1271,7 @@ Owner: `settingsd` + compositor input (libinput).
 |---|---|---|---|---|
 | Tracking speed | Pointer speed | Slider | `input.trackpad.pointerSpeed` | Trackpad-specific |
 | Click | Click pressure | Slider | `input.trackpad.clickPressure` | Hardware-dependent |
-| Force Click and haptic feedback | Haptic feedback | Toggle | `input.haptics` | Hardware-dependent |
+| Pressure Click and haptic feedback | Haptic feedback | Toggle | `input.haptics` | Hardware-dependent |
 | Look up & data detectors | Look up | Popup | `input.lookUp` | Gesture mapping |
 | Secondary click | Secondary click | Popup | `input.trackpad.secondaryClick` | Two-finger/click |
 | Tap to click | Tap to click | Toggle | existing: `input.tapToClick` | Live |
@@ -1284,7 +1284,7 @@ Owner: `settingsd` + compositor input (libinput).
 
 **T280 status.** The Point & Click tab adds Click pressure; Scroll & Zoom
 adds Pinch/Smart zoom/Rotate; More Gestures adds pages, full-screen apps,
-Notification Center, app windows, and Show Desktop. Haptics is enabled only
+Notifications, app windows, and Show Desktop. Haptics is enabled only
 when the inventory reports a touchpad; the preference is kept for the next one.
 The preview states the active tab. The Bluetooth hand-off navigates to the
 Bluetooth pane and disables when BlueZ is absent.
@@ -1380,7 +1380,7 @@ intentionally unowned row to prove the gate fails.
 ## 9. References
 
 - [Existing settings design](08-settings.md)
-- [Existing settings keys](../settings-keys.md)
+- [Existing settings keys](settings-keys.md)
 - [System Settings reference inventory](../reference/System_Preferences.md)
 - [Total experience design](22-total-experience.md)
 - [Cross-distro contract](distro-compatibility.md)

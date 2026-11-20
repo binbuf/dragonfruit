@@ -45,7 +45,7 @@ happened, and it is a D-Bus client of the service, not the service itself.
 ## Consequences
 
 - Apps that register actions work unchanged, and the shell's own Dock-failure
-  notice is an ordinary notification, so it lands in the notification center.
+  notice is an ordinary notification, so it lands in the Notifications.
 - `org.dragonfruit.Notifications1` is now a write surface too; the lockstep
   shell/protocol contract is unchanged (a method on the existing interface,
   no new version).

@@ -243,7 +243,7 @@ public:
     bool commitImage(const QImage &image, const QSize &logicalSize = QSize(),
                      const QRect &sourceRect = QRect());
 
-    // Create the Mission Control overview chrome surface (T-11 Slice B): a
+    // Create the Overview overview chrome surface (T-11 Slice B): a
     // full-output `overlay` layer surface, namespace "overview", that starts
     // unmapped. It draws only the workspace strip and the minimized-window
     // strip; the compositor renders the live window surfaces underneath. It
@@ -296,7 +296,7 @@ public:
     // Unmap the banner surface (attach a null buffer).
     bool hideBanner();
 
-    // Create the Notification Center overlay (T204): an `overlay` layer
+    // Create Notifications overlay (T204): an `overlay` layer
     // surface anchored to the top-right corner, namespace
     // "notification-center", mapped only while the Center is open. It reserves
     // nothing (`exclusive_zone = -1`) and takes the keyboard on demand so
@@ -334,7 +334,7 @@ public:
     // Unmap the notification-center surface (attach a null buffer).
     bool hideNotificationCenter();
 
-    // Create the Control Center panel overlay (T-11.3a): an `overlay` layer
+    // Create the Quick Settings panel overlay (T-11.3a): an `overlay` layer
     // surface anchored to the top-right corner, namespace "control-center",
     // mapped only while the panel is open. It reserves nothing
     // (`exclusive_zone = -1`) and takes the keyboard on demand so Escape and
@@ -606,10 +606,10 @@ public:
     // overview drag-and-drop calls this (`df_toplevel.move_to_workspace`).
     void moveToplevelToWorkspace(const QString &windowId, int index);
 
-    // Drive the compositor's Mission Control overview (T-11 entry point).
+    // Drive the compositor's Overview overview (T-11 entry point).
     void enterMissionControl();
 
-    // Leave the Mission Control overview (Escape / click-away in the chrome).
+    // Leave the Overview overview (Escape / click-away in the chrome).
     void exitMissionControl();
 
     // Mirror the reduced-motion policy into the compositor (T-11 U-1 / FR-9),
@@ -1004,18 +1004,18 @@ signals:
     void bannerPointerMoved(qreal x, qreal y);
     void bannerPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void bannerPointerLeft();
-    // Notification Center input (T204), in center-surface coordinates.
+    // Notifications input (T204), in center-surface coordinates.
     void notificationCenterPointerMoved(qreal x, qreal y);
     void notificationCenterPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void notificationCenterPointerLeft();
-    // The Notification Center specifically holds the keyboard (T204): key
+    // Notifications specifically holds the keyboard (T204): key
     // events drive Up/Down/Home/End/Return/Delete/Escape in its scene.
     void notificationCenterKeyboardFocused(bool focused);
     void notificationCenterKeyEvent(uint32_t key, bool pressed);
     // The compositor closed the Center layer (output teardown or a protocol
     // close). The shell drops its panel state and releases focus.
     void notificationCenterSurfaceClosed();
-    // Control Center panel input (T-11.3a), in panel-surface coordinates.
+    // Quick Settings panel input (T-11.3a), in panel-surface coordinates.
     void controlCenterPointerMoved(qreal x, qreal y);
     void controlCenterPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void controlCenterPointerLeft();
@@ -1035,7 +1035,7 @@ signals:
     // compositor keymap (null before the keymap arrives); `shift` is the
     // fallback state for that brief window.
     void lockKeyEvent(uint32_t key, bool pressed, bool shift, const QString &text);
-    // Mission Control overview (T-11): the compositor's single overview state
+    // Overview overview (T-11): the compositor's single overview state
     // machine entered/left, and one progress-pipeline sample for the in-flight
     // transition. `overviewDataChanged` means the workspace/minimized-window
     // projection should be re-read (a Space or window changed).
@@ -1057,7 +1057,7 @@ signals:
     void overviewPointerLeft();
     // The overview surface specifically holds the keyboard (Escape dismiss).
     void overviewKeyboardFocused(bool focused);
-    // The Control Center panel specifically holds the keyboard (T-11.3a);
+    // The Quick Settings panel specifically holds the keyboard (T-11.3a);
     // losing it is the click-away dismissal.
     void controlCenterKeyboardFocused(bool focused);
     // External drag-and-drop onto the Dock (T-10 section 12). The shell binds
@@ -1484,7 +1484,7 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // True while the pointer is over the Dock popover; its coordinates are
     // popover-local and translated by the shell controller.
     bool m_pointerOnDockPopup = false;
-    // Mission Control overview chrome (T-11): a full-output `overlay` surface
+    // Overview overview chrome (T-11): a full-output `overlay` surface
     // mapped only while the overview is open, plus the shared progress sample.
     wl_surface *m_overviewSurface = nullptr;
     df_layer_surface *m_overviewLayer = nullptr;
@@ -1510,14 +1510,14 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     df_layer_surface *m_bannerLayer = nullptr;
     bool m_bannerMapped = false;
     bool m_pointerOnBanner = false;
-    // Notification Center overlay (T204): a top-right `overlay` surface
+    // Notifications overlay (T204): a top-right `overlay` surface
     // mapped only while the Center is open.
     wl_surface *m_notificationCenterSurface = nullptr;
     df_layer_surface *m_notificationCenterLayer = nullptr;
     bool m_notificationCenterMapped = false;
     bool m_pointerOnNotificationCenter = false;
     bool m_keyboardOnNotificationCenter = false;
-    // Control Center panel overlay (T-11.3a): a top-right `overlay` surface
+    // Quick Settings panel overlay (T-11.3a): a top-right `overlay` surface
     // mapped only while the panel is open.
     wl_surface *m_controlCenterSurface = nullptr;
     df_layer_surface *m_controlCenterLayer = nullptr;

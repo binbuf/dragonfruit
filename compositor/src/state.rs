@@ -1714,7 +1714,7 @@ pub struct DfState {
     /// The Cmd-Tab app switcher (T-06.1): the compositor owns the chord and
     /// the recency selection; the shell only renders the protocol projection.
     pub app_switcher: AppSwitcher,
-    /// The in-flight Mission Control pointer drag of a live representation
+    /// The in-flight Overview pointer drag of a live representation
     /// (T-05.3), if any. The press begins it, motion updates it, and the
     /// release either moves the window to the Space card under the pointer or
     /// falls back to the T-05.2 selection round-trip.
@@ -1843,7 +1843,7 @@ pub struct DfState {
     /// shell's effective-material state keys off this, not `path=gpu`.
     pub material_blur_supported: bool,
     /// Gesture-scoped frame-budget trace (T-05.6): records every rendered
-    /// frame's cadence while an overview transition (Mission Control, a Space
+    /// frame's cadence while an overview transition (Overview, a Space
     /// slide, or Desktop Reveal) is live, so the full gesture can be judged
     /// against one 60 Hz frame — or its shortfall recorded. Fed by
     /// [`Self::observe_rendered_frame`]; reported by `query gesture` and the
@@ -5016,7 +5016,7 @@ impl DfState {
 
     /// Whether an overview transition or settled overview/reveal is live, so
     /// the rendered frame belongs to the T-05.6 gesture budget. A workspace
-    /// slide, Mission Control, and Desktop Reveal all count: they are the same
+    /// slide, Overview, and Desktop Reveal all count: they are the same
     /// one progress pipeline and the same live-surface transform.
     pub fn overview_frame_budget_active(&self) -> bool {
         self.overview.is_active()
@@ -5592,7 +5592,7 @@ impl DfState {
         self.mark_scene_dirty();
     }
 
-    /// Route the Mission Control selection round-trip for a live surface
+    /// Route the Overview selection round-trip for a live surface
     /// (T-05.2 / FR-5): remember the choice, leave the overview, activate the
     /// window's Space, then raise and focus it, and broadcast the change.
     ///
@@ -5606,7 +5606,7 @@ impl DfState {
         self.broadcast_overview();
     }
 
-    /// Enter or leave the Mission Control overview directly (private
+    /// Enter or leave the Overview overview directly (private
     /// protocol enter/exit, selection round-trip). Keeps the machine the
     /// single source of truth and broadcasts the change.
     #[allow(dead_code)] // Selection round-trip / T-12 reuse.
@@ -5617,7 +5617,7 @@ impl DfState {
         self.needs_redraw = true;
     }
 
-    /// Drive an explicit Mission Control enter/leave from the shell (U-7).
+    /// Drive an explicit Overview enter/leave from the shell (U-7).
     ///
     /// The request is recorded in the input outbox and driven through the
     /// *same* overview machine and progress pipeline as a gesture, keyboard
@@ -6129,9 +6129,9 @@ impl DfState {
         moved
     }
 
-    // --- Mission Control live-surface grid (T-05.1a) ------------------------
+    // --- Overview live-surface grid (T-05.1a) ------------------------
 
-    /// The Mission Control grid progress: `None` when no grid is shown,
+    /// The Overview grid progress: `None` when no grid is shown,
     /// otherwise `Some(t)` with `t` in `0.0..=1.0` (`0` = the normal scene,
     /// `1` = fully in the grid).
     ///
@@ -6160,7 +6160,7 @@ impl DfState {
         self.overview.desktop_reveal_progress()
     }
 
-    /// The live surfaces offered to the Mission Control grid on `output`: the
+    /// The live surfaces offered to the Overview grid on `output`: the
     /// visible, non-closing, non-fullscreen windows of its active Space,
     /// ordered most-recently-used first (the documented membership and
     /// ordering). Minimized windows live in the bottom strip and fullscreen
@@ -6203,7 +6203,7 @@ impl DfState {
         candidates
     }
 
-    /// The Mission Control grid for `output` and its interpolated progress, or
+    /// The Overview grid for `output` and its interpolated progress, or
     /// `None` when the overview is not open. The layout is the pure T-05.1a
     /// algorithm; the render layer maps each placement onto a window surface.
     pub fn overview_grid_layout(&self, output: &Output) -> Option<(f64, GridLayout)> {
@@ -6213,7 +6213,7 @@ impl DfState {
         Some((progress, grid_layout(area, &candidates)))
     }
 
-    /// The live window under `point` while Mission Control owns the scene, or
+    /// The live window under `point` while Overview owns the scene, or
     /// `None` (T-05.2).
     ///
     /// Hit-tests the *interpolated* render rects `overview_grid_layout`
@@ -6234,7 +6234,7 @@ impl DfState {
     }
 
     /// Begin dragging the live representation of `window` from `point`
-    /// (T-05.3). A no-op unless the Mission Control grid is showing.
+    /// (T-05.3). A no-op unless the Overview grid is showing.
     pub fn overview_begin_drag(&mut self, window: WindowId, point: Point<f64, Logical>) {
         if self.overview_grid_progress().is_none() {
             return;
@@ -6316,7 +6316,7 @@ impl DfState {
         true
     }
 
-    /// The material the Mission Control grid composes its live surfaces with
+    /// The material the Overview grid composes its live surfaces with
     /// while the overview is open (T-05.1b): the active T-04.4a degrade tier
     /// plus the elevation shadow and material-blur state that tier selects.
     /// `None` when the grid is closed.
@@ -6333,7 +6333,7 @@ impl DfState {
         ))
     }
 
-    /// The grid render frame for `window` while Mission Control is open: its
+    /// The grid render frame for `window` while Overview is open: its
     /// placement interpolated by the overview progress, or `None` when the
     /// window is not part of the grid (so the lifecycle motion / plain path
     /// stays in charge).
@@ -6425,7 +6425,7 @@ impl DfState {
 
     /// The material the switcher's live previews compose with while the
     /// overlay is up (T-06.2a): the active T-04.4a degrade tier and scheme,
-    /// exactly like the Mission Control grid. `None` when the switcher is
+    /// exactly like the Overview grid. `None` when the switcher is
     /// closed.
     pub fn switcher_material(&self) -> Option<GridMaterial> {
         self.app_switcher
@@ -6506,7 +6506,7 @@ impl DfState {
         })
     }
 
-    /// The render frame a window is drawn with: the Mission Control grid
+    /// The render frame a window is drawn with: the Overview grid
     /// placement while the overview is open, the Desktop Reveal translation
     /// while the desktop is revealed, else its lifecycle motion. One accessor
     /// so the surface, SSD titlebar, and shadow always share the same mapping

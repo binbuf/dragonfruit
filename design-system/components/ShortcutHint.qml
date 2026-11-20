@@ -8,7 +8,7 @@ import Dragonfruit
 // not a chord (a Dock window row's workspace name, `Space 2`) falls back to
 // plain trailing text in the same cell.
 //
-// The glyph vocabulary follows the desktop's keymap roles (docs/keymap.md):
+// The glyph vocabulary follows the desktop's keymap roles (docs/design/keymap.md):
 // Super/Command -> `⌘`, Control -> `⌃`, Option/Alt -> `⌥`, Shift -> `⇧`,
 // Function -> `fn`. Key aliases map to their compact symbols (`⌫`, `↵`, …).
 // The glyphs come from the bundled Inter face, so no extra icon asset is

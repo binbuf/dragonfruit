@@ -7,7 +7,8 @@
 # Apple term from docs/design/naming-gate.json.
 #
 # `dragonfruit` is the only legal desktop name (XDG_CURRENT_DESKTOP is a
-# public contract — docs/ipc-versioning.md). Design docs (docs/) are exempt:
+# public contract — docs/design/ipc-versioning.md). Design docs (docs/design/)
+# are exempt:
 # they legitimately discuss other desktops and the reference platform. Code,
 # build files, and scripts are not. A line carrying the marker
 # `df-allow-desktop-name` (or `df-allow-name` for the naming half) is exempt

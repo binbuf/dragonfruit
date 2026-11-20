@@ -2,24 +2,24 @@
 
 ## Summary
 
-Files is the Finder-equivalent and the second flagship first-party
+Files is the file manager and the second flagship first-party
 application. We **own the UI and semantics but do not build every filesystem
 integration ourselves** — no SMB client, no SFTP client, no removable-disk
 daemon, no file-watching daemon, no indexer, no thumbnailer service. Writing
 those does not make the desktop more distinctive.
 
-What we own completely is what users perceive as "how Finder works": the
+What we own completely is what users perceive as "how Files works": the
 browsing model, the view semantics, selection and keyboard muscle memory,
 drag-and-drop behavior, and the operation semantics (copy/move/trash with
 undo). **The backend is reused; the behavior is ours.**
 
-The window chrome, sidebar, and view register is the Finder reference in
+The window chrome, sidebar, and view register is the Files reference in
 [macos-ui-inventory.md](../reference/macos-ui-inventory.md#finder-files)
 (distilled from local-only macOS screenshots that never ship).
 
-## Measured Finder anatomy (2026-11-08)
+## Measured Files anatomy (2026-11-08)
 
-The structural review measured the Finder window at 900×600 pt:
+The structural review measured the Files window at 900×600 pt:
 
 | Element | Geometry |
 |---|---|
@@ -239,14 +239,14 @@ set (T-10.4c+).
 
 **Implementation status (T-10.4c).** Context menus, multi-select, and the
 optimistic operations are real. Selection is the shell's set of stable node
-ids: plain click replaces it, Cmd-click toggles, Shift-click ranges (anchored
-on the last plain click), Cmd+A selects all, Escape clears — and both views
-render from the same set, so the view switch cannot lose it. The Finder rule
+ids: plain click replaces it, Super-click toggles, Shift-click ranges (anchored
+on the last plain click), Super+A selects all, Escape clears — and both views
+render from the same set, so the view switch cannot lose it. The Files rule
 governs the one `ContextMenu`: a single item gets Open / Rename / Move to
 Trash, a multi-selection gets Move to Trash, and the background gets New
 Folder / Select All. Rename is **inline** in both views (Return opens the
 editor, Escape cancels); Move to Trash and New Folder run from the menu and the
-keyboard (Delete, Shift+Cmd+N). Every mutation crosses the C ABI as an
+keyboard (Delete, Shift+Super+N). Every mutation crosses the C ABI as an
 optimistic begin + a worker outcome (ADR
 [0050](adr/0050-files-core-ffi-optimistic-ops.md)): the row changes within the
 same QML call and confirms or snaps back with an inline notice from
@@ -256,13 +256,13 @@ and operations work on a loaded folder; the session and its one worker are
 retired on navigation. **Rubber-band selection is real (T-19.3):**
 `FilesIconView` paints a marquee over empty background and emits
 `marqueeSelected(nodeIds, modifiers)`, which the shell folds in with the same
-replace/Cmd-toggle/Shift-extend rules as the click paths; the desktop surface
+replace/Super-toggle/Shift-extend rules as the click paths; the desktop surface
 reuses the view. The band is **live**: while the button is still down the view
 emits the enclosed ids (`marqueeStarted`/`marqueeUpdated`), so every tile in
 the region highlights in real time, and the final `marqueeSelected` commits
-the same set. Cmd/Shift drags toggle/extend from the selection snapshot taken
+the same set. Super/Shift drags toggle/extend from the selection snapshot taken
 when the band starts, so a moving band never flips a tile twice. The band wears
-the macOS Tahoe drag-selection look — a very light, semi-transparent neutral
+the the reference design drag-selection look — a very light, semi-transparent neutral
 grey wash inside a slightly darker, thicker, square grey perimeter
 (`marqueeFill`/`marqueeBorder` + `component.marquee`) — rather than an accent
 tint, because it marks a transient region, not a committed selection.
@@ -316,7 +316,7 @@ move together. Files opens the location the Dock passes: `main.cpp` maps the
 positional argument (`dragonfruit-files trash://`) onto the existing
 `DF_FILES_START_URI` seam (`FilesArguments.h`), which is how the launch works
 before the `org.dragonfruit.Files1` activation target lands. Inside the Trash,
-Files offers Empty Trash (background menu, `Shift+Cmd+Delete`) as a
+Files offers Empty Trash (background menu, `Shift+Super+Delete`) as a
 confirmation dialog; accepting calls the new `df_files_begin_empty_trash`
 optimistic operation on the `trash://` listing, which clears every row within a
 frame and snaps them back if the real empty fails, so the model and the store
@@ -350,7 +350,7 @@ scroll trace is
 budget record stays in
 [`docs/captures/t10-files-perf.txt`](../captures/t10-files-perf.txt).
 
-**Implementation status (T230d).** Files now matches Finder's measured window
+**Implementation status (T230d).** Files now matches Files's measured window
 anatomy at 900×600 pt: a 52 pt unified toolbar, a 198 pt sidebar, a 30 pt path
 bar and a 28 pt status bar. The path and status bars are content-layer
 accessories, so they do not increase the chrome height. The status bar reports
@@ -389,23 +389,23 @@ and motion remain `OPEN` (see §9 of the structural review). See
 **Current status (2026-11) — what the Files MVP actually ships.** The browsing
 core is real: streaming listings, natural sorting, the C ABI delta path,
 sidebar favorites/volumes/Computer/Trash, icon/list views, selection
-(click/Cmd/Shift/marquee), inline rename, New Folder, Move to Trash, Empty
+(click/Super/Shift/marquee), inline rename, New Folder, Move to Trash, Empty
 Trash, file opening, thumbnails, Trash browsing, path bar, back/forward
 history, local name search, the measured window anatomy, the status bar,
 toolbar-hidden mode, Get Info, and the Dock/desktop integration. It is **not**
-the full Finder design:
+the full Files design:
 
 - **Not implemented:** tabs, New Window (the context row is disabled), copy /
   move / paste, drag-and-drop inside Files, duplicate, Make Alias,
   Compress, Open With, undo/redo, per-item progress, conflict policy, batch
-  operations, column/gallery views, Quick Look, preview pane, tags, saved
+  operations, column/gallery views, Preview, preview pane, tags, saved
   searches, batch rename, Connect to Server, and the Files menu model.
   T230d landed the measured 52/198/30/28 pt chrome, the status bar, the
   toolbar-hidden mode and the Get Info inspector; T244a lands the column and
   gallery views. Tabs remain open.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a
   host helper exists; no archives/remote), search (current-location name
-  filter, not the app-index Spotlight), and the folder watcher (the
+  filter, not the app-index Search), and the folder watcher (the
   files-core seam exists but is not wired into the Files facade).
 - **Deliberate fallbacks:** GIO/GVfs is the design target; the shipping backend
   is the marked `StdFsSource` / `InotifyWatcher` / `FreedesktopTrash` fallback,
@@ -460,15 +460,15 @@ and the session runs fine without it.
 shipped; tabs, New Window, and per-tab history are not.** The bullets below are
 the design target.
 
-- **Browser model**, Finder-style: the window persists while the location
+- **Browser model**, Files-style: the window persists while the location
   changes within it; back/forward history is per tab.
 - Tabs with independent histories; drag a tab out to a new window;
-  Cmd-double-click opens a folder in a new window (or tab, per preference).
+  Super-double-click opens a folder in a new window (or tab, per preference).
 - **Proxy icon:** the title-bar folder icon *is* the current location —
-  dragging it moves the folder. A Finder signature.
+  dragging it moves the folder. A Files signature.
 - **Path bar:** clickable ancestors; drag onto an ancestor to move there;
   right-click an ancestor for New Tab / New Window / Copy Path.
-- **Go to Folder** (Shift+Cmd+G): a path-completion sheet.
+- **Go to Folder** (Shift+Super+G): a path-completion sheet.
 - Single instance: activating Files with no windows opens a new one (Dock
   click); other components ask the running instance to reveal items over
   `org.dragonfruit.Files1` (`OpenPaths`, `RevealItems`), D-Bus-activated so
@@ -477,7 +477,7 @@ the design target.
   `xdg-terminal-exec` default terminal at the current location, falling
   back to the first `TerminalEmulator`-category application — Files never
   picks or configures a terminal itself.
-- **Double-click activates; single-click selects.** Deliberate Finder muscle
+- **Double-click activates; single-click selects.** Deliberate Files muscle
   memory, even though single-click-activate is common on Linux.
 - xdg-user-dirs drives the real paths of Desktop / Documents / Downloads /
   Pictures / Music / Videos. The sidebar shows the **real directory names**
@@ -485,7 +485,7 @@ the design target.
   directories** — a Linux divergence from macOS we accept.
 - Per-window state (geometry, tabs, scroll anchors, path) persists across
   quit and relaunch.
-- `Computer` (Shift+Cmd+C) browses `/`.
+- `Computer` (Shift+Super+C) browses `/`.
 
 Empty and error states are designed, not incidental:
 
@@ -522,17 +522,17 @@ persistence format.
 |---|---|---|
 | Icon | MVP | Grid with per-folder icon size; snap-to-grid or free placement per folder; rubber-band selection; inline rename |
 | List | MVP | Sortable, resizable columns; disclosure triangles (a tree inside the flat list); inline rename |
-| Column | later | Left-to-right drill-down, one folder per column; live preview column (Quick Look); per-column width persistence |
+| Column | later | Left-to-right drill-down, one folder per column; live preview column (Preview); per-column width persistence |
 | Gallery | later | One item at full height with a filmstrip; keyboard scrubbing |
 
 - Sort by name / kind / date modified / size (tags later), folders-first
   toggle. Grouping (kind / date / tags) is a later feature, but its
   group-header rendering is designed now.
-- **Hidden files** (Cmd+Shift+.) toggle per window, not persisted. "Hidden"
+- **Hidden files** (Super+Shift+.) toggle per window, not persisted. "Hidden"
   follows GIO semantics — dotfiles, `~`-suffixed backups, and `.hidden`
   entries — so we agree with every other Linux file manager, and search
   ignores hidden items while they are hidden.
-- **Icon size is interactive:** Cmd+Plus / Cmd+Minus resize icons in icon
+- **Icon size is interactive:** Super+Plus / Super+Minus resize icons in icon
   view (a trackpad pinch does the same), snapping to the design-system
   token scale. Free-placement folders get **Clean Up** (align to grid),
   which hides itself while "keep arranged" is on.
@@ -544,13 +544,13 @@ persistence format.
   - **Column view** — one folder per column, drilling left→right; Right /
     Down opens, Left / Up ascends, type-ahead filters the focused column;
     Back / Forward replay column paths; the rightmost column hosts a live
-    preview of the selection (Quick Look); spring-loading and
+    preview of the selection (Preview); spring-loading and
     drag-to-column behave exactly as in the other views.
   - **Gallery view** — one item at full height with a filmstrip below;
-    Left / Right step through the folder; Space overlays Quick Look (zoom
+    Left / Right step through the folder; Space overlays Preview (zoom
     and pan for large media); Return still renames.
 - **Status bar:** item count, selection count, volume free space.
-- **Info inspector** (Get Info, Cmd+I): preview thumbnail, kind, size (and
+- **Info inspector** (Get Info, Super+I): preview thumbnail, kind, size (and
   size on disk), where (a clickable path), created/modified, tags (later),
   permissions (display in the MVP; editing later). Multi-selection
   aggregates counts and totals.
@@ -560,42 +560,42 @@ persistence format.
 
 ## Selection and keyboard
 
-The Cmd role maps to **Super/Mod4** and Option to **Alt**, system-wide (see
+The Super role maps to **Super/Mod4** and Option to **Alt**, system-wide (see
 [02-compositor.md](02-compositor.md)). These shortcuts are the product:
 
 | Action | Shortcut |
 |---|---|
-| Open | Cmd+O / Cmd+Down |
-| Enclosing folder | Cmd+Up |
-| Back / Forward | Cmd+[ / Cmd+] |
+| Open | Super+O / Super+Down |
+| Enclosing folder | Super+Up |
+| Back / Forward | Super+[ / Super+] |
 | **Rename** | **Return** |
-| Quick Look (later) | Space (reserved from day one) |
-| New folder | Shift+Cmd+N |
-| Move to Trash | Cmd+Delete |
-| Delete Immediately (in Trash) | Option+Cmd+Delete |
-| Duplicate | Cmd+D |
-| Make Alias | Cmd+L |
-| Show Original (symlink) | Cmd+R |
-| Get Info | Cmd+I |
-| Select all / discontiguous / range | Cmd+A / Cmd-click / Shift-click |
-| Go to Folder | Shift+Cmd+G |
-| View kinds | Cmd+1 … Cmd+4 |
-| Show / hide hidden files | Cmd+Shift+. |
-| Icon size (icon view) | Cmd+Plus / Cmd+Minus; trackpad pinch |
+| Preview (later) | Space (reserved from day one) |
+| New folder | Shift+Super+N |
+| Move to Trash | Super+Delete |
+| Delete Immediately (in Trash) | Option+Super+Delete |
+| Duplicate | Super+D |
+| Make Alias | Super+L |
+| Show Original (symlink) | Super+R |
+| Get Info | Super+I |
+| Select all / discontiguous / range | Super+A / Super-click / Shift-click |
+| Go to Folder | Shift+Super+G |
+| View kinds | Super+1 … Super+4 |
+| Show / hide hidden files | Super+Shift+. |
+| Icon size (icon view) | Super+Plus / Super+Minus; trackpad pinch |
 | Type-ahead selection | type letters; repeat to cycle |
 
-**Return renames; opening is Cmd+O or Cmd+Down.** Deliberate, documented
-Finder muscle memory — if it ever feels like a bug, re-read this line.
+**Return renames; opening is Super+O or Super+Down.** Deliberate, documented
+Files muscle memory — if it ever feels like a bug, re-read this line.
 
 ## Context menus
 
-The context menu depends on what is under the pointer — the Finder rule.
+The context menu depends on what is under the pointer — the Files rule.
 Everything in it routes through the same engine and components as the menu
 bar; there is no context-menu-only code path.
 
 | Target | Items |
 |---|---|
-| Item | Open · Open With ▸ · Quick Look (later) · Get Info · Rename · Duplicate · Make Alias · Show Original (symlinks) · Compress… · Copy · Move to Trash · Tags (later) |
+| Item | Open · Open With ▸ · Preview (later) · Get Info · Rename · Duplicate · Make Alias · Show Original (symlinks) · Compress… · Copy · Move to Trash · Tags (later) |
 | Multiple items | Open · Get Info · Compress… · Copy · Move to Trash |
 | Folder | Open · Open in New Tab · Open in New Window · Open in Terminal · Get Info · Compress… · Make Alias · Copy · Move to Trash |
 | Background | New Folder · Paste Item · Get Info · Sort By ▸ · Clean Up (free placement) · Show View Options · Open in Terminal |
@@ -614,18 +614,18 @@ their confirmation-sheet behavior wherever they appear.
 - Drop targets include the sidebar, path bar, toolbar navigation buttons,
   and window edges (edge auto-scroll).
 - **Within a volume, drag moves; across volumes, drag copies.** Option forces
-  copy; Cmd forces move — the Finder rules.
+  copy; Super forces move — the Files rules.
 - Drops arriving from other applications (e.g., a browser download) go
   through the same operations engine with the same conflict handling. There
   is no separate "download path" inside Files.
 
 ## Aliases and symlinks
 
-- **Make Alias (Cmd+L) creates a symlink**, not a macOS-style alias record —
+- **Make Alias (Super+L) creates a symlink**, not a macOS-style alias record —
   the Linux-portable choice, documented as a deliberate divergence. The
   link is relative when link and target share a volume, absolute otherwise,
   and it is undoable like any other operation.
-- **Show Original (Cmd+R)** reveals the target in its parent folder.
+- **Show Original (Super+R)** reveals the target in its parent folder.
 - A broken symlink lists normally with an inline "original missing" badge
   and sorts by its target's kind. Trashing a symlink trashes the link,
   never the target. The target path is already part of `Node`, so rendering
@@ -653,7 +653,7 @@ makes undo, progress, and conflict handling uniform.
   **Merge** (files inside apply the same per-file policy).
 - **Undo/redo.** Move, rename, trash (Put Back), duplicate, new-folder, and
   paste are undoable; undoing a paste trashes the pasted copies,
-  Finder-correct. The journal persists across restarts at least for trash
+  Files-correct. The journal persists across restarts at least for trash
   restore.
 - **Crash consistency.** Single-file writes are temp-then-rename. In-flight
   copies write hidden partial files and are journaled; the next launch
@@ -684,7 +684,7 @@ family libarchive supports, with per-entry errors and no partial output.
   origin falls back to a destination picker.
 - Trash on removable media stays on that medium (spec behavior) and is
   labeled as such ("Trash on 'VolumeName'").
-- Empty Trash is a confirmation sheet, Shift+Cmd+Delete.
+- Empty Trash is a confirmation sheet, Shift+Super+Delete.
 - The shell's Dock Trash badge reads the **same** `files-core` store — one
   source of truth, zero coupling between Files and the shell (see
   [04-shell.md](04-shell.md)).
@@ -723,12 +723,12 @@ family libarchive supports, with per-entry errors and no partial output.
   Escape restores the unfiltered listing.
 - Later: saved searches ("smart folders") stored as predicate JSON in Files
   state, and content search delegated to the app-index search service — the
-  Spotlight-equivalent (see [08-settings.md](08-settings.md)). **We never
+  Search-equivalent (see [08-settings.md](08-settings.md)). **We never
   write an indexer**; the rule is the same as "never write an SMB client."
 
 ## Preferences
 
-Finder-style in-app preferences (Cmd+,), persisted as Files state, not
+Files-style in-app preferences (Super+,), persisted as Files state, not
 settingsd keys — nothing here is desktop-wide: new windows open (Home /
 Recents / last location), show all extensions, warn before emptying Trash,
 spring-load delay, "keep arranged" defaults, default search scope.
@@ -738,14 +738,14 @@ spring-load delay, "keep arranged" defaults, default search scope.
 Recorded early because they constrain MVP rendering and persistence:
 
 - **Column and Gallery views** — persistence schema and keyboard slots
-  (Cmd+3 / Cmd+4) are reserved from day one.
-- **Quick Look** — Space toggles a preview overlay inside the Files window;
+  (Super+3 / Super+4) are reserved from day one.
+- **Preview** — Space toggles a preview overlay inside the Files window;
   Left / Right step through the current selection while the overlay is up;
   preview providers per MIME (text, images, PDF via QtPdf, audio/video via
-  QtMultimedia). System-wide Quick Look in other apps' windows is a later
+  QtMultimedia). System-wide Preview in other apps' windows is a later
   portal/service question, not a Files one.
-- **Preview pane** (Cmd+Shift+P) — the same providers, pinned as an
-  optional right-hand pane in the window; designed with Quick Look so the
+- **Preview pane** (Super+Shift+P) — the same providers, pinned as an
+  optional right-hand pane in the window; designed with Preview so the
   two never diverge.
 - **Thumbnails** — implement the **freedesktop thumbnail cache spec**
   (`~/.cache/thumbnails`) so caches are shared with any spec-conforming file
@@ -756,7 +756,7 @@ Recorded early because they constrain MVP rendering and persistence:
   (name → color) in Files state. Tag dots are rendered in icon and list views
   from day one, so the tags UI later never re-touches the views.
 - **Batch rename** — rules-based multi-rename sheet.
-- **Connect to Server** (Cmd+K) — GVfs `smb://`/`sftp://` URI dialog; saved
+- **Connect to Server** (Super+K) — GVfs `smb://`/`sftp://` URI dialog; saved
   servers appear in the sidebar's Locations section. Credentials are
   offered to the host's Secret Service — Files never stores or caches them
   itself (see [07-system-integration.md](07-system-integration.md)).
@@ -788,16 +788,16 @@ The macOS model: **the file manager owns the desktop.**
   paints a marquee over empty background, maps the enclosed delegate
   rectangles back to stable node ids, and emits `marqueeSelected(nodeIds,
   modifiers)`; the shell's `selectMarquee` replaces/toggles/extends exactly
-  like click, Cmd-click, and Shift-click. The band sits *above* the virtualizing
+  like click, Super-click, and Shift-click. The band sits *above* the virtualizing
   grid and rejects a press that lands on a tile (`tileAt`), so a drag can start
   on any empty background — not just the view's thin outer margin. Its look is
-  macOS Tahoe's neutral drag band (a translucent light-grey wash, a thicker
+  the reference design's neutral drag band (a translucent light-grey wash, a thicker
   square grey perimeter) from the `marqueeFill`/`marqueeBorder` semantic tokens
   and `component.marquee` geometry, so it stays scheme-aware in light and dark.
   The band is **live** (`marqueeStarted`/`marqueeUpdated`): enclosed tiles
-  highlight while the pointer is still moving, with Cmd/Shift based on the
+  highlight while the pointer is still moving, with Super/Shift based on the
   pre-drag snapshot. The same view serves a Files window and the desktop
-  surface. Click/Cmd/Shift selection, the `activated` signal, and the band are
+  surface. Click/Super/Shift selection, the `activated` signal, and the band are
   QML-tested.
 - **Desktop labels and free placement.** Desktop labels use the menu bar's
   wallpaper-polarity pair (`foregroundOnDark`/`foregroundOnLight` and the
@@ -853,23 +853,23 @@ via the design system's `MenuBarMenu` component (see
 driven by the selection:
 
 ```text
-File    New Window Cmd+N · New Tab Cmd+T · New Folder Shift+Cmd+N ·
-        Open Cmd+O · Open With ▸ · Open in Terminal · Get Info Cmd+I ·
-        Rename · Compress… · Duplicate Cmd+D · Make Alias Cmd+L ·
-        Show Original Cmd+R · Move to Trash Cmd+Delete · Eject · Close Cmd+W
-Edit    Undo Cmd+Z · Redo Shift+Cmd+Z · Cut Cmd+X (marks; removes nothing
-        until a paste) · Copy Cmd+C · Paste Cmd+V · Move to Here
-        Option+Cmd+V · Select All Cmd+A
-View    as Icons Cmd+1 · as List Cmd+2 · as Columns Cmd+3 · as Gallery
-        Cmd+4 · Sort By ▸ · Clean Up (free placement) · Group By ▸ (later) ·
-        Show Hidden Files Cmd+Shift+. · Show View Options Cmd+J ·
-        Preview Pane Cmd+Shift+P (later) · Sidebar Option+Cmd+S ·
-        Path Bar Option+Cmd+P · Status Bar Cmd+/
-Go      Back Cmd+[ · Forward Cmd+] · Enclosing Folder Cmd+Up · Recents
-        Shift+Cmd+F · Computer Shift+Cmd+C · Home Shift+Cmd+H · Documents
-        Shift+Cmd+O · Downloads Option+Cmd+L · Desktop Shift+Cmd+D · Go to
-        Folder Shift+Cmd+G · Connect to Server Cmd+K (later)
-Window  Minimize Cmd+M · Zoom · Show Tab Bar · Bring All to Front · [tabs]
+File    New Window Super+N · New Tab Super+T · New Folder Shift+Super+N ·
+        Open Super+O · Open With ▸ · Open in Terminal · Get Info Super+I ·
+        Rename · Compress… · Duplicate Super+D · Make Alias Super+L ·
+        Show Original Super+R · Move to Trash Super+Delete · Eject · Close Super+W
+Edit    Undo Super+Z · Redo Shift+Super+Z · Cut Super+X (marks; removes nothing
+        until a paste) · Copy Super+C · Paste Super+V · Move to Here
+        Option+Super+V · Select All Super+A
+View    as Icons Super+1 · as List Super+2 · as Columns Super+3 · as Gallery
+        Super+4 · Sort By ▸ · Clean Up (free placement) · Group By ▸ (later) ·
+        Show Hidden Files Super+Shift+. · Show View Options Super+J ·
+        Preview Pane Super+Shift+P (later) · Sidebar Option+Super+S ·
+        Path Bar Option+Super+P · Status Bar Super+/
+Go      Back Super+[ · Forward Super+] · Enclosing Folder Super+Up · Recents
+        Shift+Super+F · Computer Shift+Super+C · Home Shift+Super+H · Documents
+        Shift+Super+O · Downloads Option+Super+L · Desktop Shift+Super+D · Go to
+        Folder Shift+Super+G · Connect to Server Super+K (later)
+Window  Minimize Super+M · Zoom · Show Tab Bar · Bring All to Front · [tabs]
 Help    Files Help
 ```
 
@@ -905,7 +905,7 @@ Targets, enforced in the dev loop rather than discovered in the polish phase
 
 ## MVP scope
 
-This is the **design target** for the first Finder-equivalent release. The
+This is the **design target** for the first file manager release. The
 current tree ships a subset; see "Current status (2026-11)" above and
 [STATUS.md](STATUS.md) G-04. Do not read this list as a shipped-feature list.
 
@@ -931,8 +931,8 @@ Files
 Later
 ├── column view
 ├── gallery view
-├── Quick Look
-├── preview pane (Cmd+Shift+P)
+├── Preview
+├── preview pane (Super+Shift+P)
 ├── tags (xattr + registry)
 ├── thumbnails beyond local images (archives/remote; see ADR 0190)
 ├── SMB/SFTP shares (GVfs — never ours)

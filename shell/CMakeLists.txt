@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Dragonfruit shell components (menu bar, Dock, Control Center,
+# Dragonfruit shell components (menu bar, Dock, Quick Settings,
 # notifications, screenshot UI). Each becomes part of the shell process in
 # T-09/T-10 and friends; this scaffold wires the modules into the build.
 

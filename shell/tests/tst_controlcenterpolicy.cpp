@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// T-11.3b / T-15.5b: the pure Control Center tile -> owner mapping. The Focus
-// and dark-mode toggle spellings, and the Mission Control / hot corners trigger
+// T-11.3b / T-15.5b: the pure Quick Settings tile -> owner mapping. The Focus
+// and dark-mode toggle spellings, and the Overview / hot corners trigger
 // summary the shell projects from settingsd values. No bus, Wayland, or QML.
 #include <QtTest>
 

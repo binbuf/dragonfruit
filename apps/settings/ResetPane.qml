@@ -10,7 +10,7 @@ import Dragonfruit.Settings
 // untouched. The confirmation is explicit and destructive-styled.
 //
 // T270: the macOS Transfer or Reset structure. Transfer is a delegated row (no
-// migration assistant ships), Reset is the destructive action with a typed
+// migration tool ships), Reset is the destructive action with a typed
 // confirmation, and Erase All Content is omitted with a Linux reason instead of
 // pretending to be a sealed-system erase.
 Item {
@@ -52,7 +52,7 @@ Item {
             SettingsRow {
                 width: parent.width
                 label: qsTr("Transfer data, settings, and applications")
-                description: qsTr("No migration assistant is installed. Copy your files from your home folder to move them.")
+                description: qsTr("No migration tool is installed. Copy your files from your home folder to move them.")
                 showSeparator: false
                 controlData: Button {
                     objectName: "resetTransferButton"

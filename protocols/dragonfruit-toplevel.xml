@@ -7,14 +7,14 @@
   dragonfruit lockstep-version: 1
 
   This file ships with the compositor and shell as a lockstep set
-  (docs/ipc-versioning.md). Additive-only within a stable release.
+  (docs/design/ipc-versioning.md). Additive-only within a stable release.
 
   Follows the precedents of wlr-foreign-toplevel-management (per-window
   handles, title/app_id/state/done) and wlr-output-management (per-output
   handles with mode/scale/transform), extended with workspace enumeration
-  and lifecycle, Mission Control control, app-switcher state, focus and
+  and lifecycle, Overview control, app-switcher state, focus and
   launch-attention broadcasts, and hot-corner trigger events. Deviations
-  from the wlr precedents are documented in docs/private-protocols.md.
+  from the wlr precedents are documented in docs/design/private-protocols.md.
 
   Event ordering is scene-consistent (FR-2): a `toplevel`/`workspace`/
   `output` announcement is followed by that object's initial properties and
@@ -54,7 +54,7 @@
     <request name="exit_mission_control"/>
 
     <request name="select_overview_toplevel">
-      <description summary="Mission Control selection: focus this window's Space and raise it"/>
+      <description summary="Overview selection: focus this window's Space and raise it"/>
       <arg name="toplevel" type="object" interface="df_toplevel"/>
     </request>
 
@@ -116,7 +116,7 @@
     </event>
 
     <event name="overview_changed">
-      <description summary="Mission Control entered/left; selection is NULL when none"/>
+      <description summary="Overview entered/left; selection is NULL when none"/>
       <arg name="active" type="uint"/>
       <arg name="selected" type="object" interface="df_toplevel" allow-null="true"/>
     </event>
@@ -163,7 +163,7 @@
     <request name="set_reduced_motion" since="3">
       <description summary="set the compositor's reduced-motion policy">
         The shell mirrors `accessibility.reduceMotion` here so every
-        compositor-driven transition (workspace slide, Mission Control open/
+        compositor-driven transition (workspace slide, Overview open/
         close, Desktop Reveal) takes the single-step path while still
         applying the same commit rule (T-11 FR-9). Additive in v3.
       </description>

@@ -23,7 +23,7 @@
 //!   shows visible and inert with the message.
 //!
 //! [ADR 0067]: ../../../docs/design/adr/0067-session-lock-protocol-and-ui.md
-//! [ADR 0122]: ../../../docs/design/adr/0122-tahoe-interface-language-across-chrome.md
+//! [ADR 0122]: ../../../docs/design/adr/0122-reference-interface-language-across-chrome.md
 
 use dragonfruit_session::IdlePolicy;
 use dragonfruit_system_adapters::AdapterError;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the Users and Groups half of the host (T-15.11b): the view
-//! the Settings pane and Control Center tile decode, plus the eight explicit
+//! the Settings pane and Quick Settings tile decode, plus the eight explicit
 //! writes applied once through the adapter.
 
 use dragonfruit_account_adapter::{

@@ -10,7 +10,7 @@
 ## Context
 
 The 2026-11-14 review found the Desktop & Dock page only partly matched the
-macOS Tahoe row inventory, the Overview pane had no workspace or Mission
+the reference design row inventory, the Overview pane had no workspace or Mission
 Control rows, hot corners had no modifiers, and the executable map advertised
 rows the pane never rendered. T242 (Stage/tiling) and T245b (desktop
 items/widgets) are separate tasks and have not landed, so their runtime cannot
@@ -24,9 +24,9 @@ contract that stays truthful when a runtime is absent.
 ## Decision
 
 - **One pane owns the macOS page, one owns the Linux surface.** Desktop & Dock
-  renders the Dock, Desktop & Stage, Widgets, Windows, Mission Control links,
+  renders the Dock, Desktop & Stage, Widgets, Windows, Overview links,
   the global-menu row, and the default-browser row. Overview keeps its
-  `mission-control` id and renders Mission Control, workspaces, gestures, Hot
+  `mission-control` id and renders Overview, workspaces, gestures, Hot
   Corners, and Shortcuts.
 - **A missing runtime is disabled with a user-facing reason.** Stage, recent
   apps, windows-from-an-app, widgets, tiling, and the non-tiling Windows rows

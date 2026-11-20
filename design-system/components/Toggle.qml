@@ -11,7 +11,7 @@ Item {
     property string text: ""
     property string description: ""
     // Optional screen-reader name when the visible label lives elsewhere (the
-    // Control Center tiles draw their own title next to the switch, T-11.3b).
+    // Quick Settings tiles draw their own title next to the switch, T-11.3b).
     property string accessibleName: ""
     // T266: the owning `SettingsRow` fills this when the pane did not set an
     // accessible name, so a switch inside a labelled row is never unnamed.

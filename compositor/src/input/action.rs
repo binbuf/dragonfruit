@@ -5,7 +5,7 @@
 //!
 //! Keyboard shortcuts, trackpad gestures, and hot corners all resolve to
 //! the same [`InputAction`] and are dispatched through the same path, so a
-//! Mission Control trigger behaves identically no matter how it started
+//! Overview trigger behaves identically no matter how it started
 //! ([03-workspaces.md](../../docs/design/03-workspaces.md)). The shell
 //! consumes the resulting event stream over the private protocol (T-07);
 //! until that lands, [`super::dispatch::InputDispatch`] is the single
@@ -14,7 +14,7 @@
 /// A compositor-level action produced by any input trigger.
 ///
 /// Actions marked "progress-driven" are continuous 0→1 transitions (the
-/// workspace switch and Mission Control / Desktop Reveal pipelines); the
+/// workspace switch and Overview / Desktop Reveal pipelines); the
 /// rest are discrete. Both kinds flow through the same dispatch path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InputAction {
@@ -24,7 +24,7 @@ pub enum InputAction {
     WorkspacePrev,
     /// Activate a Space by index.
     WorkspaceActivate(usize),
-    /// Toggle the Mission Control overview.
+    /// Toggle the Overview overview.
     MissionControl,
     /// Open the Cmd-Tab app switcher.
     AppSwitcher,
@@ -34,7 +34,7 @@ pub enum InputAction {
     Screenshot,
     /// Take a region screenshot (portal capture path; Cmd+Shift+4).
     ScreenshotRegion,
-    /// Open the notification center.
+    /// Open the Notifications.
     NotificationCenter,
     /// Reveal the desktop background.
     DesktopReveal,
@@ -51,7 +51,7 @@ pub enum InputAction {
     /// Toggle the Dock's auto-hide (T-10 section 15). The shell owns the
     /// setting; the compositor only routes the action.
     ToggleDock,
-    /// Toggle the Control Center panel (T-11.3a). The shell owns the panel;
+    /// Toggle the Quick Settings panel (T-11.3a). The shell owns the panel;
     /// the compositor only routes the action.
     ControlCenter,
     /// Toggle the Applications drawer (T-19.2). The shell owns the launcher;

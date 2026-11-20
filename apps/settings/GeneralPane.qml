@@ -328,7 +328,7 @@ Item {
                     onDisclosureClicked: root.openSubPane("backup")
                 }
 
-                // Device Management is deliberately not rendered: this build
+                // device management is deliberately not rendered: this build
                 // has no Linux MDM/profile owner. `SettingsMap` records the
                 // omission and its reason.
 

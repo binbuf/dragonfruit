@@ -14,7 +14,7 @@ knows about, alphabetically, filter by freedesktop category and a search query,
 render a fixed-size tile grid, and launch through the same path as the Dock.
 
 Three decisions have to be made once, because later tasks (the deferred
-Spotlight-equivalent search pane) will build on them:
+Search-equivalent search pane) will build on them:
 
 1. Where the filtering/category mapping lives.
 2. How the overlay surface is created and toggled.
@@ -74,7 +74,7 @@ Spotlight-equivalent search pane) will build on them:
 
 - The category mapping and the list rules are headless-unit-tested in
   `tst_dockcore`; the overlay's tiles, filters, launch signal, and absence state
-  are QML-tested in `tst_appsdrawer`. The deferred Spotlight-equivalent search
+  are QML-tested in `tst_appsdrawer`. The deferred Search-equivalent search
   pane can reuse the helper's query predicate but must not replace the drawer's
   local filtering.
 - Adding a pill is one row in `kCategoryMap` plus one entry each in
@@ -83,7 +83,7 @@ Spotlight-equivalent search pane) will build on them:
 - The drawer's scene coordinates equal output coordinates (the surface maps 1:1
   to the output), which is why the recorded tile rect can feed
   `set_launch_origin` unchanged.
-- The grid follows the measured Spotlight Apps geometry: 115×92 pt cells,
+- The grid follows the measured Search Apps geometry: 115×92 pt cells,
   77 pt icons, an 18 pt single-line label, a 115 pt column pitch and a 102 pt
   row pitch. A column count capped at seven and a viewport capped at five rows
   keep wide outputs at seven per row; narrow outputs wrap to fewer instead of
@@ -92,7 +92,7 @@ Spotlight-equivalent search pane) will build on them:
 - The card is a translucent frosted plate (0.72 alpha on the sampled path, a
   0.86 milky plate on the fallback path) with a 28 pt radius, a soft floating
   shadow and a subtle top-to-bottom light falloff. Its top row is the measured
-  Spotlight chrome: a 34 pt Back button, a 58 pt rounded search field, and a
+  Search chrome: a 34 pt Back button, a 58 pt rounded search field, and a
   34 pt More button (Refresh Applications / Close). The category row is a set
   of 26 pt translucent capsule chips rather than a segmented group. The card
   hugs the content with `panelPadding` (20 pt) on the sides and

@@ -78,7 +78,7 @@ fetch instead of bundling.
 
 - The provider is a new restartable service with a new permissively-licensed
   HTTP dependency; `df-ipc` stays dependency-free and no copyleft dependency is
-  added ([licensing.md](../../licensing.md)).
+  added ([licensing.md](../licensing.md)).
 - The compositor and `df_workspace.set_wallpaper` are unchanged: the provider
   produces a local path, exactly like the portal chooser does today.
 - The pane gains three source rows (Featured / Built-in / Custom) and a

@@ -1165,7 +1165,7 @@ void GpuChromeFrameProducer::releaseGpu()
     // `QQuickRenderControl::invalidate()` tears down the scene graph/render
     // target state; calling `QQuickWindow::setRenderTarget()` afterwards
     // dereferences freed state and segfaults during shell teardown (T192b's
-    // full-rail Mission Control finding, reproduced by a failed start).
+    // full-rail Overview finding, reproduced by a failed start).
     for (auto viewIt = m_views.begin(); viewIt != m_views.end(); ++viewIt) {
         ViewState &state = viewIt.value();
         // Drop retained fences before their context goes away.

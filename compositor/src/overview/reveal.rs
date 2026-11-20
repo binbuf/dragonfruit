@@ -3,7 +3,7 @@
 //!
 //! Desktop Reveal (Ctrl+Down) is not a second transition: it is the same
 //! overview pipeline ([`crate::overview::OverviewMachine`]) and the same
-//! render-time scene transform as Mission Control and the workspace slide. The
+//! render-time scene transform as Overview and the workspace slide. The
 //! only thing it contributes is the geometry: at progress `1` each live window
 //! has slid out of its **nearest horizontal edge**, exposing the compositor-
 //! drawn wallpaper ([04-shell.md](../../../docs/design/04-shell.md)).

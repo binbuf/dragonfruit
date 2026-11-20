@@ -2,7 +2,7 @@
 import QtQuick
 import Dragonfruit
 
-// The Notification Center widget stack (T234).
+// Notifications widget stack (T234).
 //
 // Widgets live below the notification stack, inside the Center's measured
 // lower-panel material band. The live panel size is the measured 164 pt

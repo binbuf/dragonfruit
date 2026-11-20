@@ -30,7 +30,7 @@ Lock Screen pane's power buttons had no consumer.
    `badge`), served in `FocusPolicy()` as `appPreferences` and written through
    `SetAppPreference(app, style, sound, badge, allowed)`. The service enforces
    the mute and `style = none` in its admission rule; the shell reads the same
-   view. The Notifications pane's per-app sheet writes one preference per
+   view. Notifications pane's per-app sheet writes one preference per
    interaction and re-seeds from the pushed view. The Focus allow list stays a
    separate concept: it only governs admission while Focus/DND is active.
 3. **The Focus schedule is a settingsd policy with one shell consumer.**

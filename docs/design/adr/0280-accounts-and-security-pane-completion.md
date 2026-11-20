@@ -53,7 +53,7 @@ sign-in surface.
    only the group rows.
 
 5. **Online Accounts is always visible.** With GOA absent the pane keeps its
-   header, states "Internet accounts are not installed", and offers a delegate
+   header, states "Online accounts are not installed", and offers a delegate
    action naming the distribution package. With GOA present, Details and Sign
    in again project the service (`EnsureCredentials`); Settings never
    implements OAuth or stores a credential.

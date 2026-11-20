@@ -66,7 +66,7 @@ pub const TOKEN_BYTES: usize = 32;
 /// A trusted session process role. Tokens are minted per role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TrustedRole {
-    /// The Qt Quick shell: menu bar, Dock, Control Center, OSD, overview.
+    /// The Qt Quick shell: menu bar, Dock, Quick Settings, OSD, overview.
     Shell,
     /// The Files desktop-icon surface (T-19, later).
     DesktopIcons,

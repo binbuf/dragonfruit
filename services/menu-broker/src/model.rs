@@ -267,7 +267,7 @@ pub struct HideVerbs {
 }
 
 /// The hello-world app name when nothing is focused: the desktop is Files
-/// (the macOS "Finder owns the desktop" model).
+/// (the macOS "Files owns the desktop" model).
 pub const DESKTOP_APP_NAME: &str = "Files";
 
 /// A reverse-DNS app id's human name: the final segment, leading character

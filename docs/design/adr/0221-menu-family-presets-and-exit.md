@@ -48,7 +48,7 @@ own their context menus in app processes with no compositor backdrop.
    resolve it.
 7. **Bluetooth joins the status row.** The previously hidden slot reads the
    existing bridge-host Bluetooth view, honours `menu.control.bluetooth`, and
-   raises the same power/device/settings actions as the Control Center tile.
+   raises the same power/device/settings actions as the Quick Settings tile.
    Absence hides it; error/read-only states stay visible but inert.
 
 ## Consequences

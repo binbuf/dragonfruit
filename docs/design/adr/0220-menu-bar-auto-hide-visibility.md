@@ -11,7 +11,7 @@
 ## Context
 
 `menu.autoHide` (`never`/`always`/`full-screen`) was stored policy: the Menu
-Bar pane wrote it and the Control Center tile projected it, but the shell
+Bar pane wrote it and the Quick Settings tile projected it, but the shell
 chrome surface stayed pinned. ADR 0210 then hid every persistent `top` surface
 over a fullscreen client, so a `never` preference could not be honored and a
 `full-screen` reveal had no path. The menu bar is one all-output layer surface,

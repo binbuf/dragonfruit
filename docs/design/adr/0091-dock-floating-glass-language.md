@@ -1,4 +1,4 @@
-# 0091 — The Dock adopts the macOS Tahoe floating-glass language (original geometry)
+# 0091 — The Dock adopts the reference floating-glass language (original geometry)
 
 ## Status
 
@@ -9,7 +9,7 @@ accepted
 The 2026-09 Dock review fixed the plate as a **floating** surface
 ([ADR 0089](0089-dock-plate-geometry-and-live-panel-rect.md)) and the product
 direction is explicit: the Dock should match the design language, aesthetics,
-and interaction model of the macOS Tahoe Dock. Two constraints bound this:
+and interaction model of the reference Dock. Two constraints bound this:
 
 - **Original assets only** ([14-risks.md](../14-risks.md)): reproduce the
   interaction model and the visual language, never Apple's bitmap output. Local
@@ -23,10 +23,10 @@ and interaction model of the macOS Tahoe Dock. Two constraints bound this:
 
 ## Decision
 
-- **Tahoe is the interaction/visual reference.** The Dock's resting geometry,
+- **The reference is the interaction and visual guide.** The Dock's resting geometry,
   spacing, glass treatment, icon treatment, hover affordances, running
-  indicator, divider, Trash, and motion are derived from local Tahoe
-  reference captures (measured, then expressed as tokens), never copied as
+  indicator, divider, Trash, and motion are derived from local reference
+  captures (measured, then expressed as tokens), never copied as
   assets.
 - **The plate is a floating glass panel.** A continuous rounded rect with a
   translucent fill, a bright inner rim/highlight, a hairline border, and a
@@ -55,8 +55,8 @@ and interaction model of the macOS Tahoe Dock. Two constraints bound this:
   `Theme.qml`; `shell/dock/*.qml` stays token-only.
 - The Dock is not a design-system gallery component, so visual verification is
   pixel tests plus committed nested/DRM captures, not a golden.
-- A real liquid-glass refraction pass remains a future material-track item;
+- A real Glass refraction pass remains a future material-track item;
   this decision ships the best token-driven approximation and says so. (Now
-  scheduled by [ADR 0182](0182-tahoe-liquid-glass-material-pass.md).)
+  scheduled by [ADR 0182](0182-glass-material-pass.md).)
 - The Linux-specific additions (Add Application picker, drop identity) stay;
   they extend the language rather than replace it.

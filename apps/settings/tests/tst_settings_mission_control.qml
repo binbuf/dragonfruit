@@ -4,7 +4,7 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Mission Control & Hot Corners-pane tests (T-15.5b). Headless with
+// Overview & Hot Corners-pane tests (T-15.5b). Headless with
 // `DF_SETTINGS_FIXTURE` (see CMakeLists.txt), so the `Settings` singleton
 // serves deterministic in-process settings with no bus. The cases cover the
 // four hot-corner assignments and the gesture rows round-tripping live, an
@@ -76,10 +76,10 @@ Item {
             pane.topLeftSelect.activateIndex(0); // none
             compare(Settings.values["overview.hotCornerTopLeft"], "none");
 
-            pane.topRightSelect.activateIndex(2); // Notification Center
+            pane.topRightSelect.activateIndex(2); // Notifications
             compare(Settings.values["overview.hotCornerTopRight"], "notification-center");
 
-            pane.bottomLeftSelect.activateIndex(1); // Mission Control
+            pane.bottomLeftSelect.activateIndex(1); // Overview
             compare(Settings.values["overview.hotCornerBottomLeft"], "mission-control");
 
             pane.bottomRightSelect.activateIndex(3); // Desktop

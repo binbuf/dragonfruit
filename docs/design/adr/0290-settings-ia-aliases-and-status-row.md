@@ -13,7 +13,7 @@ T285 replaces the 30-pane System Settings catalog with the mockup's 27-entry
 sidebar. Three ids leave the top-level catalog (`biometrics`,
 `mission-control`, `control-center`), two ids move under an existing pane
 (Overview → Desktop & Dock → Workspace Overview, Quick Settings → Menu Bar →
-Menu Bar Controls), and the macOS *Internet Accounts* label is kept as the
+Menu Bar Controls), and the macOS *Online Accounts* label is kept as the
 generic **Online Accounts** title with an `internet-accounts` alias. The
 mockup also puts a provider-backed Software Update status row at the top of the
 sidebar.

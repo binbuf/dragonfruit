@@ -6,7 +6,7 @@
 
 accepted — amends [0162](0162-dock-hover-zoom-profile-and-label-tail.md) and
 [0186](0186-dock-reference-retune-profile-fit-and-states.md) for the controlled
-`macos-liquid-glass` motion capture.
+`macos-Glass` motion capture.
 
 ## Context
 

@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Bluetooth pane (T-15.1b; T271 completion; T288 visual parity).
 //
-// The pane and the Control Center tile are one functional unit: both read the
+// The pane and the Quick Settings tile are one functional unit: both read the
 // same BlueZ adapter through the bridge host, and the explicit writes (power,
 // discovery, pair, connect, forget) go through the `Settings` singleton to the
 // adapter — never to D-Bus from QML. Opening the pane asks for a re-read and

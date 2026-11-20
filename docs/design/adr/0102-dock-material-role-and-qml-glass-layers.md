@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-ADR [0091](0091-dock-tahoe-floating-glass-language.md) fixed the Tahoe
+ADR [0091](0091-dock-floating-glass-language.md) fixed the reference
 floating-glass language for the Dock, and ADR
 [0013](0013-backdrop-blur-pass.md)/[0015](0015-material-degrade-tiers.md) built
 the flat layered frosted backdrop. Until T-14.7j, however, the compositor chose
@@ -51,6 +51,6 @@ be tuned without moving the menu bar, and the QML plate was a single flat
   draws the themed artwork into a `Canvas` clipped to the token squircle, and
   `component.dock.icon.inset` is now 0 so the artwork reaches the tile edge.
   A `Canvas` clip is executed by the headless software scene graph, so the
-  pixel tests observe the masked corners; true liquid-glass refraction (a
+  pixel tests observe the masked corners; true Glass refraction (a
   texture sampler) remains deferred (ADR 0091, `14-risks.md`). See
   [ADR 0113](0113-dock-icon-squircle-canvas-clip.md) for the tier behavior.

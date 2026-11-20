@@ -6,7 +6,7 @@ proposed — defines Track 22 / v0.2.0.
 
 ## Context
 
-The T-20/T-21 and liquid-glass work defined the material and presentation path.
+The T-20/T-21 and Glass work defined the material and presentation path.
 The remaining product gap is behavioural: the Dock click tree, menu bar and
 extras, Overview/workspaces, app switcher, Search, Applications drawer, System
 Settings, animations, HUDs, and the Linux ownership of every setting. Without a
@@ -25,8 +25,8 @@ widens without becoming coherent.
   task may not invent a geometry, timing, label, or state.
 - Every surface has a keyboard path, an AT-SPI path, a reduced-motion path, and
   an absence path.
-- Apple account services (iCloud, Siri, Apple Intelligence, Screen Time,
-  Wallet, Game Center, Find My) are out of scope. AirDrop/Continuity
+- reference account services (cloud account, voice assistant, on-device AI, usage limits,
+  Wallet, game services, device location) are out of scope. Nearby Transfer and device continuity
   is omitted by default; optional local-sharing integrations are evaluated
   separately.
 - A checked task is agent-done, not human-signed-off. Human sign-off is batched

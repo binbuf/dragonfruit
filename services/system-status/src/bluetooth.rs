@@ -28,7 +28,7 @@ use crate::shared::computer_name;
 const KIND_BLUETOOTH: &str = "bluetooth";
 
 /// The bridge host for the Bluetooth adapter: one state path and the explicit
-/// writes the Settings pane and Control Center tile offer.
+/// writes the Settings pane and Quick Settings tile offer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BluetoothHost<B> {
     adapter: BluetoothAdapter<B>,

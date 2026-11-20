@@ -7,7 +7,7 @@ import Dragonfruit.ControlCenter
 
 // T227 headless visual check (not part of ctest): the Appearance completion,
 // Quick Settings customization, Search, Screen Saver, Desktop & Stage, the
-// Displays advanced sheet, and the live Control Center panel with the
+// Displays advanced sheet, and the live Quick Settings panel with the
 // customized module list. Run through
 // `scripts/capture-t227-settings-panes.sh`.
 Item {

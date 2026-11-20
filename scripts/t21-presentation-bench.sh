@@ -8,7 +8,7 @@
 # benchmark scenario set:
 #
 #   idle 60 s, Dock sweep 10 s, menu-bar open/close, Dock popover open/close,
-#   app launch + window appear, Mission Control with 10+ windows, fullscreen
+#   app launch + window appear, Overview with 10+ windows, fullscreen
 #
 # plus a refresh matrix (60/120/240 Hz overrides; the main run is 144 Hz) and
 # a material-tier matrix (Full/Reduced/Minimal). Every scenario is bracketed by
@@ -44,7 +44,7 @@ SKIP_TIERS="${SKIP_TIERS:-0}"
 # Keep the overview surface on the pooled-shm fallback so every run carries a
 # visible, counted fallback row next to the dmabuf rows. T192c fixed the
 # T192b full-rail teardown crash, so `CHROME_GPU_SURFACES=all` is now a valid
-# verification run; it still falls back to shm for Mission Control on this
+# verification run; it still falls back to shm for Overview on this
 # host, which is why the measured set uses the explicit surface list.
 CHROME_GPU_SURFACES="${CHROME_GPU_SURFACES:-dock,dock-popup,menubar,menubar-popup}"
 SCRATCH="${SCRATCH:-$(mktemp -d "${TMPDIR:-/tmp}/dragonfruit-t21-bench.XXXXXX")}"
@@ -379,14 +379,14 @@ bytes are counted in the shm column and are never averaged into a dmabuf row.
 
 ## T192b full-rail teardown finding (fixed in T192c)
 
-T192b recorded a shell segfault at Mission Control teardown when the overview
+T192b recorded a shell segfault at Overview teardown when the overview
 surface was on the GPU rail. The core backtrace ran through
 \`GpuChromeFrameProducer::destroySlotResources\` and
 \`QQuickRenderControl::invalidate()\`, and the shell also deleted windows that
 the producers own. T192c fixed the producer/window ownership and the
 invalidate ordering. A full-rail verification run with the overview included
 (\`CHROME_GPU_SURFACES=dock,dock-popup,menubar,menubar-popup,overview\`,
-10-window Mission Control) completes and tears down cleanly with zero shm
+10-window Overview) completes and tears down cleanly with zero shm
 commits and zero copy bytes. The measured run below still keeps the overview
 on the shm fallback so the fallback rate stays visible next to the dmabuf
 rows; the full-rail run is the separate zero-fallback verification, recorded
@@ -394,7 +394,7 @@ in \`docs/captures/t21-presentation-bench-fullrail.txt\`.
 
 ## Live visual check
 
-The nested Dock-sweep and Mission Control stills are captured after the
+The nested Dock-sweep and Overview stills are captured after the
 measured scenarios through the trusted compositor screenshot path:
 
 - \`docs/captures/t21-presentation-bench-dock.png\`

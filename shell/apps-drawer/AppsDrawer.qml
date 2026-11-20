@@ -157,7 +157,7 @@ Item {
     readonly property real panelPadding: Theme.controls.appsDrawer.panelPadding
     readonly property real panelPaddingV:
         Theme.controls.appsDrawer.panelPaddingVertical
-    // Measured Spotlight Apps cells: 115 pt wide, 77 pt icon, 18 pt label,
+    // Measured Search Apps cells: 115 pt wide, 77 pt icon, 18 pt label,
     // 102 pt row pitch. The label is a single line under the artwork.
     readonly property real tileWidth: Theme.controls.appsDrawer.tileWidth
     readonly property real tileHeight: Theme.controls.appsDrawer.tileHeight
@@ -192,7 +192,7 @@ Item {
     // output. The column count never follows the filtered result count: a
     // search that narrows the grid must not reflow the card horizontally on
     // every keystroke. Results stay on the measured 115 pt pitch and the card
-    // keeps one stable width, exactly like the reference Spotlight Apps grid.
+    // keeps one stable width, exactly like the reference Search Apps grid.
     readonly property int usedColumns: Math.max(1, Math.min(
         root.maxColumns,
         Math.floor((root.gridAvailableWidth + root.gridGap)
@@ -311,7 +311,7 @@ Item {
     }
 
     function launchAt(index) {
-        // Return on a filtered list opens the top hit, the Spotlight/Launchpad
+        // Return on a filtered list opens the top hit, the Search/Applications
         // behaviour; an explicit arrow selection always wins.
         if (index < 0 && root.query.trim().length > 0 && root.visibleApps.length > 0)
             index = 0;
@@ -484,7 +484,7 @@ Item {
         width: root.panelWidth
         height: Math.min(root.panelNaturalHeight, root.panelMaxHeight)
         radius: Theme.controls.appsDrawer.panelRadius
-        // A translucent frosted fill: the compositor's liquid-glass material
+        // A translucent frosted fill: the compositor's Glass material
         // (blur + edge lens + specular rim + adaptive tint, T-20.2) and the
         // scrim/desktop ghost through, while the children (search, pills,
         // tiles) stay opaque because the opacity is in the fill, not on the
@@ -594,7 +594,7 @@ Item {
             }
         }
 
-        // The measured Spotlight Apps top row: a Back button, the large
+        // The measured Search Apps top row: a Back button, the large
         // rounded search field, and the More button.
         Item {
             id: searchRow
@@ -661,7 +661,7 @@ Item {
                 placeholderText: qsTr("Applications")
                 onTextChanged: root.query = text
                 // Return launches the selected tile from the text field; Escape
-                // dismisses the launcher outright (Launchpad behaviour), and
+                // dismisses the launcher outright (Applications behaviour), and
                 // the next open starts with an empty search.
                 onAccepted: root.launchAt(root.currentIndex)
                 onEscapePressed: {

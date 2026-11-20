@@ -175,7 +175,7 @@ QtObject {
     //   Desktop:      General, Accessibility, Appearance, Desktop & Dock,
     //                 Displays, Menu Bar, Search, Wallpaper, Screen Saver
     //   Input:        Notifications, Sound, Focus, Lock Screen,
-    //                 Privacy & Security, Users & Groups, Internet Accounts,
+    //                 Privacy & Security, Users & Groups, Online Accounts,
     //                 Keyboard, Mouse, Trackpad, Game Controllers,
     //                 Printers & Scanners
     //

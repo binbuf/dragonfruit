@@ -6,12 +6,12 @@
   [04-shell.md](../04-shell.md), [08-settings.md](../08-settings.md),
   ADR [0126](0126-mission-control-hot-corners-adapter.md),
   ADR [0132](0132-lock-screen-policy-adapter.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md)
+  ADR [0122](0122-reference-interface-language-across-chrome.md)
 
 ## Context
 
 T-15.9 splits the Menu Bar configuration surface into an adapter (T-15.9a) and
-a Settings pane plus Control Center tile (T-15.9b). Menu Bar configuration has
+a Settings pane plus Quick Settings tile (T-15.9b). Menu Bar configuration has
 **no external daemon**: the shell's `MenuBar`
 (`shell/menubar/MenuBar.qml`) owns the chrome, the status-item model and the
 clock, the menu-broker (`services/menu-broker`) resolves the focused app's
@@ -62,8 +62,8 @@ Rejected: placing the adapter in `apps/settings` or the shell (the T-15 track
 is the services layer, and T-15.5b/T-15.8b show the pane stays shell-native
 plus settingsd keys); rendering the bar or resolving the global menu in the
 service (forbidden by the task and a fork of `MenuBar`/`menu-broker`);
-modelling the Apple-only controls (AirDrop, Screen Mirroring) and the deferred
-Search/Spotlight entry, or the richer `Clock Options...` rows the shell clock
+modelling the reference-only controls (Nearby Transfer, Screen Casting) and the deferred
+Search/Search entry, or the richer `Clock Options...` rows the shell clock
 does not render yet (they would ship as dead controls).
 
 ## Consequences
@@ -75,7 +75,7 @@ does not render yet (they would ship as dead controls).
   by `make e2e` (`cargo test -p dragonfruit-menubar-adapter`).
 - The concrete bridge source is the shell's menu-bar client, which is C++:
   T-15.9b wires the pane and tile (shell-native plus settingsd keys, per the
-  Mission Control and Lock Screen precedents) and declares the `menu.*` /
+  Overview and Lock Screen precedents) and declares the `menu.*` /
   clock keys this adapter names. Until then the live path is the seam the
   bridge fills; the mock is the tested path.
 - A later task that wants to *apply* a mode or a toggle must write the settings

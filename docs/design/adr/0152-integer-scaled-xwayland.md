@@ -6,7 +6,7 @@ Accepted (T-16.3a).
 
 ## Context
 
-`docs/xwayland-scaling.md` fixes the fractional-scaling policy: Xwayland is
+`docs/design/xwayland-scaling.md` fixes the fractional-scaling policy: Xwayland is
 integer-scaled at `ceil(primary_output_scale)`, and the compositor applies a
 per-surface `wp_viewport` downscale (T-16.3b). The policy assumed Xwayland's
 integer `-scale` option. That option does not exist upstream, and `-hidpi` is
@@ -62,4 +62,4 @@ based on the assumption that Xwayland renders an integer-scaled buffer. In
 practice Xwayland derives its root window from the output's logical size and
 renders at the logical size, so a fractional output scale composites X11
 surfaces at `logical * scale` physical pixels (the compositor does not
-double-scale them). See 0153 and the updated `docs/xwayland-scaling.md`.
+double-scale them). See 0153 and the updated `docs/design/xwayland-scaling.md`.

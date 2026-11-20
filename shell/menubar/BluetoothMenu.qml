@@ -7,7 +7,7 @@ pragma ComponentBehavior: Bound
 // paired devices, discovery and nearby devices, and the Settings link, drawn
 // in the design-system status popup. The model is the bridge host's
 // `bluetooth` view (services/system-status). The popover never talks to BlueZ;
-// it raises the same explicit actions as the Control Center tile and the shell
+// it raises the same explicit actions as the Quick Settings tile and the shell
 // forwards them to the existing bridge-host slots.
 //
 // Absence and read-only are the adapter's contract: an absent daemon hides the

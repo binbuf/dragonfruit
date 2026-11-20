@@ -17,7 +17,7 @@
 #   resize          synthetic bottom-right resize of the first floating window
 #   video           ffplay testsrc2 at 60 fps in an Xwayland window
 #   focus           click each window's titlebar in turn
-#   mission-control Ctrl+Up Mission Control with pointer motion
+#   mission-control Ctrl+Up Overview with pointer motion
 #   scheme-pulse    alternating light/dark every 100 ms. This is a proxy for an
 #                   animated wallpaper: the compositor has no animated wallpaper
 #                   source yet, and the scheme change exercises the same

@@ -73,7 +73,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare t238-dock-popover-ab t238-dock-popover-ab-native t238-material-regions t238-material-workloads t238-shadow-capture t238-decoration-matrix t238-nested-responsiveness t238-presenter-lifecycle t238-native-acceptance t238-wake-swap-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
-        files-capture t230d-files-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
+        files-capture t230d-files-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-glass-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -1031,7 +1031,7 @@ dock-magnify-sweep-capture: build
 
 # T199: fit the controlled reference magnification/temporal inputs and check
 # the generated Dock motion tokens against the measured anchors. Pure Python;
-# needs the sibling `macos-liquid-glass` reference checkout.
+# needs the local reference checkout.
 dock-motion-calibration:
 	python3 scripts/t199-dock-motion.py check
 	python3 scripts/t199-dock-motion.py report
@@ -1149,12 +1149,12 @@ dock-overflow-capture: build
 dock-dividers-capture: build
 	bash scripts/capture-dock-dividers.sh
 
-# T-14.7j: the Dock Tahoe visual language stills (resting/hovered/magnified/
+# T-14.7j: the Dock reference visual language stills (resting/hovered/magnified/
 # pressed in light and dark, plus the Minimal tier) stacked into
-# docs/captures/t14-dock-tahoe-{light,dark,reduced}.png. Needs a host Wayland
+# docs/captures/t14-dock-glass-{light,dark,reduced}.png. Needs a host Wayland
 # session, `spectacle`, Pillow and the built tree.
-dock-tahoe-capture: build
-	bash scripts/capture-dock-tahoe.sh
+dock-glass-capture: build
+	bash scripts/capture-dock-glass.sh
 
 # T-14.7z: the Dock plate corner close-ups and the mid-magnification strip
 # (docs/captures/t14-dock-plate-corners-{light,dark}.png and

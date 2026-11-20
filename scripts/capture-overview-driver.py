@@ -3,7 +3,7 @@
 """Drive the live nested T-05 overview with synthetic input and capture stills.
 
 This is the machine half of the T-05.6 capture (docs/design/tracks/05-loop-v3-
-mission-control-live.md): it performs the Mission Control walkthrough on the
+mission-control-live.md): it performs the Overview walkthrough on the
 *running* nested session — open on the live surfaces, Desktop Reveal, slide a
 Space's wallpaper, and the reduced-motion variant — through the real compositor
 input path (the T-03 synthetic-input harness, installed on the nested backend
@@ -242,7 +242,7 @@ def run(args):
             time.sleep(0.05)
         return False
 
-    # --- 1. Mission Control open: the live surfaces scale into the grid ----
+    # --- 1. Overview open: the live surfaces scale into the grid ----
     # A four-finger vertical swipe is the real gesture; the discrete Ctrl+Up
     # shares the same one pipeline (T-05.1a).
     synth.swipe(4, 0, -100, 2)

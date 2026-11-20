@@ -11,7 +11,7 @@
 ## Context
 
 T-15.15 splits the macOS Network surface into an adapter (T-15.15a) and a
-Settings pane plus Control Center tile (T-15.15b). The task is scoped to
+Settings pane plus Quick Settings tile (T-15.15b). The task is scoped to
 **Network advanced / VPN**: the VPN connections the reference pane nests behind
 its service rows. [07-system-integration.md] routes networking to
 **NetworkManager** — "device/access-point enumeration; activate, deactivate,
@@ -68,7 +68,7 @@ daemon); inventing VPN providers NetworkManager does not own.
 - `DbusVpn` is the live `VpnSource`; the fixture shape is pinned by
   `tests/fixtures/nm-vpn.json` and `vpn_connection_from_settings` is unit-tested
   against constructed settings maps.
-- T-15.15b adds the Network pane and Control Center tile. It projects this
+- T-15.15b adds the Network pane and Quick Settings tile. It projects this
   adapter through the bridge host like the other T-15 adapters and must not add
   a second VPN implementation. The pane's Overlay/VPN rows and the tile's
   write controls map to `VpnAdapter::connect`/`deactivate`; the bridge seam is

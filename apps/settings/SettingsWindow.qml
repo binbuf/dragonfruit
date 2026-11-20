@@ -26,7 +26,7 @@ Window {
     property var preAboutGeometry: null
     property bool aboutGeometryHeld: false
 
-    // T263: the measured macOS Tahoe System Settings window. 740x820 pt with
+    // T263: the measured macOS reference System Settings window. 740x820 pt with
     // a 52 pt unified toolbar, a 232 pt grouped sidebar, and 508 pt of detail
     // content. The window is freely resizable; the 720x480 minimum keeps the
     // sidebar scrollable and the detail card inside the frame.

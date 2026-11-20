@@ -24,7 +24,7 @@
 //!   only `DfState::stats`.
 //!
 //! * [`GestureBudgetTrace`] (T-05.6) is the **gesture-scoped** frame-budget
-//!   instrument: while an overview transition (Mission Control, a Space slide,
+//!   instrument: while an overview transition (Overview, a Space slide,
 //!   or Desktop Reveal) is live, every rendered frame's cadence is recorded so
 //!   the full gesture's hold on the 60 Hz budget can be asserted — or its
 //!   shortfall reported honestly. It is the T-03 `RenderStats` frame trace

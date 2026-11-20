@@ -2,10 +2,10 @@
 //! The Focus / Do Not Disturb policy (T-11.2a).
 //!
 //! The service owns one policy state ([04-shell.md](../../docs/design/04-shell.md),
-//! "Focus/DND state lives with the notification service so Control Center and
+//! "Focus/DND state lives with the notification service so Quick Settings and
 //! the menu bar share one source of truth"). This module is that state and the
 //! admission rule; the queue asks it whether a `Notify` becomes a banner. The
-//! semantics are frozen here so the menu bar (T-11.2b), the Control Center
+//! semantics are frozen here so the menu bar (T-11.2b), the Quick Settings
 //! (T-11.3b), and the Settings Notifications pane all bind to one rule.
 //!
 //! See [adr/0058](../../docs/design/adr/0058-focus-dnd-policy-semantics.md).
@@ -294,7 +294,7 @@ impl FocusPolicy {
             .map(|profile| profile.name.as_str())
     }
 
-    /// The presentation label the menu bar and Control Center show: a named
+    /// The presentation label the menu bar and Quick Settings show: a named
     /// profile when one is selected, otherwise the mode label. `custom` is a
     /// synthetic marker, not a name a user picked, so it reads as the mode.
     pub fn presentation_label(&self) -> Option<&str> {

@@ -5,7 +5,7 @@
 // singleton, and the bridge forwards reads and writes here. The live
 // `DbusPrivacyClient` talks to the bridge host's
 // `org.dragonfruit.SystemStatus1.Privacy` interface (the same adapter the
-// Control Center tile reads), and `MockPrivacyClient` serves a deterministic
+// Quick Settings tile reads), and `MockPrivacyClient` serves a deterministic
 // fixture for the headless pane tests (`DF_PRIVACY_FIXTURE`). Absence is a
 // normal state: `available()` is false and the view is empty — never an error.
 #pragma once

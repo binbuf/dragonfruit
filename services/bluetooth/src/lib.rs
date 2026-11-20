@@ -2,7 +2,7 @@
 //! The BlueZ Bluetooth adapter: controller and device state, discovery,
 //! pairing, and connection (T-15.1a).
 //!
-//! The Settings Bluetooth pane and the Control Center tile do not talk to
+//! The Settings Bluetooth pane and the Quick Settings tile do not talk to
 //! BlueZ. They read a [`BluetoothAdapter`], which holds the last state the
 //! daemon pushed and exposes the three-state contract from
 //! `dragonfruit-system-adapters` ([07-system-integration.md]): available,

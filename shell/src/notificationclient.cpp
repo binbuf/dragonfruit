@@ -383,7 +383,7 @@ QByteArray MockNotificationClient::policyJson() const
 {
     // T234: the shell mock mirrors the service's named-profile presentation.
     // The mode stays the one admission rule; the label is what the menu bar
-    // and Control Center show.
+    // and Quick Settings show.
     const QString profileLabel =
         m_focusMode == QLatin1String("dnd") ? QStringLiteral("Do Not Disturb")
         : m_focusMode == QLatin1String("focus") ? QStringLiteral("Focus")

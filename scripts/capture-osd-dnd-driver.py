@@ -8,7 +8,7 @@ deterministically. The driver:
 
   1. crops the right of the menu bar to `t11-dnd.png` (the accent-tinted
      crescent left of the clock);
-  2. opens the Control Center through the real Control-Option-C shortcut and
+  2. opens the Quick Settings through the real Control-Option-C shortcut and
      drags the Sound volume slider (a real user gesture that presents the OSD),
      polling the shell log for the OSD scene-graph commit, then crops the
      centered card to `t11-osd.png` and keeps the whole nested window as
@@ -132,7 +132,7 @@ def main():
     im.crop((x + int(w * 0.62), y, x + w, y + BAR_HEIGHT)).save(
         os.path.join(out, "t11-dnd.png"))
 
-    # Open the Control Center through the real Control-Option-C shortcut.
+    # Open the Quick Settings through the real Control-Option-C shortcut.
     for code in (KEY_LEFTCTRL, KEY_LEFTALT):
         synth.send(f"key {code} down")
     synth.send(f"key {KEY_C} down")

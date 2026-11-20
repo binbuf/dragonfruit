@@ -14,8 +14,8 @@ numbered records.
 | [00-overview.md](00-overview.md) | Product thesis, accepted compromises, non-goals |
 | [01-architecture.md](01-architecture.md) | Process model, ownership boundary, state ownership, IPC, repository layout |
 | [02-compositor.md](02-compositor.md) | Compositor backends, input, renderer/effects, window model, protocols |
-| [03-workspaces.md](03-workspaces.md) | Spaces, Mission Control, gestures |
-| [04-shell.md](04-shell.md) | Menu bar, Dock, Applications drawer, Control Center, notifications, OSD |
+| [03-workspaces.md](03-workspaces.md) | Spaces, Overview, gestures |
+| [04-shell.md](04-shell.md) | Menu bar, Dock, Applications drawer, Quick Settings, notifications, OSD |
 | [05-window-decorations.md](05-window-decorations.md) | SSD/CSD policy, traffic lights, window menu |
 | [06-global-menu.md](06-global-menu.md) | Menu broker, native/DBusMenu tiers, accelerators |
 | [07-system-integration.md](07-system-integration.md) | Adapters, NetworkManager/BlueZ/PipeWire/UPower/UDisks, portals |
@@ -25,8 +25,8 @@ numbered records.
 | [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md) | Session model, nested/native workflows, testing ladder |
 | [12-packaging.md](12-packaging.md) | Fedora/Debian packaging and distribution |
 | [22-total-experience.md](22-total-experience.md) | The whole-desktop target: shell, navigation, Settings, motion, HUDs, ownership |
-| [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md) | Measured window chrome, About, Spotlight Apps, Notification Center, Control Center and Finder anatomy; decision in [ADR 0241](adr/0241-macos-structural-surface-review.md) |
-| [24-system-settings.md](24-system-settings.md) | System Settings target: measured window/IA, every macOS Tahoe pane row, Linux adaptations, absence/empty states, 2026-11-14 findings register, and the T263–T284 task map in the `system-settings` set |
+| [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md) | Measured window chrome, About, Search and Applications, Notifications, Quick Settings and Files anatomy; decision in [ADR 0241](adr/0241-macos-structural-surface-review.md) |
+| [24-system-settings.md](24-system-settings.md) | System Settings target: measured window/IA, every the reference design pane row, Linux adaptations, absence/empty states, 2026-11-14 findings register, and the T263–T284 task map in the `system-settings` set |
 | [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md) | The 2026-11-17 mockup target: reduced IA, chrome/density, per-category dispositions, Menu Bar Controls and OS glyph, and the T285–T302b session-sized task map in the `system-settings-2` set |
 | [26-settings-logic.md](26-settings-logic.md) | Per-category behaviour logic: which rows exist on which hardware, and the deliberate divergences from the macOS reference; Energy is the first completed category |
 | [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row to its owner and absence path |
@@ -37,11 +37,20 @@ numbered records.
 | [evidence-and-acceptance.md](evidence-and-acceptance.md) | Capture, measurement, and acceptance process, including the native chrome performance gate |
 | [experience-schema.md](experience-schema.md) | Machine-readable surface/state/axis/evidence manifest and per-surface thresholds |
 | [14-risks.md](14-risks.md) | Risks, hard limits, IP constraints |
+| [ipc-versioning.md](ipc-versioning.md) | Lockstep versioning for private protocols and D-Bus contracts |
+| [private-protocols.md](private-protocols.md) | Private compositor↔shell protocol surfaces and trust model |
+| [keymap.md](keymap.md) | Modifier-role mapping and global shortcut grammar |
+| [settings-keys.md](settings-keys.md) | Every `org.dragonfruit.Settings1` key, owner, and consumer |
+| [licensing.md](licensing.md) | Repo-wide licensing policy and third-party obligations |
+| [testing-ladder.md](testing-ladder.md) | Nested, dedicated-session, VM, and native testing rungs |
+| [runbook-drm-session.md](runbook-drm-session.md) | Real DRM/KMS session bring-up, validation, and teardown |
+| [version-increment.md](version-increment.md) | Release version bump, tag, publish, and verify runbook |
+| [xwayland-scaling.md](xwayland-scaling.md) | Integer-scaled Xwayland and fractional output policy |
 
 The [whole-desktop design](22-total-experience.md) defines the cross-component
 target. See the [current status register](STATUS.md) for implementation and
-hardware evidence, and the [v0.2.0 task index](../tasks/0.2.0/README.md) for
-delivery units.
+hardware evidence. Delivery units live in the local, gitignored
+`docs/tasks/0.2.0/` index.
 
 ## Reading rules
 
@@ -92,5 +101,10 @@ PY
 ls docs/design/adr | sed -E 's/^([0-9]+).*/\1/' | sort | uniq -d
 ```
 
-The generated `docs/INDEX.md` is a convenience listing; it is not the source of
-truth and may lag a hand-added document until the next regeneration.
+A local `docs/INDEX.md` (gitignored) is a convenience listing; it is not the
+source of truth and may lag a hand-added document until the next regeneration.
+
+Some docs intentionally point at gitignored local-only material
+(`docs/tasks/`, `docs/design/tracks/`, `docs/captures/`, `docs/reference/`,
+and the local roadmap files). Those links resolve only in a full local
+checkout; they are not part of the checked-in design set.

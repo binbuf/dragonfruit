@@ -28,8 +28,8 @@ What is actually true in this architecture:
 - First-party apps (Settings, Files) are ordinary Wayland toplevels. They do
   register, and their whole tree — roles, names, focusable/selected/checked
   states — is readable live.
-- Every **global** flow (Mission Control, Desktop Reveal, app switcher,
-  workspace switch, Control Center, notification center, Dock focus/auto-hide,
+- Every **global** flow (Overview, Desktop Reveal, app switcher,
+  workspace switch, Quick Settings, Notifications, Dock focus/auto-hide,
   screenshot, lock, and the Ctrl+1..9 Space jumps) is owned by the
   compositor's one shortcut engine and dispatched from the keyboard. It can be
   proven keyboard-only without a screen reader.
@@ -51,7 +51,7 @@ What is actually true in this architecture:
   `keyboard` trigger. This is the CI gate; it needs no session bus, display
   server, or assistive client.
 - **Shell chrome accessible semantics stay per component.** The menu bar, Dock,
-  Control Center, OSD, dialogs, and overlays keep their `Accessible.*` roles
+  Quick Settings, OSD, dialogs, and overlays keep their `Accessible.*` roles
   and names asserted in `make qml-test` (the design-system contract). The shell
   is **not** exported to the accessibility bus, and this is a documented
   boundary of the offscreen render architecture, not a missing test.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! T-15.5a acceptance: the adapter reports Mission Control and hot corners
+//! T-15.5a acceptance: the adapter reports Overview and hot corners
 //! state and events against a mock, and an absent host stack is a normal
 //! hidden state. No compositor and no Wayland connection are involved.
 
@@ -95,8 +95,8 @@ fn a_configuration_change_is_observable_across_reads() {
     let _ = adapter.drain_changes();
     let _ = adapter.drain_events();
 
-    // Move Mission Control from the top-left corner to the bottom-right, and
-    // turn the Mission Control gesture off.
+    // Move Overview from the top-left corner to the bottom-right, and
+    // turn the Overview gesture off.
     let mut corners = MissionControlData::default().corners;
     corners[HotCorner::TopLeft.index()] = HotCornerAction::NotificationCenter;
     corners[HotCorner::BottomRight.index()] = HotCornerAction::MissionControl;

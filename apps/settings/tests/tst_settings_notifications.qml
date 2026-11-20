@@ -7,7 +7,7 @@ import Dragonfruit.Settings
 // Notifications and Focus pane tests (T-15.7b). Headless with
 // `DF_SETTINGS_FIXTURE` and `DF_NOTIFICATIONS_FIXTURE` (see CMakeLists.txt), so
 // the `Settings` singleton serves a deterministic in-process notifications
-// adapter with no bus. The cases cover the Notification Center preferences
+// adapter with no bus. The cases cover Notifications preferences
 // round-tripping through settingsd, the Focus mode and per-app allow list
 // round-tripping through the adapter, an external change converging, and the
 // absence note.
@@ -72,7 +72,7 @@ Item {
             var shell = make("notifications");
             compare(shell.currentPaneId, "notifications");
             var pane = paneOf(shell);
-            verify(pane.ready, "the notifications view must be available");
+            verify(pane.ready, "Notifications view must be available");
             compare(pane.showPreviews, "when-unlocked");
             compare(pane.previewSelect.currentIndex, 1);
             compare(pane.previewSelect.currentLabel, "When Unlocked");

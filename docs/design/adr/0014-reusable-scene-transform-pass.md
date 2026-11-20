@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-T-04.3 must give T-05's Mission Control live-surface grid and T-06's app
+T-04.3 must give T-05's Overview live-surface grid and T-06's app
 switcher a single way to draw the **real** window surfaces scaled, translated,
 clipped to their rounded corners, and (optionally) over the token-driven
 backdrop material — never thumbnails, never client re-renders. The T-04 track

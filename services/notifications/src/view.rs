@@ -43,7 +43,7 @@ pub fn history_json(queue: &Queue) -> String {
     serde_json::to_string(&Value::Array(history)).unwrap_or_else(|_| "[]".to_owned())
 }
 
-/// The Focus/DND policy state, frozen for the menu bar, the Control Center,
+/// The Focus/DND policy state, frozen for the menu bar, the Quick Settings,
 /// and Settings (T-11.2a).
 pub fn focus_policy_json(policy: &FocusPolicy) -> String {
     let app_preferences: Vec<Value> = policy

@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Storage pane (T-15.2b).
 //
-// The pane and the Control Center tile are one functional unit: both read the
+// The pane and the Quick Settings tile are one functional unit: both read the
 // same UDisks2 adapter through the bridge host, and the three explicit writes
 // (mount, unmount, eject) go through the `Settings` singleton to the adapter —
 // never to D-Bus from QML. The pane lists the mountable volumes, mounts or
@@ -370,11 +370,11 @@ Item {
                 width: parent.width
                 label: qsTr("Show Detail")
                 settingsId: "manage"
-                owner: "Files / disk utility"
+                owner: "Files / Disks"
                 settingsKey: "storage.manage"
                 description: qsTr("Opens the Files app at your home folder. "
                                   + "Formatting and partitioning stay in the "
-                                  + "disk utility.")
+                                  + "Disks.")
                 showSeparator: false
                 controlData: Button {
                     id: manageButton

@@ -10,8 +10,8 @@ This corrects the live Applications drawer regressions reported after ADR
 [0244](0244-frosted-menu-and-drawer-stability.md): the first open/reopen could
 not scroll or click, the card was a flat translucent slab when the material
 degraded, and the grid reflowed while the user typed. The reference remains the
-Spotlight **Applications** surface in
-`macos-design-review/docs/SURFACE-REVIEW.md` §4: a search-first, 7-column,
+Search **Applications** surface in
+the local surface review §4: a search-first, 7-column,
 scrollable collection that is visibly a large light glass panel.
 
 ## Decision

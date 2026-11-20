@@ -1,4 +1,4 @@
-# 0223 — Notification Center mapping and action ownership
+# 0223 — Notifications mapping and action ownership
 
 ## Status
 

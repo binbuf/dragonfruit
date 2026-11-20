@@ -4,7 +4,7 @@
 # T205 notification banner, stack and lower-panel material capture.
 #
 # Runs the real nested compositor on the replacement rail and captures the
-# banner and the open Notification Center in Light/Dark, empty, banner-only,
+# banner and the open Notifications in Light/Dark, empty, banner-only,
 # populated, concurrent and scrollable states, plus Reduce Transparency,
 # Increase Contrast and the no-sampled-material software path. Neutral and
 # grid backdrops make the three materials' attenuation visible.

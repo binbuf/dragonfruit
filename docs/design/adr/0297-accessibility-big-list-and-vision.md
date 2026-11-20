@@ -14,7 +14,7 @@
 The mockup opens Accessibility with intro text and a big list of sections
 (Vision, Physical and Motor, Hearing, Speech, General), each opening an
 in-place sub-pane. T275 shipped one long scroll of five grouped cards instead.
-That form mixed every section on one page, rendered ownerless Apple-only rows
+That form mixed every section on one page, rendered ownerless reference-only rows
 as inert controls, and could not grow one section per session-sized task
 without rewriting the page.
 

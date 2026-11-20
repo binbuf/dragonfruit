@@ -6,7 +6,7 @@ import Dragonfruit.ControlCenter
 
 // The Quick Settings pane (T227, completed by T277).
 //
-// The pane is a management surface, not a second Control Center. It reads the
+// The pane is a management surface, not a second Quick Settings. It reads the
 // one `ControlCenterRegistry` the live panel and the shell's Edit Controls
 // surface use, and writes only the durable `quickSettings.*` / `menu.control.*`
 // keys settingsd owns. Every change is visible in the live preview below and

@@ -237,7 +237,7 @@ Item {
             Text {
                 objectName: "onlineAccountsAbsenceText"
                 width: parent.width
-                text: qsTr("Internet accounts are not installed.")
+                text: qsTr("Online accounts are not installed.")
                 color: Theme.color.textPrimary
                 font.pixelSize: Theme.controls.button.fontSize
                 wrapMode: Text.WordWrap
@@ -366,7 +366,7 @@ Item {
     Dialog {
         id: delegateDialog
         objectName: "onlineAccountsDelegateDialog"
-        title: qsTr("Internet accounts are not installed")
+        title: qsTr("Online accounts are not installed")
         dismissible: true
 
         contentData: Column {

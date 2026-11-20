@@ -226,7 +226,7 @@ impl Battery {
 /// One power profile power-profiles-daemon can apply.
 ///
 /// The three profile ids are the daemon's stable, cross-distro vocabulary
-/// (`power-saver`, `balanced`, `performance`); the pane and Control Center
+/// (`power-saver`, `balanced`, `performance`); the pane and Quick Settings
 /// segment map straight onto [`PowerProfile::id`]. An id the daemon reports
 /// that is not one of these is dropped from the snapshot rather than guessed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

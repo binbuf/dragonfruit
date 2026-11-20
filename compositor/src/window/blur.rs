@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! GPU-sampled backdrop blur for chrome panels (T-20.1).
 //!
-//! ADR [0182](../../docs/design/adr/0182-tahoe-liquid-glass-material-pass.md)
+//! ADR [0182](../../docs/design/adr/0182-glass-material-pass.md)
 //! moves the chrome material off the flat feather stand-in
 //! ([`crate::window::backdrop`]) and onto a real pass that samples the **live**
 //! scene texture. This module owns the renderer-facing half of that pass:
@@ -157,7 +157,7 @@ void main() {
 }
 "#;
 
-/// The custom texture shader for the Tahoe liquid-glass pass (T-20.2).
+/// The custom texture shader for the reference Glass pass (T-20.2).
 ///
 /// It is compiled once per renderer like [`BLUR_SHADER`] and used on the final
 /// compose of a blurred panel (the built-in texture program would otherwise do
@@ -755,23 +755,23 @@ void main() {
 }
 "#;
 
-/// The liquid-glass shader uniform carrying the panel size in physical pixels.
+/// The Glass shader uniform carrying the panel size in physical pixels.
 pub const GLASS_SIZE_UNIFORM: &str = "glass_size";
-/// The liquid-glass shader uniform carrying the corner radius (physical px).
+/// The Glass shader uniform carrying the corner radius (physical px).
 pub const GLASS_RADIUS_UNIFORM: &str = "glass_radius";
-/// The liquid-glass shader uniform carrying the edge-lens strength (px).
+/// The Glass shader uniform carrying the edge-lens strength (px).
 pub const REFRACTION_UNIFORM: &str = "refraction";
-/// The liquid-glass shader uniform carrying the specular intensity.
+/// The Glass shader uniform carrying the specular intensity.
 pub const SPECULAR_UNIFORM: &str = "specular";
-/// The liquid-glass shader uniform carrying the specular band width (px).
+/// The Glass shader uniform carrying the specular band width (px).
 pub const SPECULAR_WIDTH_UNIFORM: &str = "specular_width";
-/// The liquid-glass shader uniform carrying the adaptive-tint amount.
+/// The Glass shader uniform carrying the adaptive-tint amount.
 pub const TINT_AMOUNT_UNIFORM: &str = "tint_amount";
-/// The liquid-glass shader uniform carrying the scheme tone to blend toward.
+/// The Glass shader uniform carrying the scheme tone to blend toward.
 pub const TINT_COLOR_UNIFORM: &str = "tint_color";
-/// The liquid-glass shader uniform carrying the lens falloff width (px).
+/// The Glass shader uniform carrying the lens falloff width (px).
 pub const LENS_FALLOFF_UNIFORM: &str = "lens_falloff";
-/// The liquid-glass shader uniform carrying the tint adaptation scale.
+/// The Glass shader uniform carrying the tint adaptation scale.
 pub const TINT_SCALE_UNIFORM: &str = "tint_scale";
 /// T198: flat-band model switch.
 pub const GLASS_FLAT_BAND_UNIFORM: &str = "flat_band";
@@ -1047,7 +1047,7 @@ impl BlurSpec {
     }
 }
 
-/// The token-resolved Tahoe liquid-glass parameters for one chrome panel
+/// The token-resolved reference Glass parameters for one chrome panel
 /// (T-20.2, ADR 0182). Every field traces back to a semantic `material` token;
 /// the shader takes no literal value.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1274,7 +1274,7 @@ impl GlassSpec {
 /// ever scheduling a blur pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RegionFilter {
-    /// The filtered backdrop: Kawase downsample + liquid-glass compose.
+    /// The filtered backdrop: Kawase downsample + Glass compose.
     #[default]
     Filtered,
     /// The sharp backdrop: direct scene-texture sample, no blur chain.
@@ -1304,7 +1304,7 @@ impl RegionFilter {
 pub trait TextureRenderer: Renderer {
     /// Draw `src` (texture buffer coordinates) into `dst` (output-local
     /// physical), clipped to `damage`. When `program` is set the material uses
-    /// the liquid-glass texture program with `uniforms`; otherwise the built-in
+    /// the Glass texture program with `uniforms`; otherwise the built-in
     /// texture program does a plain bilinear sample.
     fn draw_texture_from_to(
         frame: &mut <Self as RendererSuper>::Frame<'_, '_>,
@@ -1330,7 +1330,7 @@ impl TextureRenderer for GlowRenderer {
         alpha: f32,
     ) -> Result<(), GlesError> {
         // With no glass program the upsample is a plain bilinear sample of the
-        // already-blurred texture; with one it is the liquid-glass compose.
+        // already-blurred texture; with one it is the Glass compose.
         let frame: &mut GlesFrame<'_, '_> = BorrowMut::borrow_mut(frame);
         frame.render_texture_from_to(
             texture,
@@ -1375,7 +1375,7 @@ pub struct BackdropBlurElement {
     /// antialiased silhouette. `false` keeps the historical integer spans.
     full_panel: bool,
     scale: Scale<f64>,
-    /// The liquid-glass parameters and compiled program (T-20.2), or `None`
+    /// The Glass parameters and compiled program (T-20.2), or `None`
     /// for the plain blurred compose (the scene texture, or a driver that
     /// refused the glass shader).
     glass: Option<(GlassSpec, GlesTexProgram)>,
@@ -1459,7 +1459,7 @@ impl BackdropBlurElement {
         self
     }
 
-    /// Apply the Tahoe liquid-glass compose (T-20.2) on top of the blurred
+    /// Apply the reference Glass compose (T-20.2) on top of the blurred
     /// backdrop using the compiled [`GLASS_SHADER`] `program`.
     pub fn with_glass(mut self, spec: GlassSpec, program: GlesTexProgram) -> Self {
         self.glass = Some((spec, program));
@@ -1844,7 +1844,7 @@ mod tests {
 
     #[test]
     fn the_glass_shader_declares_its_uniforms_and_no_token_literals() {
-        // The liquid-glass program is a custom texture shader like the blur,
+        // The Glass program is a custom texture shader like the blur,
         // so it carries the marker, the built-in uniforms, and every one of
         // its own uniforms. The parameters themselves arrive by uniform, so
         // the shader body holds no token value.

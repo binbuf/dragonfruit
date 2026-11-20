@@ -7,7 +7,7 @@ accepted
 ## Context
 
 T-15.4 splits the macOS Keyboard / Mouse / Trackpad surface into an adapter
-(T-15.4a) and a Settings pane plus Control Center tile (T-15.4b). The task's
+(T-15.4a) and a Settings pane plus Quick Settings tile (T-15.4b). The task's
 host stack is **libinput**, but the design's principle 3 (and the legacy
 adapter roster's FR-4) says keyboard settings go through the **compositor**
 API, never a system daemon: the compositor owns the physical devices, and

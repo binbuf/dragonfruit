@@ -43,7 +43,7 @@ Debian control fields follow its `debian` column:
   entry and support GDM, SDDM, LightDM, and greetd through the per-DM adapter
   (ADR 0173).
 - GPL/LGPL services remain separate processes or dynamically linked libraries
-  with the notices in `NOTICE` and `docs/licensing.md`. No GPL code is copied
+  with the notices in `NOTICE` and `docs/design/licensing.md`. No GPL code is copied
   into the MIT packages.
 
 Package names are verified against the actual Debian/Ubuntu archive at

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the Network advanced (VPN) half of the host (T-15.15b):
-//! the view the Settings pane and Control Center tile decode, and the two
+//! the view the Settings pane and Quick Settings tile decode, and the two
 //! explicit writes. The adapter is driven by `MockVpn`, so the connect /
 //! deactivate round-trip is observable with no bus and no daemon.
 

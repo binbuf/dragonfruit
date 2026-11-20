@@ -19,7 +19,7 @@ Item {
 
     signal navigated(string uri)
 
-    // T230b: Finder's path bar is a 30 pt content-layer accessory, not
+    // T230b: Files's path bar is a 30 pt content-layer accessory, not
     // window chrome.
     implicitHeight: Theme.controls.accessoryBar.path
 

@@ -9,7 +9,7 @@
 //! surface.
 //!
 //! This module is pure geometry. The preview grid is the same T-04 scene
-//! transform the Mission Control grid uses ([`grid_layout`]), so the switcher
+//! transform the Overview grid uses ([`grid_layout`]), so the switcher
 //! adds no second mapping; the only switcher-specific decision is which part
 //! of the output the previews fill and which window is the selected entry.
 //!

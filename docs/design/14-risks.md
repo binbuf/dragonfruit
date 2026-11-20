@@ -67,7 +67,7 @@ them from the outset:
 2. **Global menu wherever the application exports one** — we never remove an
    application's internal menu merely because global menu mode is on (see
    [06-global-menu.md](06-global-menu.md)).
-3. **AirDrop/Continuity/Handoff and Apple account services are omitted** —
+3. **AirDrop/Continuity/Handoff and reference account services are omitted** —
    there is no permissively licensed drop-in with the same UX, and iCloud,
    Siri, Apple Intelligence, Screen Time, Wallet, Game Center, Find My, and App
    Store are not Linux services. Optional LocalSend/KDE Connect integration

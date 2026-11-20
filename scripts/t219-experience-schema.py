@@ -28,7 +28,8 @@ OPEN rows to name a reason, a rerun command, and an owner, and prints the
 captured/verified/OPEN coverage summary by surface.
 
 The script deliberately uses only the Python standard library: the ordinary
-CI suite must not require a Mac, a GPU, or a third-party JSON-Schema package.
+CI suite must not require a reference capture workstation, a GPU, or a
+third-party JSON-Schema package.
 """
 from __future__ import annotations
 

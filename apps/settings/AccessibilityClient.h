@@ -5,7 +5,7 @@
 // singleton, and the bridge forwards reads here. The live
 // `DbusAccessibilityClient` talks to the bridge host's
 // `org.dragonfruit.SystemStatus1.Accessibility` interface (the same AT-SPI
-// projection the Control Center tile reads), and `MockAccessibilityClient`
+// projection the Quick Settings tile reads), and `MockAccessibilityClient`
 // serves a deterministic fixture for the headless pane tests
 // (`DF_ACCESSIBILITY_FIXTURE`). The adapter is read-only (`org.a11y.Status`
 // has no setter, ADR 0144), so there is no write here: the pane's one durable

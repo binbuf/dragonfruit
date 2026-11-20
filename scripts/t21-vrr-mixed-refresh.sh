@@ -268,7 +268,7 @@ for index in range(70):
     sock.sendto(f"motion-abs {x:.6f} 0.96\n".encode(), synth)
     time.sleep(0.02)
 PY
-# The Control Center chord opens an animated shell overlay. It is the most
+# The Quick Settings chord opens an animated shell overlay. It is the most
 # deterministic chrome animation in the nested rail: the menu bar/Dock sweep
 # can settle between samples, while the panel's open transition commits a
 # fresh chrome frame with a pending callback.

@@ -7,7 +7,7 @@ import Dragonfruit.ControlCenter
 
 // Quick Settings pane tests (T227/T277). The pane consumes the shell's one
 // `ControlCenterRegistry` and writes the same `quickSettings.*` /
-// `menu.control.*` keys the live Control Center panel reads;
+// `menu.control.*` keys the live Quick Settings panel reads;
 // `tst_controlcenter.qml` asserts the panel side.
 Item {
     id: stage

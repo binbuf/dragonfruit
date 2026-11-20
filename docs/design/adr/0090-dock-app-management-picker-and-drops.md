@@ -15,8 +15,8 @@ anything. `app-index` now owns the `.desktop` corpus, themed icons, and
 identity (ADR [0086](0086-app-index-identity-ownership.md)); T-14.1a/T-14.1b
 load it into the shell and T-14.1c adds coalesced install/uninstall/update
 subscriptions (ADR
-[0087](0087-app-index-events-launch-registry-recency.md)). Launchpad and the
-Spotlight-equivalent search are explicitly post-gate
+[0087](0087-app-index-events-launch-registry-recency.md)). Applications and the
+Search-equivalent search are explicitly post-gate
 ([../../ROADMAP.md](../../ROADMAP.md), "Explicitly deferred").
 
 ## Decision
@@ -58,5 +58,5 @@ Spotlight-equivalent search are explicitly post-gate
   second identity source to drift from ADR 0086.
 - The identity ghost adds one payload read per drag, cached and consumed at
   drop instead of re-requested.
-- Spotlight-equivalent search and launching remain post-gate; if that lands
+- Search-equivalent search and launching remain post-gate; if that lands
   later, the picker's corpus/filter helper is the natural reuse point.

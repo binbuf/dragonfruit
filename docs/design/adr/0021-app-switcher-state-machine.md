@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-T-06 makes Cmd-Tab real: the compositor must open, cycle, reverse, commit, and
+T-06 makes Super-Tab real: the compositor must open, cycle, reverse, commit, and
 cancel an app switcher whose recency order and activation semantics already
 exist in `WindowModel` (`recency`, `touch_recency`) and
 `DfState::activate_window_id` (cross-Space, restore-if-minimized). Before this
@@ -23,8 +23,8 @@ selection so the overlay can never diverge from the activation.
   (not on the shell protocol state). It holds an app-recency snapshot with each
   app's most recent window, the selected index, and the last direction; the
   rules are unit-testable without a `Window` or a GPU.
-- The **input path owns the chord**, via the shortcut engine: Cmd+Tab and
-  Cmd+Shift+Tab resolve to `InputAction::AppSwitcher`, and the filter derives
+- The **input path owns the chord**, via the shortcut engine: Super+Tab and
+  Super+Shift+Tab resolve to `InputAction::AppSwitcher`, and the filter derives
   the direction from the held Shift role. The switcher consumes its own keys
   (Tab, arrows, Escape) and their releases while open; a Command release
   commits exactly once because `commit` clears the active state before
@@ -50,5 +50,5 @@ commit path outside the input engine.
   minimized-restore behavior stays in one place.
 - `query switcher` (headless introspection) reports active/selected/entries/
   focus, so protocol tests assert commit and cancel without a GPU.
-- Direction-aware within-app Cmd+` window cycling (T-06.2b) extends this
+- Direction-aware within-app Super+` window cycling (T-06.2b) extends this
   machine; it must not add a parallel binding path outside the shortcut engine.

@@ -13,7 +13,7 @@ stay legible. The structural review in `macos-design-review` §4 describes the
 same surface as a **large light glass panel**, and the T-19.2 reference palette
 sampled from the drawer capture (`#B3B3B3` over black) resolves to roughly
 **70–74 % opaque**. The shipped card therefore read as a flat near-opaque plate
-rather than the glass used by menus, the Dock, Control Center and notifications.
+rather than the glass used by menus, the Dock, Quick Settings and notifications.
 
 ## Decision
 

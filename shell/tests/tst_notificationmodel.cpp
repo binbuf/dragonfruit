@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Notification-model tests (T-11.1a): the service's `Banners()`/`History()`
 // JSON decodes to the shell's banner and history views. T204 adds the
-// Notification Center state: stable keys, active/history separation, keyboard
+// Notifications state: stable keys, active/history separation, keyboard
 // selection and the service invoke/dismiss contract. No D-Bus, QML, or
 // Wayland.
 #include "notificationcenter.h"
@@ -103,7 +103,7 @@ private slots:
         QVERIFY(model.focusPolicy().isEmpty());
     }
 
-    // --- T204 Notification Center -----------------------------------------
+    // --- T204 Notifications -----------------------------------------
 
     static QVariantMap entry(quint32 id, const QString &summary, bool suppressed = false,
                              const QString &reason = QString(),

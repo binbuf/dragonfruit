@@ -44,7 +44,7 @@
 //! `AdapterId::VPN` slot, mirroring the Wi-Fi shape: three-state reads,
 //! subscription events, a configurable-but-empty `present` distinction, and a
 //! polkit read-only degradation on its two writes ([`VpnAdapter::connect`] /
-//! [`VpnAdapter::deactivate`]). The Settings pane and Control Center tile land
+//! [`VpnAdapter::deactivate`]). The Settings pane and Quick Settings tile land
 //! with T-15.15b.
 //!
 //! # Testing

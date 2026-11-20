@@ -2,9 +2,9 @@
 pragma Singleton
 import QtQuick
 
-// The Control Center module registry (T235).
+// The Quick Settings module registry (T235).
 //
-// One pure, QML-only source of truth for the measured Control Center grid and
+// One pure, QML-only source of truth for the measured Quick Settings grid and
 // the Edit Controls catalogue. It owns:
 //
 //   * the 22-category Edit Controls inventory (`categories`),
@@ -68,7 +68,7 @@ QtObject {
     // storage. `span` is the measured default. `expandable` modules open a
     // sheet; every module has a sheet so absence and state stay inspectable.
     // `owner` names the real adapter/owner; an empty owner is an explicit
-    // unavailable module (AirDrop, Stage Manager, media, ...).
+    // unavailable module (Nearby Transfer, Stage Manager, media, ...).
     readonly property var modules: [
         // Connectivity
         { id: "wifi", label: qsTr("Wi-Fi"), category: "connectivity",
@@ -89,7 +89,7 @@ QtObject {
           category: "now-playing", glyph: "now-playing", span: "2x2",
           kind: "media", expandable: true, owner: "",
           reason: qsTr("No media player is publishing Now Playing.") },
-        // Desktop & Finder
+        // Desktop & Files
         { id: "stage-manager", label: qsTr("Stage"),
           category: "desktop-finder", glyph: "stage-manager", span: "1x1",
           kind: "action", expandable: true, owner: "",

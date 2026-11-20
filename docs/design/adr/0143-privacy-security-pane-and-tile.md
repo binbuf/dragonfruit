@@ -6,19 +6,19 @@
   [08-settings.md](../08-settings.md),
   ADR [0142](0142-privacy-and-security-adapter.md),
   ADR [0141](0141-printers-scanners-pane-and-tile.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md)
+  ADR [0122](0122-reference-interface-language-across-chrome.md)
 
 ## Context
 
 T-15.13a landed `dragonfruit-privacy-adapter` (the portal PermissionStore
-projection). T-15.13b must ship the Settings pane and the Control Center tile as
+projection). T-15.13b must ship the Settings pane and the Quick Settings tile as
 one functional unit, with every control applying live. Granting or revoking an
 application's access is an explicit action over the store; there is no separate
 Linux daemon behind the macOS rows. As with Printers & Scanners (ADR 0141), the
 C++/QML side never links the Rust adapter: it decodes the bridge host's JSON
 view.
 
-The Control Center panel already held fifteen tiles at the ceiling of its fixed
+The Quick Settings panel already held fifteen tiles at the ceiling of its fixed
 360×1160 surface; a sixteenth had to fit without clipping and without a
 scrolling panel (the compositor forwards no pointer-axis events).
 
@@ -50,7 +50,7 @@ scrolling panel (the compositor forwards no pointer-axis events).
   Opening a row shows its applications; each application's permission is a
   four-way selector (`Allowed`/`Denied`/`Ask`/`Not Set`) that maps to
   `SetPermission` or `DeletePermission`.
-- **The Control Center tile is a read-only summary.** It carries the `privacy`
+- **The Quick Settings tile is a read-only summary.** It carries the `privacy`
   glyph, the live app-count label, and a `Privacy & Security Settings…` link.
 - **The panel compacts rather than scrolls.** To fit the sixteenth tile the
   tiles' internal gap is compacted from `sm` to `xs`; the fixed surface holds
@@ -72,7 +72,7 @@ with no Linux host owner; a settingsd preference with no durable meaning.
 - `apps/settings/PrivacyClient` is the pane's seam (`DF_PRIVACY_FIXTURE`
   selects the in-process mock); `shell/src/systemstatusclient` and
   `systemstatusmodel` gain the read-only privacy path.
-- The Control Center panel stays a non-scrolling fixed surface at 360×1160.
+- The Quick Settings panel stays a non-scrolling fixed surface at 360×1160.
 - The dialog captures its row list when it opens and re-reads the live state
   through Bindings, so a permission write converges without rebuilding the
   `Select` that is mid-interaction.

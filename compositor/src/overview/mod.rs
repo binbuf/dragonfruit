@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Mission Control and workspace switching: **one** overview state machine
+//! Overview and workspace switching: **one** overview state machine
 //! (T-11).
 //!
 //! The design rule is absolute: gesture, keyboard shortcut, hot corner, the
-//! menu-bar Mission Control button, and the shell's private-protocol
+//! menu-bar Overview button, and the shell's private-protocol
 //! requests all drive the *same* progress pipeline
 //! ([03-workspaces.md](../../docs/design/03-workspaces.md)). There is no
 //! second, discrete "instant" code path. This module owns that machine.
@@ -12,7 +12,7 @@
 //! commit) and adds the overview-specific decisions on top:
 //!
 //! * what a transition *is* ([`OverviewKind`]: adjacent-Space switch,
-//!   Mission Control, Desktop Reveal),
+//!   Overview, Desktop Reveal),
 //! * what a release *asks the compositor to apply* ([`TransitionCommit`]),
 //! * who owns pointer hit-testing while the overview is up
 //!   ([`InputOwner`]), and
@@ -78,7 +78,7 @@ impl OverviewKind {
     }
 
     /// Whether this transition puts the overview controller in charge of
-    /// pointer input while it runs (Mission Control / Desktop Reveal), as
+    /// pointer input while it runs (Overview / Desktop Reveal), as
     /// opposed to a workspace slide, which keeps the normal focus path.
     pub const fn is_overview(self) -> bool {
         matches!(
@@ -104,7 +104,7 @@ impl OverviewKind {
 pub enum TransitionCommit {
     /// Advance the active Space by this many steps (lockstep, T-05).
     SwitchWorkspace(i32),
-    /// Enter (`true`) or leave (`false`) the Mission Control overview.
+    /// Enter (`true`) or leave (`false`) the Overview overview.
     SetOverview(bool),
     /// Reveal (`true`) or hide (`false`) the desktop.
     SetDesktopReveal(bool),
@@ -151,7 +151,7 @@ pub struct OverviewMachine {
     selection: Option<WindowId>,
     discrete: Option<DiscreteProgress>,
     /// Set by a directional shell request ([`Self::drive_overview`]) so the
-    /// Mission Control commit targets the requested state instead of toggling
+    /// Overview commit targets the requested state instead of toggling
     /// (U-7). Cleared when the transition commits or is cancelled.
     requested_overview: Option<bool>,
 }
@@ -226,7 +226,7 @@ impl OverviewMachine {
         self.kind
     }
 
-    /// Whether the Mission Control overview is open.
+    /// Whether the Overview overview is open.
     pub fn overview_active(&self) -> bool {
         self.overview_active
     }
@@ -297,7 +297,7 @@ impl OverviewMachine {
         self.drive_towards(kind, trigger, now, None)
     }
 
-    /// Drive an explicit Mission Control enter/leave request through the
+    /// Drive an explicit Overview enter/leave request through the
     /// same pipeline as every other trigger (U-7).
     ///
     /// Unlike the toggle triggers (keyboard, hot corner, gesture), the shell
@@ -468,7 +468,7 @@ impl OverviewMachine {
 
     /// The commit for the `End` event in `events`, if it crossed the
     /// threshold. Reads the machine's current overview/desktop state so a
-    /// Mission Control trigger toggles rather than always opening.
+    /// Overview trigger toggles rather than always opening.
     fn commit_from_events(&self, events: &[ProgressEvent]) -> Option<TransitionCommit> {
         let end = events
             .iter()
@@ -622,7 +622,7 @@ mod tests {
     #[test]
     fn mid_transition_input_reverses_without_waiting() {
         let mut machine = machine();
-        // Open Mission Control by gesture, halfway.
+        // Open Overview by gesture, halfway.
         machine.begin_gesture(
             OverviewKind::MissionControl,
             TriggerKind::Gesture(GestureKind::Pinch { fingers: 4 }),

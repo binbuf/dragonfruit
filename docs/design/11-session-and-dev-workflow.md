@@ -142,7 +142,7 @@ and its evidence boundary are
 [ADR 0159](adr/0159-t17-nested-window-loop-capture.md).
 
 `scripts/capture-t17-navigation.sh` (`make t17-navigation-capture`) is the
-T-17.1b verification capture: it drives workspace switching, Mission Control,
+T-17.1b verification capture: it drives workspace switching, Overview,
 and app switching on the same synthetic-input nested session, by pointer and
 keyboard, asserting each path through `query spaces`/`query grid`/`query
 wallpaper`/`query switcher`. The stills, clip, and machine transcript land
@@ -365,7 +365,7 @@ activation refuse focus. A compositor crash ends the session; a shell crash
 leaves the session locked because only `ext_session_lock_v1.unlock_and_destroy`
 clears it.
 
-The lock UI is the **shell**, not the compositor: Cmd+Ctrl+Q resolves to
+The lock UI is the **shell**, not the compositor: Super+Ctrl+Q resolves to
 `InputAction::LockScreen`, the compositor broadcasts it over the private
 protocol, and the shell requests the lock and paints a `Dragonfruit.Lock` QML
 scene into one lock surface per output. The upstream
@@ -554,7 +554,7 @@ and the nested/dev outcome are frozen in
 [ADR 0158](adr/0158-compositor-death-ends-the-session.md).
 
 The T-12 track capture is `docs/captures/t12-session.*` (nested desktop, the
-real lock UI after Cmd+Ctrl+Q, a short clip, the `query lock`/`query session`
+real lock UI after Super+Ctrl+Q, a short clip, the `query lock`/`query session`
 transcript, and the kill-matrix output), produced by `make session-capture`.
 The real greeter/login and DRM logout ends of the demo are T-12.6.
 - `PrepareForSleep` / `PrepareForShutdown` hooks freeze animations, flush
@@ -716,7 +716,7 @@ dragonfruit dev --real --round-trip      # arm the next login, then log out
    ask the host session manager to log out — apps get their normal
    unsaved-work prompts, nothing is `SIGKILL`ed.
 2. **In session.** The session exports `DRAGONFRUIT_DEV_RETURN=<previous
-   session>`. The system/Control Center menu shows **"Quit to \<previous
+   session>`. The system/Quick Settings menu shows **"Quit to \<previous
    desktop\>"** only when that variable is set.
 3. **Return.** The item disarms autologin, restores the previous default
    session, and logs out.

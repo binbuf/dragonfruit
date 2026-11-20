@@ -3,7 +3,7 @@
 //!
 //! T-15.10a shipped the [`UpdateProvider`] seam and the host identity read;
 //! the concrete provider was deliberately left to packaging. T226 supplies the
-//! cross-distro native provider the Software Update pane and the Control Center
+//! cross-distro native provider the Software Update pane and the Quick Settings
 //! tile drive: `dnf` on Fedora, `apt-get` on Debian/Ubuntu, `pacman` on Arch,
 //! and PackageKit (`pkcon`) as the portable fallback. The provider never
 //! reimplements package resolution — it runs the distribution's own tool and

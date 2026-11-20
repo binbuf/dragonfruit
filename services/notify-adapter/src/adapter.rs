@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! The Notifications and Focus adapter: one read path over the shared
+//! Notifications and Focus adapter: one read path over the shared
 //! contract.
 
 use std::collections::VecDeque;
@@ -12,7 +12,7 @@ use dragonfruit_system_adapters::{
 use crate::model::{NotificationsChange, NotificationsSnapshot};
 use crate::source::{FocusOutcome, NotificationsSource};
 
-/// The Notifications and Focus adapter.
+/// Notifications and Focus adapter.
 ///
 /// It holds the last snapshot the notification service pushed and exposes the
 /// three-state contract ([`AdapterState`]). [`refresh`](Self::refresh) is the

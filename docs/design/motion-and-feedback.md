@@ -5,7 +5,7 @@
 | **Status** | target design |
 | **Date** | 2026-11-06 |
 | **Scope** | every transition, HUD/OSD, sound, and pointer feedback in the shell |
-| **Related** | [22-total-experience.md](22-total-experience.md), [evidence/acceptance](evidence-and-acceptance.md), `macos-design-review/docs/CAPTURE-PLAN.md`, [ADR 0218](adr/0218-dock-motion-raised-cosine-and-tooltip.md) |
+| **Related** | [22-total-experience.md](22-total-experience.md), [evidence/acceptance](evidence-and-acceptance.md), the local capture plan, [ADR 0218](adr/0218-dock-motion-raised-cosine-and-tooltip.md) |
 
 ## 1. Why a motion language
 
@@ -52,27 +52,27 @@ These measurements remain reference values; explicit policy updates are noted be
 | Dock launch lift | One 15 pt lift over 300 ms; full multi-bounce `OPEN` | ADR 0218, [ADR 0258](adr/0258-dock-motion-launch-lift-and-minimize-targets.md) |
 | Genie minimize/restore | 450 ms each way; per-axis squeeze on the one motion transform | ADR 0218, [ADR 0258](adr/0258-dock-motion-launch-lift-and-minimize-targets.md) |
 | Dock auto-hide | 120 ms reveal delay, 350 ms hide grace, 160 ms slide; interactive curve `OPEN` | ADR 0218, [ADR 0258](adr/0258-dock-motion-launch-lift-and-minimize-targets.md) |
-| Menu close | ~183 ms, ~5% shrink, translate toward anchor | Liquid Glass report |
-| Menu open | Immediate; reference appears fully open within one 60 fps frame | Liquid Glass report; ADR 0244 |
+| Menu close | ~183 ms, ~5% shrink, translate toward anchor | Glass report |
+| Menu open | Immediate; reference appears fully open within one 60 fps frame | Glass report; ADR 0244 |
 | Menu tracking | Top-level switch on the next event-loop turn; submenu crossing grace 150 ms | Product policy, ADR 0245 |
-| Menu bar veil | No blur; measured light/dark LUTs, zero by 95 pt; lettering polarity follows the veil-composited luminance with hysteresis | Liquid Glass report; ADR 0243 |
+| Menu bar veil | No blur; measured light/dark LUTs, zero by 95 pt; lettering polarity follows the veil-composited luminance with hysteresis | Glass report; ADR 0243 |
 | Window open/close | T-02 measured; preserve current tokens | T-02 |
 | Workspace switch / overview | T-05 measured; preserve current tokens | T-05 |
 | App switcher | T-06 measured; preserve current tokens | T-06 |
 | OSD | T-11 measured; preserve current tokens | T-11 |
 
 The expanded campaign must fill the missing rows (menu open, HUDs, Stage
-Manager, Quick Look, Search, drawer, lock/unlock, tiling) before those
+Manager, Preview, Search, drawer, lock/unlock, tiling) before those
 transitions are tuned.
 
-The 2026-11-08 structural review did **not** measure motion for the Spotlight
-Apps drawer, Notification Center, Control Center, or fullscreen title-bar
+The 2026-11-08 structural review did **not** measure motion for the Search
+Apps drawer, Notifications, Quick Settings, or fullscreen title-bar
 reveal. Those transitions remain `OPEN` in
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
 §9; do not invent a duration or curve for them. The review did confirm the
-structural geometry that motion must preserve: the drawer is a Spotlight Apps
-grid/list, Notification Center is a right-edge ramp, Control Center modules
-grow the outer panel, and Finder accessory bars are content.
+structural geometry that motion must preserve: the drawer is a Search Apps
+grid/list, Notifications is a right-edge ramp, Quick Settings modules
+grow the outer panel, and Files accessory bars are content.
 
 ## 4. Motion tokens
 
@@ -176,7 +176,7 @@ The full `A-*` inventory is in the capture plan. Implementation priority:
 - Cycle (selection movement, scroll into view).
 - Commit (zoom to app/window).
 - Cancel (fade).
-- Cmd+` window cycle.
+- Super+` window cycle.
 
 ### 5.5 Search and drawer
 
@@ -199,7 +199,7 @@ The full `A-*` inventory is in the capture plan. Implementation priority:
 - HUDs: volume, brightness, keyboard backlight, charging, low battery,
   mirroring, Focus.
 - Lock/unlock, login, logout.
-- Quick Look open/close, fullscreen.
+- Preview open/close, fullscreen.
 - Stage Manager enter/exit/switch.
 - Window tiling snap.
 
@@ -372,6 +372,6 @@ The reduced-motion path is tested for every animation, not just the big ones.
 - [ADR 0218 — Dock motion](adr/0218-dock-motion-raised-cosine-and-tooltip.md)
 - [macOS structural surface review](23-macos-structural-surface-review.md)
 - [Design system — motion](10-design-system.md)
-- `macos-design-review/docs/CAPTURE-PLAN.md` — motion protocol
+- the local capture plan — motion protocol
 - [Evidence and acceptance](evidence-and-acceptance.md)
 - [Total experience design](22-total-experience.md)

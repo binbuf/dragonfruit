@@ -40,7 +40,7 @@ Four things had to be decided once:
 - **Reuse the shared pointer-injection helper.** `libs/chromepointer` is
   promoted out of `shell/src` into a small static library linked by both the
   shell and Files, and `ChromePointer::send` grows an optional modifiers
-  argument. The desktop's Cmd-click/Shift-click selection and its rubber band
+  argument. The desktop's Super-click/Shift-click selection and its rubber band
   therefore go through the one constructor that owns the monotonic timestamp
   (the T-16.12 invariant), instead of introducing a second injection site.
   `DesktopInput.h` holds the pure evdev/xkb→Qt mapping and is unit-tested

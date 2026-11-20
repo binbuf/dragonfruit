@@ -7,7 +7,7 @@ proposed
 ## Context
 
 `make dev`/`make demo` run the compositor **nested** in the host session and
-cover 80–90% of daily work (`docs/testing-ladder.md` rung 1), but they never
+cover 80–90% of daily work (`docs/design/testing-ladder.md` rung 1), but they never
 exercise the seat: a real login, DRM/KMS, udev input, logind, session services,
 or a display-manager entry. T-12 makes the desktop a real session
 ([11-session-and-dev-workflow.md](../11-session-and-dev-workflow.md)), and the
@@ -62,6 +62,6 @@ stop/start scripts (fragile, invasive), and same-user second graphical session
 - A user-visible **"Quit to <previous desktop>"** item appears only when the
   session was started by the harness (`DRAGONFRUIT_DEV_RETURN` set).
 - The second-VT mode needs a dedicated development user, documented in
-  `docs/testing-ladder.md` rung 2.
+  `docs/design/testing-ladder.md` rung 2.
 - The harness must remain a *dev* tool: it ships no autologin default and no
   permanent change to the host's DM configuration.

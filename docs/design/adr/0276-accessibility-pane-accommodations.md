@@ -14,7 +14,7 @@
 
 ## Context
 
-The macOS Tahoe Accessibility pane is a five-section information architecture
+The the reference design Accessibility pane is a five-section information architecture
 (Vision, Hearing, Motor, Speech, General/Shortcut). T-15.14b shipped three
 honest rows against it: the read-only AT-SPI status and one durable
 `accessibility.reduceMotion` toggle. The T275 review found the map claiming
@@ -63,7 +63,7 @@ compositor owner.
 ## Consequences
 
 - `services/settingsd` revision 32 adds seven `accessibility.*` keys and the
-  `Accessibility` key group; `docs/settings-keys.md` is in lockstep.
+  `Accessibility` key group; `docs/design/settings-keys.md` is in lockstep.
 - The shell's `ThemeBinding` and the app-local `SettingsShell` mirror the three
   new Theme keys; the Dock reads `Theme.dimFlashingLights`.
 - `df_toplevel_manager` is version 12; the shell forwards the accessibility

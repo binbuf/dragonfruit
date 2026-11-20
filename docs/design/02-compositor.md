@@ -122,7 +122,7 @@ live in `compositor/src/multi_gpu.rs` and `compositor/tests/multi_gpu.rs`
 
 The dedicated-user second-VT and VM workflows — the exact commands, the four
 acceptance runs, teardown expectations, and troubleshooting — are the
-[DRM session runbook](../runbook-drm-session.md), linked from the testing
+[DRM session runbook](runbook-drm-session.md), linked from the testing
 ladder.
 
 ## Input
@@ -132,13 +132,13 @@ ladder.
 - Gesture recognition (swipe, pinch) lives in the compositor and feeds the
   **same** progress pipelines as keyboard and hot-corner triggers — there is
   no gesture-only code path (see [03-workspaces.md](03-workspaces.md)).
-- Keymaps are xkbcommon with the Cmd/Super and Option/Alt mapping fixed once
+- Keymaps are xkbcommon with the Super/Super and Option/Alt mapping fixed once
   (see [Keymap conventions](#keymap-conventions)); keyboard repeat,
   per-device pointer acceleration, and scroll configuration are compositor
   settings surfaced through the Settings input panes (see
   [08-settings.md](08-settings.md)).
 - The global shortcut engine owns system shortcuts (workspace switching,
-  Mission Control, app switcher, screenshots). Application accelerators are
+  Overview, app switcher, screenshots). Application accelerators are
   admitted only through the menu-broker while the owning window is focused
   (see [06-global-menu.md](06-global-menu.md)), and sandboxed applications
   register shortcuts through the portal's GlobalShortcuts interface — no
@@ -474,7 +474,7 @@ role) to the token group; the panel is clipped with the same `CornerMask`
 geometry as the titlebar and shadow.
 
 The GPU path landed in **T-20.1**
-([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)). The nested backend
+([ADR 0182](adr/0182-glass-material-pass.md)). The nested backend
 renders the scene (wallpaper, desktop, windows, shadows, titlebars) into an
 output-sized offscreen **scene texture** once per frame, then composes the
 output from the chrome Wayland surfaces, one **sampled blur per panel**, and
@@ -537,8 +537,8 @@ damage, and the full-output diagnostic scene base no longer repaints the whole
 output on every frame. The scene tracker is reset on a texture reallocation or
 region-size/scale change so a fresh texture renders its whole region.
 
-The Tahoe **liquid-glass pass** landed in **T-20.2**
-([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)) as a second custom
+The reference **Glass pass** landed in **T-20.2**
+([ADR 0182](adr/0182-glass-material-pass.md)) as a second custom
 texture program (`GLASS_SHADER`) used on the final compose of each panel's
 blurred texture (`compositor/src/window/blur.rs`). Because the element maps the
 whole blurred panel texture onto the panel, the shader's `v_coords` is the
@@ -568,8 +568,8 @@ The chrome **rollout** landed in **T-20.3**
 resolves through `MaterialRole`: the menu bar is `Chrome`, the Dock is `Dock`,
 the Applications drawer is `Drawer`, and every overlay — menu-bar dropdowns
 (`menubar-popup`), Dock context menus/popovers (`dock-popup`), the OSD
-(`osd`), notification banners (`notification`), the Notification Center
-(`notification-center`), and Control Center (`control-center`) — is `Popup`. Persistent panels keep their declared rect
+(`osd`), notification banners (`notification`), the Notifications
+(`notification-center`), and Quick Settings (`control-center`) — is `Popup`. Persistent panels keep their declared rect
 (the Dock plate and the drawer card via `set_panel_rect`); overlay popups are
 tight to the overlay surface, and the OSD declares its visible card separately
 because its surface is larger than the card to fit the shadow. The backdrop
@@ -587,7 +587,7 @@ drift.
 `Reduced` = blur + specular + tint with the generic edge lens dropped and the
 blur radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the
 flat feather fallback (no glass). The measured flat-band corner lens is not the
-generic edge pass: persistent Dock/Control Center roles resolve to `Reduced`
+generic edge pass: persistent Dock/Quick Settings roles resolve to `Reduced`
 even under a global `Minimal` selection (T-21.2c), so `Reduced` keeps the
 flat-band `corner_peak` and zeroes only `refraction` (T235a). `query material`
 reports the resolved glass parameters per role after the active tier, so the
@@ -642,7 +642,7 @@ T197 adds the additive v3 **multi-region** metadata
 region with an optional known T195 preset, per-corner radii, and bounded
 overscan; `clear_panel_regions` commits an empty set. Requests are latched with
 the next `wl_surface.commit`, clipped to the surface and owning output, and
-bounded to 32 regions (raised from eight by T203 for the Control Center's
+bounded to 32 regions (raised from eight by T203 for the Quick Settings'
 outer plate, 19 module capsules and expanded lists). The input region and
 reserved zone stay independent,
 and a legacy `set_panel_rect` client keeps one `panel` region. Each region
@@ -653,11 +653,11 @@ texture with no blur allocation. `PanelBlurKey` includes the region's full
 sample footprint (blur/lens kernel plus overscan), while `PanelPaintKey` makes
 tint/scheme/tier changes repaint without rebuilding the cached texture.
 
-T203 uses the same multi-region path for the Control Center. The shell declares
+T203 uses the same multi-region path for the Quick Settings. The shell declares
 one outer plate, one capsule per visible module, and an expanded Wi-Fi/Bluetooth
 list when open; the module/list regions are clipped to the scroll viewport so a
 scrolled-out item leaves no stale patch. The compositor resolves the three
-Control Center presets through the same T195/T196 policy and, on the
+Quick Settings presets through the same T195/T196 policy and, on the
 replacement rail, builds the measured flat-band + rim + capsule-end lens glass
 from the resolved own-layer values. Regions are declared outer → modules →
 expanded, so the compositor draws the outer plate first and the opaque
@@ -722,8 +722,8 @@ still produces no frames once the transition settles.
 once. A repeated `(frame, output)` request is counted as `skipped` and draws
 nothing — the T-04.2 **one effect pass per frame (no double-blur)** invariant,
 reported on the render-stats line as `backdrop_passes` / `backdrop_skipped`
-(`backdrop_skipped` must stay zero). The GPU blur (T-20.1) and the liquid-glass
-pass (T-20.2) are decided by [ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)
+(`backdrop_skipped` must stay zero). The GPU blur (T-20.1) and the Glass
+pass (T-20.2) are decided by [ADR 0182](adr/0182-glass-material-pass.md)
 (T-20), behind these token values; T-04.3 folds the pass into the reusable
 scene transform and T-04.4a degrades it. See
 [ADR 0013](adr/0013-backdrop-blur-pass.md) (superseded by 0182, retained as the
@@ -736,7 +736,7 @@ stays reproducible and low-end devices stay legible; the degrade ladder
 
 ### Reusable scene-transform pass (T-04.3)
 
-T-05's Mission Control live-surface grid and T-06's app switcher transform the
+T-05's Overview live-surface grid and T-06's app switcher transform the
 **real** window surfaces — never thumbnails — and they must not each build
 their own pipeline. The one transform is
 `compositor/src/window/scene_transform.rs`: a `SceneTransform` maps a `source`
@@ -803,7 +803,7 @@ so the floor applies to the actual backdrop/blur pass, not just the protocol.
 the legacy v3 `material_state` keeps its global meaning. The shell applies all
 four roles through one `MaterialPolicy` (ADR
 [0204](adr/0204-shell-role-material-application-policy.md)): the menu bar and
-Dock consume `Chrome`/`Dock`, the menu and Dock popovers, Control Center,
+Dock consume `Chrome`/`Dock`, the menu and Dock popovers, Quick Settings,
 notification banners, and OSD consume `Popup`, and the Applications drawer
 consumes `Drawer`. The QML complement is `design-system/Material.qml`, so a
 popup or drawer never falls back to a flat translucent slab (ADR
@@ -863,9 +863,9 @@ appear at the light scheme and a reduced-motion minimize at dark, asserting the
 same committed geometry, and `scripts/check-gallery-snapshots.py` covers the
 design-system reference for light, dark, and dark+reduced.
 
-### Mission Control live-surface grid (T-05.1a)
+### Overview live-surface grid (T-05.1a)
 
-Mission Control lays the **real** window surfaces out as a grid, never a
+Overview lays the **real** window surfaces out as a grid, never a
 cascade and never a thumbnail. The layout is pure geometry in
 `compositor/src/overview/grid.rs`: `grid_layout` orders the candidates by
 active-Space-then-strip, most-recently-used first, picks the near-square column
@@ -894,7 +894,7 @@ buffers keeps advancing at the reduced scale: the surface stays mapped in the
 `Space`, keeps its `wl_surface.frame` callbacks (`post_repaint`/`post_repaint_headless`),
 and the grid recomputes its placement from the live committed geometry — never
 a thumbnail, never a cached copy. A committing client therefore renders frames
-while Mission Control is open, which is the "a playing video keeps playing"
+while Overview is open, which is the "a playing video keeps playing"
 acceptance on the live-surface path.
 
 The grid composes its material through the **active T-04.4a degrade tier**, and
@@ -914,7 +914,7 @@ unmapped from the `Space`) and per-output chrome insets are later T-05 slices.
 
 ### Pointer selection on live representations (T-05.2)
 
-While Mission Control owns pointer input (`InputOwner::Overview`), a left press
+While Overview owns pointer input (`InputOwner::Overview`), a left press
 is hit-tested against the **interpolated** grid transform, never the committed
 geometry. `GridLayout::window_at(point, progress)` reuses
 `GridPlacement::frame` — the exact rect the renderer draws — so a click lands on
@@ -1019,7 +1019,7 @@ seam the conformance test asserts.
 
 ### Gesture frame budget and capture (T-05.6)
 
-The overview gesture (Mission Control, a progress-driven Space slide, Desktop
+The overview gesture (Overview, a progress-driven Space slide, Desktop
 Reveal) is the material track's named frame-budget risk: blur and scale over
 many live surfaces on an iGPU. The T-03 idle/latency instruments measure the
 whole session; `instrument::GestureBudgetTrace` narrows the same render-duration
@@ -1054,7 +1054,7 @@ and an over-budget frame under load) and the T-04 ladder downgrades to the
 
 ### App-switcher state (T-06.1)
 
-The Cmd-Tab app switcher is **compositor-driven and shell-rendered**: the
+The Super-Tab app switcher is **compositor-driven and shell-rendered**: the
 compositor owns the chord (through the global shortcut engine, never a client)
 and the recency order; the shell draws the overlay from the
 `df_toplevel_manager.app_switcher` projection (see [04-shell.md](04-shell.md)).
@@ -1062,9 +1062,9 @@ The state machine is `compositor/src/app_switcher.rs` (`AppSwitcher`),
 deliberately pure so open/cycle/reverse/commit/cancel are unit-testable without
 a live compositor.
 
-- **Open.** Cmd+Tab opens the switcher through the shortcut engine; the first
+- **Open.** Super+Tab opens the switcher through the shortcut engine; the first
   selection steps one app away from the focused app (so a release actually
-  switches), wrapping when there is a single app. Cmd+Shift+Tab opens backward.
+  switches), wrapping when there is a single app. Super+Shift+Tab opens backward.
   Entries are one per app in `WindowModel::recency` order, each carrying the
   app's windows most-recent first.
 - **Cycle.** A repeat Tab steps forward; Shift+Tab, Left, and Up step backward;
@@ -1078,7 +1078,7 @@ a live compositor.
   `DfState::activate_app` (the same resolver the Dock's `activate_app` request
   uses; that request is answered with `activation_result(found)`, additive in
   v8, so the shell can fall back instead of a dead click — T-14.7g); a
-  Cmd+`-cycled window is activated by id through the same `activate_window_id`.
+  Super+`-cycled window is activated by id through the same `activate_window_id`.
 - **Cancel.** Escape clears the switcher with no focus change.
 
 `query switcher` is the headless introspection (active, selected app/index,
@@ -1086,7 +1086,7 @@ direction, recency entries, the selected window id, and the active window), so
 a protocol test can prove a commit changed focus and a cancel did not. The
 private-protocol `cycle_app_switcher` request drives the *same* machine with
 the shell trigger; cycling never focuses, only a commit does. The overlay
-itself and its live previews are T-06.2a; commit, the within-app Cmd+` cycle,
+itself and its live previews are T-06.2a; commit, the within-app Super+` cycle,
 and pointer interruptibility are T-06.2b.
 
 ### App-switcher live previews (T-06.2a)
@@ -1094,7 +1094,7 @@ and pointer interruptibility are T-06.2b.
 The overlay shows the **real** window surfaces of the recency entries, never
 thumbnails. While `AppSwitcher` is active, `DfState::switcher_frame` maps each
 entry window's committed geometry through the same T-04 scene transform the
-Mission Control grid uses: one `GridCandidate` per entry (the app's
+Overview grid uses: one `GridCandidate` per entry (the app's
 most-recent window) laid out by `grid_layout` over the output minus the shell's
 card strip (`overview::switcher::preview_area`, from the shared
 `component.overview` tokens), with the T-04.3 `MotionFrame` at full progress.
@@ -1117,18 +1117,18 @@ shell projects that batch. `query switcher` reports one `switcher preview
 seam the conformance test asserts. See
 [ADR 0022](adr/0022-app-switcher-overlay-and-previews.md).
 
-### App-switcher commit, Cmd+` cycling, and interruptibility (T-06.2b)
+### App-switcher commit, Super+` cycling, and interruptibility (T-06.2b)
 
 The overlay is fully interactive while Command is held. Three additions
 complete the track:
 
-- **Within-app window cycling.** Cmd+` / Cmd+Shift+` resolve through the *same*
+- **Within-app window cycling.** Super+` / Super+Shift+` resolve through the *same*
   shortcut engine to `InputAction::AppSwitcherWindow` and drive the same
   `AppSwitcher` machine — never a second binding path. The machine keeps a
   window cursor per selected app; `step_window` wraps through
   `entries[selected].windows`. When the switcher is closed the chord seeds the
   snapshot **on** the focused app (`open_focused`) and takes one step, so a
-  bare Cmd+` switches to the frontmost app's next window; the app selection,
+  bare Super+` switches to the frontmost app's next window; the app selection,
   and so the overlay highlight, never moves. The selected entry's live preview
   follows the cursor (`switcher_candidates` uses the cursor-selected window).
 - **Pointer commit.** A left press while the switcher is up is intercepted
@@ -1138,7 +1138,7 @@ complete the track:
   press off every preview cancels with no focus change. The shell's card strip
   is a pure projection and needs no pointer forwarding for this.
 - **Interruptibility.** Commit is idempotent (the machine clears `active`
-  first), a Command release is the only commit trigger, and Cmd+` or a pointer
+  first), a Command release is the only commit trigger, and Super+` or a pointer
   press can retarget the selection at any time while held.
 
 ## Window model
@@ -1186,7 +1186,7 @@ complete the track:
 - **Fractional scaling.** Xwayland runs at `ceil(primary_output_scale)`
   (clamped to >= 1) and X11 windows never receive a fractional
   `preferred_scale`; they keep integral X coordinates (T-16.3a,
-  [../xwayland-scaling.md](../xwayland-scaling.md)). The compositor maps
+  [xwayland-scaling.md](xwayland-scaling.md)). The compositor maps
   each surface's logical rect to physical pixels with the output's
   fractional scale, and every output-scale change re-configures the chrome
   layers anchored to it so a menu bar or Dock is never left sized for the
@@ -1236,7 +1236,7 @@ Standard protocols the compositor implements or consumes:
 
 ### Private shell protocols
 
-The shell's chrome surfaces (menu bar, Dock, Control Center, notifications,
+The shell's chrome surfaces (menu bar, Dock, Quick Settings, notifications,
 overview strip) are Wayland surfaces created by the shell process through a
 private, versioned protocol in the style of `wlr-layer-shell`: reserved
 zones, stacking layers, and explicit keyboard-interaction modes, restricted
@@ -1287,7 +1287,7 @@ state, stacking relationship, and surface texture. This is what makes Mission
 Control, the Dock, and workspace switching feel coherent instead of
 screen-scraped:
 
-- Mission Control renders the **real surfaces** while applying scale,
+- Overview renders the **real surfaces** while applying scale,
   translation, clipping, blur/shadow, and workspace transformations — no
   scraping, no re-rendering by a third-party program.
 - The Dock obtains window/app state directly from the compositor instead of
@@ -1328,7 +1328,7 @@ polling anywhere.
 
 ## Keymap conventions
 
-The macOS-Cmd role maps to **Super/Mod4**; Option maps to **Alt**. The
+The macOS-Super role maps to **Super/Mod4**; Option maps to **Alt**. The
 mapping is chosen once here and shared by system shortcuts and first-party
 application accelerators alike (see [06-global-menu.md](06-global-menu.md),
 [09-files.md](09-files.md)), so applications cannot drift from the shell.

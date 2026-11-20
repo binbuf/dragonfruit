@@ -41,7 +41,7 @@ COMPONENT_PROPERTIES = {
 DEFAULT_WEIGHT = "outline"
 WEIGHTS = ("outline", "filled")
 
-# Names the services, Files models, and Control Center pass through the
+# Names the services, Files models, and Quick Settings pass through the
 # compatibility facade at runtime. They are bound expressions, so the literal
 # scan cannot validate them; keep this list in sync with the producers
 # (services/system-status, services/files-core, apps/files, shell/control-center).
@@ -53,7 +53,7 @@ DYNAMIC_LEGACY_NAMES = [
     # shell chrome (dynamic names in Icon/StatusItem expressions)
     "brightness", "restore", "minimize", "close", "zoom", "application",
     "control-center", "mission-control", "appearance",
-    # system-status / Control Center
+    # system-status / Quick Settings
     "accessibility", "users", "volume-muted", "bluetooth-disabled",
     "keyboard", "mouse", "trackpad", "touch", "tablet", "input", "lock",
     "menu-bar", "wifi", "wifi-secure", "wifi-disabled", "wifi-connecting",

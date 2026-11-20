@@ -4,7 +4,7 @@
 
 ## Context
 
-The liquid-glass replacement had per-surface captures (T198–T206) but no
+The Glass replacement had per-surface captures (T198–T206) but no
 single acceptance run that compares the replacement with the legacy rail on
 the same host, scene and settings. T208 needs nested evidence for the
 rollback path, the flat-band targets, and the interaction/fallback matrix

@@ -60,7 +60,7 @@ over the compositor's glass, so the sampled Dock had duplicate edges.
 
 The five-level Kawase composite in decision 2 was superseded by the measured
 two-path blur (19.2 % sharp + Gaussian σ 3.86 pt) and padded sample domain in
-[`docs/proposals/dock-plate-liquid-glass.md`](../../proposals/dock-plate-liquid-glass.md)
+[`docs/proposals/dock-plate-Glass.md`](../../proposals/dock-plate-Glass.md)
 (R1). The flat-band fit, the panel-space Dock composite, and the scorer
 separation remain. The replacement also adds the physical bevel/Fresnel rim
 (R2–R3) and the continuous squircle (R4); see the amendment to ADR

@@ -6,7 +6,7 @@ The notification surfaces are three distinct materials, not one Popup plate
 with a second alpha layered on top:
 
 * the transient banner (`notificationBanner`, Light 0.549/0.976),
-* the Notification Center stack (`notificationStack`, Light 0.551/0.706,
+* the Notifications stack (`notificationStack`, Light 0.551/0.706,
   Dark 0.507/0.550), and
 * the Center's lower panel (`notificationLowerPanel`, Light 0.407/0.852).
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# T234: the measured Notification Center ramp, banner stack, widget stack and
+# T234: the measured Notifications ramp, banner stack, widget stack and
 # the separate widget gallery, in light and dark.
 #
 # Headless offscreen/software, 800x480 stage at 1x; the item grabs are the
@@ -42,7 +42,7 @@ for state in banner center-populated center-empty widget-gallery; do
 done
 
 cat >"$out_dir/t234-notifications.txt" <<EOF
-T234 Notification Center / banner / widget gallery capture
+T234 Notifications / banner / widget gallery capture
 date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 source: shell/tests/tst_notifications.qml (headless offscreen/software)
 stage: 800x480 pt, 1x

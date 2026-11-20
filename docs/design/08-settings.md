@@ -65,7 +65,7 @@ Three provider kinds meet inside `settingsd`:
 > **2026-11-14 review.** The first pass (T222–T229a) landed breadth, not a
 > top-tier experience. [24-system-settings.md](24-system-settings.md) is the
 > pane-by-pane target: the measured 740×820 window and grouped sidebar, the
-> complete macOS Tahoe row inventory, the Linux adaptations and omissions,
+> complete the reference design row inventory, the Linux adaptations and omissions,
 > the absence/empty-state contract, the findings register, and the T263–T284
 > completion sequence in the dedicated
 > [`system-settings` task set](../tasks/system-settings/plan/ROADMAP.md). Where
@@ -83,9 +83,9 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Bluetooth | BlueZ |
 | Energy | UPower + power-profiles-daemon where present; T289 renders the mockup order (Low Power Mode, Battery Health + Show Detail, the `power.historyRange` range control, the live UPower status pill, the `SettingsChart` Battery Level chart, and an Options… sheet with the real `power.*` policy, Power Adapter, and Lock Screen rows). The id stays `battery`; macOS calls the same pane Battery on a laptop and Energy on a desktop ([adr/0293](adr/0293-battery-displays-pane-adaptations.md), [adr/0300](adr/0300-energy-category.md)) |
 | General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
-| Appearance | `settingsd` (design-system themes, Light/Dark/Auto mode tiles, accent with custom hex, highlight, folder color, icon style, sidebar icon size, wallpaper tint, scroll bars, attached-menu Glass tint) plus the Advanced Appearance sheet for the Linux-only icon/cursor/window/material rows ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0275](adr/0275-appearance-groups-provider-rows-and-tahoe-accent.md), [adr/0296](adr/0296-appearance-pane-adaptations.md)) |
+| Appearance | `settingsd` (design-system themes, Light/Dark/Auto mode tiles, accent with custom hex, highlight, folder color, icon style, sidebar icon size, wallpaper tint, scroll bars, attached-menu Glass tint) plus the Advanced Appearance sheet for the Linux-only icon/cursor/window/material rows ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0275](adr/0275-appearance-groups-provider-rows-and-accent.md), [adr/0296](adr/0296-appearance-pane-adaptations.md)) |
 | Accessibility | live AT-SPI read + `settingsd` + compositor + delegates — mockup intro plus a big list of in-place sub-panes. T291a ships **Vision**: read-only screen-reader/bridge status plus `Open Orca`, Display accommodations (`increaseContrast`, `reduceTransparency`, `differentiateWithoutColor`, `textSize`, the shared `appearance.cursorSize`), the compositor magnifier (`magnifier`, `magnifierZoom`, `magnifierMode`), Motion (`reduceMotion`, `dimFlashingLights`), and the speech-dispatcher Read & Speak delegate. T291b adds **Physical and Motor**: Keyboard (stored-only `input.keyboardNavigation` plus the `onboard`/`wvkbd` on-screen-keyboard delegate) and Pointer Control (live `input.doubleClickSpeed`). T291c adds **Hearing**: Audio keeps Balance on the stored-only `sound.balance` key shared with the Sound pane, while Hearing Devices, Subtitles and Captioning, Live Captions, and Spoken Name are map omissions with reasons. Ownerless rows in every section are map omissions with reasons; Speech and General/Shortcut follow in T291d–T291e ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0276](adr/0276-accessibility-pane-accommodations.md), [adr/0297](adr/0297-accessibility-big-list-and-vision.md), [adr/0299](adr/0299-accessibility-hearing.md)) |
-| Desktop & Dock | `settingsd` → shell + compositor; the full Dock group, Desktop & Stage Manager (`desktop.showItems` live), Widgets, Windows, Mission Control links, and the default-browser delegate; T242/T245b/T243 rows are disabled with a reason (T276) |
+| Desktop & Dock | `settingsd` → shell + compositor; the full Dock group, Desktop & Stage Manager (`desktop.showItems` live), Widgets, Windows, Overview links, and the default-browser delegate; T242/T245b/T243 rows are disabled with a reason (T276) |
 | Displays | Compositor output API + the real platform output list — **shipped:** the display icon row and per-output sheet, Resolution radios over the real logical sizes, the scaling note, brightness, and rotation (in the Advanced… sheet); **capability-gated:** Use as, auto-brightness, Ambient color (adaptive color), refresh switching, arrangement, Night Light (toggle/schedule/temperature), Preset (color profile), projector mode, HDR, VRR, and overscan are disabled with an OPEN reason until the compositor/colord/sensor half exists. One table (`displaycapabilities`) drives both the pane and the advanced sheet; the projector section appears only when the host marks a TV/projector output ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0274](adr/0274-data-panes-sampler-and-capability-rows.md), [adr/0293](adr/0293-battery-displays-pane-adaptations.md)) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures; Screen Saver… navigates to the Screen Saver pane and Clock Appearance… opens real clock controls ([adr/0239](adr/0239-wallpaper-notifications-focus-lock-panes.md), [adr/0279](adr/0279-personalization-apply-and-stored-policy.md)) |
 | Menu Bar | `settingsd` → shell |
@@ -96,11 +96,11 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Privacy & Security | Portals (`xdg-desktop-portal` PermissionStore) mapped to the macOS categories and grouped as Location Services / App access / Analytics / Security; Security reads the distro/Flatpak sources, LUKS, USBGuard, SELinux/AppArmor, portal extensions, and the Advanced inventory. `privacy.locationServices` gates per-app location writes; `privacy.analytics` is opt-in and stored-only ([adr/0237](adr/0237-security-biometrics-online-accounts.md), [adr/0280](adr/0280-accounts-and-security-pane-completion.md)) |
 | Biometrics & Password | fprintd + PAM + AccountsService where present; the enrollment wizard reports fprintd's own stage ids, the password dialog waits for the host's report, and PAM/LUKS status stay read-only ([adr/0237](adr/0237-security-biometrics-online-accounts.md), [adr/0280](adr/0280-accounts-and-security-pane-completion.md)) |
 | Users & Groups | accountsservice (read + password) + the distribution group provider (`FileGroupProvider`: NSS read, `groupadd`/`groupdel`/`gpasswd` under pkexec); Add User carries the password step ([adr/0280](adr/0280-accounts-and-security-pane-completion.md)) |
-| Online Accounts | optional GNOME Online Accounts; the pane stays visible with an explicit "Internet accounts are not installed" state and a delegate action, and account details/sign-in-again project GOA without implementing OAuth ([adr/0237](adr/0237-security-biometrics-online-accounts.md), [adr/0280](adr/0280-accounts-and-security-pane-completion.md)) |
+| Online Accounts | optional GNOME Online Accounts; the pane stays visible with an explicit "Online accounts are not installed" state and a delegate action, and account details/sign-in-again project GOA without implementing OAuth ([adr/0237](adr/0237-security-biometrics-online-accounts.md), [adr/0280](adr/0280-accounts-and-security-pane-completion.md)) |
 | Keyboard, Mouse, Trackpad | Compositor input API + xkbcommon |
 | Sound | PipeWire / WirePlumber |
 | Printers & Scanners | CUPS + SANE |
-| Screen Time, AI | macOS-specific; **not planned** |
+| usage limits, AI | macOS-specific; **not planned** |
 
 ## The executable map (T222)
 
@@ -125,7 +125,7 @@ The map has **26 shipped panes in the 27-entry reduced sidebar** after T285
 `biometrics` is refused. `SettingsPanes.removed`/`SettingsMap.removed` carry
 the reasons and the debug view shows them. `vpn` is always visible, so the
 sidebar order is stable with no profile. `online-accounts` keeps the generic
-**Online Accounts** title (the naming gate maps the macOS *Internet Accounts*
+**Online Accounts** title (the naming gate maps the macOS *Online Accounts*
 label) and `internet-accounts` is its alias/search synonym; the General
 sub-panes are **Passwords & Keys** and **Backups**. The Help menu opens the
 in-app **Pane & Row
@@ -175,7 +175,7 @@ adapter is absent. T269 adds the real System Report sheet, the display
 name/resolution from the live screen, the stacked Storage chart and
 recommendations, and the Passwords & Keys provider inventory. T287 makes the
 list the mockup's intro plus an 11-row 52 pt `SettingsBigList` with per-row
-category tiles; Device Management is a mapped omission because this build has
+category tiles; device management is a mapped omission because this build has
 no Linux MDM/profile owner, and Passwords & Keys/Backups carry the two mockup
 sub lines. The sub-panes now follow the §5.1 section inventory: About's hero
 and grouped host rows, the Software Update provider card, Storage's summary
@@ -254,7 +254,7 @@ is optional and appears only while GOA answers).
   set. `ControlCenter.qml` filters and orders its live tile model from the same
   keys; removing a module hides it immediately, and a menu-bar-only item leaves
   the panel while its existing `menu.control.*` mark stays live. Per-display
-  panels are disabled with a T235 reason (one Control Center surface today).
+  panels are disabled with a T235 reason (one Quick Settings surface today).
 - **Search** writes the durable T246 contract (`search.categories`,
   `search.indexLocations`, `search.shortcut`, `search.web`, and
   `menu.control.search`). The indexing status and Rebuild rows are disabled
@@ -334,7 +334,7 @@ The last four panes close the reference information architecture
   superseding, bounded, and fake-clock testable.
 - **Notifications** keeps the four settingsd presentation preferences as a
   stored policy (the service has no display-state input), adds the full
-  per-app sheet (Allow, Style, Sound, Badge, Lock screen, Notification Center
+  per-app sheet (Allow, Style, Sound, Badge, Lock screen, Notifications
   count, Previews, Grouping), and links to Focus. The service enforces the
   mute and `style = none` in admission; the app inventory is the observed
   list, not a guessed installed-app set.
@@ -683,7 +683,7 @@ appearance without changing the opaque content sheet:
 
 - Light sidebar `settingsSidebar` 0.986/0.857 and toolbar
   `settingsToolbar` 0.961/0.965 (measured).
-- Dark uses the Finder-derived 0.935/0.218 sidebar and 0.900/0.247 toolbar as
+- Dark uses the Files-derived 0.935/0.218 sidebar and 0.900/0.247 toolbar as
   an explicit **adapted** baseline; System Settings Dark has no independent
   fit.
 - The window frame/content backing is transparent only behind those two
@@ -712,7 +712,7 @@ records the decision and the unresolved chroma transport.
 
 ## The T290 Appearance pane (ADR 0296)
 
-T290 lands the macOS Tahoe Appearance page: six cards plus a footer, instead
+T290 lands the the reference design Appearance page: six cards plus a footer, instead
 of seven one-row cards and a separate Preview group.
 
 - **Appearance** is three `SettingsModeTile`s (Light/Dark/Auto) over
@@ -769,9 +769,9 @@ of seven one-row cards and a separate Preview group.
 
 T276 completes the macOS Desktop & Dock page and the Linux Overview surface.
 Desktop & Dock renders the twelve-row Dock group, the Desktop & Stage Manager
-group, Widgets, Windows, the Mission Control links, the global application-menu
+group, Widgets, Windows, the Overview links, the global application-menu
 row, and the default-browser row. Overview keeps its `mission-control` id and
-renders Mission Control, Workspaces, Hot Corners, and Shortcuts.
+renders Overview, Workspaces, Hot Corners, and Shortcuts.
 
 Every live row has a real consumer:
 
@@ -928,7 +928,7 @@ reduced-motion stills.
 
 ## The absent-daemon masking matrix (T-15.16)
 
-T-15 landed the Wave-2/3 panes and their Control Center tiles; T225–T228 added
+T-15 landed the Wave-2/3 panes and their Quick Settings tiles; T225–T228 added
 the later panes, taking the catalog to **28 shipped panes**
 (`SettingsPanes.shippedPanes`; Online Accounts is optional). Each pane routes
 to exactly one subsystem; masking that subsystem is a supported session state,
@@ -937,7 +937,7 @@ and the wave-2/3 companion to the T-09.6b table above.
 
 Two absence families appear, and a pane can mix them:
 
-- **settingsd-backed controls** (Appearance, Desktop & Dock, Mission Control,
+- **settingsd-backed controls** (Appearance, Desktop & Dock, Overview,
   Displays, Lock Screen, Menu Bar, and the durable halves of Wallpaper, Sound,
   Keyboard/Mouse/Trackpad, Notifications/Focus, Accessibility) stay **live on
   the schema defaults** with no settingsd. A write lands in memory for the
@@ -952,14 +952,14 @@ Two absence families appear, and a pane can mix them:
   hides by the same rule. A present-but-unreadable daemon is `Error` — visible
   and inert, never leaked into a neighbour.
 
-| Shipped pane | Routed to | Pane with the provider absent | Control Center tile |
+| Shipped pane | Routed to | Pane with the provider absent | Quick Settings tile |
 |---|---|---|---|
 | Appearance | settingsd | live on schema defaults | — (none) |
 | Quick Settings | settingsd → shell/ControlCenter | live on defaults; the panel keeps the built-in module order and hides only absent modules | — (none) |
 | Search | settingsd (the T246 service is a separate provider) | live on defaults; categories/locations/shortcut/web stay live, indexing status/rebuild disabled with the T246 reason | — (none) |
 | Screen Saver | settingsd + shell/LockScreen | live on defaults; style/clock options stay live, the lock scene renders the schema defaults | — (none) |
 | Desktop & Dock | settingsd → shell/compositor | live on defaults; the shell forwards the same policy from the schema defaults, so the Dock and Overview follow without a daemon | — (none) |
-| Mission Control | settingsd + compositor | settingsd keys live on defaults; the note says the daemon is gone | **hides** (no compositor bridge) |
+| Overview | settingsd + compositor | settingsd keys live on defaults; the note says the daemon is gone | **hides** (no compositor bridge) |
 | Displays | compositor output API + settingsd | live on defaults; shell applies the policy when an output appears | — (none) |
 | Wallpaper | settingsd + `wallpaperd` + FileChooser portal | built-in/toggle/fit live; Featured empty (never an error); the "Add Photo…" portal row **disabled** with its explanation | — (none) |
 | Wi-Fi | NetworkManager (bridge host) + settingsd prompt policy | note; every section stays (Current/Known/Other/Ask/Advanced, with Personal Hotspot inside Advanced); only radio/join/forget/scan/hotspot disable; the two `network.wifi.*` rows stay live on defaults and are marked stored-only | **hides** |
@@ -1147,7 +1147,7 @@ portability mostly a packaging exercise (see [12-packaging.md](12-packaging.md))
 The Settings UI looks precisely how we want — macOS-like information
 architecture — built entirely in our design system (see
 [10-design-system.md](10-design-system.md)), with no dependency on GNOME
-Control Center.
+Quick Settings.
 
 ### Reference and style
 
@@ -1155,9 +1155,9 @@ The pane-by-pane reference is
 [System_Preferences.md](../reference/System_Preferences.md): Dragonfruit
 mirrors macOS System Settings **nearly verbatim** — style, information
 architecture, section order, row labels, control types, and wording —
-dropping only Apple/Mac-only concepts (Apple Account/iCloud, AppleCare,
-Continuity/AirDrop, Siri/Apple Intelligence, Screen Time, Touch ID/Apple
-Watch, Find My, FileVault). Generic terms are kept; Linux-like
+dropping only reference-only concepts (Account/cloud account, support plans,
+device continuity/Nearby Transfer, voice assistant/on-device AI, usage limits, Fingerprint/Apple
+Watch, device location, Disk Encryption). Generic terms are kept; Linux-like
 substitutions are chosen deliberately per pane. The reference screenshots
 themselves are local-only and never ship
 ([14-risks.md](14-risks.md)).

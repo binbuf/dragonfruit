@@ -8,7 +8,7 @@ import Dragonfruit
 // About/Settings/Hide/Quit items; Files on the empty desktop), the focused
 // application's own menus (menu-broker, T-22), system status items (Wi-Fi,
 // Bluetooth, volume, battery, clock, Focus/DND, accessibility), the Control
-// Center entry point, and a Mission Control button/gesture target.
+// Center entry point, and an Overview button/gesture target.
 //
 // The shell process owns the Wayland surface and reserved zone; this
 // component is the render/interaction core. Data is injected (the shell

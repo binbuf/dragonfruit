@@ -4,7 +4,7 @@
 # T-20.3 chrome-material rollout live capture.
 #
 # Runs the nested demo and captures every chrome surface the T-20.3 rollout
-# puts the sampled blur + liquid-glass material behind, in light and dark:
+# puts the sampled blur + Glass material behind, in light and dark:
 #
 #   * docs/captures/t20-chrome-dock-{light,dark}.png
 #   * docs/captures/t20-chrome-menubar-{light,dark}.png
@@ -47,7 +47,7 @@ DOCK_Y=1155
 # The banner sits top-right below the bar; clicking the body dismisses it.
 BANNER_DISMISS_X=1730
 BANNER_DISMISS_Y=80
-# Control-Option-C opens the Control Center (evdev codes).
+# Control-Option-C opens the Quick Settings (evdev codes).
 CTRL=29
 ALT=56
 KEY_C=46
@@ -148,7 +148,7 @@ start_demo() {
     fi
     [ "$settle" = "poll" ] || sleep "$settle"
     if grep -q "glass-program=compiled" "$LOG"; then
-        echo "capture-t20-chrome: liquid-glass shader compiled"
+        echo "capture-t20-chrome: Glass shader compiled"
     else
         echo "capture-t20-chrome: WARNING — demo log has no glass-program=compiled" >&2
         grep -iE "glass|shader" "$LOG" | tail -5 >&2 || true
@@ -213,7 +213,7 @@ raise_dragonfruit
 driver "sleep:1.5; shot:t20-chrome-contextmenu-dark"
 stop_demo
 
-# --- Phase 3: Control Center (Popup overlay panel). -------------------------
+# --- Phase 3: Quick Settings (Popup overlay panel). -------------------------
 set_scheme light
 start_demo "$SETTLE" DF_STATUS_FIXTURE=1 DF_NOTIFY_FIXTURE=1
 raise_dragonfruit

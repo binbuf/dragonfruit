@@ -114,13 +114,13 @@ be "corrected" back to the capture by a later visual-parity task.
 | Mockup | Dragonfruit | Reason |
 |---|---|---|
 | Sidebar label **Battery** | **Energy** on every machine | one label for laptops and desktops; macOS itself uses Energy on desktops |
-| Low Power Mode: Never / Always / Only on Battery / Only on Power Adapter | power-saver / balanced / performance | power-profiles-daemon's vocabulary; shared with the Control Center tile |
-| Battery Health: Apple hardware health and optimized charging | UPower capacity and cycle count | the Apple data has no Linux provider |
+| Low Power Mode: Never / Always / Only on Battery / Only on Power Adapter | power-saver / balanced / performance | power-profiles-daemon's vocabulary; shared with the Quick Settings tile |
+| Battery Health: reference hardware health and optimized charging | UPower capacity and cycle count | the Apple data has no Linux provider |
 | Last charged to 100% with a date | "Not available" | UPower exposes no last-charged timestamp |
 | Battery Level chart from captured data | sampler-backed chart with an explicit empty state | never fabricate a chart |
 | Screen On Usage chart | one honest "Not available" row | no session sampler in this build |
 | Options sheet with live Wake for network / Optimize video | both disabled with the owner named | host firmware and the media pipeline are outside the session bus |
-| Apple Account / sidebar row | omitted project-wide | not a Linux surface |
+| Account / sidebar row | omitted project-wide | not a Linux surface |
 | Desktop Energy rows (power-failure restart, UPS, disk sleep, Power Nap) | not implemented; omissions | no owner chosen yet; see §2.6 |
 
 The Linux-only **Power Adapter** and **Charge limit** rows have no mockup
@@ -157,6 +157,6 @@ machine-dependent logic recorded yet; it still has an owner/absence contract in
 | Sound | not yet documented |
 | Lock Screen | not yet documented |
 | Privacy & Security | not yet documented |
-| Users & Groups, Internet Accounts | not yet documented |
+| Users & Groups, Online Accounts | not yet documented |
 | Keyboard, Mouse, Trackpad, Game Controllers | not yet documented |
 | Printers & Scanners | not yet documented |

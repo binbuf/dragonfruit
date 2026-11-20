@@ -11,7 +11,7 @@
 ## Context
 
 T-15.13 splits the macOS Privacy & Security surface into an adapter (T-15.13a)
-and a Settings pane plus Control Center tile (T-15.13b). [07-system-integration.md]
+and a Settings pane plus Quick Settings tile (T-15.13b). [07-system-integration.md]
 routes the surface to host services and [08-settings.md] to
 "`settingsd` + host services (Secret Service, polkit) and portals". On Linux the
 desktop's actual privacy record is the `xdg-desktop-portal`

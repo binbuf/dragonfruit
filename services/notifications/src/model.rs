@@ -5,13 +5,13 @@
 //! ([01-architecture.md](../../docs/design/01-architecture.md)): a
 //! [`Notification`] is created by an app's `Notify` call, lives in the active
 //! `banners` queue until it is closed or expires, and is recorded in the
-//! bounded `history` for the notification center.
+//! bounded `history` for Notifications.
 //!
 //! The model is deliberately a plain Rust value with no D-Bus or JSON in it,
 //! so the round-trip and policy tests drive it directly. The D-Bus surface in
 //! [`crate::dbus`] is a thin adapter over it.
 //!
-//! Focus/DND is *owned* here (the single source of truth for Control Center,
+//! Focus/DND is *owned* here (the single source of truth for Quick Settings,
 //! the menu bar, and Settings): the [`Queue`] holds one [`FocusPolicy`]
 //! (T-11.2a) and asks it whether a `Notify` becomes a banner. A suppressed
 //! notification is still recorded in the history, flagged `suppressed`, and
@@ -331,11 +331,11 @@ impl Queue {
         Some(notification)
     }
 
-    /// Clear the whole Center: close every active banner with `Dismissed` and
+    /// Clear the whole Notifications panel: close every active banner with `Dismissed` and
     /// drop the recorded history. Returns the closed ids, oldest first, so the
     /// adapter can emit one `NotificationClosed` per app-owned banner.
     ///
-    /// This is the Notification Center's "Clear All" action. It never touches
+    /// This is the Notifications "Clear All" action. It never touches
     /// the Focus policy or its batch: clearing the visible list is not a mode
     /// change.
     pub fn clear_all(&mut self, now_ms: u64) -> Vec<u32> {

@@ -58,7 +58,7 @@ grows a `DragHandler` sibling.
   compatibility alias, so the Dock path and `tst_dock`'s `DockInject` name it
   unchanged. A handler that builds its own `QMouseEvent` is the bug.
 - **Every injection site routes through it.** Menu bar / main,
-  Control Center, the FileChooser overlay, screenshot, screencast, polkit,
+  Quick Settings, the FileChooser overlay, screenshot, screencast, polkit,
   overview, and the notification banner now call `ChromePointer::send` for
   their move / button / leave events, keeping each surface's existing button
   bookkeeping. Ad-hoc `QMouseEvent` construction in those handlers is gone

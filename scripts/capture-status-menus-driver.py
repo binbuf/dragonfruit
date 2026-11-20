@@ -27,7 +27,7 @@ BTN_LEFT = 0x110
 # Pixels from the output's right edge to the centre of each status item; the
 # bar's centre row is at y = 14 (output pixels). Measured from the live shell
 # with `DF_STATUS_FIXTURE=1` (Wi-Fi + volume + battery + clock + Control
-# Center + Mission Control; Bluetooth is hidden until its adapter lands):
+# Center + Overview; Bluetooth is hidden until its adapter lands):
 # Wi-Fi centre x = 1644 px, volume x = 1673 px, battery x = 1702 px on a
 # 1920-wide output.
 WIFI_FROM_RIGHT = 276

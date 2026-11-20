@@ -11,7 +11,7 @@ accepted
 
 ## Context
 
-[ADR 0182](0182-tahoe-liquid-glass-material-pass.md) moved the chrome material
+[ADR 0182](0182-glass-material-pass.md) moved the chrome material
 onto a GPU-sampled backdrop pass and left three hardening questions to T-20.4:
 how the pass behaves under `renderer_multi`, what the software/headless path
 renders, and how its captures can be verified in CI. The pass runs custom GLES

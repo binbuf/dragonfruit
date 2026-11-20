@@ -34,7 +34,7 @@ protocol.
   `protocols/wayland-protocols/ext-session-lock-v1.xml` so the shell needs no
   system `wayland-protocols` package; the CMake build runs `wayland-scanner`
   over it exactly like the private protocol XMLs.
-- **The trigger is the existing compositor action.** Cmd+Ctrl+Q resolves to
+- **The trigger is the existing compositor action.** Super+Ctrl+Q resolves to
   `InputAction::LockScreen` and is broadcast to the shell over
   `df_toplevel_manager.input_action`; the shell requests the lock. The
   compositor never drives the lock UI itself.

@@ -5,7 +5,7 @@
 // and the bridge forwards reads and writes here. The live
 // `DbusBluetoothClient` talks to the bridge host's
 // `org.dragonfruit.SystemStatus1.Bluetooth` interface (the same adapter the
-// Control Center tile reads), and `MockBluetoothClient` serves a deterministic
+// Quick Settings tile reads), and `MockBluetoothClient` serves a deterministic
 // fixture for the headless pane tests (`DF_BLUETOOTH_FIXTURE`). Absence is a
 // normal state: `available()` is false and the view is empty — never an error.
 #pragma once

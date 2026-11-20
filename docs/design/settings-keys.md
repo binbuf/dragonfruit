@@ -13,7 +13,7 @@ Values are typed D-Bus variants (`b`, `d`, `x`, `s`, `as`), never JSON
 strings. The persisted file is
 `$XDG_CONFIG_HOME/dragonfruit/settings.json` (fallback
 `$HOME/.config/dragonfruit/settings.json`), written only by `settingsd`
-(ADR [0031](design/adr/0031-settingsd-persistence-format-and-atomic-writes.md)).
+(ADR [0031](adr/0031-settingsd-persistence-format-and-atomic-writes.md)).
 
 The schema is **additive-only** within the `1` series: a key may be added
 (bump `SCHEMA_VERSION`, set its `since`), never renamed or removed. A test
@@ -48,13 +48,13 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `workspaces.count` | x | 3 | 1–16 | settingsd | compositor/workspace model, shell | Number of Spaces every output starts with. |
 | `gestures.enabled` | b | true | | settingsd | compositor/input | Master switch for trackpad gesture recognition. |
 | `gestures.spaceSwitch` | b | true | | settingsd | compositor/input | Horizontal swipe switches Spaces. |
-| `gestures.missionControl` | b | true | | settingsd | compositor/input | Vertical swipe opens Mission Control. |
+| `gestures.missionControl` | b | true | | settingsd | compositor/input | Vertical swipe opens Overview. |
 | `gestures.pages` | s | `two-finger` | `off`/`two-finger`/`three-finger` | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Finger count for the page-swipe gesture; off disables it (T280). |
 | `gestures.fullscreen` | s | `three-finger` | `off`/`three-finger`/`four-finger` | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Finger count for the full-screen-app swipe; off disables it (T280). |
-| `gestures.notifications` | b | false | | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Two-finger swipe from the right edge opens Notification Center (T280). |
+| `gestures.notifications` | b | false | | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Two-finger swipe from the right edge opens Notifications (T280). |
 | `gestures.showDesktop` | b | true | | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Spread the thumb and three fingers to reveal the desktop (T280). |
 | `gestures.appWindows` | b | true | | apps/settings | stored-only: compositor/input gesture recognizer does not read this family yet | Swipe down with three fingers to show the app's windows (T280). |
-| `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. The Control Center dark-mode tile writes `dark`/`light` only (T-11.3b). |
+| `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. The Quick Settings dark-mode tile writes `dark`/`light` only (T-11.3b). |
 | `appearance.accent` | s | `` (empty) | `#rrggbb` or empty | settingsd | shell/design-system Theme | Accent color override (`#rrggbb`); empty uses the token default. |
 | `appearance.transparency` | d | 0.5255 | 0.0–1.0 | apps/settings | shell/design-system Glass, compositor/material | Attached-menu glass transparency, 0 (opaque) to 1 (clearer); the measured midpoint is 0.5255 and is the default for the shipped replacement glass (ADR 0234). |
 | `wallpaper.source` | s | `` (empty) | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Image path for the selected wallpaper; empty falls back to the shipped default (ADR 0094). |
@@ -143,7 +143,7 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `menu.control.focus` | b | true | | apps/settings | shell/MenuBar status row | Show the Focus control in the menu bar when its service is present (T-15.9b). |
 | `menu.control.accessibility` | b | true | | apps/settings | shell/MenuBar status row | Show the Accessibility control in the menu bar when it is available (T-15.9b). |
 | `menu.control.clock` | b | true | | apps/settings | shell/MenuBar status row | Show the Date & Time (clock) item in the menu bar (T231). |
-| `menu.control.notifications` | b | true | | apps/settings | shell/MenuBar status row | Show the Notifications item in the menu bar when the notification service is present (T231). |
+| `menu.control.notifications` | b | true | | apps/settings | shell/MenuBar status row | Show Notifications item in the menu bar when the notification service is present (T231). |
 | `menu.control.controlCenter` | b | true | | apps/settings | shell/MenuBar status row | Show the Quick Settings item in the menu bar (T231). |
 | `menu.control.focusAlways` | b | false | | apps/settings | shell/MenuBar status row | Show the Focus mark even when no Focus mode is active (T277). |
 | `menu.control.volumeWhenActive` | b | false | | apps/settings | shell/MenuBar status row | Hide the Sound mark while the default output is muted (T277). |
@@ -170,7 +170,7 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `notifications.showWhenSleeping` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while the display is sleeping. |
 | `notifications.showWhenLocked` | b | true | | apps/settings | apps/settings (stored policy) | Show notification banners while the screen is locked. |
 | `notifications.showWhenMirroring` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while mirroring or sharing the display. |
-| `notifications.appOptions` | s | `` (empty) | | apps/settings | apps/settings (stored policy) | Per-app notification options the service does not own yet (JSON, keyed by app): lock screen, Notification Center count, previews, grouping (T278). |
+| `notifications.appOptions` | s | `` (empty) | | apps/settings | apps/settings (stored policy) | Per-app notification options the service does not own yet (JSON, keyed by app): lock screen, Notifications count, previews, grouping (T278). |
 | `focus.schedule.enabled` | b | false | | apps/settings | shell/FocusSchedule | Enable the daily Focus schedule (T229a). |
 | `focus.schedule.start` | s | `22:00` | | apps/settings | shell/FocusSchedule | Focus schedule start time, 24-hour HH:MM (T229a). |
 | `focus.schedule.end` | s | `07:00` | | apps/settings | shell/FocusSchedule | Focus schedule end time, 24-hour HH:MM; an earlier end crosses midnight (T229a). |
@@ -224,15 +224,15 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `appearance.windowControls` | s | `left` | `left`/`right` | apps/settings | compositor/window decoration, session GTK button-layout | Window control side; the compositor keeps traffic lights on the left today (T274). |
 | `appearance.material` | s | `auto` | `auto`/`full`/`reduced`/`minimal` | apps/settings | shell/design-system Glass (degrade budget owns the effective tier) | Material effects preference; auto follows the GPU budget and rollout policy (T274). |
 | `appearance.accentFromWallpaper` | b | false | | apps/settings | shell/design-system Theme (wallpaper color sampler) | Derive the accent from the wallpaper when no explicit accent is set (T274). |
-| `quickSettings.modules` | as | `[wifi, bluetooth, now-playing, airdrop, stage-manager, screen-mirroring, dark, capture-screen, focus, brightness, volume, airplay-audio, edit-controls]` | | apps/settings | shell/control-center | Ordered module ids on the first Control Center page; empty means the measured default inventory (T235). |
-| `quickSettings.menuBarOnly` | as | `[]` | | apps/settings | shell/control-center, shell/MenuBar | Module ids that stay in the menu bar and are hidden from the Control Center panel (T227). |
-| `quickSettings.page2` | as | `[]` | | apps/settings | shell/control-center | Ordered module ids on the second Control Center page (T235). |
-| `quickSettings.page3` | as | `[]` | | apps/settings | shell/control-center | Ordered module ids on the third Control Center page (T235). |
-| `quickSettings.pageCount` | x | 1 | 1–3 | apps/settings | shell/control-center | How many Control Center pages exist (T235). |
-| `quickSettings.activePage` | x | 0 | 0–2 | apps/settings | shell/control-center | The Control Center page shown when the panel opens (T235). |
-| `quickSettings.perDisplay` | b | false | | apps/settings | shell/control-center | Show Control Center on every display instead of the active display only (T235). |
+| `quickSettings.modules` | as | `[wifi, bluetooth, now-playing, airdrop, stage-manager, screen-mirroring, dark, capture-screen, focus, brightness, volume, airplay-audio, edit-controls]` | | apps/settings | shell/control-center | Ordered module ids on the first Quick Settings page; empty means the measured default inventory (T235). |
+| `quickSettings.menuBarOnly` | as | `[]` | | apps/settings | shell/control-center, shell/MenuBar | Module ids that stay in the menu bar and are hidden from the Quick Settings panel (T227). |
+| `quickSettings.page2` | as | `[]` | | apps/settings | shell/control-center | Ordered module ids on the second Quick Settings page (T235). |
+| `quickSettings.page3` | as | `[]` | | apps/settings | shell/control-center | Ordered module ids on the third Quick Settings page (T235). |
+| `quickSettings.pageCount` | x | 1 | 1–3 | apps/settings | shell/control-center | How many Quick Settings pages exist (T235). |
+| `quickSettings.activePage` | x | 0 | 0–2 | apps/settings | shell/control-center | The Quick Settings page shown when the panel opens (T235). |
+| `quickSettings.perDisplay` | b | false | | apps/settings | shell/control-center | Show Quick Settings on every display instead of the active display only (T235). |
 | `quickSettings.spans` | as | `[]` | | apps/settings | shell/control-center | Per-module measured span overrides, encoded as `id=<span>` where span is 1x1, 2x1, 2x2 or 4x1 (T235). |
-| `quickSettings.pageNames` | as | `[]` | | apps/settings | apps/settings Quick Settings pane | User-facing names for the Control Center pages; empty entries fall back to Page N (T277). |
+| `quickSettings.pageNames` | as | `[]` | | apps/settings | apps/settings Quick Settings pane | User-facing names for the Quick Settings pages; empty entries fall back to Page N (T277). |
 | `search.categories` | as | `[applications, files, folders, actions, calculations, definitions, web]` | | apps/settings | search service (T246) | Result categories the desktop search includes (T227). |
 | `search.indexLocations` | as | `[home]` | | apps/settings | search service (T246) | Folders the file index includes; `home` is the user's home directory (T227). |
 | `search.shortcut` | s | `Super+Space` | | apps/settings | search service (T246), shell shortcuts | Global keyboard shortcut that opens Search (T227). |
@@ -260,20 +260,20 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `apps/files desktop` (`apps/files/DesktopSurface.qml`, T227) | `desktop.showItems` — `in-stage` hides the Files-owned desktop icon surface |
 | `shell/LockScreen` (`shell/lock/LockScreen.qml`, T227) | `screenSaver.style`, `screenSaver.clock`, `screenSaver.showDate`, `screenSaver.showSeconds` — the lock scene's clock presentation; `idle.blank` is the Start After delay |
 | `search service (T246)` | `search.categories`, `search.indexLocations`, `search.shortcut`, `search.web` — durable preferences the T246 service reads; the pane disables indexing status/rebuild until it exists |
-| compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.enabled`, `gestures.spaceSwitch`, `gestures.missionControl`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` (the other `gestures.*` families are stored-only until the recognizer reads them) |
+| compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.enabled`, `gestures.spaceSwitch`, `gestures.missionControl`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` (the other `gestures.*` families are stored-only until the recognizer reads them) |
 | compositor appearance/glass (over `df_toplevel_manager` v9 `set_appearance_policy`, T196) | `appearance.colorScheme` (resolved), `appearance.transparency`, `accessibility.reduceTransparency`, `accessibility.increaseContrast` |
 | compositor pointer (T-15.4b; the `PointerSettings` half of `compositor/src/input/settings.rs`) | `input.pointerSpeed`, `input.naturalScroll`, `input.tapToClick`, `input.leftHanded`, `input.scrollMethod` — the revision-1 shared fallbacks the compositor still applies; the per-device `input.mouse.*`/`input.trackpad.*` families and the remaining `gestures.*` families are stored-only until the per-device/gesture bridge lands (T280/T282). The keyboard-backlight and emoji-panel bridges remain follow-ups |
 | shell/wallpaper forwarder (`shell/src/wallpaperpolicy.*`, `shell/src/shellcontroller.cpp`) | `wallpaper.source`, `wallpaper.fit`, `wallpaper.showOnAllSpaces`, `wallpaper.builtinDefault`, `wallpaper.providerSource` — the effective source (user choice, then shipped default, then fetched fallback, then solid color) is forwarded to the compositor as `df_workspace.set_wallpaper`; `wallpaper.slideshow` is stored-only until a rotation timer lands (T281) |
 | shell clipboard history (`shell/src/clipboardhistory.*`) | no settings key yet; `search.clipboardHistory` is marked stored-only until the store exposes an enable/clear policy (T281) |
 | shell/display forwarder (`shell/src/displayspolicy.*`, `shell/src/shellcontroller.cpp`) | `display.scale`, `display.rotation`, `display.brightness` — forwarded to the compositor as `df_output.set_scale` / `df_output.set_transform` / `df_output.set_brightness` |
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |
-| `session/idle engine` (`services/session/src/idle.rs`, ADR [0070](design/adr/0070-idle-timer-engine-and-policy.md)) | `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend` via `IdlePolicy::from_keys` (the production reader is the future idle service; T-12.5b registers the keys and freezes the contract) |
+| `session/idle engine` (`services/session/src/idle.rs`, ADR [0070](adr/0070-idle-timer-engine-and-policy.md)) | `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend` via `IdlePolicy::from_keys` (the production reader is the future idle service; T-12.5b registers the keys and freezes the contract) |
 | `shell/MenuBar` (`shell/src/shellcontroller.cpp`, the `menu.global` toggle, T-14.2b) | `menu.global` — off suppresses the focused app's exported menus in the bar |
-| Menu Bar pane (`apps/settings/MenuBarPane.qml`, T-15.9b) | `menu.autoHide`, `menu.showBackground`, `menu.recentItems`, `menu.osGlyph`, `menu.clock.showDate`, `menu.clock.showSeconds`, and the `menu.control.*` toggles (including the T227 `menu.control.search`) — the stored configuration the pane writes; the shell's `applyMenuBarPolicy` applies the clock options, the background, and the OS menu glyph live and forwards `menu.autoHide` to the compositor over `df_layer_surface.set_auto_hide`, `applyStatusItems` gates each status item on its `menu.control.*` key (additive with the adapter's availability), and the recent-items count feeds the system menu's Recent Items submenu (T230; ADR [0135](design/adr/0135-menu-bar-pane-and-tile.md), [0220](design/adr/0220-menu-bar-auto-hide-visibility.md), [0240](design/adr/0240-menu-bar-focus-dbusmenu-and-hide-verbs.md)). T231 adds the registry keys `menu.control.clock`, `menu.control.notifications` and `menu.control.controlCenter` (revision 24) and makes `menu.control.search` live; the pane rows for the new keys landed with T233 and now list Wi-Fi, Bluetooth, Battery, Sound, Search, Notifications, Focus, Date & Time, Accessibility and Quick Settings; the pane also explains that items which do not fit move into the overflow menu rather than being clipped (ADR [0248](design/adr/0248-status-item-registry-and-clock.md), [0250](design/adr/0250-menubar-reveal-motion-and-measured-overflow.md)). T277 adds the per-control options (`menu.control.focusAlways`, `menu.control.volumeWhenActive`, `power.showPercentage`), the live third-party allowance list (`menu.tray.hidden`), the Linux-only `menu.overflow` and `menu.control.workspaces` rows, and Reset; the shell reads them in `applyStatusItems` and `applyMenuBarPolicy` (ADR [0278](design/adr/0278-quick-settings-and-menu-bar-management.md)). |
+| Menu Bar pane (`apps/settings/MenuBarPane.qml`, T-15.9b) | `menu.autoHide`, `menu.showBackground`, `menu.recentItems`, `menu.osGlyph`, `menu.clock.showDate`, `menu.clock.showSeconds`, and the `menu.control.*` toggles (including the T227 `menu.control.search`) — the stored configuration the pane writes; the shell's `applyMenuBarPolicy` applies the clock options, the background, and the OS menu glyph live and forwards `menu.autoHide` to the compositor over `df_layer_surface.set_auto_hide`, `applyStatusItems` gates each status item on its `menu.control.*` key (additive with the adapter's availability), and the recent-items count feeds the system menu's Recent Items submenu (T230; ADR [0135](adr/0135-menu-bar-pane-and-tile.md), [0220](adr/0220-menu-bar-auto-hide-visibility.md), [0240](adr/0240-menu-bar-focus-dbusmenu-and-hide-verbs.md)). T231 adds the registry keys `menu.control.clock`, `menu.control.notifications` and `menu.control.controlCenter` (revision 24) and makes `menu.control.search` live; the pane rows for the new keys landed with T233 and now list Wi-Fi, Bluetooth, Battery, Sound, Search, Notifications, Focus, Date & Time, Accessibility and Quick Settings; the pane also explains that items which do not fit move into the overflow menu rather than being clipped (ADR [0248](adr/0248-status-item-registry-and-clock.md), [0250](adr/0250-menubar-reveal-motion-and-measured-overflow.md)). T277 adds the per-control options (`menu.control.focusAlways`, `menu.control.volumeWhenActive`, `power.showPercentage`), the live third-party allowance list (`menu.tray.hidden`), the Linux-only `menu.overflow` and `menu.control.workspaces` rows, and Reset; the shell reads them in `applyStatusItems` and `applyMenuBarPolicy` (ADR [0278](adr/0278-quick-settings-and-menu-bar-management.md)). |
 | compositor/menu-bar visibility (`compositor/src/shell/menubar.rs`, T201) | `menu.autoHide` via `df_layer_surface.set_auto_hide` — owns the per-output conceal/reveal, reservation, input hit area, and veil eligibility; `menu.showBackground` reaches it indirectly through the shell's empty/veil panel region. |
-| Notifications/Focus panes (`apps/settings/NotificationsPane.qml`, `apps/settings/FocusPane.qml`, T-15.7b) | `notifications.showPreviews`, `notifications.showWhenSleeping`, `notifications.showWhenLocked`, `notifications.showWhenMirroring` — the stored presentation policy the Notifications pane writes; the Focus mode and per-app allow list are the notification adapter's state, not settingsd keys |
-| Mission Control / hot corners (T-15.5b; `compositor/input/hot_corners.rs`) | `overview.hotCornerTopLeft`, `overview.hotCornerTopRight`, `overview.hotCornerBottomLeft`, `overview.hotCornerBottomRight` — the durable corner assignments the Mission Control pane writes, plus the revision-1 `gestures.enabled`/`gestures.spaceSwitch`/`gestures.missionControl` trio the compositor already applies live via `set_input_policy`. Applying an assignment needs the append-only compositor request ADR [0126](design/adr/0126-mission-control-hot-corners-adapter.md) names (deferred). |
-| Lock Screen pane (`apps/settings/LockScreenPane.qml`, T-15.8b) | `lock.showUserNameAndPhoto`, `lock.showPasswordHints`, `lock.showMessageWhenLocked`, `lock.message`, `lock.showPowerButtons` — the stored display policy the pane writes; the pane reuses the existing `idle.blank`/`idle.lock` timing keys (session idle engine) and the compositor lock stays compositor-owned (ADR [0132](design/adr/0132-lock-screen-policy-adapter.md)). The lock-screen renderer that consumes the `lock.*` keys is a follow-up. |
+| Notifications/Focus panes (`apps/settings/NotificationsPane.qml`, `apps/settings/FocusPane.qml`, T-15.7b) | `notifications.showPreviews`, `notifications.showWhenSleeping`, `notifications.showWhenLocked`, `notifications.showWhenMirroring` — the stored presentation policy Notifications pane writes; the Focus mode and per-app allow list are the notification adapter's state, not settingsd keys |
+| Overview / hot corners (T-15.5b; `compositor/input/hot_corners.rs`) | `overview.hotCornerTopLeft`, `overview.hotCornerTopRight`, `overview.hotCornerBottomLeft`, `overview.hotCornerBottomRight` — the durable corner assignments the Overview pane writes, plus the revision-1 `gestures.enabled`/`gestures.spaceSwitch`/`gestures.missionControl` trio the compositor already applies live via `set_input_policy`. Applying an assignment needs the append-only compositor request ADR [0126](adr/0126-mission-control-hot-corners-adapter.md) names (deferred). |
+| Lock Screen pane (`apps/settings/LockScreenPane.qml`, T-15.8b) | `lock.showUserNameAndPhoto`, `lock.showPasswordHints`, `lock.showMessageWhenLocked`, `lock.message`, `lock.showPowerButtons` — the stored display policy the pane writes; the pane reuses the existing `idle.blank`/`idle.lock` timing keys (session idle engine) and the compositor lock stays compositor-owned (ADR [0132](adr/0132-lock-screen-policy-adapter.md)). The lock-screen renderer that consumes the `lock.*` keys is a follow-up. |
 | Date & Time pane (`apps/settings/DateTimePane.qml`, T226) | `clock.use24Hour`, `menu.clock.showSeconds`, `menu.clock.showDate` — the durable clock-format keys the pane writes; the shell's `applyMenuBarPolicy` forwards them to the menu-bar clock, and the host adapter owns NTP/time-zone/manual time through `timedatectl`. |
 | Software Update sub-pane (`apps/settings/SoftwareUpdatePane.qml`, T269) | `updates.auto`, `updates.autoInstall` — the pane forwards both to the running `dragonfruit-system-status` update provider; both default to false and are never silently enabled. |
 | Autofill & Passwords sub-pane (`apps/settings/PasswordsPane.qml`, T269) | `defaults.passwordManager` — the chosen provider id for the delegate; empty means the active provider. Settings never reads or stores a credential. |
@@ -287,7 +287,7 @@ is consumed since T-09.2: the design-system `Theme` gained a writable
 `accentOverride` (generated from `design-system/tokens/tokens.json`) and the
 shell's `ThemeBinding` and the Settings app's local bindings write it, so
 every `Theme.color.accent*` consumer follows live (ADR
-[0037](design/adr/0037-accent-override-and-app-local-theme-sync.md)).
+[0037](adr/0037-accent-override-and-app-local-theme-sync.md)).
 
 The `wallpaper.provider*` keys and `wallpaper.builtinDefault` are the additive
 T-18 provider group (revision 10, owner `wallpaperd`): `wallpaper.source` stays
@@ -301,19 +301,19 @@ thumbnails are cached first and the full original is fetched on demand through
 `BuiltinDefaultSource`/`DefaultSource` properties, so the shipped default still
 reaches the compositor when `settingsd` is absent; with the provider absent it
 resolves the shipped asset itself. See ADR
-[0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md).
+[0094](adr/0094-bundled-default-wallpaper-and-lazy-cache.md).
 
 ## Restart and resync
 
 `settingsd` is independently restartable. `Set` persists **before** it
 signals `Changed`, so a consumer reacting to the signal can rely on the
 durable file already holding the new value (ADR
-[0031](design/adr/0031-settingsd-persistence-format-and-atomic-writes.md)).
+[0031](adr/0031-settingsd-persistence-format-and-atomic-writes.md)).
 Clients never poll: `DbusSettingsClient` subscribes to `Changed` and, when
 the well-known name reappears after a daemon restart, calls `GetAll()` to
 re-sync; until the snapshot arrives it keeps its last-known values so the
 desktop is not visibly reset (T-08 restart behavior, ADR
-[0032](design/adr/0032-shell-settings-client.md)). A write attempted while
+[0032](adr/0032-shell-settings-client.md)). A write attempted while
 the daemon is down is local and in-memory only; the next re-sync replaces
 it with the daemon's durable state, so an unpersisted write is not silently
 kept.

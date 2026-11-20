@@ -93,7 +93,7 @@ library. That is the dependency check: if the declared Qt floor is wrong for
 the build release, the job fails instead of publishing an unusable asset.
 
 The step-by-step release procedure (changelog, version bump, tag, verification)
-is in [`../docs/version-increment.md`](../docs/version-increment.md).
+is in [`../docs/design/version-increment.md`](../docs/design/version-increment.md).
 
 ## Scope
 

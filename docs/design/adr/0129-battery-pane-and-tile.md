@@ -3,7 +3,7 @@
 - **Status:** Accepted (T-15.6b)
 - **Date:** 2026-09-28
 - **Context:** [07-system-integration.md](../07-system-integration.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md),
+  ADR [0122](0122-reference-interface-language-across-chrome.md),
   ADR [0128](0128-battery-power-profiles-adapter.md)
 
 ## Context
@@ -11,16 +11,16 @@
 T-15.6a shipped `dragonfruit-power` as the battery **and** power-profiles
 adapter: one read of UPower and power-profiles-daemon, one write
 (`set_active_profile`), and a hand-off that left the Settings pane and Control
-Center tile to T-15.6b. Unlike Mission Control (ADR
+Center tile to T-15.6b. Unlike Overview (ADR
 [0127](0127-mission-control-pane-and-tile.md)), this subsystem *does* have real
 external daemons, and the shell already reads the battery over the
 `dragonfruit-system-status` bridge host for the menu bar. The pane and tile must
 therefore extend that existing host path, not invent a shell-local projection.
 
-The macOS capture (ADR [0122](0122-tahoe-interface-language-across-chrome.md))
+The macOS capture (ADR [0122](0122-reference-interface-language-across-chrome.md))
 shows `Low Power Mode`, `Battery Health`, `Charging`, a `Last 24 Hours`/
 `Last 10 Days` range switch, `Last charged to 100%`, a battery-level bar chart,
-`Screen On Usage`, and `Options…`/`?`. Several of those providers are Apple-only
+`Screen On Usage`, and `Options…`/`?`. Several of those providers are reference-only
 or absent on Linux.
 
 ## Decision
@@ -42,7 +42,7 @@ existing status bridge host.
    `DF_BATTERY_FIXTURE`, mirroring the Bluetooth/storage/sound/input pattern.
    `SettingsBridge` exposes `battery`, `batteryAvailable`, `refreshBattery()`,
    and `setPowerProfile(id)`; the pane never touches the bus.
-3. **The Control Center tile reads the same view.** `SystemStatusModel` already
+3. **The Quick Settings tile reads the same view.** `SystemStatusModel` already
    decodes the battery view; `ShellController::applyControlCenterData` pushes it
    to the panel. The tile summarizes charge and the active profile
    (`"71% · Balanced"`), shows the active profile's glyph, and raises
@@ -53,11 +53,11 @@ existing status bridge host.
    the pane's one-line note; a present host with no battery hides the
    battery/history groups but keeps the picker; a missing
    power-profiles-daemon hides the picker and shows its own note.
-5. **Apple-only or providerless rows are adapted, not faked.**
+5. **reference-only or providerless rows are adapted, not faked.**
    `Low Power Mode` maps onto the daemon's three profiles (there is no
    `Never`/`Always` in power-profiles-daemon). The `Battery Health`/`Charging`
    `i` panels show UPower capacity/cycles and the charge estimate instead of
-   Apple hardware health. UPower no longer exposes charge history, so the range
+   reference hardware health. UPower no longer exposes charge history, so the range
    switch and chart frames render an honest absent state (provider T-15.x) and
    `Options…`/`?` are omitted; no dead controls ship.
 
@@ -67,14 +67,14 @@ read-only tile with no link (the pane is where the picker lives).
 
 ## Consequences
 
-- The Control Center panel grows from 360×980 to 360×1040 to fit the new tile;
+- The Quick Settings panel grows from 360×980 to 360×1040 to fit the new tile;
   the fit test and the T-15.6b capture assert it, and the T-15.5b capture script
   is updated to the new height.
 - The `i` info affordance and the three power-profile glyphs
   (`power-saver`/`power-balanced`/`power-performance`), plus the `battery` and
   `info` glyphs, join `design-system/components/Icon.qml`.
 - `Battery Health`'s `Normal`/`Service` verdict is the project's documented 80%
-  capacity threshold (T-15.6a), not an Apple health value.
+  capacity threshold (T-15.6a), not an reference health value.
 - A UPower charge-history provider remains a later T-15.x task; until then the
   Usage History group is deliberately an absent state.
 

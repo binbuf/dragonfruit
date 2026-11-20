@@ -18,7 +18,7 @@ not become a top-tier experience:
 - many shipped controls write keys no process consumes;
 - adapter write failures are invisible and controls stay optimistic;
 - the shell is 800×640 with a flat 192 pt sidebar and no groups;
-- the macOS Tahoe row inventory is only partly present, especially in
+- the the reference design row inventory is only partly present, especially in
   Accessibility, Appearance, General, Desktop & Dock, and Displays;
 - shared components have a row binding loop, clipped selects/dialogs,
   missing focus rings, and incomplete accessibility names.

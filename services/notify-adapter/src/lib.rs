@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! The Notifications and Focus adapter: the Focus/DND policy and the active
+//! Notifications and Focus adapter: the Focus/DND policy and the active
 //! banner / recorded history state of the notification service (T-15.7a).
 //!
 //! The desktop already runs a notification service
@@ -38,7 +38,7 @@
 //! This crate does not own a queue, a history, or the Focus admission rule. It
 //! reuses the service's [`FocusMode`](dragonfruit_notifications::FocusMode)
 //! vocabulary and its flat JSON views, and it is the *projection* the Settings
-//! pane and Control Center tile (T-15.7b) bind to.
+//! pane and Quick Settings tile (T-15.7b) bind to.
 //!
 //! # Absence
 //!

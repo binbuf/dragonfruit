@@ -43,7 +43,7 @@ sudo dnf install dragonfruit-desktop
 | Package | Contents |
 |---|---|
 | `dragonfruit-compositor` | Compositor binary, private protocol XMLs + generated bindings |
-| `dragonfruit-shell` | Shell process: menu bar, Dock, Control Center, notifications, OSD |
+| `dragonfruit-shell` | Shell process: menu bar, Dock, Quick Settings, notifications, OSD |
 | `dragonfruit-settingsd` | `settingsd`, `menu-broker`, `app-index` (split later if warranted) |
 | `dragonfruit-settings`, `dragonfruit-files` | First-party applications, design system assets, and their app icon under `share/icons/hicolor/scalable/apps/` (T-19.1d) |
 | `dragonfruit-portal` | `xdg-desktop-portal-dragonfruit` + `portals.conf` for our desktop name |
@@ -110,8 +110,8 @@ shared with Debian and recorded in `NOTICE`. Rules:
 
 - **Recommended GPU (T-20.4):** a GLES 3.x / Vulkan-capable GPU — any modern
   Intel/AMD/NVIDIA discrete or integrated device, or a virtio-GPU VM with
-  `virgl`/`venus`. This is the baseline for the `Full`/`Reduced` liquid-glass
-  material (ADR [0182](adr/0182-tahoe-liquid-glass-material-pass.md)); the
+  `virgl`/`venus`. This is the baseline for the `Full`/`Reduced` Glass
+  material (ADR [0182](adr/0182-glass-material-pass.md)); the
   compositor packages do not hard-require it. A renderer that refuses the
   custom texture shaders falls back to a bilinear downsample, and the
   software/headless session runs the deterministic `Minimal` feather stack.

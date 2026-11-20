@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Sound pane (T-15.3b).
 //
-// The pane and the Control Center tile are one functional unit. Device
+// The pane and the Quick Settings tile are one functional unit. Device
 // selection, `Output volume`, and `Mute` go through the `Settings` singleton to
 // the PipeWire/WirePlumber adapter (T-15.3a) via the bridge host — selecting a
 // device makes it the default. The `Sound Effects` and `Balance` rows are
@@ -17,7 +17,7 @@ import Dragonfruit.Settings
 // Sound Effects/Balance controls still work on the settingsd defaults.
 //
 // Deviations from the macOS capture (ADR 0122): the alert-sound preview button
-// and the `?` help are omitted (no alert playback engine yet, Apple-only); an
+// and the `?` help are omitted (no alert playback engine yet, reference-only); an
 // actual alert/UI-sound engine is a documented follow-up. The captured names
 // are replaced by ours (`Chime` default).
 Item {

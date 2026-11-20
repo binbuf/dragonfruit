@@ -133,7 +133,7 @@ impl<'a> crate::window::TextureRenderer for UdevRenderer<'a> {
 /// plate.
 pub const ENV_DRM_MATERIAL: &str = "DRAGONFRUIT_DRM_MATERIAL";
 
-/// The Tahoe liquid-glass compose (P2C) is the default once the material
+/// The reference Glass compose (P2C) is the default once the material
 /// path is active. Set this to `0` to keep the plain Kawase blur (no
 /// refraction/specular/tint).
 pub const ENV_DRM_GLASS: &str = "DRAGONFRUIT_DRM_GLASS";
@@ -1697,7 +1697,7 @@ fn render_surface(
                 )
                 .ok();
             // T200: the veil is a small sharp-sample shader; compile it even
-            // when the liquid-glass program is disabled, because the menu bar
+            // when the Glass program is disabled, because the menu bar
             // must not expose an unfiltered scene.
             let veil = gles
                 .compile_custom_texture_shader(

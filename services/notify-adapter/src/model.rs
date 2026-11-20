@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! The Notifications and Focus snapshot the pane and tile render, decoded
+//! Notifications and Focus snapshot the pane and tile render, decoded
 //! from one raw read.
 //!
 //! The model owns only the projection a consumer should not repeat: it folds
@@ -108,7 +108,7 @@ fn allows_name(names: &[String], name: &str) -> bool {
 /// One observed application and its notification state, the row the
 /// Notifications pane lists.
 ///
-/// The app set is derived from the notifications the service has recorded
+/// The app set is derived from Notifications the service has recorded
 /// (active plus history); `allowed` reads the Focus allow list. An app that
 /// has never notified does not appear.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,7 +154,7 @@ pub struct PersonNotifications {
     pub notifications: usize,
 }
 
-/// The Notifications and Focus snapshot a pane or tile renders.
+/// Notifications and Focus snapshot a pane or tile renders.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NotificationsSnapshot {
     /// The Focus/DND policy.

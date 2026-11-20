@@ -190,7 +190,7 @@
       "version": "fetched at runtime; never bundled",
       "license": "asset-specific (Wikimedia: public domain, CC BY, CC BY-SA, FAL; NASA: public domain under NASA media guidelines)",
       "license_file": null,
-      "notice": "docs/licensing.md; attribution is shown in the Wallpaper pane",
+      "notice": "docs/design/licensing.md; attribution is shown in the Wallpaper pane",
       "install": "$XDG_CACHE_HOME/dragonfruit/ (user data)",
       "owner": "T-18 / wallpaperd",
       "policy": "No fetched image is ever shipped. Wikimedia images are downloaded in full during the catalogue fetch; NASA thumbnails are cached and the full original is fetched on demand. The provider stores the license fields verbatim, displays artist/credit + license + page, filters NASA logos/insignia and non-NASA creators, and never relabels a fetched work as Dragonfruit's own.",

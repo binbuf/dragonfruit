@@ -294,7 +294,7 @@ def main():
     add("")
     add(
         "The scenario names are the same, but the T183 run used shorter "
-        "windows (idle 5.3 s, Dock sweep 2.7 s, Mission Control 2.6 s). The "
+        "windows (idle 5.3 s, Dock sweep 2.7 s, Overview 2.6 s). The "
         "v0.1.1 run uses the T192b set (idle 60 s, Dock sweep 10 s, Mission "
         "Control with the 10-window set). Compare the per-frame percentiles, "
         "not the frame counts; the counts are not normalized for elapsed time."
@@ -416,10 +416,10 @@ def main():
     )
     add("")
     add(
-        "The only v0.1.1 SHM commits in the shared set are the Mission Control "
+        "The only v0.1.1 SHM commits in the shared set are the Overview "
         "overview surface (2 open + 2 close commits, 18 432 000 copy bytes "
         "each window). The Dock, menu bar, and popover rows are all dmabuf with "
-        "zero copy bytes. This is why the aggregate Mission Control p99 can be "
+        "zero copy bytes. This is why the aggregate Overview p99 can be "
         "worse than T183 even though the dmabuf surfaces are much faster: the "
         "16 ms overview fallback frame is a counted fallback, not a dmabuf "
         "frame. The T192c full-rail verification run (overview surface"
@@ -513,7 +513,7 @@ def main():
     )
     add("")
     add(
-        "Mission Control is the one shared row with a worse aggregate p99. "
+        "Overview is the one shared row with a worse aggregate p99. "
         "Its dmabuf surfaces still improve, but the overview surface is the "
         "counted SHM fallback and its ~16 ms commit dominates the aggregate "
         "p99. That is a real regression to file for T193, not an averaging "

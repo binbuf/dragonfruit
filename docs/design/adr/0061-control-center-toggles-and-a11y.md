@@ -1,4 +1,4 @@
-# 0061 — Control Center Focus/dark-mode toggles and tile accessibility
+# 0061 — Quick Settings Focus/dark-mode toggles and tile accessibility
 
 ## Status
 
@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-T-11.3b completes the Control Center panel that T-11.3a opened
+T-11.3b completes the Quick Settings panel that T-11.3a opened
 ([0060](0060-control-center-panel-and-brightness.md)). The design assigns
 Focus/DND to the notification service ([0058](0058-focus-dnd-policy-semantics.md))
 and the light/dark scheme to settingsd, which the shell's `ThemeBinding`

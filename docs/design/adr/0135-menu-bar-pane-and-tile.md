@@ -4,7 +4,7 @@
 - **Date:** 2026-09-28
 - **Context:** [07-system-integration.md](../07-system-integration.md),
   [08-settingsd-live-settings.md](../tracks/08-settingsd-live-settings.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md),
+  ADR [0122](0122-reference-interface-language-across-chrome.md),
   ADR [0133](0133-lock-screen-pane-and-tile.md),
   ADR [0134](0134-menu-bar-configuration-adapter.md)
 
@@ -16,7 +16,7 @@ shell's `MenuBar` (`shell/menubar/MenuBar.qml`) owns the chrome, the status row,
 and the clock, the menu-broker (`services/menu-broker`) resolves the focused
 app's menus, and `settingsd` owns the durable preferences both read. There is
 no external daemon to wrap and no services-layer host that can read a Wayland
-client's private bridge, exactly as Mission Control (T-15.5b) and the Lock
+client's private bridge, exactly as Overview (T-15.5b) and the Lock
 Screen (T-15.8b) found.
 
 The durable home is principle 3's existing split: `settingsd` owns the
@@ -26,7 +26,7 @@ join it in the `Menu` group.
 
 ## Decision
 
-The pane and the Control Center tile are one functional unit, and both are
+The pane and the Quick Settings tile are one functional unit, and both are
 shell-native where the runtime is concerned.
 
 1. **Settingsd keys, revision 16.** The `menu` group gains `menu.autoHide`
@@ -36,7 +36,7 @@ shell-native where the runtime is concerned.
    suffixes are the T-15.9a adapter's `MenuBarControl::id()` spellings (`wifi`,
    `bluetooth`, `battery`, `volume`, `focus`, `accessibility`). The clock
    defaults mirror `ClockOptions::default()` and the visibility defaults are
-   "shown". `docs/settings-keys.md` documents every row and the schema-doc test
+   "shown". `docs/design/settings-keys.md` documents every row and the schema-doc test
    keeps the table honest.
 2. **The pane writes keys, never the adapter.** `apps/settings/MenuBarPane.qml`
    has the auto-hide popup, the background toggle, the recent-items popup, the
@@ -68,7 +68,7 @@ change, deferred).
 
 ## Consequences
 
-- The Control Center panel grows from 360×1120 to 360×1200 to fit the new tile;
+- The Quick Settings panel grows from 360×1120 to 360×1200 to fit the new tile;
   the fit test and the T-15.9b capture assert it.
 - `menu.autoHide` and `menu.recentItems` persisted but did not initially change
   the bar: the shell chrome surface stayed pinned and no recent-items consumer
@@ -76,10 +76,10 @@ change, deferred).
   (ADR [0220](0220-menu-bar-auto-hide-visibility.md)); only the recent-items
   count remains stored policy until a consumer lists recents. The preference
   stays the single source of truth throughout.
-- The pane omits the Apple-only controls (`AirDrop`, `Screen Mirroring`,
-  `Display`) and `Spotlight` (our deferred Search pane), the dead-end
+- The pane omits the reference-only controls (`Nearby Transfer`, `Screen Casting`,
+  `Display`) and `Search` (our deferred Search pane), the dead-end
   `Add Controls...` / `Battery Options...` buttons, and the per-control
   `Show When Active` popups (no Linux provider yet), plus the project-wide
-  Apple Account/sidebar row and `?` help
-  (ADR [0122](0122-tahoe-interface-language-across-chrome.md)). The recent-items
+  Account/sidebar row and `?` help
+  (ADR [0122](0122-reference-interface-language-across-chrome.md)). The recent-items
   stepper is drawn as a popup because the design system has no stepper.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The Notification Center widget stack (T234).
+// Notifications widget stack (T234).
 //
 // Widgets are optional: the model starts with the measured live Calendar card
 // (164 pt in the panel) and can add/remove/resize entries from the separate

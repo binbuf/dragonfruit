@@ -651,7 +651,7 @@ impl PrivacySnapshot {
         self.app_count() > 0
     }
 
-    /// The Control Center label: `No App Permissions`, `1 App`, `N Apps`.
+    /// The Quick Settings label: `No App Permissions`, `1 App`, `N Apps`.
     pub fn label(&self) -> String {
         match self.app_count() {
             0 => "No App Permissions".to_owned(),

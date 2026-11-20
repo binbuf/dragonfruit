@@ -12,7 +12,7 @@ ADR 0058 froze the one Focus/DND admission policy: three modes (`off`,
 `focus`, `dnd`), an app allow list, and "suppress the banner, keep the
 history". ADR 0252 left named profiles (Personal/Work/Sleep/custom) and a
 person allow list as explicit `OPEN` rows because they looked like a second
-policy. T234's scope requires them, and the menu bar, Control Center, and
+policy. T234's scope requires them, and the menu bar, Quick Settings, and
 Settings must still agree.
 
 The freedesktop `Notify` contract has no sender field. A per-person allow list
@@ -39,7 +39,7 @@ therefore needs a hint, not a new daemon or a parallel identity store.
 4. **One shared view.** `FocusPolicy()` gains `profiles`, `activeProfile`,
    `activeProfileLabel`, and `allowedPeople`; the notify adapter and status
    host project them into the Settings view (`profile`, `profiles`, `people`).
-   The menu bar, Control Center, and Settings read the same view; no surface
+   The menu bar, Quick Settings, and Settings read the same view; no surface
    stores Focus state.
 
 ## Consequences

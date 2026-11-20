@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Overview pane (T-15.5b; T276 completion).
 //
-// Mission Control, workspaces, and hot corners are compositor-native: the
+// Overview, workspaces, and hot corners are compositor-native: the
 // compositor detects corners (`compositor/src/input/hot_corners.rs`), owns the
 // one overview state machine (`compositor/src/overview/mod.rs`) and the
 // workspace model, and the shell mirrors both over the private
@@ -145,7 +145,7 @@ Item {
             }
         }
 
-        // ── Mission Control ───────────────────────────────────────────────
+        // ── Overview ───────────────────────────────────────────────
         SettingsGroup {
             id: missionControlGroup
             width: parent.width

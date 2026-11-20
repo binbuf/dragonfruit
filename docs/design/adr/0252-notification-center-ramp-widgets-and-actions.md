@@ -1,4 +1,4 @@
-# 0252 — Notification Center ramp, widget stack and action ownership
+# 0252 — Notifications ramp, widget stack and action ownership
 
 - Status: accepted
 - Date: 2026-11-10

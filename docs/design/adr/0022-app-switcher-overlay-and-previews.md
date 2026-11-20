@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-T-06.2a draws the Cmd-Tab overlay: one card per app in recency order, over the
+T-06.2a draws the Super-Tab overlay: one card per app in recency order, over the
 **live** window surfaces (never thumbnails, [06-loop-v4-app-switcher.md](../tracks/06-loop-v4-app-switcher.md)).
 ADR 0021 put the recency snapshot and the selection in the one compositor-owned
 `app_switcher` machine, but the private `df_toplevel_manager.app_switcher` event
@@ -25,7 +25,7 @@ client buffers).
   it never sorts or re-derives the order.
 - **Previews reuse the one T-04 transform.** The compositor builds one
   `GridCandidate` per entry (the entry's most-recent window and its committed
-  geometry) and lays them out with the existing Mission Control
+  geometry) and lays them out with the existing Overview
   `grid_layout`/`GridPlacement::frame` over an area that reserves the shell's
   card strip at the bottom (`overview::switcher::preview_area`). There is no
   switcher-specific layout or transform; a non-entry window is drawn with
@@ -43,13 +43,13 @@ degrade tier); thumbnails (explicitly forbidden by the track).
 
 ## Consequences
 
-- T-06.2b's commit and Cmd+` cycling consume the same `app_switcher` +
+- T-06.2b's commit and Super+` cycling consume the same `app_switcher` +
   `app_switcher_entry` projection and must not add a second recency source.
   The entry does not yet carry the window handle; if T-06.2b needs it to
   address a window directly, it is appended additively (a new arg or event),
   never by changing the existing signature.
 - The switcher material is the same `GridMaterial` (degrade tier + scheme) the
-  Mission Control grid uses, so the selected-entry full-fidelity vs
+  Overview grid uses, so the selected-entry full-fidelity vs
   scaled-preview split is a render concern, not a second material.
 - `query switcher` reports one `switcher preview <window> <x> <y> <w> <h>
   selected=<0|1>` line per live preview, the headless seam for the transform.

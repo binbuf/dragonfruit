@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Notification Center state tests (T204).
+// Notifications state tests (T204).
 //
 // The service still owns delivery, expiry, Focus/DND and the banner; this
 // suite drives the shell-side normalization/selection controller directly and

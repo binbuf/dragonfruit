@@ -13,7 +13,7 @@ T-13.2a made the portal backend's presenter seam real: a request waits in
 [0076](0076-filechooser-portal-and-presenter-seam.md)). T-13.2b must supply the
 actual picker: the design-system dialog that browses and returns a selection.
 The task's area is `portal/ + shell/screenshot`, and every other shell surface
-(the menu bar, Control Center, OSD, lock, app switcher) is a QML view rendered
+(the menu bar, Quick Settings, OSD, lock, app switcher) is a QML view rendered
 by `ShellController` into a private-protocol layer surface through
 `ShellProtocol`. The design also says the chooser is "Files in chooser mode over
 the one `files-core` implementation" ([09-files.md](../09-files.md),
@@ -28,7 +28,7 @@ browses.
   grows a `file-chooser` layer surface (overlay layer, unanchored so the
   compositor centres it, `ON_DEMAND` keyboard, the card-sized input region) and
   `ShellController` renders `Dragonfruit.Screenshot`/`FileChooser.qml` into it —
-  the same pattern as the OSD and Control Center. No compositor change: layer
+  the same pattern as the OSD and Quick Settings. No compositor change: layer
   namespaces are generic, and the surface is created only while a request
   waits.
 - **`ChooserBridge` is the presenter client and the browsing seam.**

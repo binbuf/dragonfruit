@@ -8,7 +8,7 @@ accepted
 
 T-15.1a is the first breadth adapter of T-15 and the first BlueZ consumer. The
 track demo needs discover/pair/connect, but the task's scope is the backend
-adapter only (the pane and Control Center tile are T-15.1b). The adapter must
+adapter only (the pane and Quick Settings tile are T-15.1b). The adapter must
 reuse the host stack, expose state + events, and treat absence as a normal
 state, like the T-07 NetworkManager/audio/power adapters. BlueZ has one
 property the other adapters did not: its writes are a mix of polkit-authorized

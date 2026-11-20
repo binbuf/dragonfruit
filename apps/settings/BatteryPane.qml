@@ -10,7 +10,7 @@ import Dragonfruit.Settings
 // the hardware. The id stays `battery` because history, deep links, and the
 // map persist it (ADR 0300, docs/design/26-settings-logic.md §2).
 //
-// The pane and the Control Center tile are one functional unit. `Low Power
+// The pane and the Quick Settings tile are one functional unit. `Low Power
 // Mode` selects the active power profile through the `Settings` singleton to
 // the power-profiles adapter (T-15.6a) via the bridge host; `Battery Health`
 // and the charge status pill are read from UPower. The two daemons are
@@ -30,8 +30,8 @@ import Dragonfruit.Settings
 //   * the captured `Low Power Mode` value vocabulary (`Never`/`Always`) does
 //     not exist in power-profiles-daemon; the picker maps onto the daemon's
 //     `power-saver`/`balanced`/`performance` profiles, the same vocabulary the
-//     adapter and Control Center tile use;
-//   * the `Battery Health` detail covers Apple-only hardware health and
+//     adapter and Quick Settings tile use;
+//   * the `Battery Health` detail covers reference-only hardware health and
 //     optimized charging, so we keep the row and show UPower's
 //     capacity/cycles instead;
 //   * `Last charged to 100%` has no UPower provider; the row says so.
@@ -47,7 +47,7 @@ import Dragonfruit.Settings
 //     real shell display consumer, `Prevent sleep` is a real session idle
 //     consumer; wake-for-network and video optimization name the host/media
 //     half that owns them;
-//   * the Apple Account/sidebar row is omitted project-wide.
+//   * the Account/sidebar row is omitted project-wide.
 Item {
     id: root
 

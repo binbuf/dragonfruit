@@ -72,7 +72,7 @@ pub struct XwaylandState {
     pub override_windows: Vec<(X11Window, Window)>,
     /// The integer scale Xwayland renders X11 clients at, chosen once per
     /// session from the primary output: `ceil(output_scale)`, clamped to at
-    /// least 1 (`docs/xwayland-scaling.md`, T-16.3a). It is the same value
+    /// least 1 (`docs/design/xwayland-scaling.md`, T-16.3a). It is the same value
     /// Smithay advertises as the output's `wl_output.scale`, so X11 clients
     /// always render into an integer coordinate space.
     pub integer_scale: i32,
@@ -150,7 +150,7 @@ pub fn start(state: &mut DfState) -> Result<(), String> {
         return Ok(());
     }
 
-    // Integer-scaled Xwayland (T-16.3a, `docs/xwayland-scaling.md`):
+    // Integer-scaled Xwayland (T-16.3a, `docs/design/xwayland-scaling.md`):
     // the server runs at `ceil(primary_output_scale)` (clamped to >= 1).
     // Smithay advertises the same value as the output's integer
     // `wl_output.scale`; the compositor never sends X11 surfaces a fractional

@@ -3,9 +3,9 @@
 Status: accepted (2026-11-09)
 
 This corrects the menu/drawer material ownership in ADR 0243 following live
-feedback. Reference: the sibling `macos-design-review/docs/REPORT.md` §3.5
+feedback. Reference: the local reference report §3.5
 describes a near-white menu tint of about 0.55 alpha over strong, approximately
-10 pt frosting, and opening within one 60 Hz frame. `SURFACE-REVIEW.md` §4
+10 pt frosting, and opening within one 60 Hz frame. the local surface review §4
 requires a scrollable, search-first Apps collection; its material fit is open.
 
 ## Rendering
@@ -51,7 +51,7 @@ requires a scrollable, search-first Apps collection; its material fit is open.
   fractional Wayland deltas before rounding, so small touchpad updates survive.
 - Keyboard focus loss dismisses after one event-loop turn, allowing a genuine
   focus handoff to finish. Dismissal only releases keyboard focus if the drawer
-  still held it. Control Center, Mission Control and the drawer retire one
+  still held it. Quick Settings, Overview and the drawer retire one
   another when opened.
 
 ## Verification

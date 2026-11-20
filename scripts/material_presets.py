@@ -819,7 +819,7 @@ def self_test() -> list[str]:
 
     # T206: first-party app chrome is near-opaque client alpha, not a sampled
     # pass. The measured Light Settings/Files fits and the measured Dark Files
-    # fits are pinned; Settings Dark is an explicit adaptation from Finder.
+    # fits are pinned; Settings Dark is an explicit adaptation from Files.
     app_targets = {
         ("settingsSidebar", "light"): (0.986, 0.857, "measured"),
         ("settingsToolbar", "light"): (0.961, 0.965, "measured"),

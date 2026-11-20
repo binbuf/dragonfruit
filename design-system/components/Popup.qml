@@ -238,7 +238,7 @@ Item {
         topRightRadius: root.cornerTopRadius
         // The panel is the compositor material's scrim: the fill carries the
         // resolved preset alpha/tint so the sampled backdrop blur and
-        // liquid-glass pass show through; the rim/hairline stays opaque.
+        // Glass pass show through; the rim/hairline stays opaque.
         // Without the sampled pass it switches to the milky complement.
         color: root.surfaceFill
         border.width: Theme.controls.window.borderWidth

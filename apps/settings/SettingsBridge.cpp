@@ -56,7 +56,7 @@
 namespace {
 
 // The app's own original wallpaper artwork (T-09.3): a small set of gradients,
-// never Apple's. Each is rendered once to a PNG under the user's app-data
+// never the reference platform's. Each is rendered once to a PNG under the user's app-data
 // directory so the compositor (another process) can decode it by path; the
 // in-process preview uses the same file.
 struct WallpaperPreset {

@@ -83,7 +83,7 @@ FocusScope {
     // The virtualizing view, exposed for the windowed-rendering check (T-10.5).
     property alias gridView: grid
     // The live marquee rectangle, exposed so tests can assert the drag-selection
-    // visual (macOS Tahoe neutral wash + square grey perimeter).
+    // visual (macOS reference neutral wash + square grey perimeter).
     property alias marqueeItem: marquee
 
     // The live rubber band, in view coordinates. `bandActive` gates the
@@ -113,7 +113,7 @@ FocusScope {
         root.freePositions = next;
     }
 
-    // Finder's Clean Up: keep the current order but return every free-placed
+    // Files's Clean Up: keep the current order but return every free-placed
     // tile to the grid. It is deliberately the only reflow rule: users can
     // otherwise put icons wherever they like, including overlapping.
     function cleanUp() {
@@ -241,7 +241,7 @@ FocusScope {
     }
 
     // The marquee rectangle, drawn over the grid while a band is in progress.
-    // macOS Tahoe's drag-selection look: a very light, semi-transparent grey
+    // macOS reference's drag-selection look: a very light, semi-transparent grey
     // wash inside a slightly darker, thicker and less transparent grey square
     // perimeter (no rounding). This is deliberately neutral, not accent-tinted:
     // the band is a transient region marker, not a committed selection.
@@ -331,7 +331,7 @@ FocusScope {
                 x: (tile.freeOffset ? tile.freeOffset.x : 0) + tile.dragOffsetX
                 y: (tile.freeOffset ? tile.freeOffset.y : 0) + tile.dragOffsetY
             }
-            // A dragged item is a floating, semi-transparent copy, like Finder.
+            // A dragged item is a floating, semi-transparent copy, like Files.
             opacity: tile.dragging ? 0.72 : 1.0
             z: tile.dragging ? 100 : (tile.isSelected ? 1 : 0)
 
@@ -485,7 +485,7 @@ FocusScope {
                         tile.dragOffsetY = 0;
                         tile.dragging = false;
                         tile.suppressClick = false;
-                        // Finder selects on press, so a drag carries the
+                        // Files selects on press, so a drag carries the
                         // selection with it.
                         root.selected(tile.nodeId, mouse.modifiers);
                     }

@@ -1,4 +1,4 @@
-# 0130 — The Notifications and Focus adapter projects the notification service
+# 0130 — Notifications and Focus adapter projects the notification service
 
 - **Status:** Accepted (T-15.7a)
 - **Date:** 2026-09-28
@@ -20,7 +20,7 @@ already reads that surface directly for banners and the Focus menu/Control
 Center tile.
 
 T-15.7 asks for Notifications and Focus breadth: an adapter (T-15.7a), then the
-Settings pane and Control Center tile (T-15.7b). Unlike the other T-15
+Settings pane and Quick Settings tile (T-15.7b). Unlike the other T-15
 adapters, there is no host daemon to wrap — the service is ours. The design
 risk is duplication: a naive adapter could re-own the queue, the history, or
 the Focus admission rule and drift from the one source of truth
@@ -63,7 +63,7 @@ adapter (the shell already reads the service and T-15.7b does not change it).
 
 ## Consequences
 
-- T-15.7b binds the Settings pane and Control Center tile to this adapter's
+- T-15.7b binds the Settings pane and Quick Settings tile to this adapter's
   view (likely through a `dragonfruit-system-status` host interface, mirroring
   Bluetooth/storage/battery), and adds the global notification preferences
   (`Show previews`, sleeping/locked/mirroring) as settingsd keys — those have

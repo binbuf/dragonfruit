@@ -1,4 +1,4 @@
-# ADR 0275 — Appearance groups, provider-backed rows, and the Tahoe accent
+# ADR 0275 — Appearance groups, provider-backed rows, and the reference accent
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ groups were not legible, the icon/widget style, folder color, and scroll-bar
 click rows were missing, and the transparency slider stayed active while
 Reduce Transparency owned the rendered result. The token accent was a
 brand magenta, so the pane read as an unrelated brand rather than macOS
-Tahoe.
+reference.
 
 The pane also had no honest answer for Linux-only appearance policy. Icon
 themes, cursor themes/sizes, window-control layout, material rollout, and
@@ -26,7 +26,7 @@ yet. A row that writes a key nothing reads is a fake control.
 
 1. **Six groups, not a card per row.** Appearance, Color, Icon & widget
    style, Windows and scroll bars, Desktop integration, and Preview.
-2. **The default accent is the reviewed Tahoe system blue** (`#007aff`
+2. **The default accent is the reviewed reference system blue** (`#007aff`
    light / `#0a84ff` dark). The empty `appearance.accent` value is the
    Multicolor choice; a custom `#rrggbb` still overrides the accent family.
 3. **One key, one owner, one consumer set.** `appearance.scrollBarClick`

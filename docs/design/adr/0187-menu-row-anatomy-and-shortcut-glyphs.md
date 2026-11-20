@@ -8,16 +8,16 @@ accepted
 
 `ContextMenu` and `MenuBarMenu` each carried their own row component. Both
 printed the model's `shortcut` string verbatim on the same line as the label:
-`Super+Shift+Z`, `Ctrl+Super+F`, `Shift+Cmd+Delete`. The text was long, the
+`Super+Shift+Z`, `Ctrl+Super+F`, `Shift+Super+Delete`. The text was long, the
 `+` separators read like prose rather than keys, and the row had no reserved
 trailing column: a submenu chevron shifted that row's hint left, and a long
 label could collide with the hint. The two components could also drift because
 their row layout was copied.
 
 The design language already says menus have "right-aligned badges, submenu
-chevrons, and shortcut hints" and adapts Apple's Command/Control/Option glyphs
-to Dragonfruit's keymap roles ([0122](0122-tahoe-interface-language-across-chrome.md),
-[keymap.md](../../keymap.md)). It did not define how a hint is laid out or how
+chevrons, and shortcut hints" and adapts the reference platform's key glyphs
+to Dragonfruit's keymap roles ([0122](0122-reference-interface-language-across-chrome.md),
+[keymap.md](../keymap.md)). It did not define how a hint is laid out or how
 a chord is rendered.
 
 ## Decision
@@ -42,7 +42,7 @@ a chord is rendered.
   bundled Inter face, so they tint with the row, scale with
   `component.shortcutHint.fontSize`, and need no SVG or build gate. The Super
   role uses the command glyph because the desktop's Command role is the Super
-  key ([keymap.md](../../keymap.md)); this is a role label, not Apple artwork.
+  key ([keymap.md](../keymap.md)); this is a role label, not Apple artwork.
 - **No keycap boxes.** The reference language shows plain right-aligned
   symbols, and boxes add noise at the 26 px menu-row height.
 - **Tokens own the hint.** `component.shortcutHint.{gap,fontSize,

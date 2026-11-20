@@ -733,7 +733,7 @@ pub enum SyntheticCommand {
     /// damage frames, wake-only swaps, presenter submissions/completions,
     /// coalesced/superseded frames, client feedback, and host redraw pacing.
     QueryFrames,
-    /// Read-only Mission Control grid introspection (T-05.1a): the overview's
+    /// Read-only Overview grid introspection (T-05.1a): the overview's
     /// grid progress and one `grid` line per placed live surface, followed by
     /// `end`. T-05.3 adds a `grid drag` line while a live representation is
     /// being dragged.
@@ -2351,7 +2351,7 @@ fn material_report(state: &DfState) -> String {
         hex(scheme.border()),
         hex(scheme.accent()),
     );
-    // The liquid-glass parameters per role after the active degrade tier
+    // The Glass parameters per role after the active degrade tier
     // (T-20.2): a headless test can prove the material mapping and the tier
     // fallback without a GPU. The tint tone is the resolved scheme tone.
     for role in [
@@ -2438,7 +2438,7 @@ fn material_report(state: &DfState) -> String {
     out
 }
 
-/// The `query grid` report (T-05.1a): the Mission Control live-surface grid.
+/// The `query grid` report (T-05.1a): the Overview live-surface grid.
 ///
 /// `grid none` when no grid is shown (the overview is closed), otherwise
 /// `grid progress=<t>` followed by one `grid material tier=<name> blur=<0|1>

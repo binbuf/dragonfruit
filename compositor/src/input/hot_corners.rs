@@ -5,7 +5,7 @@
 //!
 //! Corners are detected here and dispatched to the shell through the same
 //! [`super::dispatch::InputDispatch`] outbox as keyboard shortcuts and
-//! gestures, so a Mission Control corner, a Ctrl+Up, and a four-finger
+//! gestures, so an Overview corner, a Ctrl+Up, and a four-finger
 //! swipe produce one identical event stream
 //! ([04-shell.md](../../docs/design/04-shell.md)).
 //!
@@ -29,9 +29,9 @@ pub enum HotCornerAction {
     NotificationCenter,
     DesktopReveal,
     LockScreen,
-    /// Open the Applications drawer (the macOS Launchpad slot).
-    Launchpad,
-    /// Toggle the Control Center panel.
+    /// Open the Applications drawer (the Applications drawer slot).
+    Applications,
+    /// Toggle the Quick Settings panel.
     ControlCenter,
     /// Toggle the Dock's auto-hide, like the Super+Option+D chord.
     ShowDock,
@@ -50,7 +50,7 @@ impl HotCornerAction {
             HotCornerAction::NotificationCenter => "notification-center",
             HotCornerAction::DesktopReveal => "desktop-reveal",
             HotCornerAction::LockScreen => "lock-screen",
-            HotCornerAction::Launchpad => "launchpad",
+            HotCornerAction::Applications => "launchpad",
             HotCornerAction::ControlCenter => "control-center",
             HotCornerAction::ShowDock => "show-dock",
             HotCornerAction::MenuBar => "menu-bar",
@@ -66,7 +66,7 @@ impl HotCornerAction {
             "notification-center" => Some(HotCornerAction::NotificationCenter),
             "desktop-reveal" => Some(HotCornerAction::DesktopReveal),
             "lock-screen" => Some(HotCornerAction::LockScreen),
-            "launchpad" => Some(HotCornerAction::Launchpad),
+            "launchpad" => Some(HotCornerAction::Applications),
             "control-center" => Some(HotCornerAction::ControlCenter),
             "show-dock" => Some(HotCornerAction::ShowDock),
             "menu-bar" => Some(HotCornerAction::MenuBar),
@@ -84,7 +84,7 @@ impl HotCornerAction {
             HotCornerAction::NotificationCenter => Some(InputAction::NotificationCenter),
             HotCornerAction::DesktopReveal => Some(InputAction::DesktopReveal),
             HotCornerAction::LockScreen => Some(InputAction::LockScreen),
-            HotCornerAction::Launchpad => Some(InputAction::ShowApps),
+            HotCornerAction::Applications => Some(InputAction::ShowApps),
             HotCornerAction::ControlCenter => Some(InputAction::ControlCenter),
             HotCornerAction::ShowDock => Some(InputAction::ToggleDock),
             HotCornerAction::MenuBar => Some(InputAction::FocusMenuBar),
@@ -121,7 +121,7 @@ pub struct HotCornerConfig {
 
 impl Default for HotCornerConfig {
     fn default() -> Self {
-        // A tasteful default: Mission Control top-left, notification center
+        // A tasteful default: Overview top-left, Notifications
         // top-right, reveal bottom-left, lock bottom-right (T-14 owns the
         // user-facing configuration UI and persistence).
         HotCornerConfig {
@@ -353,7 +353,7 @@ mod tests {
             HotCornerAction::NotificationCenter,
             HotCornerAction::DesktopReveal,
             HotCornerAction::LockScreen,
-            HotCornerAction::Launchpad,
+            HotCornerAction::Applications,
             HotCornerAction::ControlCenter,
             HotCornerAction::ShowDock,
             HotCornerAction::MenuBar,
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn the_configured_notification_center_corner_dispatches_its_action() {
-        // The default top-right assignment is Notification Center; the corner
+        // The default top-right assignment is Notifications; the corner
         // must resolve to the same InputAction the keyboard chord uses.
         let mut detector = HotCornerDetector::default();
         let now = Instant::now();

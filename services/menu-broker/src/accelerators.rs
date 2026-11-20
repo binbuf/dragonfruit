@@ -10,7 +10,7 @@
 //! keeps one table per application, and resolves a chord against the **focused**
 //! application only. System shortcuts always win: the broker never claims a
 //! chord that the shell has declared reserved, so the compositor keeps firing
-//! workspace switching, Mission Control, and the app switcher.
+//! workspace switching, Overview, and the app switcher.
 //!
 //! No D-Bus, no `xkb`: both the chord parser and the table are pure data, so
 //! the whole focus-scoping rule is unit-testable. The compositor is the final

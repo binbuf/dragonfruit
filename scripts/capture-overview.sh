@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-05.6 Mission Control live capture.
+# T-05.6 Overview live capture.
 #
 # Runs the nested T-01/T-05 demo twice — once normally, once with
-# `accessibility.reduceMotion` on — drives the Mission Control walkthrough
+# `accessibility.reduceMotion` on — drives the Overview walkthrough
 # (open on the live surfaces, Desktop Reveal, a per-Space wallpaper slide)
 # over the synthetic-input harness with scripts/capture-overview-driver.py,
 # screenshots each state with Spectacle, and assembles the ordered states into

@@ -9,7 +9,7 @@ import Dragonfruit
 Item {
     id: root
 
-    // ── Inputs from the shell / Control Center ───────────────────────────
+    // ── Inputs from the shell / Quick Settings ───────────────────────────
     property var panelModules: []
     property var page2: []
     property var page3: []

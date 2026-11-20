@@ -6,7 +6,7 @@
   [08-settings.md](../08-settings.md),
   ADR [0144](0144-accessibility-adapter.md),
   ADR [0143](0143-privacy-security-pane-and-tile.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md)
+  ADR [0122](0122-reference-interface-language-across-chrome.md)
 
 ## Context
 
@@ -20,7 +20,7 @@ the durable presentation preferences live in `settingsd` while magnification is
 compositor-owned (ADR 0144). As with Privacy (ADR 0143), the C++/QML side never
 links the Rust adapter: it decodes the bridge host's JSON view.
 
-The Control Center panel already held sixteen tiles at the ceiling of its fixed
+The Quick Settings panel already held sixteen tiles at the ceiling of its fixed
 360×1160 surface; a seventeenth had to fit without clipping and without a
 scrolling panel (the compositor forwards no pointer-axis events).
 
@@ -45,12 +45,12 @@ scrolling panel (the compositor forwards no pointer-axis events).
   absence note beside the still-live `Reduce Motion` row; the tile hides on
   `unavailable` or `present: false`.
 - **The pane mirrors the reference honestly.** A grouped `Vision` card carries
-  `Screen Reader` (the reference `VoiceOver`, dropping the Apple brand name) and
+  `Screen Reader` (the reference `VoiceOver`, dropping the reference brand name) and
   `Accessibility` (the toolkit bridge) as read-only live status rows, and the
   `Motion` group carries the `Reduce Motion` toggle. The `Hearing` card and the
-  Apple-only rows (`Zoom`, `Hover Text`, `Display`, `Read & Speak`, `Audio
+  reference-only rows (`Zoom`, `Hover Text`, `Display`, `Read & Speak`, `Audio
   Descriptions`, `Live Captions`, `Name Recognition`) are omitted (ADR 0122).
-- **The Control Center tile is a read-only summary.** It carries the new
+- **The Quick Settings tile is a read-only summary.** It carries the new
   original `accessibility` glyph, the live label, and opens the pane when
   tapped. It is a compact single-row tile (no separate link line), the panel's
   internal gap compacts once more from `xs` to `xxs`, and the fixed surface
@@ -74,7 +74,7 @@ a separate surface, T-16); hiding the whole item when every feature is off
   (`DF_ACCESSIBILITY_FIXTURE` selects the in-process mock);
   `shell/src/systemstatusclient`, `systemstatusmodel`, and `shellcontroller`
   gain the read-only accessibility path.
-- The Control Center panel stays a non-scrolling fixed surface at 360×1160; the
+- The Quick Settings panel stays a non-scrolling fixed surface at 360×1160; the
   seventeenth tile fits by compaction, recorded in the panel comment.
 - The compositor magnifier and the display-contrast rows remain a follow-up;
   this task ships the live bridge projection and the one durable preference.

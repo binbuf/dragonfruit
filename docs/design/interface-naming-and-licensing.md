@@ -26,12 +26,14 @@
 6. **One review gate.** A name/asset/dependency change is not complete until
    the gate and `NOTICE` are updated.
 
-> **Reading note.** Older design docs and source identifiers still say
-> "Control Center", "Mission Control", "Spaces", "Spotlight", "Launchpad", and
-> "Stage Manager". Those are internal/legacy names for continuity. The
-> user-facing map below is authoritative for strings, screenshots, packaging,
-> and new UI. A string audit may migrate the old names gradually; it must not
-> reintroduce an Apple term.
+> **Reading note.** Design docs and user-facing strings use the generic terms
+> in the map below. Some source identifiers and persisted settings values still
+> carry older internal names for compatibility (`control-center`,
+> `mission-control`, `launchpad`, `notification-center`). Those are code
+> identifiers, not user-facing strings, and must not appear in the UI, packaging,
+> or screenshots. New docs and comments use the generic term; the map and
+> `naming-gate.json` are the only places that need to spell out a forbidden
+> reference term.
 >
 > **Machine-readable enforcement (T220).** The forbidden user-facing terms are
 > listed in [naming-gate.json](naming-gate.json); `make check-naming` scans
@@ -187,7 +189,7 @@
 
 The shortcut grammar is Linux-like (Super/Alt/Ctrl) while the physical key
 positions and the displayed glyphs preserve the macOS muscle memory where
-possible. The keymap is documented in [../keymap.md](../keymap.md).
+possible. The keymap is documented in [keymap.md](keymap.md).
 
 ### 2.5 Packaging and identity names
 
@@ -448,7 +450,7 @@ choice.
 
 ## 8. References
 
-- [Existing licensing policy](../licensing.md)
+- [Existing licensing policy](licensing.md)
 - [Existing design-system doc](10-design-system.md)
 - [Existing risks doc](14-risks.md)
 - [Cross-distro contract](distro-compatibility.md)

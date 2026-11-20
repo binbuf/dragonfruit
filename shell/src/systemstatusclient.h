@@ -28,21 +28,21 @@ public:
     virtual bool isAvailable() const = 0;
 
     virtual void refreshWifi() = 0;
-    // T225: the Wi-Fi radio write the Control Center tile and the quick sheet
+    // T225: the Wi-Fi radio write the Quick Settings tile and the quick sheet
     // raise. The host re-reads and pushes the new view.
     virtual void setWifiEnabled(bool enabled) = 0;
     virtual void refreshAudio() = 0;
     // The battery item is read-only: there is no write action.
     virtual void refreshBattery() = 0;
     // Bluetooth (T-15.1b): a live state read plus the four explicit writes the
-    // Control Center tile and the Settings pane raise.
+    // Quick Settings tile and the Settings pane raise.
     virtual void refreshBluetooth() = 0;
     virtual void setBluetoothPowered(bool powered) = 0;
     virtual void setBluetoothDiscovering(bool discovering) = 0;
     virtual void pairBluetooth(const QString &address) = 0;
     virtual void setBluetoothConnected(const QString &address, bool connected) = 0;
     // Storage (T-15.2b): a live state read plus the three explicit writes the
-    // Control Center tile and the Settings pane raise.
+    // Quick Settings tile and the Settings pane raise.
     virtual void refreshStorage() = 0;
     virtual void mountStorage(const QString &volumePath) = 0;
     virtual void unmountStorage(const QString &volumePath) = 0;
@@ -51,7 +51,7 @@ public:
     // setter (ADR 0124).
     virtual void refreshInput() = 0;
     // General/About/Updates (T-15.10b): a live host-stack read plus the three
-    // explicit update writes the Control Center tile and the Settings pane
+    // explicit update writes the Quick Settings tile and the Settings pane
     // raise.
     virtual void refreshUpdates() = 0;
     virtual void checkUpdates() = 0;
@@ -144,7 +144,7 @@ public:
 private:
     using ReplySignal = void (SystemStatusClient::*)(const QByteArray &);
     // `refreshWifiAfter` re-reads the Wi-Fi view once a write returns, so the
-    // quick sheet and Control Center tile follow the daemon instead of the
+    // quick sheet and Quick Settings tile follow the daemon instead of the
     // write report.
     void call(const QString &interface, const QString &method,
               const QVariantList &arguments, ReplySignal replySignal,
@@ -210,7 +210,7 @@ private:
     QString m_defaultSourceName = QStringLiteral("microphone");
     // The Bluetooth fixture state (T-15.1b): a powered adapter with one known
     // device and one discoverable device. Writes mutate it and re-emit, so the
-    // Control Center tile's round-trip is observable headlessly.
+    // Quick Settings tile's round-trip is observable headlessly.
     bool m_btPowered = true;
     bool m_btDiscovering = false;
     bool m_btDeviceConnected = false;
@@ -223,7 +223,7 @@ private:
     bool m_storageDrivePresent = true;
     // The General/About/Updates fixture state (T-15.10b): one security update
     // on offer. check/install/reboot mutate the phase in place and re-emit, so
-    // the Control Center tile's round-trip is observable headlessly.
+    // the Quick Settings tile's round-trip is observable headlessly.
     QString m_updatesPhase = QStringLiteral("available");
     int m_updatesCount = 1;
 };

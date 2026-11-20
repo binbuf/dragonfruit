@@ -495,7 +495,7 @@ Item {
             compare(Settings.values["input.mouse.naturalScroll"], false);
         }
 
-        // Mission Control is compositor-native: the pane's rows are settingsd
+        // Overview is compositor-native: the pane's rows are settingsd
         // keys, so with no daemon they stay live on the schema defaults and the
         // pane shows the absence note instead of an adapter view. T285 removed
         // the top-level pane, so this exercises the component directly; T292
@@ -512,7 +512,7 @@ Item {
             compare(pane.topLeft, "mission-control");
             pane.topLeftSelect.activateIndex(0); // none
             compare(Settings.values["overview.hotCornerTopLeft"], "none");
-            pane.bottomRightSelect.activateIndex(1); // Mission Control
+            pane.bottomRightSelect.activateIndex(1); // Overview
             compare(Settings.values["overview.hotCornerBottomRight"], "mission-control");
             pane.gestureMissionToggle.toggle();
             compare(Settings.values["gestures.missionControl"], false);
@@ -551,7 +551,7 @@ Item {
             compare(pane.showIndicatorsToggle.checked, true);
         }
 
-        // With no bridge host on the private bus, the Notifications pane's
+        // With no bridge host on the private bus, Notifications pane's
         // per-app inventory is the absence state while the four settingsd
         // presentation preferences stay live on the schema defaults, so the
         // pane is never a dead surface.

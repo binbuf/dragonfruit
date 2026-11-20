@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the Accessibility half of the host (T-15.14b): the view
-//! the Settings pane and Control Center tile decode. The adapter is read-only,
+//! the Settings pane and Quick Settings tile decode. The adapter is read-only,
 //! so there are no writes to test.
 
 use dragonfruit_accessibility_adapter::{AccessibilityData, MockAccessibility};

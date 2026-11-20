@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Search pane (T227).
 //
-// Search is a Spotlight-equivalent service (T246); this pane owns the durable
+// Search is a Search-equivalent service (T246); this pane owns the durable
 // preferences that service reads. The categories/locations/shortcut/web keys
 // are settingsd-owned, so they survive a search-service restart. The indexing
 // status/rebuild rows are read from the service and are disabled with an

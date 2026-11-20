@@ -93,7 +93,7 @@ def run(args):
     skipped = 0
     dropped = 0
 
-    # Enter Mission Control, then alternate close/open so every injection
+    # Enter Overview, then alternate close/open so every injection
     # changes the scene and produces at least one presented frame.
     synth.open_overview()
     time.sleep(args.interval * 3)

@@ -13,7 +13,7 @@ import Dragonfruit
 // and the navigation/selection state.
 //
 // T-10.4c adds multi-select (Cmd-click toggles, Shift-click ranges, Cmd+A),
-// the Finder-style context menus, and inline rename. Every mutation routes
+// the Files-style context menus, and inline rename. Every mutation routes
 // through the files-core operations worker, which paints optimistically and
 // then confirms or snaps back — never `std::fs` in the UI.
 //
@@ -58,7 +58,7 @@ Item {
     property string startUri: Files.startUri
     property string revealUri: Files.revealUri
     property bool revealApplied: false
-    // T230d: Finder's toolbar-hidden mode. Hiding the toolbar also hides the
+    // T230d: Files's toolbar-hidden mode. Hiding the toolbar also hides the
     // sidebar; the content inset grows to the measured 64 pt and the status
     // bar spans the full window width. A mode change, not a visibility flag.
     property bool toolbarVisible: true
@@ -113,7 +113,7 @@ Item {
     readonly property bool hasSearch: root.searchText.length > 0
     // Whether the window is at the Trash location, which owns Empty Trash.
     readonly property bool inTrash: browser.currentUri === Files.trashUri
-    // T230d: the measured Finder content inset. Visible: the 52 pt unified
+    // T230d: the measured Files content inset. Visible: the 52 pt unified
     // toolbar. Hidden: the 64 pt content start (the toolbar is a mode, and the
     // sidebar goes with it).
     readonly property real contentInset: root.toolbarVisible
@@ -325,7 +325,7 @@ Item {
     }
 
     // The contiguous node ids from `fromId` to `toId` in the current model
-    // order — a Finder Shift-click range.
+    // order — a Files Shift-click range.
     function rangeTo(fromId, toId) {
         var from = directory.rowForNodeId(fromId);
         var to = directory.rowForNodeId(toId);
@@ -574,7 +574,7 @@ Item {
         }
     }
 
-    // The Finder rule: the menu depends on what is under the pointer.
+    // The Files rule: the menu depends on what is under the pointer.
     function nodeMenu(node) {
         if (root.selectedIds.length > 1) {
             return [
@@ -973,7 +973,7 @@ Item {
                 }
                 SegmentedControl {
                     id: viewControl
-                    // Finder's measured 164×52 pt group with four 40×36 pt
+                    // Files's measured 164×52 pt group with four 40×36 pt
                     // segments. Icon and List are live; Column and Gallery
                     // are explicit disabled states until T244a lands them.
                     groupWidth: Theme.controls.files.viewGroupWidth
@@ -1024,7 +1024,7 @@ Item {
             // Sidebar: the Favorites and Locations source lists.
             ChromeSheet {
                 id: sidebarPane
-                // Finder's measured 198 pt source-list width (T230d).
+                // Files's measured 198 pt source-list width (T230d).
                 width: Theme.controls.files.sidebarWidth
                 height: parent.height
                 visible: root.toolbarVisible

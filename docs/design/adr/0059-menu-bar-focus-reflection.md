@@ -9,7 +9,7 @@ accepted
 T-11.2a froze the service-owned Focus/DND policy and its shell-facing
 `FocusPolicy()` JSON (`mode`, `allowList`, `batchedCount`)
 ([0058](0058-focus-dnd-policy-semantics.md)). The shell had a hidden `focus`
-status slot (T-09) but no reader. T-11.3a's Control Center and the later
+status slot (T-09) but no reader. T-11.3a's Quick Settings and the later
 Settings Focus section need one agreed way to render the three-way state, and
 the menu bar is the first consumer.
 
@@ -31,10 +31,10 @@ the menu bar is the first consumer.
 
 ## Consequences
 
-- The Control Center (T-11.3a) and Settings bind to the same
+- The Quick Settings (T-11.3a) and Settings bind to the same
   `focusPolicyChanged` view and the same three mode names; only their chrome
   differs.
 - `selected` is the frozen visual convention for "Do Not Disturb is active";
-  the same predicate should drive the Control Center's Focus tile.
-- Clicking the item is not a toggle yet: the Control Center owns the active
+  the same predicate should drive the Quick Settings' Focus tile.
+- Clicking the item is not a toggle yet: the Quick Settings owns the active
   controls (T-11.3a). The reflection itself is complete.

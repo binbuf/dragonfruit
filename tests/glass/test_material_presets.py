@@ -220,7 +220,7 @@ def main() -> int:
 
     # T206: first-party app chrome. The measured Light Settings/Files fits and
     # the measured Dark Files fits are exact; Settings Dark is an adaptation
-    # from Finder. The presets are near-opaque solid, never sampled passes.
+    # from Files. The presets are near-opaque solid, never sampled passes.
     app_targets = {
         ("settingsSidebar", "light"): (0.986, 0.857, "measured"),
         ("settingsToolbar", "light"): (0.961, 0.965, "measured"),

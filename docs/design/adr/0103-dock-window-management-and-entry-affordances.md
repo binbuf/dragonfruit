@@ -63,7 +63,7 @@ part of an otherwise strong dock:
   `shell/src/shellprotocol.*` grow; the chooser becomes the reusable
   window-management surface the overflow cell and hover path share.
 - New settings keys (`dock.chooserOnHover`, `dock.minimizeReaction`) carry
-  schema, persistence, `docs/settings-keys.md`, and the Desktop & Dock pane;
+  schema, persistence, `docs/design/settings-keys.md`, and the Desktop & Dock pane;
   settingsd stays the only writer.
 - `set_launch_origin` gains its first caller; the compositor remains the motion
   owner and needs no new protocol.

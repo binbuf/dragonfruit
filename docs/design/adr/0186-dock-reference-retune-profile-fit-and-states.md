@@ -82,7 +82,7 @@ and divider were at the edge of the measured range and the divider's
   magnified tile, and suppresses the window-count mark (the existing
   status > app badge > window count precedence). The shell does not currently
   source app badges from notifications (T-11.1b keeps those in the banner and
-  notification center); this closes the presentation gap for callers and for
+  Notifications); this closes the presentation gap for callers and for
   the folder-stack path that already uses `badge`.
 - **Small measured corrections.** Plate radius 27 (≈0.35 of the 78 px resting
   bar, matching the reference's ~0.34), divider height ratio 0.78, divider

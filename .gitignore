@@ -50,6 +50,18 @@ screenshot.png
 /docs/reference/desktop-experience-inventory.md
 /docs/reference/macos-ui-inventory.md
 /docs/reference/settings-layout-measurements.md
+/docs/GOAL.md
+/docs/CAPTURE-PLAN.md
+/docs/SURFACE-INVENTORY.md
+/docs/SURFACE-REVIEW.md
+/docs/REPORT.md
+/docs/PROGRESS.md
+/docs/LINUX-HANDOFF.md
+/docs/INDEX.md
+/docs/measurements.json
+/docs/coverage_measurements.json
+/docs/material-schema.json
+/docs/experience_measurements.json
 
 # symphony harness (local tool, not tracked)
 .symphony/

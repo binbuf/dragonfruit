@@ -21,7 +21,7 @@
 # opening plus a `chrome stage stats` dump; the driver parses both and writes
 # a JSON file, then prints a comparison table.
 #
-# This is not a production switch. The Mission Control/app-launch stalls are
+# This is not a production switch. The Overview/app-launch stalls are
 # tracked separately. Repeat at another output scale by setting
 # `DRAGONFRUIT_NESTED_SCALE` and a distinct `OUT_DIR` (for example 1.5 and 2.0);
 # the popup target is sized in logical content and scaled by the output scale.

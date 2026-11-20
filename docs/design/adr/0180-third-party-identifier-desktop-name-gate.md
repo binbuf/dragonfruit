@@ -8,7 +8,7 @@ accepted
 
 `scripts/check-desktop-names.sh` guards the public
 `XDG_CURRENT_DESKTOP=dragonfruit` contract
-([ipc-versioning.md](../../ipc-versioning.md)): no source, build, or script file
+([ipc-versioning.md](../ipc-versioning.md)): no source, build, or script file
 may hardcode another desktop's name. The gate scans every `.rs`/`.cpp`/`.h`/
 `.qml`/`.sh`/`.xml`/`.yml`/`.toml`/`Makefile`/`.desktop`/`.conf` file for the
 words `gnome|kde|plasma|…` with `grep -wiE`.

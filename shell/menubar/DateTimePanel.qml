@@ -7,7 +7,7 @@ import Dragonfruit
 // preferences as the bar clock, and a month calendar with keyboard traversal.
 //
 // The surface reuses the status-popover material preset (`statusMenu`) and the
-// design-system Popup, so the liquid-glass rollout, fallback tiers, reduced
+// design-system Popup, so the Glass rollout, fallback tiers, reduced
 // motion and Escape dismissal are shared with every other status popover. The
 // panel deliberately exposes no application actions: a calendar day is a
 // selection (and raises `dayActivated`), never a hidden shell command.

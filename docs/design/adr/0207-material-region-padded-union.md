@@ -59,4 +59,4 @@ the same `BlurSpec` that drives the Kawase chain rather than a literal margin.
 - `compositor/src/window/blur.rs` (`BlurSpec::padding`)
 - `compositor/src/render.rs` (`BlurPanel`)
 - `docs/rendering.md` R1.1, `docs/design/02-compositor.md`
-- ADR 0182 (Tahoe liquid-glass material pass)
+- ADR 0182 (Glass material pass)

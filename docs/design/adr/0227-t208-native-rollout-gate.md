@@ -24,7 +24,7 @@ Lucienne, DP-1 3840×2160 @ 143.999 Hz, scale 1.5):
   `direct_scanout_candidates=4019→11261`, `direct_scanouts=0`. This is the
   existing T190d/T192 gap, not a replacement regression.
 - The prior GPU-overview teardown report (T192b) did not reproduce in a
-  shortened full-rail main run (14/14 scenarios, including Mission Control and
+  shortened full-rail main run (14/14 scenarios, including Overview and
   close); the run was stopped during the refresh matrix, so it remains a T193
   watch item.
 

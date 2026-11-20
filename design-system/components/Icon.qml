@@ -147,8 +147,8 @@ Item {
         "drive-harddisk": "server",
         "control-center": "adjustments-horizontal",
         "mission-control": "layout-dashboard",
-        // T235 Control Center module vocabulary. Every target is a vendored
-        // Tabler outline; Apple-only modules still resolve to a readable mark
+        // T235 Quick Settings module vocabulary. Every target is a vendored
+        // Tabler outline; reference-only modules still resolve to a readable mark
         // and show their explicit absence in the module body.
         "now-playing": "music",
         "airdrop": "devices",

@@ -12,12 +12,12 @@ reinvented.
                           DRAGONFRUIT
 ┌────────────────────────────────────────────────────────────┐
 │                       Qt Quick Shell                       │
-│  Menu Bar │ Dock │ Control Center │ Notifications │ OSD   │
+│  Menu Bar │ Dock │ Quick Settings │ Notifications │ OSD   │
 └──────────────────────────┬─────────────────────────────────┘
                            │ private Wayland protocol / IPC
 ┌──────────────────────────▼─────────────────────────────────┐
 │                  Rust / Smithay Compositor                 │
-│ windows │ Spaces │ Mission Control │ input │ outputs │ FX │
+│ windows │ Spaces │ Overview │ input │ outputs │ FX │
 │                  Xwayland compatibility                   │
 └───────────────┬───────────────────────────────┬────────────┘
                 │                               │
@@ -50,11 +50,11 @@ graphics stacks.
 | Layer | Decision |
 |---|---|
 | Window compositor / WM policy | **Own it**, on top of Smithay |
-| Mission Control / workspaces / animations | **Own it** |
-| Dock, top menu, Control Center, notification center | **Own it** |
+| Overview / workspaces / animations | **Own it** |
+| Dock, top menu, Quick Settings, Notifications | **Own it** |
 | Window-decoration policy | **Own it** |
 | System Settings UI and desktop configuration model | **Own it** |
-| Finder-equivalent UI and file-manager behavior | **Own it**, reuse filesystem/mount backends |
+| file manager UI and file-manager behavior | **Own it**, reuse filesystem/mount backends |
 | Global-menu broker | **Own it**, consume existing app-menu protocols where available |
 | Desktop session / startup / portal integration | **Own it** |
 | Wi-Fi | Reuse NetworkManager |
@@ -81,7 +81,7 @@ the compositor is special:
 | Process | Language | Access | Crash policy |
 |---|---|---|---|
 | Compositor | Rust / Smithay | Seat, DRM/KMS, input (via logind) | Crash ends the session by design; the display manager returns the user to a login screen |
-| Shell (menu bar, Dock, Control Center, notification banners, OSD) | Qt Quick | Wayland client of the compositor | systemd restarts it; windows and the session keep running |
+| Shell (menu bar, Dock, Quick Settings, notification banners, OSD) | Qt Quick | Wayland client of the compositor | systemd restarts it; windows and the session keep running |
 | `settingsd` | Rust | User session bus | Restartable; clients re-read cached state on reappearance |
 | `menu-broker` | Rust | User session bus | Restartable. The shell retains its fixed system and application menus during broker loss. |
 | `app-index` | Rust | User session bus | Restartable; consumers re-query on reappearance |
@@ -154,7 +154,7 @@ interface diverges.
 
 ### Shell and apps: Qt 6 / Qt Quick (QML)
 
-Qt Quick is our choice for Settings, Files, the Dock, menu bar, Control Center,
+Qt Quick is our choice for Settings, Files, the Dock, menu bar, Quick Settings,
 and similar interfaces because:
 
 - Qt treats animation/transitions as first-class concepts and provides its
@@ -176,7 +176,7 @@ and original assets — compositor, services, private protocol XMLs, design
 system, shell, and apps — are MIT, so any third party may implement or reuse
 them freely. Bundled third-party assets keep their own licenses (Inter under
 OFL, Tabler/Phosphor under MIT, Capitaine cursors under LGPL); see
-[NOTICE](../../NOTICE) and [docs/licensing.md](../licensing.md). The final
+[NOTICE](../../NOTICE) and [licensing.md](licensing.md). The final
 licensing call is a blocker for the first public release (see
 [14-risks.md](14-risks.md)).
 
@@ -219,7 +219,7 @@ desktop/
 Two channels connect our processes:
 
 1. **Private, versioned Wayland protocols** — for compositor↔shell
-   communication (workspace enumeration, window state, Mission Control
+   communication (workspace enumeration, window state, Overview
    control, output configuration). The shell consumes a private, versioned
    interface rather than scraping public protocols.
 2. **D-Bus** — for services (settingsd, menu-broker, app-index, portal,

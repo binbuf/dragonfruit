@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 # The provider owns its HTTP stack (ureq, MIT/Apache-2.0 — see
-# docs/licensing.md) and serves the catalogue over the user session bus
+# docs/design/licensing.md) and serves the catalogue over the user session bus
 # (`org.dragonfruit.Wallpaper1`). No GPL/AGPL dependency is added.
 [dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }

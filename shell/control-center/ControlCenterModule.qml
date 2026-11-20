@@ -2,7 +2,7 @@
 import QtQuick
 import Dragonfruit
 
-// One measured Control Center grid capsule (T235).
+// One measured Quick Settings grid capsule (T235).
 //
 // The capsule is the live module surface: its size is the measured span
 // (64×64, 140×64, 140×140, 292×64), and its body adapts to that span instead

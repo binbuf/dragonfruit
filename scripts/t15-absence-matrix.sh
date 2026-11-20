@@ -92,7 +92,7 @@ command_line() { printf '$ %s\n' "$*"; }
 
     section "6. Live/VM half (not automated here)"
     echo "Actually stopping BlueZ/UDisks/PipeWire/CUPS/NetworkManager in a VM and"
-    echo "watching the pane and its Control Center tile is the design's real-VM"
+    echo "watching the pane and its Quick Settings tile is the design's real-VM"
     echo "check (14-risks.md). No VM is available in CI, so the reviewed state"
     echo "matrix in docs/captures/t15-absence-matrix.md records it by hand."
     echo "On a live session, 'no bridge host' is the same hidden state because"

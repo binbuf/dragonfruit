@@ -71,11 +71,11 @@ if [ ! -e "$SYNTH" ]; then
 fi
 sleep "$SETTLE"
 
-python3 scripts/t20-liquid-glass-driver.py --synth "$SYNTH" --outdir "$OUTDIR" \
+python3 scripts/t20-glass-driver.py --synth "$SYNTH" --outdir "$OUTDIR" \
     --steps "cmd:set degrade-tier full; sleep:1.5; shot:t20-material-tiers-full"
-python3 scripts/t20-liquid-glass-driver.py --synth "$SYNTH" --outdir "$OUTDIR" \
+python3 scripts/t20-glass-driver.py --synth "$SYNTH" --outdir "$OUTDIR" \
     --steps "cmd:set degrade-tier reduced; sleep:1.5; shot:t20-material-tiers-reduced"
-python3 scripts/t20-liquid-glass-driver.py --synth "$SYNTH" --outdir "$OUTDIR" \
+python3 scripts/t20-glass-driver.py --synth "$SYNTH" --outdir "$OUTDIR" \
     --steps "cmd:set degrade-tier minimal; sleep:1.5; shot:t20-material-tiers-minimal"
 
 echo "capture-t20-material-tiers: done"

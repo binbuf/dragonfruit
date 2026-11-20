@@ -44,7 +44,7 @@ class FilesDirectoryModel : public QAbstractListModel
     Q_PROPERTY(QString sortKey READ sortKey NOTIFY sortChanged)
     // Whether the active sort runs A→Z / smallest→largest.
     Q_PROPERTY(bool sortAscending READ sortAscending NOTIFY sortChanged)
-    // Whether directories are grouped ahead of files (the Finder toggle).
+    // Whether directories are grouped ahead of files (the Files toggle).
     Q_PROPERTY(bool foldersFirst READ foldersFirst NOTIFY sortChanged)
     // How many optimistic operations are still awaiting their real outcome.
     // The model keeps polling while this is non-zero, even after the listing

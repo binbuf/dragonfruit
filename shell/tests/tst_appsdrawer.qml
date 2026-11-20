@@ -245,7 +245,7 @@ Item {
         }
 
         // Filtering narrows the visible set but must not reflow the card: the
-        // reference Spotlight Apps grid keeps its 7-column pitch and stable
+        // reference Search Apps grid keeps its 7-column pitch and stable
         // window while the user types. A result count smaller than a full row
         // used to shrink the card horizontally on every keystroke.
         function test_filtering_keeps_the_measured_grid_width() {
@@ -354,7 +354,7 @@ Item {
             verify(!findChild(small, "appsDrawerScrollTrack").visible);
         }
 
-        // The drawer's top section follows the measured Spotlight Apps row:
+        // The drawer's top section follows the measured Search Apps row:
         // a Back button, a large rounded search field, and a More button.
         function test_top_section_is_the_measured_search_row() {
             var drawer = make({ apps: sampleApps });
@@ -508,7 +508,7 @@ Item {
             verify(search.input.activeFocus, "reopened drawer lost search focus");
         }
 
-        // Launchpad behaviour: Escape dismisses even while a search is active.
+        // Applications behaviour: Escape dismisses even while a search is active.
         // The next open starts clean, so Escape never has to be pressed twice.
         function test_escape_dismisses_with_a_non_empty_query() {
             var drawer = make({ apps: sampleApps, active: false });
@@ -522,7 +522,7 @@ Item {
         }
 
         // With no arrow selection, Return on a filtered list opens the top
-        // hit, matching the launcher's Spotlight-style expectation.
+        // hit, matching the launcher's Search-style expectation.
         function test_return_launches_the_top_hit_when_filtered() {
             var drawer = make({ apps: sampleApps, active: false });
             drawer.active = true;

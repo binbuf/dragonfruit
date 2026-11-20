@@ -74,7 +74,7 @@ pub enum GpuPass {
     Scene,
     /// One panel's Kawase blur chain.
     Blur,
-    /// The final output composite. The liquid-glass compose runs inside this
+    /// The final output composite. The Glass compose runs inside this
     /// pass; it is not a separately dispatchable GL pass.
     Composite,
 }

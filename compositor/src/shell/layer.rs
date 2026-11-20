@@ -16,7 +16,7 @@ use crate::window::{CornerRadii, ReservedZones};
 
 /// Upper bound on the independently keyed material regions one chrome surface
 /// may declare (T197, raised by T203). A menu and a notification stack need a
-/// handful; the Control Center declares its outer plate, 18 module capsules,
+/// handful; the Quick Settings declares its outer plate, 18 module capsules,
 /// and up to two expanded lists, so the bound keeps the per-frame region list,
 /// damage union, and panel-slot table bounded even for a hostile trusted
 /// client.
@@ -326,7 +326,7 @@ impl LayerSurfaceState {
             return true;
         }
         // A full-output overlay (anchored on all four edges) is a session-wide
-        // layer such as Mission Control, not a per-output popover: it spans
+        // layer such as Overview, not a per-output popover: it spans
         // every display (T-11 U-4). Per-output popovers anchor to fewer edges.
         if self.is_full_output() {
             return true;
@@ -1051,7 +1051,7 @@ mod tests {
 
     #[test]
     fn full_output_overlays_span_every_output() {
-        // Mission Control is an `overlay` anchored to all four edges: it must
+        // Overview is an `overlay` anchored to all four edges: it must
         // cover every display even when chrome focus was captured on one
         // (T-11 U-4), unlike a per-output popover.
         let overview = LayerSurfaceState {

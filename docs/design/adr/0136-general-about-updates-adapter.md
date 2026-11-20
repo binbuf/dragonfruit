@@ -7,12 +7,12 @@
   [12-packaging.md](../12-packaging.md),
   ADR [0128](0128-battery-power-profiles-adapter.md),
   ADR [0130](0130-notifications-focus-adapter.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md)
+  ADR [0122](0122-reference-interface-language-across-chrome.md)
 
 ## Context
 
 T-15.10 splits the General surface into an adapter (T-15.10a) and a Settings
-pane plus Control Center tile (T-15.10b). The pane's rows are the macOS General
+pane plus Quick Settings tile (T-15.10b). The pane's rows are the macOS General
 list: `About` (the device/release/spec block) and `Software Update` (the distro
 path), plus settingsd-owned defaults. `System_Preferences.md` routes the pane
 to "settingsd + the distro update provider".
@@ -72,7 +72,7 @@ treating a missing provider as an error (it is a normal, layered absence).
   root-configurable and unit-tested against a fixture tree; its update half is
   absent until a `UpdateProvider` is attached, which is the honest state until
   packaging supplies one.
-- T-15.10b adds the Settings pane and Control Center tile. It declares any
+- T-15.10b adds the Settings pane and Quick Settings tile. It declares any
   settingsd presentation preferences and wires the pane/tile; it must not add a
   second update implementation.
 - General's "defaults" (language/region, login items, sharing, startup disk)

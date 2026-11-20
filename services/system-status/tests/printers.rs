@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the Printers and Scanners half of the host (T-15.12b): the
-//! view the Settings pane and Control Center tile decode, plus the three
+//! view the Settings pane and Quick Settings tile decode, plus the three
 //! explicit queue writes applied once through the adapter.
 
 use dragonfruit_printer_adapter::{

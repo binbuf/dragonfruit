@@ -33,7 +33,7 @@
 //! # No polling
 //!
 //! The host reads an adapter only when its daemon signals a change (the live
-//! signal subscription is the follow-up recorded in `docs/PROGRESS.md`) or on
+//! signal subscription is the follow-up recorded in the local progress notes) or on
 //! an explicit refresh; it never polls. The adapter crate owns the read/write
 //! mechanics; this crate never names a daemon.
 //!

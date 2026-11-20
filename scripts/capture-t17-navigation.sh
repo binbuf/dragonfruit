@@ -4,7 +4,7 @@
 # T-17.1b nested navigation capture.
 #
 # Launches the nested Dragonfruit demo (`make demo`) with the compositor's
-# synthetic-input harness and drives the workspace-switch, Mission Control, and
+# synthetic-input harness and drives the workspace-switch, Overview, and
 # app-switch navigation through scripts/t17-navigation-driver.py, by pointer
 # and keyboard, on the live session. Each step is screenshotted with Spectacle
 # and the stills land in docs/captures/t17-navigation*.

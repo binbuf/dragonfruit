@@ -56,7 +56,8 @@ independently. Any binary distribution must ship the GPL-3.0 text, this
 provenance record, and the corresponding source. The project-level exception is
 recorded in
 [docs/design/adr/0251-whitesur-place-icons.md](../../../docs/design/adr/0251-whitesur-place-icons.md)
-and [docs/licensing.md](../../../docs/licensing.md).
+and [docs/design/licensing.md](../../../docs/design/licensing.md).
 
-The files are third-party open artwork, not Apple assets. Do not substitute
-Apple's Finder/Trash artwork or add files whose upstream license is unclear.
+The files are third-party open artwork, not reference-platform assets. Do not
+substitute proprietary file-manager/Trash artwork or add files whose upstream
+license is unclear.

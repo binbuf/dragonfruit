@@ -2,7 +2,7 @@
 import QtQuick
 import Dragonfruit
 
-// Mission Control overview chrome (T-11 Slice B).
+// Overview overview chrome (T-11 Slice B).
 //
 // The compositor renders the *live* window surfaces (translated) while the
 // overview is open; this shell surface is deliberately transparent and only

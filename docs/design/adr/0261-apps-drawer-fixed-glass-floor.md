@@ -19,7 +19,7 @@ An initial follow-up lowered the base to 0.64 and gave the drawer a glass
 floor. That overcorrected: at the live slider position the card resolved to
 about 0.81 alpha, and the wallpaper read through the large surface as a washed
 out, too-transparent pane. The reference in
-`macos-design-review/docs/SURFACE-REVIEW.md` §4 is a **large light glass
+the local surface review §4 is a **large light glass
 panel**, not a clear pane and not a flat plate: it sits between the two.
 
 ## Decision

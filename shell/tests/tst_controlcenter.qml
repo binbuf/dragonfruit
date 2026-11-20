@@ -4,7 +4,7 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.ControlCenter
 
-// Control Center panel tests (T-11.3a/T-11.3b): the normalized tile model,
+// Quick Settings panel tests (T-11.3a/T-11.3b): the normalized tile model,
 // live tile gestures (volume/brightness/Focus/dark mode), the read-only Wi-Fi
 // degradation, accessible roles, and Escape dismissal. Runs headless on the
 // offscreen platform.
@@ -161,7 +161,7 @@ Item {
             };
         }
 
-        // The shell-projected Mission Control summary (T-15.5b), shaped by
+        // The shell-projected Overview summary (T-15.5b), shaped by
         // `controlcenterpolicy.cpp`'s `missionControlView`.
         function missionControlModel(gesture, corners, label) {
             var resolved = label !== undefined ? label
@@ -475,10 +475,10 @@ Item {
         }
 
         function test_panel_content_fits_the_shell_surface() {
-            // The shell sizes the Control Center surface to 360x1160
+            // The shell sizes the Quick Settings surface to 360x1160
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
             // rows, the Storage tile, the Sound tile's routing subtitle, the
-            // Keyboard tile, the Mission Control tile, the Battery tile, the
+            // Keyboard tile, the Overview tile, the Battery tile, the
             // Lock Screen tile, the Menu Bar tile, the Software Update tile, the
             // Users tile, the Printers tile, the Privacy tile, and the compact
             // Accessibility tile the content must still fit, or the lower tiles
@@ -514,7 +514,7 @@ lockPolicy: lockPolicyModel(600),
             var content = findChild(panel, "controlCenterContent");
             verify(content !== null);
             verify(content.childrenRect.height <= 1164,
-                   "Control Center content must fit the 1164px surface, height="
+                   "Quick Settings content must fit the 1164px surface, height="
                    + content.childrenRect.height);
         }
 
@@ -734,7 +734,7 @@ lockPolicy: lockPolicyModel(600),
             panel.openModule("mission-control");
             waitForRendering(stage);
             var link = findChild(panel, "missionControlSettingsLink");
-            verify(link !== null, "the Mission Control Settings link is present");
+            verify(link !== null, "the Overview Settings link is present");
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Overview Settings");
             link.activated();
@@ -1692,7 +1692,7 @@ lockPolicy: lockPolicyModel(600),
         }
 
         function test_popup_role_material_covers_the_control_center() {
-            // T-21.2c: Control Center is the transient Popup role. The panel
+            // T-21.2c: Quick Settings is the transient Popup role. The panel
             // keeps its geometry and rim; only the fill switches between the
             // sampled-glass scrim and the milky fallback.
             var states = [

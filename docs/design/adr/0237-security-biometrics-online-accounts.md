@@ -11,7 +11,7 @@ no single desktop daemon. Linux exposes the relevant state through the
 xdg-desktop-portal PermissionStore, the distribution package manager and
 Flatpak, `lsblk`, SELinux/AppArmor/Secure Boot tools, fprintd, PAM,
 AccountsService, and optionally GNOME Online Accounts. macOS has TCC
-categories, Touch ID, and Internet Accounts that do not map one-for-one.
+categories, Fingerprint, and Online Accounts that do not map one-for-one.
 
 ## Decision
 

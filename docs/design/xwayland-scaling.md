@@ -2,9 +2,9 @@
 
 Decision record for the T-06 open question ("scale-viewport per X11 surface
 vs integer scale"), from
-[../docs/tasks/legacy/06-xwayland.md](../docs/tasks/legacy/06-xwayland.md). The design
+[../tasks/legacy/06-xwayland.md](../tasks/legacy/06-xwayland.md). The design
 direction is `viewporter` + `fractional-scale`
-([../docs/design/02-compositor.md](../docs/design/02-compositor.md)),
+([02-compositor.md](02-compositor.md)),
 which is a Wayland-client mechanism; X11 clients cannot opt in.
 
 ## Decision
@@ -88,5 +88,5 @@ QML chrome offscreen at a device pixel ratio of 1 and does not bind
 `wp_fractional_scale` / `wp_viewporter`; at a fractional output scale the shell
 ignores the compositor's preferred-scale event and its chrome is upscaled. The
 compositor advertises the preferred scale (`render::update_chrome_preferred_scale`),
-so the remaining work is entirely in `shell/`. Recorded in `docs/PROGRESS.md`
+so the remaining work is entirely in `shell/`. Recorded in the local progress notes
 under Follow-ups.

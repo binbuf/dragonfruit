@@ -83,7 +83,7 @@ Item {
                     "Manage your overall setup and preferences for this computer, "
                     + "such as updates, language, sharing, and startup.");
             compare(pane.bigList.rows.children.length, 11,
-                    "Device Management is omitted from the rendered list");
+                    "device management is omitted from the rendered list");
 
             var ids = ["aboutRow", "updateRow", "storageRow", "passwordsRow",
                        "dateTimeRow", "languageRow", "loginRow", "sharingRow",
@@ -109,7 +109,7 @@ Item {
 
         function test_device_management_is_omitted_with_a_map_reason() {
             var row = SettingsMap.rowFor("general", "device.management");
-            verify(row !== null, "the omitted Device Management row is mapped");
+            verify(row !== null, "the omitted device management row is mapped");
             compare(row.state, "omitted");
             compare(row.absence, "omitted");
             compare(row.label, "Managed Devices");

@@ -71,7 +71,7 @@ fn send_sigterm(pid: u32) {
 /// `None` is the headless/CI path (no services, no session-bus dependency).
 /// `Core` is the thin loop demo: `app-index` (Dock identity) and `menu-broker`
 /// (global menu), which the shell's chrome needs. `Full` adds the real session
-/// services so Settings, Control Center, notifications, and the wallpaper
+/// services so Settings, Quick Settings, notifications, and the wallpaper
 /// provider are live. `wallpaperd` is `Full`-only: it is a network-capable
 /// content provider and does not belong on the thin/CI path.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -193,7 +193,7 @@ daemons or the developer's real settings. Falls back to the inherited bus
 (with a warning) when `dbus-daemon` is missing.
 
 --fixtures exports the deterministic `DF_*_FIXTURE` pane fixtures to the
-session, so Settings and Control Center render populated without host
+session, so Settings and Quick Settings render populated without host
 hardware or daemons.
 
 --demo builds nothing (use `make demo`), but launches the shell, a Qt/Wayland

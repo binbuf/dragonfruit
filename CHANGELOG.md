@@ -76,14 +76,14 @@ the design system, and the packaging/install tooling.
 
 - **Compositor.** Smithay-based Wayland compositor with nested, headless, and
   DRM/GBM backends; server-side decorations and traffic lights; window
-  lifecycle motion; Spaces and Mission Control; the app switcher; Xwayland
-  compatibility; the liquid-glass material pipeline and software fallback.
+  lifecycle motion; Spaces and Overview; the app switcher; Xwayland
+  compatibility; the Glass material pipeline and software fallback.
 - **Shell.** Menu bar with the global menu, system menu, status items,
   clock/date and calendar, menu-bar extras, Quick Settings, overflow/notch
   handling and auto-hide; Dock with magnification, stacks, Trash, badges, the
   app chooser, drag-and-drop, keyboard reordering, multi-display placement, the
-  lifecycle menu, and launch/minimize/restore/genie motion; Control Center and
-  customizable controls; Notification Center, banners, Focus profiles, and
+  lifecycle menu, and launch/minimize/restore/genie motion; Quick Settings and
+  customizable controls; Notifications, banners, Focus profiles, and
   widgets; OSDs; Overview; Applications drawer; desktop items; lock screen.
 - **System Settings.** The full pane set, including Wi-Fi/Network/VPN/firewall,
   General/Date & Time/Language/Sharing/Backup/Login Items/Updates,
@@ -146,5 +146,5 @@ the design system, and the packaging/install tooling.
   handling, Open With, and full watcher/menu publication.
 - Official Fedora COPR/source packaging and Debian policy/source packaging are
   still open; the published binary assets are early-testing packages.
-- Some Control Center links/actions, per-display Control Center panels, and
+- Some Quick Settings links/actions, per-display Quick Settings panels, and
   measured open/close/expand motion remain follow-ups.

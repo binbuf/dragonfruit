@@ -104,19 +104,19 @@ pub struct AudioInterface {
 }
 
 /// The battery half of the service: the charge state plus the one power-profile
-/// write the Settings pane and Control Center tile offer (T-15.6b).
+/// write the Settings pane and Quick Settings tile offer (T-15.6b).
 pub struct BatteryInterface {
     host: Arc<Mutex<LiveHost>>,
 }
 
 /// The Bluetooth half of the service (T-15.1b): state plus the four explicit
-/// writes the Settings pane and Control Center tile offer.
+/// writes the Settings pane and Quick Settings tile offer.
 pub struct BluetoothInterface {
     host: Arc<Mutex<LiveBluetooth>>,
 }
 
 /// The storage half of the service (T-15.2b): state plus the three explicit
-/// writes the Settings pane and Control Center tile offer.
+/// writes the Settings pane and Quick Settings tile offer.
 pub struct StorageInterface {
     host: Arc<Mutex<LiveStorage>>,
 }
@@ -144,7 +144,7 @@ pub struct UpdatesInterface {
 
 /// The Users and Groups half of the service (T-15.11b): the AccountsService
 /// user list plus the distro group provider's list, and the eight explicit
-/// account/group writes the Settings pane offers. The Control Center tile is a
+/// account/group writes the Settings pane offers. The Quick Settings tile is a
 /// read-only summary of the same view.
 pub struct AccountsInterface {
     host: Arc<Mutex<LiveAccounts>>,
@@ -152,7 +152,7 @@ pub struct AccountsInterface {
 
 /// The Printers and Scanners half of the service (T-15.12b): the CUPS queue
 /// list plus the SANE device list, and the three explicit queue writes the
-/// Settings pane offers. The Control Center tile is a read-only summary of the
+/// Settings pane offers. The Quick Settings tile is a read-only summary of the
 /// same view.
 pub struct PrintersInterface {
     host: Arc<Mutex<LivePrinters>>,
@@ -160,7 +160,7 @@ pub struct PrintersInterface {
 
 /// The Privacy and Security half of the service (T-15.13b): the portal
 /// PermissionStore's per-application permission categories, plus the two
-/// explicit permission writes the Settings pane offers. The Control Center tile
+/// explicit permission writes the Settings pane offers. The Quick Settings tile
 /// is a read-only summary of the same view.
 pub struct PrivacyInterface {
     host: Arc<Mutex<LivePrivacy>>,

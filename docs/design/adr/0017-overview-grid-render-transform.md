@@ -1,4 +1,4 @@
-# 0017 — Mission Control's live-surface grid is a render-time scene transform
+# 0017 — Overview's live-surface grid is a render-time scene transform
 
 ## Status
 
@@ -7,7 +7,7 @@ accepted
 ## Context
 
 T-05.1a must transform the **real** window surfaces into the documented
-Mission Control grid ([03-workspaces.md](../03-workspaces.md#window-layout-and-occlusion-t-11-u-5)),
+Overview grid ([03-workspaces.md](../03-workspaces.md#window-layout-and-occlusion-t-11-u-5)),
 never a cascade and never a thumbnail. T-04.3 already shipped the one reusable
 `SceneTransform`/`MotionFrame` mapping (ADR 0014) and the T-02 lifecycle motion
 renders through it. The open questions were: where the grid layout lives, who
@@ -21,7 +21,7 @@ hit-testing transfer is the next slice (T-05.2).
 
 ## Decision
 
-- Add `compositor/src/overview/grid.rs` as the **one** Mission Control layout:
+- Add `compositor/src/overview/grid.rs` as the **one** Overview layout:
   pure geometry, no Smithay scene and no GPU. `grid_layout` orders candidates
   (active Space first, then strip order, most-recently-used first), picks the
   near-square column count, applies one uniform scale so the largest window

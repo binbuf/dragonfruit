@@ -184,7 +184,7 @@ Item {
             verify(!shell.forwardButton.enabled);
         }
 
-        // -- T230d measured Finder anatomy -------------------------------------
+        // -- T230d measured Files anatomy -------------------------------------
 
         function test_measured_window_anatomy() {
             var shell = make({ width: 900, height: 600 });
@@ -692,7 +692,7 @@ Item {
             verify(shell.selectedIds.length >= 2,
                    "the band must highlight enclosed tiles while dragging");
 
-            // macOS Tahoe drag band: a neutral, translucent grey wash inside a
+            // macOS reference drag band: a neutral, translucent grey wash inside a
             // thicker, less transparent square grey perimeter — no accent tint.
             verify(shell.iconView.marqueeItem.visible);
             compare(shell.iconView.marqueeItem.color, Theme.color.marqueeFill);

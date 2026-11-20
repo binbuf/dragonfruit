@@ -5,11 +5,11 @@ import Dragonfruit.Settings
 
 // The Lock Screen pane (T-15.8b; completed by T278).
 //
-// The pane and the Control Center Lock Screen tile are one functional unit.
+// The pane and the Quick Settings Lock Screen tile are one functional unit.
 // Lock policy has no external daemon: the session idle/lock engine
 // (`services/session/src/idle.rs`, ADR 0070) owns the stage timing and the
 // compositor owns the one fail-secure lock state (ADR 0067); the shell mirrors
-// both over the private `df_toplevel_manager` bridge. Like the Mission Control
+// both over the private `df_toplevel_manager` bridge. Like the Overview
 // pane (T-15.5b), this pane is the *configuration* half and writes only
 // settingsd keys, so every control applies live and persists:
 //
@@ -30,7 +30,7 @@ import Dragonfruit.Settings
 //     display manager does not expose a style setting on the host;
 //   * `Accessibility Options...` opens the Accessibility pane instead of
 //     duplicating its controls;
-//   * the Apple Account/sidebar row and the trailing `?` help are omitted
+//   * the Account/sidebar row and the trailing `?` help are omitted
 //     project-wide.
 Item {
     id: root

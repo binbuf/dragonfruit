@@ -6,7 +6,7 @@ Accepted (T230d, 2026-11-09).
 
 ## Context
 
-The 2026-11-08 structural review measured Finder at 900×600 pt: a 52 pt
+The 2026-11-08 structural review measured Files at 900×600 pt: a 52 pt
 toolbar, a 198 pt sidebar, content-layer tab/path/status bars (28/30/28 pt),
 a 64 pt content inset when the toolbar is hidden, and a 328×1034 pt Get Info
 auxiliary window with a 32 pt title bar. Files already had the T230b unified
@@ -50,7 +50,7 @@ layouts.
   their owner and rerun.
 - `SegmentedControl` gains a rejected-state contract that other measured
   segmented controls can reuse; existing consumers keep the token defaults.
-- Get Info is a separate window, not a sheet or Quick Look. Quick Look remains
+- Get Info is a separate window, not a sheet or Preview. Preview remains
   T244 and can share the selection model but not this surface.
 - Tabs, search results, tags, customization and motion stay explicit `OPEN`
   rows in `09-files.md` and the structural review; the capture runner is

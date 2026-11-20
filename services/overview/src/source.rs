@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-//! The transport seam: the raw Mission Control / hot corners read and its mock.
+//! The transport seam: the raw Overview / hot corners read and its mock.
 //!
 //! A [`MissionControlSource`] is the only thing that talks to the host stack.
-//! Mission Control and hot corners are **compositor-native**: the compositor
+//! Overview and hot corners are **compositor-native**: the compositor
 //! already owns the corner detector (`compositor/src/input/hot_corners.rs`) and
 //! the single overview state machine (`compositor/src/overview/mod.rs`), and
 //! the shell learns about both over the private `df_toplevel_manager` bridge
@@ -29,7 +29,7 @@ use dragonfruit_system_adapters::AdapterError;
 
 pub use crate::model::{HotCorner, HotCornerAction};
 
-/// The raw result of one Mission Control / hot corners read: the compositor's
+/// The raw result of one Overview / hot corners read: the compositor's
 /// current trigger configuration and overview state.
 ///
 /// The four corner assignments are indexed by [`HotCorner::index`]. The
@@ -49,9 +49,9 @@ pub struct MissionControlData {
     pub gestures_enabled: bool,
     /// Whether a horizontal swipe switches Spaces.
     pub gesture_space_switch: bool,
-    /// Whether a vertical swipe opens Mission Control.
+    /// Whether a vertical swipe opens Overview.
     pub gesture_mission_control: bool,
-    /// Whether the overview (Mission Control) is open.
+    /// Whether the overview (Overview) is open.
     pub overview_active: bool,
     /// The selected window while the overview is open, if any.
     pub selected_window: Option<String>,
@@ -87,7 +87,7 @@ impl Default for MissionControlData {
     }
 }
 
-/// Reads the Mission Control / hot corners host stack.
+/// Reads the Overview / hot corners host stack.
 ///
 /// The read result is a three-way answer, exactly as the adapter contract needs
 /// it:

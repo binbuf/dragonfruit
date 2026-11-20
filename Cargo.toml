@@ -46,7 +46,7 @@ rust-version = "1.80.1"
 #
 # Smithay is pinned to an exact version on purpose: upgrades are deliberate,
 # mechanical events, never pulled in transitively (see docs/design/14-risks.md
-# and docs/ipc-versioning.md for the lockstep rules that apply to the rest of
+# and docs/design/ipc-versioning.md for the lockstep rules that apply to the rest of
 # the dependency set).
 #
 # Feature set (T-02): all three backends ship in one binary, so the DRM/GBM/

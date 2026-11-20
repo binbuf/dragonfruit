@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The Notification Center widget stack (T234): the catalogue is the measured
+// Notifications widget stack (T234): the catalogue is the measured
 // 19 categories, the default is the live Calendar card, and add/remove/resize
 // plus the provider-data seam are pure model behaviour.
 #include "widgetmodel.h"

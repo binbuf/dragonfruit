@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! Mission Control live-surface grid layout (T-05.1a).
+//! Overview live-surface grid layout (T-05.1a).
 //!
-//! This is the documented Mission Control layout algorithm
+//! This is the documented Overview layout algorithm
 //! ([03-workspaces.md](../../docs/design/03-workspaces.md#window-layout-and-occlusion-t-11-u-5)):
 //! the real window surfaces are laid out as a **grid**, never a cascade and
 //! never a thumbnail. The module is pure geometry — no Smithay scene, no GPU —
@@ -41,7 +41,7 @@ pub const GRID_MARGIN: i32 = overview::STRIP_MARGIN as i32;
 /// contains the active window). Exposed so the future pager shares the number.
 pub const MIN_GRID_SCALE: f64 = 0.1;
 
-/// The pointer travel (logical px) a Mission Control press must cover before
+/// The pointer travel (logical px) an Overview press must cover before
 /// it counts as a drag of the live representation rather than a click. Matches
 /// the shell grid's `DragHandler.dragThreshold` (8), so both drag entry points
 /// feel the same.
@@ -79,7 +79,7 @@ pub fn strip_card_rect(
 }
 
 /// The Space index whose workspace-strip card contains `point`, or `None` when
-/// the point is off the strip. This is the Mission Control drag drop-target
+/// the point is off the strip. This is the Overview drag drop-target
 /// resolver (T-05.3): the compositor computes the same centered strip layout
 /// the shell draws, so dropping a live representation on a Space card assigns
 /// the window to that Space.
@@ -93,7 +93,7 @@ pub fn strip_space_at(
     })
 }
 
-/// An in-flight Mission Control pointer drag of a live representation (T-05.3).
+/// An in-flight Overview pointer drag of a live representation (T-05.3).
 ///
 /// The press records the window and the start point; motion updates `current`.
 /// [`Self::moved`] is the click/drag discriminator (the shared
@@ -171,7 +171,7 @@ impl GridPlacement {
     /// The per-frame render transform at `progress` (`0.0` = the normal scene,
     /// `1.0` = fully in the grid). The rect lerps from the committed geometry
     /// to the grid target, so opening/closing the overview is continuous and
-    /// reversible; alpha stays `1.0` (Mission Control never fades windows).
+    /// reversible; alpha stays `1.0` (Overview never fades windows).
     pub fn frame(&self, progress: f64) -> MotionFrame {
         let t = progress.clamp(0.0, 1.0);
         let rect = lerp_rect(self.source, self.target, t);
@@ -227,7 +227,7 @@ impl GridLayout {
     /// Placements are ordered most-recently-used first — the top of the
     /// window stack — so the first hit is the topmost window when two
     /// committed rects overlap mid-transition; the settled grid's cells never
-    /// overlap. This is the Mission Control pointer hit-test seam (T-05.2): it
+    /// overlap. This is the Overview pointer hit-test seam (T-05.2): it
     /// reuses [`GridPlacement::frame`], the exact rect the renderer draws, so a
     /// click always lands on the live representation the user sees (never the
     /// committed geometry).
@@ -239,7 +239,7 @@ impl GridLayout {
     }
 }
 
-/// The material the Mission Control grid composes its **live** surfaces with
+/// The material the Overview grid composes its **live** surfaces with
 /// (T-05.1b): the active T-04.4a [`DegradeTier`] plus the elevation shadow and
 /// the material-blur state that tier selects.
 ///

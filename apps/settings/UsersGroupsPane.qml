@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Users & Groups pane (T-15.11b).
 //
-// The pane and the Control Center tile are one functional unit: both read the
+// The pane and the Quick Settings tile are one functional unit: both read the
 // same host-stack adapter through the bridge host. The pane mirrors the macOS
 // pane (SystemSettings_UsesGroups.md / System_Preferences.md) as a user list
 // with info buttons, the `Add Group...` / `Add User...` buttons, an
@@ -14,9 +14,9 @@ import Dragonfruit.Settings
 //
 // Deviations from the macOS capture reference (ADR 0122), recorded so later
 // tasks do not re-litigate them:
-//   * the Apple Account/iCloud sign-in row and the sidebar `iCloud` /
-//     `Internet Accounts` rows are dropped (Apple-only).
-//   * the FileVault helper text on the auto-login row is omitted: the adapter
+//   * the Account/cloud account sign-in row and the sidebar `cloud account` /
+//     `Online Accounts` rows are dropped (reference-only).
+//   * the Disk Encryption helper text on the auto-login row is omitted: the adapter
 //     has no disk-encryption provider to read, so there is no honest state to
 //     show. The popup is fully functional.
 //   * `Network account server` is omitted: there is no enterprise directory

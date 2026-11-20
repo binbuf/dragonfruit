@@ -6,7 +6,7 @@
 
 ## Context
 
-The banner and the Notification Center were both on the generic Popup plate.
+The banner and Notifications were both on the generic Popup plate.
 The reference captures measure three different effective materials: the
 banner (Light 0.549/0.976), the Center stack (Light 0.551/0.706, Dark
 0.507/0.550), and the Center's lower panel (Light 0.407/0.852). The Dark
@@ -20,7 +20,7 @@ must not compound in the same pixels.
 - **Three presets, one flat-band family.** `notificationBanner`,
   `notificationStack` and `notificationLowerPanel` are resolved through the
   shared T195/T196 policy. On the replacement rail the compositor builds them
-  with the same measured flat-band path as the Dock/Control Center, using the
+  with the same measured flat-band path as the Dock/Quick Settings, using the
   resolved own-layer alpha/tint directly rather than the generic Popup adaptive
   tint. Each region is opaque, so a panel is never frosted twice.
 - **The banner region is the visible card.** `notification` declares one

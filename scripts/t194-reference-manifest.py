@@ -17,7 +17,7 @@ The reference root is resolved in this order:
 
 1. ``--reference-root PATH``
 2. ``DRAGONFRUIT_REFERENCE_ROOT``
-3. the sibling checkout ``../macos-liquid-glass`` next to this repository
+3. the sibling checkout ``../macos-Glass`` next to this repository
 
 A reference run (``--write`` or ``--verify``) fails clearly when the root is
 missing, the checkout revision does not match the manifest, or any recorded
@@ -37,7 +37,7 @@ from typing import Iterable
 
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "docs" / "captures" / "glass-reference-manifest.json"
-DEFAULT_ROOT = REPO.parent / "macos-liquid-glass"
+DEFAULT_ROOT = REPO.parent / "macos-Glass"
 ENV_ROOT = "DRAGONFRUIT_REFERENCE_ROOT"
 REFERENCE_REVISION = "063a473cf06d0dba5cb83bd56c40b6fc88df2931"
 
@@ -49,7 +49,7 @@ SOURCES = [
     {
         "id": "background_neutral_mid",
         "path": "backgrounds/neutral_mid.png",
-        "role": "neutral mid-grey backdrop used by the Dock/menu/Control Center fits",
+        "role": "neutral mid-grey backdrop used by the Dock/menu/Quick Settings fits",
     },
     {
         "id": "background_neutral_white",
@@ -79,12 +79,12 @@ SOURCES = [
     {
         "id": "control_center_neutral_white",
         "path": "captures/raw/neutral_white__control_center.png",
-        "role": "Control Center module/outer-panel material source",
+        "role": "Quick Settings module/outer-panel material source",
     },
     {
         "id": "control_center_panel_neutral_white",
         "path": "captures/coverage/control_center_panel__neutral_white.png",
-        "role": "later controlled Control Center outer-panel fit",
+        "role": "later controlled Quick Settings outer-panel fit",
     },
     {
         "id": "notification_banner_neutral_white",
@@ -94,7 +94,7 @@ SOURCES = [
     {
         "id": "notification_center_neutral_white",
         "path": "captures/coverage/notification_center__neutral_white.png",
-        "role": "Notification Center stack/lower-panel evidence and gap source",
+        "role": "Notifications stack/lower-panel evidence and gap source",
     },
     {
         "id": "context_desktop_neutral_white",
@@ -114,7 +114,7 @@ SOURCES = [
     {
         "id": "control_center_ax",
         "path": "captures/coverage/control_center_panel.ui.txt",
-        "role": "Control Center accessibility/layout dump",
+        "role": "Quick Settings accessibility/layout dump",
     },
     {
         "id": "context_desktop_ax",
@@ -230,13 +230,13 @@ CROPS = [
         "id": "notification_stack",
         "source": "notification_center_neutral_white",
         "rect_px": [3200, 240, 3250, 270],
-        "note": "coverage_measure.py Notification Center stack band",
+        "note": "coverage_measure.py Notifications stack band",
     },
     {
         "id": "notification_lower_panel",
         "source": "notification_center_neutral_white",
         "rect_px": [3200, 450, 3250, 550],
-        "note": "coverage_measure.py Notification Center lower-panel band",
+        "note": "coverage_measure.py Notifications lower-panel band",
     },
     {
         "id": "context_desktop_left_padding",
@@ -387,7 +387,7 @@ def _gaps() -> list[dict]:
             "id": "notification_center_unmapped",
             "status": "unmapped",
             "reason": "the shell consumes history and the compositor declares the input action, "
-            "but no Notification Center surface is mapped; the reference stack/lower-panel "
+            "but no Notifications surface is mapped; the reference stack/lower-panel "
             "fits remain evidence only",
             "owner": "T204",
             "evidence": "docs/tasks/glass/plan/REFERENCE.md#what-to-carry-forward",
@@ -425,7 +425,7 @@ def _gaps() -> list[dict]:
         {
             "id": "dark_banner_lower_panel",
             "status": "missing",
-            "reason": "dark banner and dark Notification Center lower panel are uncovered as "
+            "reason": "dark banner and dark Notifications lower panel are uncovered as "
             "independent fits",
             "owner": "T205",
             "evidence": "docs/tasks/glass/plan/REFERENCE.md",
@@ -525,13 +525,13 @@ def build_manifest(root: Path) -> dict:
             "revision": revision or REFERENCE_REVISION,
             "root_override": ENV_ROOT,
             "cli_override": "--reference-root PATH",
-            "default_root": "../macos-liquid-glass",
+            "default_root": "../macos-Glass",
             "checkout_optional": True,
         },
         "workstation": {
-            "os": "macOS 27.0.1 (build 26A434)",
-            "model": "Mac17,2 (Apple M5)",
-            "display": "Built-in Liquid Retina XDR, 3024x1964 native, 1800x1169 pt @2x, Display P3",
+            "os": "reference workstation",
+            "model": "reference hardware",
+            "display": "built-in 3024x1964 native, 1800x1169 pt @2x, wide gamut",
             "display_scale": 2,
             "capture_pixels": [3600, 2338],
             "logical_points": [1800, 1169],
@@ -648,7 +648,7 @@ def verify_manifest(manifest: dict, root: Path) -> int:
             print(f"  {problem}", file=sys.stderr)
         print(
             f"  root: {root}\n"
-            f"  override: {ENV_ROOT}=/path/to/macos-liquid-glass or --reference-root",
+            f"  override: {ENV_ROOT}=/path/to/macos-Glass or --reference-root",
             file=sys.stderr,
         )
         return 2
@@ -688,7 +688,7 @@ def main() -> int:
     if root is None:
         print(
             "t194-reference-manifest: reference root not found\n"
-            f"  set {ENV_ROOT}=/path/to/macos-liquid-glass or pass --reference-root\n"
+            f"  set {ENV_ROOT}=/path/to/macos-Glass or pass --reference-root\n"
             f"  default: {DEFAULT_ROOT}",
             file=sys.stderr,
         )

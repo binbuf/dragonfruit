@@ -175,7 +175,7 @@ QtObject {
           owner: "Online Accounts service", disposition: "adapt/delegate",
           deepLink: "settings://pane/online-accounts",
           absence: "delegated",
-          absenceNote: qsTr("Internet accounts are not installed.") },
+          absenceNote: qsTr("Online accounts are not installed.") },
         { id: "keyboard", title: qsTr("Keyboard"), icon: "keyboard", group: "input",
           shipped: true,
           owner: "settingsd + compositor input + ibus/fcitx5", disposition: "ship/adapt",
@@ -553,7 +553,7 @@ QtObject {
                          "settingsd -> backup backend", "backup.schedule", "disabled-with-reason", "shipped"),
                 root.row("backup.restore", qsTr("Backups"), qsTr("Restore..."), "button",
                          "backup adapter", "backup.restore", "delegated", "shipped"),
-                // T287: the mockup's Device Management row has no Linux
+                // T287: the mockup's device management row has no Linux
                 // MDM/profile owner. The generic label keeps the naming gate
                 // and the debug view honest; the reason is the omission half.
                 root.row("device.management", qsTr("General"), qsTr("Managed Devices"), "disclosure",
@@ -662,7 +662,7 @@ QtObject {
                 root.row("vision.bridge", qsTr("Screen Reader"),
                          qsTr("Accessibility bridge"), "status", "AT-SPI",
                          "org.a11y.Status.IsEnabled", "read-only", "shipped"),
-                // Apple-only Vision rows with no Linux owner. They are omitted
+                // reference-only Vision rows with no Linux owner. They are omitted
                 // from the sub-pane and carry the reason here.
                 root.row("vision.hoverText", qsTr("Vision"), qsTr("Hover text"),
                          "omit", "omit", "omit", "omitted", "omitted", false, "",
@@ -1407,10 +1407,10 @@ QtObject {
                          "disabled-with-reason", "shipped")
             ],
             "online-accounts": [
-                root.row("list", qsTr("Online Accounts"), qsTr("Internet accounts"), "list",
+                root.row("list", qsTr("Online Accounts"), qsTr("Online accounts"), "list",
                          "Online Accounts service", "onlineAccounts.list", "delegated", "shipped"),
                 root.row("absent", qsTr("Online Accounts"),
-                         qsTr("Internet accounts are not installed"), "button",
+                         qsTr("Online accounts are not installed"), "button",
                          "distribution package", "onlineAccounts.absent",
                          "disabled-with-reason", "shipped"),
                 root.row("add", qsTr("Online Accounts"), qsTr("Add account..."), "sheet",

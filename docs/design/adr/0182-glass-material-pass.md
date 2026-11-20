@@ -1,4 +1,4 @@
-# 0182 — The Tahoe liquid-glass material is a GPU sampled backdrop pass
+# 0182 — The Glass material is a GPU sampled backdrop pass
 
 ## Status
 
@@ -6,15 +6,15 @@ accepted
 
 ## Context
 
-ADR [0122](0122-tahoe-interface-language-across-chrome.md) names macOS **Tahoe**
-as the reference for every piece of chrome, and ADRs
-[0013](0013-backdrop-blur-pass.md)/[0091](0091-dock-tahoe-floating-glass-language.md)
+ADR [0122](0122-reference-interface-language-across-chrome.md) names the reference design
+as the guide for every piece of chrome, and ADRs
+[0013](0013-backdrop-blur-pass.md)/[0091](0091-dock-floating-glass-language.md)
 shipped a token-driven **approximation** of its glass: a stack of translucent
 rounded feather layers drawn by the compositor under each chrome surface, with
 the real texture-sampling blur (Kawase vs dual-pass Gaussian) explicitly
 deferred and "no refraction is claimed". That approximation cannot sample the
 scene it stands over — text and video under the menu bar do not blur — and it
-cannot express Tahoe's Liquid Glass (refraction, a specular rim, an adaptive
+cannot express the reference Glass (refraction, a specular rim, an adaptive
 tint).
 
 The deferred work is now unblocked. The renderer is Smithay 0.7 `GlowRenderer`
@@ -43,12 +43,12 @@ device); the software/headless path is a CI fallback, not the target.
   implementation is swappable behind the token values, as ADR 0013 required.
 - **The panel material is role-driven.** `MaterialRole` continues to select the
   token group (`Chrome` for the menu bar, `Dock` for the Dock, `Popup` for
-  menus/context menus/popovers/OSD/Control Center/notifications), and a new
+  menus/context menus/popovers/OSD/Quick Settings/notifications), and a new
   `Drawer` role covers the full-output Applications drawer, which declares its
   card via `df_layer_surface.set_panel_rect` (the Dock's mechanism, ADR 0089).
   Blur radius, opacity, and the rounded-corner radius come from the generated
   tokens, never literals.
-- **Liquid-glass pass.** On top of the blur the panel adds the Tahoe signature:
+- **Glass pass.** On top of the blur the panel adds the reference signature:
   an SDF-based edge lens (refraction) that displaces the sampled backdrop near
   the rim, a bright specular inner rim, and an adaptive tint derived from the
   blurred backdrop's luminance. All parameters are semantic material tokens per
@@ -83,7 +83,7 @@ device); the software/headless path is a CI fallback, not the target.
   no-screencopy gate and the "effects are compositor passes" rule in
   [02-compositor.md](../02-compositor.md) hold.
 - Rollout is per-surface work, not new machinery: once the pass exists the menu
-  bar, Dock, context menus, popovers, the OSD, notifications, Control Center,
+  bar, Dock, context menus, popovers, the OSD, notifications, Quick Settings,
   and the Applications drawer inherit it through their `MaterialRole`, and the
   shell's QML "glass claim" layers (fill/rim) can drop to a token-driven
   complement rather than standing in for the material.
@@ -120,7 +120,7 @@ T-20.1.
 
 ## Implementation (T-20.2)
 
-The liquid-glass pass landed on top of the T-20.1 blur without re-architecting
+The Glass pass landed on top of the T-20.1 blur without re-architecting
 it: the compose of a panel's blurred texture now runs a second custom program.
 
 - Twelve semantic tokens were added to `semantic.{light,dark}.material`:
@@ -155,7 +155,7 @@ it: the compose of a panel's blurred texture now runs a second custom program.
   T-20.3.
 - Headless unit tests assert the per-role/scheme token mapping, the glass
   uniform packing, and the tier behaviour; the pixel effect is verified by the
-  committed nested captures (`docs/captures/t20-liquid-glass-*.png`).
+  committed nested captures (`docs/captures/t20-glass-*.png`).
 
 The Dock/menus/OSD rollout (T-20.3) and multi-GPU/headless determinism (T-20.4)
 are unchanged.

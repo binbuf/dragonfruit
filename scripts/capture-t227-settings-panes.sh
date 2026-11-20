@@ -4,7 +4,7 @@
 # T227 headless Settings visual check.
 #
 # Renders the real Settings shell offscreen with the deterministic settings
-# fixture, plus the live Control Center panel with a customized module list,
+# fixture, plus the live Quick Settings panel with a customized module list,
 # and writes:
 #
 #   docs/captures/t227-appearance.png               Appearance completion rows

@@ -21,7 +21,7 @@ fallback to be explicit, never a black surface or a double render.
   `commitLockDmabuf(id, ...)` (lock surfaces are keyed by the opaque configure
   id). Every render path in `ShellController` builds one
   `ChromeSceneTarget` list and calls `commitChromeScene()`; the Dock, menu bar,
-  popovers, overview, switcher, banner, Control Center, OSD, chooser,
+  popovers, overview, switcher, banner, Quick Settings, OSD, chooser,
   screenshot, screencast, polkit, apps drawer, and lock all use the same
   producer/commit path.
 - **A shared scene is all-or-nothing.** The menu bar + dropdown and Dock +

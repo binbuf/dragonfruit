@@ -1352,7 +1352,7 @@ fn handshake_chrome_and_control_conformance() {
     );
 
     // `df_output.set_brightness` applies through the same path (T-11.3a): the
-    // Control Center brightness tile is forwarded here by the shell, and the
+    // Quick Settings brightness tile is forwarded here by the shell, and the
     // compositor reports the owned value back.
     state.output_brightness.clear();
     state.outputs[0].set_brightness(0.4);
@@ -1371,7 +1371,7 @@ fn handshake_chrome_and_control_conformance() {
         },
     );
 
-    // --- Mission Control + app switcher state (FR-2) ----------------------
+    // --- Overview + app switcher state (FR-2) ----------------------
     state.overviews.clear();
     manager.enter_mission_control();
     wait_for(
@@ -4471,7 +4471,7 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
         |state| state.workspace_activated.contains(&1),
     );
 
-    // --- hot corner: dwell in the top-left fires Mission Control ---------
+    // --- hot corner: dwell in the top-left fires Overview ---------
     state.hot_corners.clear();
     state.input_actions.clear();
     input.send("motion-abs 0.001 0.001");
@@ -4503,7 +4503,7 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
         |state| state.overviews.iter().any(|(active, _)| *active == 1),
     );
 
-    // --- hot corner: the configured top-right corner is Notification Center
+    // --- hot corner: the configured top-right corner is Notifications
     state.hot_corners.clear();
     state.input_actions.clear();
     input.send("motion-abs 0.999 0.001");
@@ -4521,7 +4521,7 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
             .input_actions
             .iter()
             .any(|(action, source, _)| action == "notification-center" && source == "hot-corner"),
-        "the configured top-right corner must dispatch Notification Center: {:?}",
+        "the configured top-right corner must dispatch Notifications: {:?}",
         state.input_actions
     );
     // Leave the corner so the detector can fire again for later cases.
@@ -4703,7 +4703,7 @@ fn keyboard_only_walkthrough_dispatches_every_system_binding() {
 }
 
 /// T-11 FR-1: a gesture and a hot corner drive the *same* overview state
-/// machine, so one opens Mission Control and the other toggles it closed.
+/// machine, so one opens Overview and the other toggles it closed.
 #[test]
 fn overview_state_machine_has_trigger_parity() {
     let token = "77".repeat(32);
@@ -4738,7 +4738,7 @@ fn overview_state_machine_has_trigger_parity() {
         |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
     );
 
-    // --- gesture: a four-finger vertical swipe opens Mission Control ------
+    // --- gesture: a four-finger vertical swipe opens Overview ------
     state.overviews.clear();
     state.progress_events = 0;
     input.send("swipe-begin 4");
@@ -4878,7 +4878,7 @@ fn shell_request_drives_the_overview_pipeline() {
 
 /// T-11 FR-9 (U-1): the shell mirrors `accessibility.reduceMotion` into the
 /// compositor over the additive v3 `set_reduced_motion` request; a subsequent
-/// Mission Control request takes the single-step path (Begin/Update/End, no
+/// Overview request takes the single-step path (Begin/Update/End, no
 /// animation clock) while still committing through the same rule.
 #[test]
 fn reduced_motion_request_single_steps_the_overview() {
@@ -4910,7 +4910,7 @@ fn reduced_motion_request_single_steps_the_overview() {
         |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
     );
 
-    // Enable reduced motion, then open Mission Control.
+    // Enable reduced motion, then open Overview.
     manager.set_reduced_motion(1);
     state.overviews.clear();
     state.progress_events = 0;
@@ -4993,7 +4993,7 @@ fn motion_and_input_policy_requests_apply_live() {
     );
 
     // A settingsd snapshot: light, minimize-on-double-click, no minimize
-    // animation, slow repeat, Mission Control gestures off.
+    // animation, slow repeat, Overview gestures off.
     manager.set_motion_policy(
         Some("light".to_string()),
         Some("minimize".to_string()),
@@ -5045,7 +5045,7 @@ fn motion_and_input_policy_requests_apply_live() {
         "policy not applied: {report:?}"
     );
 
-    // Mission Control gestures are gated off, so a four-finger vertical swipe
+    // Overview gestures are gated off, so a four-finger vertical swipe
     // no longer reaches the outbox.
     state.input_actions.clear();
     input.send("swipe-begin 4");
@@ -5319,7 +5319,7 @@ fn appearance_policy_round_trips_and_invalidates_only_on_change() {
     proc.shutdown();
 }
 
-/// T-11 FR-6 (U-8): while Mission Control owns pointer input, window
+/// T-11 FR-6 (U-8): while Overview owns pointer input, window
 /// surfaces are not hit-tested; ownership returns explicitly when the
 /// overview closes, and the normal focus path resumes.
 #[test]
@@ -5379,7 +5379,7 @@ fn overview_owns_pointer_hit_testing_until_it_closes() {
         |state| state.pointer_enters > 0,
     );
 
-    // Open Mission Control: the overview now owns hit-testing.
+    // Open Overview: the overview now owns hit-testing.
     manager.enter_mission_control();
     wait_for(
         &conn,
@@ -5433,7 +5433,7 @@ fn overview_owns_pointer_hit_testing_until_it_closes() {
     );
 }
 
-/// T-11 FR-2 (U-3): Mission Control and workspace switching transform the
+/// T-11 FR-2 (U-3): Overview and workspace switching transform the
 /// *live* surfaces, never thumbnails. A client surface stays mapped and keeps
 /// receiving `wl_surface.frame` callbacks — and can keep committing fresh
 /// buffers, "a playing video keeps playing" — across a full overview and a
@@ -5498,7 +5498,7 @@ fn overview_transition_keeps_live_surfaces_mapped() {
         |state| state.frame_callbacks > before,
     );
 
-    // --- Mission Control: the live surface keeps playing ------------------
+    // --- Overview: the live surface keeps playing ------------------
     input.send("swipe-begin 4");
     input.send("swipe-update 0 -100");
     input.send("swipe-update 0 -100");
@@ -5697,7 +5697,7 @@ fn overview_gesture_frame_trace_stays_within_budget() {
     );
 }
 
-/// T-11 Slice C: Mission Control / workspace switching is **lockstep** across
+/// T-11 Slice C: Overview / workspace switching is **lockstep** across
 /// every output. The model is lockstep by construction and
 /// `apply_overview_scene` loops per output; this proves the protocol path too:
 /// a keyboard switch (which now animates on the compositor clock) activates

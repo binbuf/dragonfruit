@@ -264,7 +264,7 @@ TestCase {
 
     // The Applications drawer is a large light glass card, not a menu. Its
     // preset carries the sampled blur plus the rim/lens the compositor needs
-    // to read as liquid glass; the card QML fill stays transparent. It stays
+    // to read as Glass; the card QML fill stays transparent. It stays
     // mostly opaque like the reference panel, with the frost/rim/lens doing
     // the glass work rather than a clear pane.
     function test_apps_drawer_preset_is_large_glass() {

@@ -10,8 +10,8 @@
 
 ## 1. Why this design exists
 
-The T-20/T-21 and liquid-glass task sets answered the **material** question:
-what the Dock, menu bar, popovers, Control Center, notifications, and window
+The T-20/T-21 and Glass task sets answered the **material** question:
+what the Dock, menu bar, popovers, Quick Settings, notifications, and window
 chrome are made of, and how to render them on the GPU. That work is necessary
 but not sufficient for a desktop that feels finished.
 
@@ -22,7 +22,7 @@ by its blur sigma; they judge it by whether a click launches, focuses, opens a
 window chooser, bounces, or fails visibly. They do not judge System Settings by
 its sidebar width; they judge it by whether every row changes something real.
 
-This document defines the target for that experience. The liquid-glass
+This document defines the target for that experience. The Glass
 specification remains the material source of truth; this document is the
 behaviour, information-architecture, motion, and ownership source of truth.
 
@@ -52,7 +52,7 @@ The target is behavioural and perceptual parity, not a pixel copy:
 | Motion duration, direction, interruption, reduced-motion behaviour | The exact hardware-dependent animation (e.g. genie warp) |
 | Spatial hierarchy, spacing scale, typography scale | The default accent colour and wallpaper |
 | Keyboard paths, accessible names/roles, focus visibility | App-specific chrome (CSD apps keep their own titlebars) |
-| Absence behaviour: no fake toggles, no silent no-ops | Omitted Apple services (iCloud, Siri, Screen Time, etc.) |
+| Absence behaviour: no fake toggles, no silent no-ops | Omitted Apple services (cloud account, voice assistant, usage limits, etc.) |
 | Settings ownership and persistence | The underlying host service or package manager |
 | Multi-display/active-display rules | The exact display-manager integration |
 
@@ -109,30 +109,30 @@ The detailed gap register is in [STATUS.md](STATUS.md).
 |---|---|---|
 | Menu bar | Implemented | Full app/global menu, system menu, status items, extras, clock/date, overflow/notch, auto-hide, per-display |
 | Dock | Implemented | Full click tree, launch/quit, bounce, minimize/genie, magnification, auto-hide, stacks, Trash, badges, chooser, drag/drop, keyboard, multi-display |
-| Desktop | Implemented | Icons, selection, context menus, Quick Look, stacks, widgets, Trash |
-| Control Center | Partial | Measured 4-column grid, full module set, expanded sheets, Edit Controls catalogue, customization, live service state |
-| Notification Center | Partial | 344 pt right-edge ramp, banners, history, stack, lower panel, widgets/gallery, Focus, actions, per-display |
-| Applications drawer | Partial | Spotlight Apps: search-first, 7-column grid/list, categories, keyboard, launch feedback; no pages or folders |
+| Desktop | Implemented | Icons, selection, context menus, Preview, stacks, widgets, Trash |
+| Quick Settings | Partial | Measured 4-column grid, full module set, expanded sheets, Edit Controls catalogue, customization, live service state |
+| Notifications | Partial | 344 pt right-edge ramp, banners, history, stack, lower panel, widgets/gallery, Focus, actions, per-display |
+| Applications drawer | Partial | Search Apps: search-first, 7-column grid/list, categories, keyboard, launch feedback; no pages or folders |
 
 ### 4.2 Navigation and window management
 
 | Surface | Current | Target |
 |---|---|---|
-| Overview / Mission Control | Implemented | Paging, spaces strip, drag between workspaces, add/remove, fullscreen, gestures, hot corners, Desktop Reveal, multi-display |
-| App switcher | Implemented | App/window modes, cycling, previews, cancel, Cmd+`, multi-display |
+| Overview | Implemented | Paging, spaces strip, drag between workspaces, add/remove, fullscreen, gestures, hot corners, Desktop Reveal, multi-display |
+| App switcher | Implemented | App/window modes, cycling, previews, cancel, Super+`, multi-display |
 | Stage Manager | Design-only | Stage strip, recent apps, stage groups, drag, fullscreen |
 | Window tiling / Split View | Design-only | Halves, quarters, drag-to-edge, menu, keyboard |
 | Window lifecycle | Partial | Open/close/minimize/restore/zoom/fullscreen/genie, launch/quit, Force Quit; chrome style taxonomy (0/32/40/48/52/66/88 pt) still landing |
-| Files window | Partial | Finder anatomy: 52 pt toolbar, 198 pt sidebar, 28/30/28 pt content bars, four view modes, 328×1034 pt Get Info |
-| Quick Look | Design-only | Image/PDF/video/multi-item, navigation, actions, fullscreen |
-| Login / lock / first run | Partial | Lock, login, fast user switching, Setup Assistant, power actions |
+| Files window | Partial | Files anatomy: 52 pt toolbar, 198 pt sidebar, 28/30/28 pt content bars, four view modes, 328×1034 pt Get Info |
+| Preview | Design-only | Image/PDF/video/multi-item, navigation, actions, fullscreen |
+| Login / lock / first run | Partial | Lock, login, fast user switching, Welcome, power actions |
 
 ### 4.3 Search and launching
 
 | Surface | Current | Target |
 |---|---|---|
 | Search | Design-only (app-index exists) | Invocation, query states, categories, results, previews, actions, keyboard, privacy, indexing |
-| Applications drawer | Partial | Spotlight Apps grid/list parity and launch feedback |
+| Applications drawer | Partial | Search Apps grid/list parity and launch feedback |
 | Add Application picker | Implemented | Full parity |
 
 ### 4.4 Settings
@@ -170,7 +170,7 @@ deliberately written as observable behaviour, not implementation detail.
   duplicate model. Focus changes update it; no focus means Files (the desktop
   owner).
 - Status items are a registry: Wi-Fi, Bluetooth, Battery, Sound, Search,
-  Control Center, Notification Center, Date & Time, Focus, Screen Mirroring,
+  Quick Settings, Notifications, Date & Time, Focus, Screen Casting,
   and third-party StatusNotifier items. Each item has a menu, a tooltip, a
   keyboard path, and an absent/error state.
 - Menu rows share one anatomy: leading icon/check gutter, label, shortcut
@@ -223,7 +223,7 @@ Divider
 - The Dock is keyboard-operable: arrows, Return, Escape, type-ahead,
   Ctrl+Shift+Arrow reorder, and a visible focus ring.
 
-### 5.3 Overview / Mission Control and workspaces
+### 5.3 Overview and workspaces
 
 - One state machine owns workspace switch, overview, and Desktop Reveal; there
   is no second animation path.
@@ -243,10 +243,10 @@ Divider
 
 ### 5.4 App switcher
 
-- Cmd+Tab opens the switcher; holding Cmd keeps it open; Tab/Shift+Tab cycles;
-  releasing Cmd commits; Escape cancels.
+- Super+Tab opens the switcher; holding Super keeps it open; Tab/Shift+Tab cycles;
+  releasing Super commits; Escape cancels.
 - The default mode is applications; a window mode is available where the
-  reference exposes it. Cmd+` cycles windows within the focused app.
+  reference exposes it. Super+` cycles windows within the focused app.
 - The selected app/window is visibly selected and scrolled into view.
 - Minimized/hidden apps are represented with their state; committing restores
   or unhides as needed.
@@ -256,13 +256,13 @@ Divider
 
 ### 5.5 Search
 
-- Cmd+Space (or the configured shortcut) opens Search on the active display.
+- Super+Space (or the configured shortcut) opens Search on the active display.
 - The field is focused immediately; typing updates results without a modal
   spinner for local results.
 - Results are grouped by category (applications, files, actions, calculations,
   definitions, web). The top hit is selected; arrows move; Return opens;
-  Cmd+Return reveals; Escape closes.
-- A preview (Quick Look) is available without leaving Search.
+  Super+Return reveals; Escape closes.
+- A preview (Preview) is available without leaving Search.
 - Actions are explicit: Open, Show in Files, Copy Path, etc. A result that
   cannot act is not shown as actionable.
 - Indexing state, no-results, permission-denied, and service-absent states are
@@ -275,7 +275,7 @@ Divider
 ### 5.6 Applications drawer
 
 - Opens as a full-output overlay on the active display; Escape/launch closes.
-- The drawer is **Spotlight Apps**, not a page-based Launchpad: a search-first,
+- The drawer is **Search Apps**, not a page-based Applications: a search-first,
   category-filtered, scrollable collection with no pages, user folders, page
   dots, or drag-to-rearrange grid.
 - The search field is present and focused on open; suggestions come first,
@@ -295,9 +295,9 @@ Divider
   transition.
 - The drawer's search filters the app corpus only; system Search is separate.
 
-### 5.7 Control Center and notifications
+### 5.7 Quick Settings and notifications
 
-- Control Center is a panel of modules with live state; each module opens an
+- Quick Settings is a panel of modules with live state; each module opens an
   expanded sheet where the reference does. The reference grid is 4 columns of
   64 pt cells with 12 pt gaps; modules span 1×1, 2×1, 2×2 and 4×1, and the
   outer panel, module capsules, and expanded list are separate materials.
@@ -311,21 +311,21 @@ Divider
   state; it never shows a fake toggle.
 - Notification banners enter/exit with the measured motion, stack, and timeout;
   actions are reachable by keyboard.
-- Notification Center is a right-edge 344 pt overlay with a banner stack, a
+- Notifications is a right-edge 344 pt overlay with a banner stack, a
   widget stack, and a lower panel. The three bands are separate materials
   (banner 0.549/0.976, stack 0.551/0.706, lower panel 0.407/0.852); do not
   flatten them into one glass sheet.
 - The widget gallery is a separate 1027×552 pt window with a 240 pt category
   sidebar and 19 categories; live widget sizes come from the panel, not the
   gallery thumbnail.
-- Notification Center shows history, grouped stacks, the lower panel/widgets,
+- Notifications shows history, grouped stacks, the lower panel/widgets,
   and a clear-all action; clicking the clock toggles it.
-- Focus/DND is one policy shared by the menu bar, Control Center, Notification
+- Focus/DND is one policy shared by the menu bar, Quick Settings, Notification
   Center, and the notification service.
 - Per-app notification settings are real; the app list comes from the
   notification service, not a hardcoded list.
 
-### 5.8 Window lifecycle, Stage Manager, Quick Look
+### 5.8 Window lifecycle, Stage Manager, Preview
 
 - Window open/close/minimize/restore/zoom/fullscreen use the shared animation
   clock and motion tokens; each has a reduced-motion path.
@@ -346,13 +346,13 @@ Divider
   second workspace model.
 - Window tiling/split view uses compositor geometry and the same snap targets
   as drag-to-edge.
-- Quick Look opens on Space for the selection, renders the real file, supports
+- Preview opens on Space for the selection, renders the real file, supports
   navigation, and closes on Space/Escape.
 
 ### 5.9 Settings
 
 - The pane-by-pane target is [24-system-settings.md](24-system-settings.md):
-  the measured 740×820 window, grouped sidebar, complete macOS Tahoe row
+  the measured 740×820 window, grouped sidebar, complete the reference design row
   inventory, Linux adaptations, absence/empty states, and the T263–T284
   completion sequence in the
   [`system-settings` task set](../tasks/system-settings/plan/ROADMAP.md). The
@@ -393,7 +393,7 @@ Divider
 | Desktop settings, schema, persistence, migrations | `settingsd` | Compositor, shell, apps |
 | App identity, desktop entries, icons, launch registry, recency | `app-index` | Shell, Settings, Files |
 | Menu model and dispatch | `menu-broker` | Shell menu bar |
-| Notifications, Focus/DND policy, history | Notification service | Shell, Control Center, apps |
+| Notifications, Focus/DND policy, history | Notification service | Shell, Quick Settings, apps |
 | Wallpaper catalogue/default | `wallpaperd` | Shell, compositor |
 | Host service state (network, Bluetooth, audio, power, storage, printers, accounts, updates) | Existing daemons via adapters | Shell, Settings |
 | Permissions | xdg-desktop-portal `PermissionStore` | Settings, apps |
@@ -466,11 +466,11 @@ The target is accepted when:
 - Every `S-*`, `N-*`, `Q-*`, `M-*`, `H-*`, and `SET-*` row in the capture
   inventory has a still/motion/AX artifact or an `OPEN` row.
 - The structural surface review is reflected in the manifest and thresholds:
-  window chrome styles, About, Spotlight Apps, Notification Center,
-  Control Center, and Finder have measured geometry or explicit `OPEN` rows.
+  window chrome styles, About, Search Apps, Notifications,
+  Quick Settings, and Files have measured geometry or explicit `OPEN` rows.
   T230a added 64 structural rows across `N-WIN` (14 chrome/traffic-light/
   accessory-bar/fullscreen/RTL states), `SET-GENERAL` (4 About states),
-  `Q-AD` (9 Spotlight Apps states), `S-NC` (11 ramp/widget/state/motion
+  `Q-AD` (9 Search Apps states), `S-NC` (11 ramp/widget/state/motion
   states), `S-CC` (13 grid/catalogue/customization/motion states), and the new
   `N-FILES` surface (13 Files window/view/Get Info states). The measured
   thresholds are in `experience-thresholds.json`; the 14 review `OPEN` ids are
@@ -489,17 +489,17 @@ The target is accepted when:
 
 ## 10. Non-goals
 
-- Pixel-identical macOS screenshots, Apple assets, SF Symbols, sounds, or
+- Pixel-identical macOS screenshots, Apple assets, Tabler/Phosphor, sounds, or
   trademarks.
-- Apple account services (iCloud, Siri, Apple Intelligence, Screen Time,
-  Wallet, Game Center, Find My).
+- reference account services (cloud account, voice assistant, on-device AI, usage limits,
+  Wallet, game services, device location).
 - A new display server, renderer, package manager, network stack, audio stack,
   or privilege-escalation scheme.
 - A second settings daemon, menu model, notification service, or window model.
 - Live compositor handoff or in-place DE swap.
 - Full parity with every third-party app's custom chrome; CSD apps keep their
   own titlebars.
-- Guaranteed AirDrop/Continuity/Handoff compatibility; optional local-sharing
+- Guaranteed Nearby Transfer and device continuity compatibility; optional local-sharing
   integrations are evaluated separately.
 
 ## 11. Scope decisions made in this design
@@ -513,22 +513,22 @@ inventory id:
 | Added | Why | Task |
 |---|---|---|
 | Stage and window tiling/split view | Core macOS window-management modes; the reference exposes them in Desktop & Dock | T242 |
-| Preview (Quick Look) | Core file-browsing affordance; Space is muscle memory | T244 |
+| Preview (Preview) | Core file-browsing affordance; Space is muscle memory | T244 |
 | System dialogs, sheets, alerts, file/print/color/emoji pickers | Core OS chrome; the reference inventory includes them | T245a |
 | Desktop items and interaction | Core desktop surface; Files owns it, but the experience is part of the DE | T245b |
 | Screen saver runtime | Core idle/lock surface; the Settings pane already exists | T245a |
 | Login, lock, first run | Core session experience; lock/session machinery exists | T245 |
-| Notification widgets | Part of the reference Notification Center | T234 |
+| Notification widgets | Part of the reference Notifications | T234 |
 | Window chrome style system | The reference chrome is 0/32/40/48/52/66/88 pt, not one height | T230b |
 | Two About surfaces | Compact utility panel plus canonical Settings page | T230c |
-| Finder chrome and Get Info | Measured 52/198/28/30/28 pt anatomy and inspector | T230d |
+| Files chrome and Get Info | Measured 52/198/28/30/28 pt anatomy and inspector | T230d |
 | Files column and gallery views | The reference has four real view modes, not one grid | T244a |
 | HUDs, sound, cursor | Core feedback language; the ask explicitly named volume/brightness HUDs | T249–T251 |
 | Accessibility and IME | Core usability; existing gaps G-19/G-20 | T252/T253 |
 
-The following are deliberately **not** added: Apple account services (iCloud,
-Siri, Apple Intelligence, Screen Time, Wallet, Game Center, Find My),
-AirDrop/Continuity/Handoff by default, a new package manager/network/audio
+The following are deliberately **not** added: reference account services (cloud account,
+voice assistant, on-device AI, usage limits, Wallet, game services, device location),
+Nearby Transfer and device continuity by default, a new package manager/network/audio
 stack, and a second settings/menu/notification/window model. Optional
 third-party substitutions are listed in
 [interface-naming-and-licensing.md](interface-naming-and-licensing.md).

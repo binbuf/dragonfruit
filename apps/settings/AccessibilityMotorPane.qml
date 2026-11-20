@@ -8,7 +8,7 @@ import Dragonfruit.Settings
 // The second section of the mockup's Accessibility list. It keeps only rows
 // with a real Linux owner: the stored keyboard-navigation preference, the
 // on-screen-keyboard delegate, and the compositor's live pointer
-// double-click interval. The Apple-only rows (Voice Control, Sticky Keys, Slow
+// double-click interval. The reference-only rows (Voice Control, Sticky Keys, Slow
 // Keys, Mouse Keys, Ignore built-in trackpad, Switch Control) are `omitted`
 // map rows with a reason; they are neither rendered nor search-indexed
 // (ADR 0276, ADR 0297).

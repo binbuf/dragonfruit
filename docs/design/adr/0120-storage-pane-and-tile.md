@@ -7,7 +7,7 @@ accepted
 ## Context
 
 T-15.2b renders the storage adapter ([0119](0119-storage-adapter-absence-and-mount-outcomes.md))
-as one functional unit: a Settings pane and a Control Center tile. It follows
+as one functional unit: a Settings pane and a Quick Settings tile. It follows
 the Bluetooth pane/tile ([0118](0118-bluetooth-pane-and-tile.md)). The adapter
 is a Rust crate and the two consumers are C++/QML; the project's rule is that
 D-Bus is the services seam and QML never links an adapter ([0029](0029-system-status-bridge-host.md)).

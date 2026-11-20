@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# T235: the measured Control Center grid, expanded sheets, Edit Controls
+# T235: the measured Quick Settings grid, expanded sheets, Edit Controls
 # catalogue, pages, resized controls and explicit absence.
 #
 # Headless offscreen/software, 760x1200 stage at 1x. The capture case lives in
@@ -14,7 +14,7 @@ binary="$build_dir/shell/tests/tst_controlcenter"
 out_dir="$repo/docs/captures"
 
 if [[ ! -x "$binary" ]]; then
-    echo "Control Center test binary not found: $binary (run \`make build\`)" >&2
+    echo "Quick Settings test binary not found: $binary (run \`make build\`)" >&2
     exit 1
 fi
 
@@ -48,7 +48,7 @@ for name in light dark; do
 done
 
 cat >"$out_dir/t235-control-center.txt" <<EOF
-T235 measured Control Center grid + Edit Controls capture
+T235 measured Quick Settings grid + Edit Controls capture
 date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 source: shell/tests/tst_controlcenter.qml (headless offscreen/software)
 stage: 760x1200 pt, 1x

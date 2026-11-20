@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # T-11.4b live capture of the OSD card and the menu-bar Focus/DND reflection.
 # Runs the nested demo with the status/notification fixtures (notification
-# fixture started in DND), drives a real Control Center volume drag to present
+# fixture started in DND), drives a real Quick Settings volume drag to present
 # the OSD over the synthetic-input harness, and writes
 # docs/captures/t11-osd.png, t11-osd-context.png, and t11-dnd.png. Requires a
 # host Wayland session and `spectacle`.

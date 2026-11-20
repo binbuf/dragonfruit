@@ -5,7 +5,7 @@
 # Headless offscreen/software, 1000x560 stage at 1x. The capture case lives in
 # `shell/tests/tst_menubar.qml` and skips without DF_MENUBAR_CAPTURE_DIR, so a
 # normal ctest run stays side-effect free. Each extra is captured in light and
-# dark; the Quick Settings extra also captures the Control Center panel.
+# dark; the Quick Settings extra also captures the Quick Settings panel.
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -53,7 +53,7 @@ artifacts:
   docs/captures/t232-extras-volume-{light,dark}.png           output device, volume, mute, settings
   docs/captures/t232-extras-search-{light,dark}.png           Search status item
   docs/captures/t232-extras-quick-settings-bar-{light,dark}.png  Quick Settings status item
-  docs/captures/t232-extras-quick-settings-{light,dark}.png   Control Center module state
+  docs/captures/t232-extras-quick-settings-{light,dark}.png   Quick Settings module state
 EOF
 
 echo "wrote $out_dir/t232-extras-*.png"

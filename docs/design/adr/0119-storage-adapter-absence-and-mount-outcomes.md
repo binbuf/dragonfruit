@@ -10,7 +10,7 @@ T-15.2a is the storage adapter of T-15 (the track lists A6 storage over
 "UDisks2 + GIO/GVfs"). It follows the Bluetooth adapter ([0117](0117-bluetooth-adapter-absence-and-write-outcomes.md))
 and the T-07 contract: reuse the host stack, expose state + events, and treat
 absence as a normal state. The backend is the whole task; the Settings pane and
-Control Center tile are T-15.2b. The track demo needs to mount/eject a USB
+Quick Settings tile are T-15.2b. The track demo needs to mount/eject a USB
 drive and see it in Files and the sidebar, so the adapter must carry mount
 state and the three writes.
 

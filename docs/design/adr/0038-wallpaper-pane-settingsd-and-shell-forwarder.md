@@ -45,7 +45,7 @@ interface already carries `set_wallpaper`.
 ## Consequences
 
 - Adding a wallpaper key means three places as before: `schema.rs`, the mirrored
-  `settingsSchemaDefaults()`, and `docs/settings-keys.md` (the doc test enforces
+  `settingsSchemaDefaults()`, and `docs/design/settings-keys.md` (the doc test enforces
   it).
 - Distinct per-Space selections are live within a session when
   `showOnAllSpaces` is off, but only the last selection is persisted (one

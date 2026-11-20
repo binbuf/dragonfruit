@@ -15,7 +15,7 @@ import Dragonfruit.Settings
 // The Desktop & Stage, Widgets, and Windows groups follow the macOS row
 // inventory; a row whose runtime is not implemented yet is disabled with an
 // honest reason (the owning task lives in the map and docs, never in the UI).
-// The Mission Control group links to the Overview pane rather than duplicating
+// The Overview group links to the Overview pane rather than duplicating
 // its corner controls.
 Item {
     id: root
@@ -602,7 +602,7 @@ Item {
             }
         }
 
-        // ── Mission Control / Overview ────────────────────────────────────
+        // ── Overview / Overview ────────────────────────────────────
         SettingsGroup {
             id: missionControlGroup
             width: parent.width

@@ -166,7 +166,7 @@ The source table is [evidence-and-acceptance §6](evidence-and-acceptance.md#6-t
 | Profile | Used by | Material | Geometry | Typography | Motion | Latency | Contrast | Performance |
 |---|---|---|---|---|---|---|---|---|
 | `glass-persistent` | Menu bar, Dock | flat mean ≤ 0.02, p95 ≤ 0.05, SSIM ≥ 0.90; MTF ±0.05; rim ±5% / 0.5 pt / 2 pt | ±1 pt; hit ≥ 24 pt | exact size/weight; line ±0.5 pt | ±10% or 1 frame; residual < 5%; no unmeasured overshoot | 1 frame; p95 8.3 ms, p99 16.7 ms | WCAG AA (4.5:1 text, 3:1 control); focus visible | p95 8.3 ms, p99 16.7 ms; 0 dropped; 8 ms gesture |
-| `glass-transient` | Menus, popovers, Control Center, notifications, overlays, windows | same material tolerances | ±1 pt; hit ≥ 24 pt | exact | same | 1 frame; p95 16.7 ms, p99 33.3 ms | same | p95 16.7 ms, p99 33.3 ms; 0 dropped; 16 ms gesture |
+| `glass-transient` | Menus, popovers, Quick Settings, notifications, overlays, windows | same material tolerances | ±1 pt; hit ≥ 24 pt | exact | same | 1 frame; p95 16.7 ms, p99 33.3 ms | same | p95 16.7 ms, p99 33.3 ms; 0 dropped; 16 ms gesture |
 | `opaque-content` | Desktop, Preview | flat mean ≤ 0.01, p95 ≤ 0.02, SSIM ≥ 0.95 | ±1 pt; hit ≥ 24 pt | exact | same | same | same | same as transient |
 | `hud` | Every `H-*` | same material tolerances | ±1 pt; hit ≥ 24 pt | exact | same | same | same | same as transient |
 | `settings-pane` | Every `SET-*` | same material tolerances | ±1 pt; row 44 pt; hit ≥ 24 pt | exact 13 pt | same | same | same | same as transient |
@@ -202,7 +202,7 @@ concrete where the profile is not enough:
 - `N-FILES` (T230a): 900×600 pt window, 52 pt toolbar, 198 pt sidebar,
   28/30/28 pt tab/path/status bars, 164×52 pt view group with 40×36 pt
   segments, 328×1034 pt Get Info with 32 pt chrome, 64 pt toolbar-hidden
-  content inset. `N-PREV` stays the Quick Look surface.
+  content inset. `N-PREV` stays the Preview surface.
 
 ### 7.3 Structural surface states (2026-11-08 review)
 
@@ -213,7 +213,7 @@ cover:
 |---|---|
 | `N-WIN` | `chrome-borderless`, `chrome-titlebar`, `chrome-unified-compact`, `chrome-expanded`, `chrome-unified`, `chrome-unified-labelled`, `chrome-preference`, `traffic-lights-titlebar`, `traffic-lights-unified`, `accessory-bars`, `fullscreen-chrome-hidden`, `fullscreen-chrome-revealed`, `long-title`, `rtl-titlebar` |
 | `SET-GENERAL` / About | `about-panel`, `about-page`, `about-dark`, `about-localized` |
-| `Q-AD` | `spotlight-grid`, `spotlight-list`, `suggestions`, `search-focused`, `category-chips`, `no-results`, `launch-motion`, `spotlight-keyboard`, `iphone-apps` |
+| `Q-AD` | `search-grid`, `search-list`, `suggestions`, `search-focused`, `category-chips`, `no-results`, `launch-motion`, `search-keyboard`, `mobile-apps` |
 | `S-NC` | `panel-layout`, `banner-stack`, `widget-stack`, `widget-gallery`, `material-ramp`, `empty`, `reply-actions`, `focus-active`, `widget-variants`, `motion-open-close`, `motion-banner-stack` |
 | `S-CC` | `grid`, `module-sizes`, `expanded-wifi`, `expanded-bluetooth`, `expanded-focus`, `edit-controls`, `addable-modules`, `pages`, `resize`, `menu-bar-pinning`, `motion-open-close`, `motion-expand`, `motion-edit` |
 | `N-FILES` / Files | `chrome`, `toolbar-hidden`, `view-icon`, `view-list`, `view-column`, `view-gallery`, `get-info`, `search`, `gallery-preview`, `tags`, `customization`, `dark-matrix`, `motion` |
@@ -224,7 +224,7 @@ Dragonfruit capture/test stays `OPEN`; the reference value goes in the row's
 summary/threshold, not in a fake `captured` status. The OPEN ids are listed in
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
 §9. `N-FILES` is a new surface rather than an extension of `N-PREV`: `N-PREV`
-stays the Quick Look overlay, so the Files window and the preview overlay do
+stays the Preview overlay, so the Files window and the preview overlay do
 not share evidence rows. The machine-readable structural values live under
 `N-WIN`, `SET-GENERAL`, `Q-AD`, `S-NC`, `S-CC`, and `N-FILES` in
 `experience-thresholds.json`; `N-WIN` also carries the chrome-height,
@@ -287,8 +287,8 @@ Covered (captured + verified): 242/482 (50.2%)
 ```
 
 The T230a structural intake adds 64 rows: 61 are explicit `OPEN` debt and
-three are verified (two Files view tests and the Notification Center material
-ramp). The pre-review `Q-AD/folder` row is retired to `OPEN` because Spotlight
+three are verified (two Files view tests and Notifications material
+ramp). The pre-review `Q-AD/folder` row is retired to `OPEN` because Search
 Apps has no folders; the coverage percentage falls because the contract now
 records that debt, not because evidence was removed.
 The all-OPEN surfaces are the explicit debt list: Stage/tiling, Preview,

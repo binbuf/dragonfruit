@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! The Mission Control / hot corners snapshot the pane and tile render,
+//! The Overview / hot corners snapshot the pane and tile render,
 //! decoded from one raw read.
 //!
 //! The model owns the projection a consumer should not repeat: it names the
@@ -14,7 +14,7 @@
 //! libinput.
 //!
 //! The event half is a pure diff: [`MissionControlSnapshot::changes`] reports
-//! what moved between two reads (an assignment changed, Mission Control
+//! what moved between two reads (an assignment changed, Overview
 //! opened, the selection moved, …) without any polling.
 
 use std::time::Duration;
@@ -89,9 +89,9 @@ pub enum HotCornerAction {
     /// Nothing (the default for an unassigned corner).
     #[default]
     None,
-    /// Open Mission Control.
+    /// Open Overview.
     MissionControl,
-    /// Open Notification Center.
+    /// Open Notifications.
     NotificationCenter,
     /// Reveal the desktop.
     DesktopReveal,
@@ -156,12 +156,12 @@ pub struct GestureGating {
     pub enabled: bool,
     /// Whether a horizontal swipe switches Spaces.
     pub space_switch: bool,
-    /// Whether a vertical swipe opens Mission Control.
+    /// Whether a vertical swipe opens Overview.
     pub mission_control: bool,
 }
 
 impl GestureGating {
-    /// Whether any gesture can open Mission Control.
+    /// Whether any gesture can open Overview.
     pub const fn opens_mission_control(self) -> bool {
         self.enabled && self.mission_control
     }
@@ -170,7 +170,7 @@ impl GestureGating {
 /// The runtime state of the one overview machine.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct OverviewState {
-    /// Whether the overview (Mission Control) is open.
+    /// Whether the overview (Overview) is open.
     pub active: bool,
     /// The selected window while the overview is open, if any.
     pub selected_window: Option<String>,
@@ -187,7 +187,7 @@ impl OverviewState {
     }
 }
 
-/// The Mission Control / hot corners snapshot a pane or status slot renders.
+/// The Overview / hot corners snapshot a pane or status slot renders.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissionControlSnapshot {
     /// The assignment per corner, indexed by [`HotCorner::index`].
@@ -239,7 +239,7 @@ impl MissionControlSnapshot {
             .collect()
     }
 
-    /// The corners assigned to Mission Control.
+    /// The corners assigned to Overview.
     pub fn mission_control_corners(&self) -> Vec<HotCorner> {
         self.assigned_corners()
             .into_iter()
@@ -249,12 +249,12 @@ impl MissionControlSnapshot {
             .collect()
     }
 
-    /// Whether Mission Control has any pointer/gesture trigger at all.
+    /// Whether Overview has any pointer/gesture trigger at all.
     pub fn mission_control_reachable(&self) -> bool {
         self.gestures.opens_mission_control() || !self.mission_control_corners().is_empty()
     }
 
-    /// A one-line label for the status item: what Mission Control answers to.
+    /// A one-line label for the status item: what Overview answers to.
     pub fn label(&self) -> String {
         let corners = self.mission_control_corners().len();
         match (self.gestures.opens_mission_control(), corners) {
@@ -333,7 +333,7 @@ pub struct HotCornerTrigger {
     pub action: HotCornerAction,
 }
 
-/// A change between two Mission Control snapshots.
+/// A change between two Overview snapshots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MissionControlChange {
     /// A corner's assignment changed.
@@ -352,9 +352,9 @@ pub enum MissionControlChange {
         /// The new gating.
         to: GestureGating,
     },
-    /// Mission Control opened.
+    /// Overview opened.
     OverviewOpened,
-    /// Mission Control closed.
+    /// Overview closed.
     OverviewClosed,
     /// The overview selection moved.
     SelectionChanged {

@@ -200,7 +200,7 @@ impl MaterialRole {
     /// serves several distinct overlay surfaces: the OSD draws its card at
     /// `component.osd.radius`, so the backdrop must follow that namespace or
     /// the frosted corner would not match the QML card. Every other popup
-    /// (menus, popovers, notifications, Control Center) shares
+    /// (menus, popovers, notifications, Quick Settings) shares
     /// `component.popup.radius`.
     pub fn corner_radius(self, namespace: &str) -> f32 {
         match self {
@@ -300,7 +300,7 @@ impl MaterialRole {
         BlurSpec::new(blur, self.corner_radius(namespace))
     }
 
-    /// The Tahoe liquid-glass parameters for this role under `scheme`
+    /// The reference Glass parameters for this role under `scheme`
     /// (T-20.2, ADR 0182): the edge-lens refraction, the specular inner rim,
     /// and the adaptive-tint amount, all from the generated `material` tokens.
     /// The tint blends toward the same scheme tone as [`Self::spec`]/the
@@ -865,7 +865,7 @@ mod tests {
         // T-20.3 sweep: each chrome surface the shell creates picks the role
         // its tokens and panel rect expect. Persistent chrome (menu bar) is
         // `Chrome`; the Dock is `Dock` by namespace; every overlay (menus,
-        // popups, OSD, notification, Control Center) is `Popup`; the
+        // popups, OSD, notification, Quick Settings) is `Popup`; the
         // full-output Applications drawer is `Drawer`.
         assert_eq!(
             MaterialRole::from_layer_namespace(2, "menubar"),
@@ -895,7 +895,7 @@ mod tests {
             MaterialRole::from_layer_namespace(3, "apps-drawer"),
             MaterialRole::Drawer
         );
-        // A session-wide overlay (Mission Control / switcher) fills the output
+        // A session-wide overlay (Overview / switcher) fills the output
         // and is a scrim, not a frosted panel.
         assert!(!is_backdrop_panel(
             rect(0, 0, 1920, 1200),
@@ -919,7 +919,7 @@ mod tests {
 
     #[test]
     fn roles_read_their_liquid_glass_tokens_per_scheme() {
-        // Every liquid-glass parameter comes from the generated material
+        // Every Glass parameter comes from the generated material
         // tokens, per role and scheme (T-20.2, ADR 0182).
         let chrome_light = MaterialRole::Chrome.glass_spec(ColorScheme::Light);
         assert_eq!(
@@ -1007,7 +1007,7 @@ mod tests {
         assert!(is_backdrop_panel(rect(0, 1069, 1920, 131), output));
         // A popover is a panel even when it is large.
         assert!(is_backdrop_panel(rect(700, 100, 520, 900), output));
-        // A full-output overlay (Mission Control, Desktop Reveal) is a
+        // A full-output overlay (Overview, Desktop Reveal) is a
         // scene-wide surface that draws its own scrim, never frosted whole.
         assert!(!is_backdrop_panel(rect(0, 0, 1920, 1200), output));
         assert!(!is_backdrop_panel(rect(0, 0, 0, 0), output));

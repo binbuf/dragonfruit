@@ -2,7 +2,7 @@
 //! `files-core` — the headless browsing model and streaming directory
 //! listing (T-10.1a).
 //!
-//! Files is the Finder-equivalent first-party app, but the browsing core is
+//! Files is the Files-equivalent first-party app, but the browsing core is
 //! deliberately **not** a process: it is a Rust library embedded by the Files
 //! window (T-10.4), the future desktop surface, and the portal FileChooser
 //! ([09-files.md]). One implementation serves all three so collation,

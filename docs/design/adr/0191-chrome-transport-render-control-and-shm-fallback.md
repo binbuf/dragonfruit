@@ -22,7 +22,7 @@ private bus, 1920×1200) measured:
 | idle (5.3 s) | 0 | 0 | — (zero-wakeup) |
 | slow Dock sweep (2.7 s) | 291 | 268,929,360 | 1069 / 1653 / 1943 µs |
 | menu-bar dropdown open | 68 | 26,307,008 | 957 / 1190 / 1393 µs |
-| Mission Control (13 windows) | 116 | 130,760,400 | 908 / 6766 / 7526 µs |
+| Overview (13 windows) | 116 | 130,760,400 | 908 / 6766 / 7526 µs |
 
 The Dock bar alone is 1920×125×4 = **960,000 bytes per commit**, and the
 compositor reports the same `chrome_shm_imports`/`chrome_shm_bytes` for every

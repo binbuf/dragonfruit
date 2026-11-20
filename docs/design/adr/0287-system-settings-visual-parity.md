@@ -15,10 +15,10 @@ macOS-derived information architecture to the parts that have a Linux owner and
 changes the shell geometry, density, and pane shapes.
 
 The study also adds Mouse and Game Controllers, keeps the OS menu glyph choice
-(`menu.osGlyph`) as a project addition, and deliberately leaves out Apple-only
+(`menu.osGlyph`) as a project addition, and deliberately leaves out reference-only
 features. Three conflicts could not be resolved from the mockup alone:
 
-- Quick Settings was a top-level pane; the mockup treats Control Center as a
+- Quick Settings was a top-level pane; the mockup treats Quick Settings as a
   shell panel and puts its customization under Menu Bar.
 - Overview was a top-level pane; the mockup folds workspace/window overview
   controls into Desktop & Dock.
@@ -47,9 +47,9 @@ The OS menu glyph stays with Dragonfruit as the install default.
    Controls. `settings://pane/mission-control`, `settings://pane/overview`,
    `settings://pane/control-center`, and `settings://pane/quick-settings` are
    aliases to the new locations. `settings://pane/biometrics` is refused.
-4. **Renames.** Online Accounts → Internet Accounts (id stays
+4. **Renames.** Online Accounts → Online Accounts (id stays
    `online-accounts`), Autofill & Passwords → Passwords & Keys, Backup →
-   Backups, Mission Control → Workspace Overview, Stage → Workspace Focus.
+   Backups, Overview → Workspace Overview, Stage → Workspace Focus.
 5. **Chrome and density** follow the mockup: left-aligned title beside the
    history pill, 20 pt content inset, 24 pt top inset, 33 pt plain rows,
    53 pt icon rows, 32 pt sidebar rows, neutral selected row, no large header
@@ -76,10 +76,10 @@ The OS menu glyph stays with Dragonfruit as the install default.
 - `BiometricsPane.qml` and its tests are deleted in T299. The schema has no
   biometrics keys to migrate.
 - `QuickSettingsPane.qml` is reused as the Menu Bar Controls sub-pane; the
-  `quickSettings.*` keys and the Control Center panel do not change.
+  `quickSettings.*` keys and the Quick Settings panel do not change.
 - The mockup's browser-only preview controls (theme/transparency/contrast
   toggles) are not product UI. They are not implemented.
-- Apple-only rows and assets stay out. The reference checkout is not a build
+- reference-only rows and assets stay out. The reference checkout is not a build
   dependency and is not vendored.
 
 ## References
@@ -88,5 +88,5 @@ The OS menu glyph stays with Dragonfruit as the install default.
 - [`24-system-settings.md`](../24-system-settings.md)
 - [`08-settings.md`](../08-settings.md)
 - [`settings-business-logic-map.md`](../settings-business-logic-map.md)
-- `docs/settings-keys.md`
+- `docs/design/settings-keys.md`
 - [`docs/tasks/system-settings-2/`](../../tasks/system-settings-2/README.md)

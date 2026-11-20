@@ -97,7 +97,7 @@ Item {
         anchors.fill: parent
         radius: Theme.controls.popover.radius
         // The compositor material's scrim: token alpha in the fill so the
-        // sampled backdrop and liquid-glass pass read through (T-20.3).
+        // sampled backdrop and Glass pass read through (T-20.3).
         color: Material.popupFill(root.materialBlurActive)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border

@@ -68,7 +68,7 @@ Item {
     ]
 
     // T274: the empty value is the macOS "Multicolor" choice: the active
-    // scheme's token accent (system blue after the Tahoe review), with the
+    // scheme's token accent (system blue after the reference review), with the
     // per-scheme accent still overridable. The rest are the primitive palette.
     readonly property var accentPalette: [
         { value: "", label: qsTr("Multicolor") },

@@ -1,4 +1,4 @@
-# 0126 — The Mission Control and hot corners adapter projects the compositor
+# 0126 — The Overview and hot corners adapter projects the compositor
 
 - **Status:** Accepted (T-15.5a)
 - **Date:** 2026-09-28
@@ -9,8 +9,8 @@
 
 ## Context
 
-T-15.5 splits the Mission Control / hot corners surface into an adapter
-(T-15.5a) and a Settings pane plus Control Center tile (T-15.5b). Unlike
+T-15.5 splits the Overview / hot corners surface into an adapter
+(T-15.5a) and a Settings pane plus Quick Settings tile (T-15.5b). Unlike
 Bluetooth, storage, audio, and input, this subsystem has **no external daemon**:
 the compositor detects hot corners in its input path
 (`compositor/src/input/hot_corners.rs`) and drives the one overview state

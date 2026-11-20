@@ -307,7 +307,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                             None
                         }
                     };
-                // Compile the liquid-glass compose program once, on the same
+                // Compile the Glass compose program once, on the same
                 // renderer (T-20.2). Failure is non-fatal: the panel keeps the
                 // plain blurred compose (no lens/specular/tint).
                 let glass_program =
@@ -322,7 +322,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                         }
                         Err(err) => {
                             eprintln!(
-                                "dragonfruit-compositor: liquid-glass shader unavailable \
+                                "dragonfruit-compositor: Glass shader unavailable \
                                  ({err}); using plain blurred compose"
                             );
                             None
@@ -562,7 +562,7 @@ struct NestedData {
     /// The compiled measured separable Gaussian, or `None` when the driver
     /// refused it; the Dock then keeps the sharp panel slice without frost.
     gaussian_program: Option<GlesTexProgram>,
-    /// The compiled Tahoe liquid-glass compose program (T-20.2), or `None`
+    /// The compiled reference Glass compose program (T-20.2), or `None`
     /// when the driver refused it; the panel then keeps the plain blurred
     /// compose with no lens, specular rim, or adaptive tint.
     glass_program: Option<GlesTexProgram>,
@@ -1785,7 +1785,7 @@ fn build_blur_elements(
         } else {
             element
         };
-        // Add the liquid-glass compose only when the driver compiled it; a
+        // Add the Glass compose only when the driver compiled it; a
         // refused shader leaves the plain blurred backdrop (T-20.2).
         let element = match programs.glass {
             Some(glass) => element.with_glass(panel.glass, glass.clone()),

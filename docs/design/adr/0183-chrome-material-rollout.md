@@ -6,11 +6,11 @@ accepted
 
 ## Context
 
-ADR [0182](0182-tahoe-liquid-glass-material-pass.md) landed the GPU sampled
-blur (T-20.1) and the Tahoe liquid-glass pass (T-20.2) behind a
+ADR [0182](0182-glass-material-pass.md) landed the GPU sampled
+blur (T-20.1) and the Glass pass (T-20.2) behind a
 `MaterialRole`, but only the menu bar and the Applications drawer visibly used
 it. Every other chrome surface — the Dock, menu-bar dropdowns, context
-menus/popovers, the OSD, notification banners, and Control Center — either
+menus/popovers, the OSD, notification banners, and Quick Settings — either
 still painted an opaque QML fill (hiding the material) or resolved its panel
 rect/radius incorrectly. The pass and the role resolution already exist, so
 the rollout is **configuration**, not new machinery: a surface that is not
@@ -22,9 +22,9 @@ frosted is a bug in its role, panel rect, or corner radius.
   (`menubar`) is `Chrome`; the Dock (`dock`) is `Dock`; the Applications
   drawer (`apps-drawer`) is `Drawer`; and every overlay — menu-bar dropdowns
   (`menubar-popup`), Dock context menus/popovers (`dock-popup`), the OSD
-  (`osd`), notification banners (`notification`), and Control Center
+  (`osd`), notification banners (`notification`), and Quick Settings
   (`control-center`) — is `Popup`. `MaterialRole::from_layer_namespace` is the
-  single source; a full-output scene overlay (Mission Control, the switcher)
+  single source; a full-output scene overlay (Overview, the switcher)
   stays excluded by `is_backdrop_panel`.
 - **Panel rects follow the visible panel, not the surface.**
   `chrome_surfaces` derives the panel from a declared rect first, then the

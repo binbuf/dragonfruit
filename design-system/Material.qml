@@ -27,7 +27,7 @@ QtObject {
         return tier >= 2 ? "minimal" : "blur-off";
     }
 
-    // Menus, Dock popovers, Control Center, notifications, and the OSD share
+    // Menus, Dock popovers, Quick Settings, notifications, and the OSD share
     // one popup material. The fallback fill is the existing milky chrome
     // neutral (R4.4's source of truth) at the popup fallback alpha, so the
     // surface stays a deliberate plate rather than a translucent slab.

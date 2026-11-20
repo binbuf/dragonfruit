@@ -348,19 +348,19 @@ def main():
         time.sleep(1.0)
         snapshot("app-launch")
 
-        # 6. Mission Control with 10+ windows.
+        # 6. Overview with 10+ windows.
         for index in range(3, 10):
             windows.spawn(index)
         wait_for(lambda: len(synth.identities()) >= 12, 15.0, "ten X11 windows")
         time.sleep(1.0)
         synth.key_combo(KEY_LEFTCTRL, KEY_UP)
-        wait_for(lambda: synth.grid()["progress"] >= 0.999, 8.0, "Mission Control")
+        wait_for(lambda: synth.grid()["progress"] >= 0.999, 8.0, "Overview")
         time.sleep(0.5)
         grid = synth.grid()
         log(f"mission-control windows={grid['windows']}")
         snapshot("mission-control")
         synth.key_combo(KEY_LEFTCTRL, KEY_UP)
-        wait_for(lambda: synth.grid()["progress"] <= 0.001, 8.0, "Mission Control close")
+        wait_for(lambda: synth.grid()["progress"] <= 0.001, 8.0, "Overview close")
         time.sleep(0.5)
         snapshot("mission-control-close")
 
@@ -390,10 +390,10 @@ def main():
                           960, 600)
             synth.key(KEY_ESCAPE)
             time.sleep(0.3)
-            # Mission Control with the full window set.
+            # Overview with the full window set.
             synth.key_combo(KEY_LEFTCTRL, KEY_UP)
             wait_for(lambda: synth.grid()["progress"] >= 0.999, 8.0,
-                     "Mission Control for the still")
+                     "Overview for the still")
             time.sleep(0.5)
             capture_still(synth, args.screenshot_dir,
                           os.path.join(args.outdir,

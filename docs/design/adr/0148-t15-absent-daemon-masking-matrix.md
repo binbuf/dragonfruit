@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-T-15 landed sixteen Wave-2/3 Settings panes and their Control Center tiles
+T-15 landed sixteen Wave-2/3 Settings panes and their Quick Settings tiles
 (eighteen shipped panes total with Wave 1). Each pane ticket documented its
 own provider's absent behavior, and each adapter enforces the three-state
 projection (`available` / `present:false` / `Error`). No single place stated
@@ -27,7 +27,7 @@ one pane, which the Wave-1 matrix ([T-09.6b](../08-settings.md)) did not cover.
     There is no "settings unavailable" banner — that would be a half-pane.
   - *adapter-read halves* project through the `system-status` bridge host
     ([0029](0029-system-status-bridge-host.md)). Absence replaces the half with
-    a one-line note and refuses the write; the matching Control Center tile
+    a one-line note and refuses the write; the matching Quick Settings tile
     hides by the same rule.
 - **Absence is not error.** A present-but-unreadable daemon is `Error`
   (visible, inert); a polkit refusal is a read-only degradation (list visible,

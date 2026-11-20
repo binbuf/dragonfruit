@@ -3,7 +3,7 @@
 The exact commands for the **T-03** hardware rail: bring the compositor up on a
 real DRM/KMS seat, validate input and multi-GPU import/fallback, soak the
 teardown, and record the artifacts. Written so a second person can reproduce
-the run without help ([03-real-session-bringup-perf.md](design/tracks/03-real-session-bringup-perf.md),
+the run without help ([03-real-session-bringup-perf.md](tracks/03-real-session-bringup-perf.md),
 [testing-ladder.md](testing-ladder.md) rungs 2–3).
 
 On a workstation already running a desktop the host compositor owns DRM master
@@ -58,7 +58,7 @@ session and prints the dedicated-user rationale; the free VT is the smallest
 one no `loginctl` session occupies. `make second-vt-validation` records the
 refusal, the mocked selection, and (on a free seat) one real cycle. The exact
 behavior is in [testing-ladder.md](testing-ladder.md) rung 2 and
-[ADR 0175](design/adr/0175-second-vt-dev-harness.md).
+[ADR 0175](adr/0175-second-vt-dev-harness.md).
 
 If the session package is installed, the display-manager entry
 (`share/wayland-sessions/dragonfruit.desktop` +
@@ -81,7 +81,7 @@ make native-debug
 ```
 
 The native two-pass material is the default: the scene-texture/Kawase path and
-the liquid-glass compose both run unless explicitly disabled. For a diagnostic
+the Glass compose both run unless explicitly disabled. For a diagnostic
 run or a quick rollback, opt out with:
 
 ```bash
@@ -95,7 +95,7 @@ fails, the compositor disables the sampled path and reports the fallback state
 to the shell. Check `material stats`: `blur_passes>0`, `blur_draws>0`,
 `blur_panels>=1`; `path=gpu` alone is not proof.
 
-The liquid-glass replacement is the shipped default. One rollout switch also
+The Glass replacement is the shipped default. One rollout switch also
 provides the A/B and rollback rails:
 
 ```bash
@@ -106,7 +106,7 @@ DRAGONFRUIT_GLASS_ROLLOUT=replacement make native-rebuild  # explicit replacemen
 The value is persisted into `native.env` and both the compositor and shell
 unit drop-ins by `native-session.sh`, so it survives the rebuild. The T208
 native evidence, the missing free-seat rows and the exact rerun commands are in
-[`captures/t208-native-acceptance.md`](captures/t208-native-acceptance.md).
+[`captures/t208-native-acceptance.md`](../captures/t208-native-acceptance.md).
 
 The 4K damage/material path is CPU-bound enough that an unoptimized build can
 cap animated clients well below the panel's refresh rate. A profile switch
@@ -177,10 +177,10 @@ Inspect the still: full desktop, no stray artifacts.
 The DRM backend does **not** implement `capture_screenshot` yet, so `grim` or
 a portal still is not the trusted native capture path on this rail. For
 native stills use the dev-only KMS readback
-[`scripts/t208-kms-readback.c`](../scripts/t208-kms-readback.c) (the T191b/T208
+[`scripts/t208-kms-readback.c`](../../scripts/t208-kms-readback.c) (the T191b/T208
 `pidfd_getfd` + `drmModeGetFB2` + dma-buf/EGL method; primary plane only). The
 trusted fullscreen row uses
-[`scripts/t208-shell-fullscreen.c`](../scripts/t208-shell-fullscreen.c) after
+[`scripts/t208-shell-fullscreen.c`](../../scripts/t208-shell-fullscreen.c) after
 stopping the shell so the compositor reissues its launch token.
 
 ### The DRM session cycle
@@ -244,8 +244,8 @@ leftover socket: it hands a later client a trusted role.
 ## See also
 
 - [testing-ladder.md](testing-ladder.md) — rungs 2–3, the seat/session model.
-- [design/02-compositor.md](design/02-compositor.md) — the DRM backend and the
+- [02-compositor.md](02-compositor.md) — the DRM backend and the
   bring-up/input/multi-GPU markers.
-- ADRs [0170](design/adr/0170-drm-first-bringup-open-marker-and-no-output-guard.md),
-  [0171](design/adr/0171-hardware-input-validation-matrix.md),
-  [0172](design/adr/0172-drm-soak-teardown-and-runbook.md).
+- ADRs [0170](adr/0170-drm-first-bringup-open-marker-and-no-output-guard.md),
+  [0171](adr/0171-hardware-input-validation-matrix.md),
+  [0172](adr/0172-drm-soak-teardown-and-runbook.md).

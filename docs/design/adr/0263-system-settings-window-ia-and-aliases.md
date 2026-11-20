@@ -4,12 +4,12 @@
 |---|---|
 | **Status** | accepted |
 | **Date** | 2026-11-14 |
-| **Extends** | ADR [0035](0035-settings-pane-catalog.md), [0164](0164-settings-category-tile.md), [0225](0225-first-party-app-chrome-presets.md), [0231](0231-settings-executable-map.md), [0262](0262-system-settings-completion-contract.md) |
+| **Extends** | ADR [0035](0035-settings-shell-and-pane-catalog.md), [0164](0164-settings-category-tile.md), [0225](0225-first-party-app-chrome-presets.md), [0231](0231-executable-settings-map.md), [0262](0262-system-settings-completion-contract.md) |
 
 ## Context
 
 T263 moves the System Settings shell from the 800×640 / flat-192 pt prototype
-to the measured macOS Tahoe window. The move touches four contracts that later
+to the measured the reference design window. The move touches four contracts that later
 pane tasks would otherwise re-invent:
 
 - the sidebar needs groups, but must stay the one ordered catalog;
@@ -68,4 +68,4 @@ pane tasks would otherwise re-invent:
 
 - [24-system-settings.md](../24-system-settings.md) §3.1–3.2
 - [08-settings.md](../08-settings.md) window-chrome section
-- [settings-keys.md](../../settings-keys.md) revision 27
+- [settings-keys.md](../settings-keys.md) revision 27

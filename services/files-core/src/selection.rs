@@ -8,7 +8,7 @@
 //! portal chooser agree on what is selected.
 //!
 //! Insertion order is preserved (the order the user selected in), which a
-//! Quick Look or "open all" flow needs; membership is O(1) through a mirror
+//! Preview or "open all" flow needs; membership is O(1) through a mirror
 //! set. `select` ignores [`NodeId::UNSET`], because a selection always names
 //! rows the model has assigned an id.
 //!

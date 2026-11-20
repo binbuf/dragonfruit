@@ -4,13 +4,13 @@
 
 This is the machine half of the T-17.1b verification unit
 (docs/tasks/153-t-17.1b-workspace-overview-switcher-verification.md): it
-performs the workspace-switch, Mission Control, and app-switch navigation on
+performs the workspace-switch, Overview, and app-switch navigation on
 the *running* nested session, by **pointer and keyboard**, through the real
 compositor input path (the T-03 synthetic-input harness, installed on the
 nested backend only when ``DRAGONFRUIT_SYNTHETIC_INPUT`` is set). Each path is
 observed through the read-only introspection the compositor already exposes:
 ``query spaces`` (the active Space and its windows), ``query grid`` (the
-Mission Control live-surface transform), ``query wallpaper`` (the in-flight
+Overview live-surface transform), ``query wallpaper`` (the in-flight
 Space slide), and ``query switcher`` (the app-switcher entries, selection and
 focus).
 
@@ -40,7 +40,7 @@ KEY_UP = 103
 KEY_LEFT = 105
 KEY_RIGHT = 106
 
-# Mission Control workspace-strip geometry, reproduced from the shared design
+# Overview workspace-strip geometry, reproduced from the shared design
 # tokens (docs/design/10-design-system.md): menu bar 28 + strip margin 16, cards
 # 132x84 with a 12 px gap, centered horizontally on the 1920 px output.
 STRIP_TOP = 28 + 16
@@ -319,7 +319,7 @@ raiseDragonfruit();
 
 
 def strip_card_center(index, count):
-    """The Mission Control workspace-strip card center (T-05 strip geometry)."""
+    """The Overview workspace-strip card center (T-05 strip geometry)."""
     total = count * CARD_WIDTH + (count - 1) * CARD_GAP
     start_x = (NESTED_W - total) // 2
     x = start_x + index * (CARD_WIDTH + CARD_GAP) + CARD_WIDTH // 2
@@ -398,31 +398,31 @@ def run(args):
     synth.wait_spaces(lambda rows: any(r["active"] and r["index"] == 0 for r in rows))
     time.sleep(0.3)
 
-    # --- 3. Mission Control: keyboard (Ctrl+Up) ----------------------------
+    # --- 3. Overview: keyboard (Ctrl+Up) ----------------------------
     synth.chord(KEY_LEFTCTRL, KEY_UP)
     grid = synth.wait_grid(
         lambda g: g["active"] and g["progress"] > 0.99 and len(g["windows"]) >= 2
     )
-    transcript.append({"step": "mission control (keyboard)", "grid": grid})
-    snap("mission control (keyboard): Ctrl+Up laid the live surfaces into the grid",
+    transcript.append({"step": "overview (keyboard)", "grid": grid})
+    snap("overview (keyboard): Ctrl+Up laid the live surfaces into the grid",
          prefix + "-mission-control-keyboard")
     synth.chord(KEY_LEFTCTRL, KEY_UP)
     synth.wait_grid(lambda g: not g["active"])
 
-    # --- 4. Mission Control: pointer (hot-corner dwell) --------------------
+    # --- 4. Overview: pointer (hot-corner dwell) --------------------
     synth.motion(2, 2)
     grid = synth.wait_grid(
         lambda g: g["active"] and g["progress"] > 0.99 and len(g["windows"]) >= 2,
         timeout=8.0,
     )
-    transcript.append({"step": "mission control (pointer hot corner)", "grid": grid})
-    snap("mission control (pointer): top-left hot-corner dwell opened the overview",
+    transcript.append({"step": "overview (pointer hot corner)", "grid": grid})
+    snap("overview (pointer): top-left hot-corner dwell opened the overview",
          prefix + "-mission-control-pointer")
 
-    # --- 5. workspace switch: pointer (Mission Control Space card) ---------
+    # --- 5. workspace switch: pointer (Overview Space card) ---------
     count = len(synth.spaces())
     card = strip_card_center(1, count)
-    log(f"clicking Mission Control Space card 1 at {card}")
+    log(f"clicking Overview Space card 1 at {card}")
     synth.click(*card)
     synth.wait_spaces(lambda rows: any(r["active"] and r["index"] == 1 for r in rows))
     time.sleep(0.4)

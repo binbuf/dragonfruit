@@ -7,12 +7,12 @@
   dragonfruit lockstep-version: 1
 
   This file ships with the compositor and shell as a lockstep set
-  (docs/ipc-versioning.md). Additive-only within a stable release.
+  (docs/design/ipc-versioning.md). Additive-only within a stable release.
 
   Layer-shell-style chrome surfaces: anchored, layered, reserved-zone
-  surfaces for the menu bar, Dock, Control Center, notification banners,
+  surfaces for the menu bar, Dock, Quick Settings, notification banners,
   OSD, overview strip, and screenshot UI. The design follows
-  wlr-layer-shell-unstable-v1 (see docs/private-protocols.md for the
+  wlr-layer-shell-unstable-v1 (see docs/design/private-protocols.md for the
   documented deviations) but is a Dragonfruit-owned, versioned interface:
   it is a privilege of trusted session processes, not a public extension
   surface (02-compositor.md).

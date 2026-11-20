@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! The Mission Control and hot corners adapter: one read path over the shared
+//! The Overview and hot corners adapter: one read path over the shared
 //! contract.
 //!
 //! It holds the last snapshot the host stack published and exposes the
@@ -15,7 +15,7 @@
 //! The adapter is read-only for runtime state: the compositor owns the one
 //! overview machine and the adapter only mirrors it; the durable trigger
 //! configuration is `settingsd`'s and the compositor applies it live. This
-//! adapter answers "what triggers Mission Control, and is the overview open?".
+//! adapter answers "what triggers Overview, and is the overview open?".
 
 use std::collections::VecDeque;
 
@@ -28,7 +28,7 @@ use crate::model::{
 };
 use crate::source::MissionControlSource;
 
-/// The Mission Control and hot corners adapter.
+/// The Overview and hot corners adapter.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissionControlAdapter<S> {
     source: S,

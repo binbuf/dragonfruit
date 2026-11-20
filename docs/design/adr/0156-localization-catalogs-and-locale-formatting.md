@@ -55,7 +55,7 @@ feature is the wrong trade.
 - **`translations/dragonfruit_es.ts` is the reference translated locale** used
   by the locale-switch capture `scripts/capture-t16-i18n.sh` and the
   `tst_i18n` integration test. Product names that are the same in Spanish
-  (Bluetooth, Mission Control, General) intentionally stay identical.
+  (Bluetooth, Overview, General) intentionally stay identical.
 
 ## Consequences
 
@@ -65,7 +65,7 @@ feature is the wrong trade.
 - Only startup locale selection is supported. In-place runtime switching would
   need `QQmlEngine::retranslate()` plus a language-change event; it is not
   required by this task.
-- Spanish coverage is deliberately partial (chrome, Control Center, Dock,
+- Spanish coverage is deliberately partial (chrome, Quick Settings, Dock,
   Files, session/portal dialogs, and the General pane). Untranslated strings
   fall back to English; the mechanism is what this slice lands, and later
   translations are additive.

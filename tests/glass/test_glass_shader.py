@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""GPU regression tests for the compositor's actual liquid-glass shader.
+"""GPU regression tests for the compositor's actual Glass shader.
 
 Run with python3 tests/glass/test_glass_shader.py. Uses a private surfaceless
 EGL/GLES context, ctypes and the shader embedded in blur.rs; no shell session,

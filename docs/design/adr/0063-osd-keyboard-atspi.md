@@ -27,7 +27,7 @@ no-focus-steal rule.
   surface still never holds keyboard focus in a real session, so this does not
   contradict the no-focus-steal rule (it is AT-SPI metadata, not Qt focus).
 - **Escape clears the alert at the shell level.** `ShellController::onKeyEvent`
-  hides a visible OSD before the Control Center/other chrome handling, so a
+  hides a visible OSD before the Quick Settings/other chrome handling, so a
   keyboard user can dismiss it even though the OSD window is unfocused. The
   view also raises `dismissed()` from its own `Keys.onEscapePressed`, and
   `ShellController` connects `dismissed()` to the same `hideOsd()` slot as the
@@ -39,8 +39,8 @@ no-focus-steal rule.
 - **The capture set is committed under `docs/captures/t11-*`.**
   `scripts/capture-osd-dnd.sh` (`make osd-dnd-capture`) runs the status/
   notification fixtures with DND, crops the menu-bar crescent to `t11-dnd.png`,
-  and drives a real Control Center Sound drag to present the OSD, writing
-  `t11-osd.png` and `t11-osd-context.png`. The T-11.3a/b Control Center stills
+  and drives a real Quick Settings Sound drag to present the OSD, writing
+  `t11-osd.png` and `t11-osd-context.png`. The T-11.3a/b Quick Settings stills
   remain as committed.
 
 ## Consequences
@@ -52,6 +52,6 @@ no-focus-steal rule.
   dismissal path headlessly.
 - `DF_OSD_FIXTURE` remains a capture-only seam; hardware media keys are still
   not wired (a later task routes them into `ShellController::showOsd`).
-- The `Icon.qml` `volume` change affects the Control Center Sound tile too; the
+- The `Icon.qml` `volume` change affects the Quick Settings Sound tile too; the
   gallery icon snapshot only renders the titlebar/utility glyphs, so it is
   unaffected.

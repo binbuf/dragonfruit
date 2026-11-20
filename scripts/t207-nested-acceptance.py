@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""T207 nested and fallback acceptance for the liquid-glass replacement.
+"""T207 nested and fallback acceptance for the Glass replacement.
 
 The acceptance is a matrix, not one screenshot:
 
@@ -17,7 +17,7 @@ The acceptance is a matrix, not one screenshot:
 matrix, the report and the per-surface reports. ``plan`` and ``score`` are used
 by ``make nested-acceptance-capture``.
 
-Reference crops come from the optional ``macos-liquid-glass`` checkout through
+Reference crops come from the optional ``macos-Glass`` checkout through
 ``docs/captures/glass-reference-manifest.json``. A requested reference run
 without the checkout records the reference rows OPEN; it never invents a
 score.
@@ -44,7 +44,7 @@ REFERENCE_MANIFEST = CAPTURES / "glass-reference-manifest.json"
 REFERENCE_ROOT = Path(
     __import__("os").environ.get(
         "DRAGONFRUIT_REFERENCE_ROOT",
-        str(REPO.parent / "macos-liquid-glass"),
+        str(REPO.parent / "macos-Glass"),
     )
 )
 
@@ -158,7 +158,7 @@ def parse_query(path: Path) -> dict:
             key = f"{name}/{sub}" if sub else name
             result["regions"][key] = fields
             # Keep the first region under the bare name as a fallback (the
-            # outer panel for Control Center, the panel for the Dock).
+            # outer panel for Quick Settings, the panel for the Dock).
             result["regions"].setdefault(name, fields)
         elif parts[0] == "material" and len(parts) >= 2 and parts[1].startswith("preset="):
             name = parts[1].split("=", 1)[1]
@@ -491,7 +491,7 @@ def score_case(case: dict, entry: dict) -> dict:
         "dock", "menu", "control-center"
     ):
         # Menu and popup surfaces are full-output transparent buffers; only the
-        # Dock/Control Center expose a panel rect.
+        # Dock/Quick Settings expose a panel rect.
         result["metrics"]["padded"] = None
 
     expect = case.get("expect", "sampled")
@@ -1047,7 +1047,7 @@ def _adaptation_rows() -> list[dict]:
             "evidence": "docs/captures/t206-first-party-chrome.md",
             "command": "make first-party-chrome-capture",
             "verdict": "adaptation",
-            "reason": "Settings Dark is adapted from the measured Finder pair; "
+            "reason": "Settings Dark is adapted from the measured Files pair; "
                       "the reference has no independent Settings Dark fit",
         },
         {

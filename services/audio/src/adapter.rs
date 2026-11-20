@@ -142,7 +142,7 @@ impl<S: AudioSource> AudioAdapter<S> {
         outcome
     }
 
-    /// Flip the default sink's mute state. The Control Center/OSD affordance.
+    /// Flip the default sink's mute state. The Quick Settings/OSD affordance.
     pub fn toggle_mute(&mut self) -> SetOutcome {
         let muted = self
             .snapshot()

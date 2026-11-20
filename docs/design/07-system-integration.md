@@ -16,14 +16,14 @@ equivalent) API intended exactly for custom desktop frontends.
 | Bluetooth | BlueZ | `org.bluez.Adapter1` and device objects; `bluetoothd` keeps handling controller/protocol details. |
 | Audio | PipeWire + WirePlumber | PipeWire supplies the audio/video graph; WirePlumber is the policy/session manager and provides an API intended for management/status applications. |
 | Power | UPower | Batteries and power devices over the system bus. |
-| Power profiles | power-profiles-daemon | performance / balanced / power-saver selection where the service exists (Battery pane, Control Center). |
+| Power profiles | power-profiles-daemon | performance / balanced / power-saver selection where the service exists (Battery pane, Quick Settings). |
 | Storage | UDisks2 + GIO/GVfs | UDisks provides block devices, monitoring, and mount operations; GIO has abstractions for user-interesting volumes and mounts. |
 | Printing & scanning | CUPS + SANE | IPP printing via the standard `org.cups.*` / freedesktop print APIs; drivers and queues stay with CUPS. SANE enumerates scanner devices. The adapter reads and writes through the client tools the stacks ship (`lpstat`/`lpadmin`/`cupsaccept`/`cupsreject`/`cancel`, `scanimage`); see [adr/0140](adr/0140-printers-and-scanners-adapter.md). |
 | Secrets | Secret Service API | Reuse the host keyring (e.g. gnome-keyring); we never build a credential store, and first-party apps never cache secrets themselves. |
 | Date & time | systemd-timedated | Timezone and NTP settings for the Settings panes. |
 | User accounts | accountsservice | User list, avatars, account type — for Settings' Users & Groups pane. |
 | Input devices | libinput | Keyboard/mouse/trackpad enumeration and per-device capabilities. Unlike the daemons above, the **user's** input settings are compositor-applied and settingsd-owned, per principle 3; the adapter is the inventory only. |
-| Mission Control / hot corners | compositor (`df_toplevel_manager`) | Trigger configuration and overview runtime state. Mission Control and hot corners are compositor-native: the compositor detects corners and owns the one overview machine, and the shell learns both over the private bridge. The adapter reuses that path; it is the projection, never a second detector. |
+| Overview / hot corners | compositor (`df_toplevel_manager`) | Trigger configuration and overview runtime state. Overview and hot corners are compositor-native: the compositor detects corners and owns the one overview machine, and the shell learns both over the private bridge. The adapter reuses that path; it is the projection, never a second detector. |
 | Notifications / Focus | notification service | The Focus/DND policy (mode, allow list, suppressed batch) and the active-banner / history state. The service already owns the queue, the history, and the admission rule (ADR [0058](adr/0058-focus-dnd-policy-semantics.md)); the adapter is the projection over its shell-facing JSON views and never reimplements them. |
 | Lock Screen policy | session idle engine + compositor lock | The `idle.*` stage delays the session's idle/lock engine applies ([ADR 0070](adr/0070-idle-timer-engine-and-policy.md)) and the compositor's fail-secure lock state ([ADR 0067](adr/0067-session-lock-protocol-and-ui.md)), mirrored by the shell over `df_toplevel_manager`. The adapter is the projection over the confirmed lock state and the applied policy; it never re-times a stage or re-implements a lock transition, and the display preferences are settingsd-owned. |
 | Menu Bar configuration | shell menu bar + menu-broker | The chrome, status-item model, and clock the shell's `MenuBar` owns, and the global application-menu resolution the menu-broker owns. The adapter is the projection over the effective auto-hide/background/global-menu flags, the clock options, and the live availability of each control; it never re-renders the bar or re-resolves a menu, and the durable preferences are settingsd-owned. |
@@ -36,7 +36,7 @@ equivalent) API intended exactly for custom desktop frontends.
 
 ## Principles
 
-1. **Replace the presentation, not the stack.** The Control Center (see
+1. **Replace the presentation, not the stack.** The Quick Settings (see
    [04-shell.md](04-shell.md)) and Settings (see [08-settings.md](08-settings.md))
    are completely custom UIs over these daemons.
 2. **Adapters are thin and testable.** Each adapter is a small, mockable
@@ -199,7 +199,7 @@ The two writes, `VpnAdapter::connect(uuid)` and `deactivate(uuid)`, are one
 no snapshot — the daemon pushes and the host re-reads. A polkit refusal becomes
 a `VpnAccess::ReadOnly { note }` degradation, exactly like the Wi-Fi join
 (ADR 0027): reads stay live and only the write affordances disable. The
-Settings pane and Control Center tile land with T-15.15b.
+Settings pane and Quick Settings tile land with T-15.15b.
 
 ## The Wi-Fi, Network, VPN, and firewall panes (T225)
 
@@ -344,13 +344,13 @@ normal hidden state. A machine that runs only power-profiles-daemon answers
 only UPower answers `Available` with `profiles_available()` false. Nothing
 blocks session startup in any case.
 
-The Settings pane and Control Center tile are T-15.6b
+The Settings pane and Quick Settings tile are T-15.6b
 ([adr/0129](adr/0129-battery-pane-and-tile.md)); T-15.6a ships the backend and
 its mock-driven tests only ([adr/0128](adr/0128-battery-power-profiles-adapter.md)).
 
 ### The Battery pane and tile (T-15.6b)
 
-T-15.6b ships the Settings pane and the Control Center tile as one functional
+T-15.6b ships the Settings pane and the Quick Settings tile as one functional
 unit over the T-15.6a adapter ([adr/0129](adr/0129-battery-pane-and-tile.md)).
 The bridge host's `Battery` interface gains the one write the pane raises:
 
@@ -427,7 +427,7 @@ session startup.
 
 ### The Bluetooth pane and tile (T-15.1b)
 
-The Settings Bluetooth pane and the Control Center tile are one functional unit
+The Settings Bluetooth pane and the Quick Settings tile are one functional unit
 over the same adapter. Both read the `dragonfruit-system-status` bridge host's
 `org.dragonfruit.SystemStatus1.Bluetooth` interface
 ([adr/0118](adr/0118-bluetooth-pane-and-tile.md)): its `State()` returns the
@@ -441,7 +441,7 @@ The pane is the macOS information architecture: a toggle card with the
 discoverable caption (`This <device> is discoverable as "<device>" while
 Bluetooth Settings is open.`), a `My Devices` list, and a `Nearby Devices`
 section that shows `Searching…` while an inquiry runs. Opening the pane starts
-discovery and closing it stops discovery. The Control Center tile carries the
+discovery and closing it stops discovery. The Quick Settings tile carries the
 same toggle plus the known-device rows and a `Bluetooth Settings…` entry point
 (the launch itself is T-16). The absence behavior mirrors the adapter's two hide
 rules: `bluetoothd` gone or no controller hides the tile and disables the pane's
@@ -506,7 +506,7 @@ scope.
 
 ### The Storage pane and tile (T-15.2b)
 
-The Settings Storage pane and the Control Center tile are one functional unit
+The Settings Storage pane and the Quick Settings tile are one functional unit
 over the same adapter. Both read the `dragonfruit-system-status` bridge host's
 `org.dragonfruit.SystemStatus1.Storage` interface
 ([adr/0120](adr/0120-storage-pane-and-tile.md)): its `State()` returns the flat
@@ -534,7 +534,7 @@ state.
 
 ### The Sound pane and tile (T-15.3b)
 
-The Settings Sound pane and the Control Center Sound tile are one functional
+The Settings Sound pane and the Quick Settings Sound tile are one functional
 unit over the audio adapter's routing path. Both read the
 `dragonfruit-system-status` bridge host's
 `org.dragonfruit.SystemStatus1.Audio` interface
@@ -549,7 +549,7 @@ unit: an `Output`/`Input` segmented control, a `Name`/`Type` device table whose
 row selection makes that device the default (`wpctl set-default`), an `Output
 volume` slider, a `Mute` toggle, and a `Balance` slider. `Sound Effects` holds
 `Alert sound`, `Play sound effects through`, `Alert volume`, and the three
-playback toggles. The Control Center tile stays compact: it reflects the default
+playback toggles. The Quick Settings tile stays compact: it reflects the default
 output device's name and the volume/mute state it already wrote, plus a `Sound
 Settings…` entry point (the launch itself is T-16).
 
@@ -614,7 +614,7 @@ click`, scrolling) as settingsd-owned, compositor-consumed settings.
 
 ### The Keyboard/Mouse/Trackpad pane and tile (T-15.4b)
 
-The Settings Keyboard, Mouse, and Trackpad panes and the Control Center
+The Settings Keyboard, Mouse, and Trackpad panes and the Quick Settings
 Keyboard tile are one functional unit over the input inventory. The three
 panes share one body (`apps/settings/InputPane.qml`) parameterised by
 `section`, so the pointer controls cannot drift between them. The inventory
@@ -634,7 +634,7 @@ The pointer keys map to `PointerSettings` in
 `compositor/src/input/settings.rs` and are the compositor's to apply; the
 keyboard-backlight and emoji-panel bridges are follow-ups, so those rows
 persist their preference today (the same split T-15.3b used for the Sound
-Effects keys). The Control Center tile is a compact read-only summary of the
+Effects keys). The Quick Settings tile is a compact read-only summary of the
 inventory plus a `Keyboard Settings…` entry point (the launch itself is T-16).
 
 Absence follows the adapter's two hide rules (ADR 0124). libinput gone, or a
@@ -642,9 +642,9 @@ running stack with no recognized device, hides the device list and shows a
 one-line note; the settingsd-backed preference rows stay live on the schema
 defaults, so an absent inventory never turns the panes into dead surfaces.
 
-## The Mission Control and hot corners path (T-15.5a)
+## The Overview and hot corners path (T-15.5a)
 
-Mission Control and hot corners are the one subsystem with **no external
+Overview and hot corners are the one subsystem with **no external
 daemon**: the compositor detects a corner in its input path
 (`compositor/src/input/hot_corners.rs`) and drives the single overview state
 machine (`compositor/src/overview/mod.rs`), and the shell learns both over the
@@ -654,7 +654,7 @@ re-implement detection or the transition — it is the **projection** of what th
 compositor already publishes, behind a `MissionControlSource` seam.
 
 The snapshot names the four corners and the five assignable actions (`none`,
-`Mission Control`, `Notification Center`, `Desktop Reveal`, `Lock Screen`), the
+`Overview`, `Notifications`, `Desktop Reveal`, `Lock Screen`), the
 dwell and inset, and the gesture-gating trio (`gestures.enabled`,
 `gestures.spaceSwitch`, `gestures.missionControl`) the compositor applies live
 over `set_input_policy`. It carries the runtime overview state too — open or
@@ -678,9 +678,9 @@ cannot be read is `Error`, visible and inert with the message. The
 absence and re-subscribe and `trigger` for the event stream
 ([adr/0126](adr/0126-mission-control-hot-corners-adapter.md)).
 
-### The Mission Control pane and tile (T-15.5b)
+### The Overview pane and tile (T-15.5b)
 
-T-15.5b adds the Settings pane and the Control Center tile as one functional
+T-15.5b adds the Settings pane and the Quick Settings tile as one functional
 unit ([adr/0127](adr/0127-mission-control-pane-and-tile.md)). It is the one T-15
 surface where **no services-layer host is added**: the only reader of the
 compositor's overview state is the shell itself (the `df_toplevel_manager`
@@ -689,12 +689,12 @@ client), and the settings values live in the same process. Adding a
 service to a Wayland client that does not exist, so the shell projects the tile
 locally instead.
 
-- The **Control Center tile** carries a trigger summary the shell computes from
+- The **Quick Settings tile** carries a trigger summary the shell computes from
   the settingsd values (`shell/src/controlcenterpolicy.cpp::missionControlView`
   mirrors the Rust `MissionControlSnapshot::label()`): `Gesture`,
   `Gesture, n corner(s)`, `n corner(s)`, or `No trigger`, with the `overview`
-  glyph, plus a `Mission Control Settings…` link. It is shell-native because
-  Mission Control is compositor-native.
+  glyph, plus a `Overview Settings…` link. It is shell-native because
+  Overview is compositor-native.
 - The **Settings pane** (`apps/settings/MissionControlPane.qml`) writes the
   revision-13 `overview.hotCorner*` assignment keys and the revision-1
   `gestures.*` trio. Every row applies live; the compositor already applies the
@@ -705,7 +705,7 @@ locally instead.
   schema defaults and it shows a one-line note. There is no adapter `present`
   hide rule, because there is no adapter view in the shell path.
 
-## The Notifications and Focus path (T-15.7a)
+## Notifications and Focus path (T-15.7a)
 
 Notifications and Focus do not wrap a host daemon the way Bluetooth or UPower
 do: the **notification service is ourselves** (`services/notifications`,
@@ -723,7 +723,7 @@ a **projection over our own service**, never a second queue or a second policy:
   `History()` — decoded into `NotificationsData` and folded into
   `NotificationsSnapshot`: the `FocusSnapshot` (mode, allow list, suppressed
   batch), the active banners, the recorded history, and the derived per-app
-  list (`AppNotifications`, the rows the Notifications pane draws).
+  list (`AppNotifications`, the rows Notifications pane draws).
 - **The writes** are the two Focus setters the service already exposes:
   `set_focus_mode` (`off`/`focus`/`dnd`, reusing the service's own `FocusMode`
   vocabulary) and `set_focus_allow_list`. T229a adds
@@ -741,7 +741,7 @@ a **projection over our own service**, never a second queue or a second policy:
 - **What is not here.** The global notification preferences the macOS pane
   shows (`Show previews`, `when display is sleeping`, `when screen is locked`,
   `when mirroring`) have no owner in the service; T-15.7b adds them as
-  settingsd keys (revision 14), not adapter state. The pane and Control Center
+  settingsd keys (revision 14), not adapter state. The pane and Quick Settings
   tile are T-15.7b.
 
 Like every adapter, the live D-Bus source is a thin mechanical layer behind the
@@ -749,7 +749,7 @@ Like every adapter, the live D-Bus source is a thin mechanical layer behind the
 states, the change stream, and absence in CI, and the live source is proven
 over a private `dbus-daemon` in `services/notify-adapter/tests/session_bus.rs`.
 
-### The Notifications and Focus panes and tile (T-15.7b)
+### Notifications and Focus panes and tile (T-15.7b)
 
 The pane and tile ship as one functional unit over the T-15.7a adapter. The
 bridge host's `Notifications` interface mirrors Bluetooth/storage/battery:
@@ -776,7 +776,7 @@ bridge host's `Notifications` interface mirrors Bluetooth/storage/battery:
   selector, the per-app and per-person allow lists, the `focus.schedule.*`
   schedule, and the `focus.shortcut` recorder, sharing the same adapter view.
   A named profile installs its mode and lists into the one policy; allowed
-  people come from the optional notification `sender` hint. The Control Center
+  people come from the optional notification `sender` hint. The Quick Settings
   **Focus tile** (T-11.3b) reflects the same service policy and remains the
   tile for this unit.
 - **Absence is layered.** The bridge host absent, or a foreign notification
@@ -828,14 +828,14 @@ the compositor's hot corners and overview machine. It reuses the session's own
 - **The Linux adaptation.** The session's idle engine blanks and locks at one
   delay each, so the macOS battery/AC display-off pair becomes the single
   `blank` stage; `display_off_after()` and `lock_after()` are the projection the
-  pane will draw. The pane and Control Center tile are T-15.8b.
+  pane will draw. The pane and Quick Settings tile are T-15.8b.
 
 ### The Lock Screen pane and tile (T-15.8b)
 
 The pane and tile ship as one functional unit, and — because there is no
 external daemon and the shell is the only process that speaks to the
 compositor — both are shell-native where the runtime is concerned, exactly like
-Mission Control (T-15.5b; ADR [0127](adr/0127-mission-control-pane-and-tile.md)):
+Overview (T-15.5b; ADR [0127](adr/0127-mission-control-pane-and-tile.md)):
 
 - **Settingsd keys, revision 15.** The Lock Screen pane
   (`apps/settings/LockScreenPane.qml`) writes the four display options as the
@@ -846,11 +846,11 @@ Mission Control (T-15.5b; ADR [0127](adr/0127-mission-control-pane-and-tile.md))
   `idle.lock` keys the session idle engine already reads (`IdlePolicy::from_keys`).
   Every row applies live and persists; there is no Apply button, and the pane
   never touches the compositor's lock hot path.
-- **The Control Center tile is projected by the shell.** No services-layer host
+- **The Quick Settings tile is projected by the shell.** No services-layer host
   is added (the lock state and idle policy are not on the bus). The pure
   `lockPolicyView(values)` in `shell/src/controlcenterpolicy.cpp` turns the
   `idle.lock` delay into the tile subtitle (`Password after 10 min`,
-  `No password required`), mirroring the Mission Control projection; the QML
+  `No password required`), mirroring the Overview projection; the QML
   tile renders it and raises `lockScreenSettingsRequested` (the Settings launch
   is T-16's entry point).
 - **Absence is a missing settings daemon.** With no daemon the pane's rows stay
@@ -904,17 +904,17 @@ stack, exactly as `dragonfruit-overview` projects the compositor and
   session startup. `MockMenuBar` drives the states in CI, with
   `kill`/`restart` for the re-subscribe lifecycle and `push` for the state and
   configuration stream.
-- **The Linux adaptation.** The Apple-only controls (AirDrop, Screen
-  Mirroring) and the deferred Search/Spotlight entry are omitted; the richer
+- **The Linux adaptation.** The reference-only controls (Nearby Transfer, Screen
+  Mirroring) and the deferred Search/Search entry are omitted; the richer
   macOS `Clock Options...` rows the shell clock does not yet render are
   recorded as follow-ups rather than shipped as dead controls. The pane and
-  Control Center tile are T-15.9b.
+  Quick Settings tile are T-15.9b.
 
 ### The Menu Bar pane and tile (T-15.9b)
 
 The pane and tile ship as one functional unit, and — because the bar is
 shell-native — both are shell-native where the runtime is concerned, exactly
-like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
+like Overview (T-15.5b) and the Lock Screen (T-15.8b; ADR
 [0135](adr/0135-menu-bar-pane-and-tile.md)):
 
 - **Settingsd keys, revision 16.** The Menu Bar pane
@@ -932,7 +932,7 @@ like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
   per-output reveal (T201). `applyStatusItems` gates each status item on its
   `menu.control.<id>` key, additive with the adapter's own availability, so a
   control shows only when its daemon is present *and* the user wants it.
-- **The Control Center tile is projected by the shell.** No services-layer
+- **The Quick Settings tile is projected by the shell.** No services-layer
   host is added. The pure `menuBarView(values)` in
   `shell/src/controlcenterpolicy.cpp` turns `menu.autoHide` into the tile
   subtitle (`Never` / `Always` / `In Full Screen Only`), mirroring
@@ -972,7 +972,7 @@ decisions a delegate must not repeat:
 The system extras all migrated: Wi-Fi, Bluetooth, Battery, Sound, Search,
 Notifications, Focus, Accessibility, Date & Time, Quick Settings, Mission
 Control, and the tray items. Search activation opens the Applications
-drawer's search field; Notifications opens the Notification Center; the clock
+drawer's search field; Notifications opens the Notifications; the clock
 opens the Date & Time panel; Wi-Fi/Bluetooth/Sound/Battery open their existing
 status popovers. Absence keeps the old semantics: an absent daemon is a
 hidden zero-width slot that does not consume the overflow budget, a
@@ -1028,7 +1028,7 @@ already owns, and the Settings deep link.
 - **Search** remains the registry action extra: activation opens the
   Applications drawer and `menu.control.search` hides/shows the slot.
 - **Quick Settings** remains the registry action extra that opens the one
-  Control Center panel. The panel footer adds `Quick Settings Settings…`, a
+  Quick Settings panel. The panel footer adds `Quick Settings Settings…`, a
   deep link to the customization pane; the panel's module state is the same
   live bridge-host/settingsd view it already renders.
 
@@ -1043,7 +1043,7 @@ would, and a second launch is a delivery, not a second window.
 present-but-unreadable view shows its error message in the popover. Every new
 row carries an accessible name and a disabled reason, and Up/Down/Return walk
 the same action list the pointer uses. The capture matrix is
-`make t232-extras-capture` (light/dark for each extra plus the Control Center
+`make t232-extras-capture` (light/dark for each extra plus the Quick Settings
 panel; see ADR [0249](adr/0249-menu-bar-extras-parity-and-settings-links.md)).
 
 ## The General, About, and Updates path (T-15.10a)
@@ -1091,7 +1091,7 @@ never a second notification queue. See
   re-subscribe lifecycle and `push` for the identity and update stream.
 - **The Linux adaptation.** The macOS `Chip`/`Memory`/`Serial number`/`macOS`
   rows map to the processor, memory, DMI serial, and the distribution release;
-  the Apple copyright footer is omitted. The pane and Control Center tile are
+  the reference copyright footer is omitted. The pane and Quick Settings tile are
   T-15.10b.
 
 ### The General pane and Software Update tile (T-15.10b)
@@ -1124,7 +1124,7 @@ provider is a distro seam, this pair rides the **bridge host**, not settingsd
   `Restart` buttons and offered-update list apply live through
   `Settings.refreshUpdates()`/`checkUpdates()`/`installUpdates()`/
   `rebootUpdates()`. The row's description carries the live update summary.
-- **The Control Center tile is `Software Update`.** The shell decodes the same
+- **The Quick Settings tile is `Software Update`.** The shell decodes the same
   view in `systemstatusmodel.*` and the tile shows the update summary plus the
   one action the state calls for (`Check for Updates` / `Install` / `Restart`),
   with a `General Settings…` link that is T-16's launch entry point. The tile
@@ -1139,7 +1139,7 @@ provider is a distro seam, this pair rides the **bridge host**, not settingsd
 - **Deviations (ADR 0122).** `Storage` is its own Dragonfruit sidebar pane
   (T-15.2b) rather than a General row; the other General rows have no provider
   yet and are omitted, not shipped dead; the `More Info...` button and the Apple
-  regulatory/copyright footer are omitted (no System Information app or legal
+  regulatory/copyright footer are omitted (no System Info app or legal
   page to open).
 
 ## The General group's host adapters (T226)
@@ -1236,14 +1236,14 @@ never a second package manager. See
   message. `MockAccounts` drives the states in CI, with `kill`/`restart` for
   the re-subscribe lifecycle and `push` for the user and group stream.
 - **The Linux adaptation.** The macOS `Guest User` row maps to a standard
-  account with `system_account` false; the Apple Account/iCloud rows, Touch ID,
-  and FileVault helper text are omitted or adapted per
-  [adr/0122](adr/0122-tahoe-interface-language-across-chrome.md). The pane and
-  Control Center tile are T-15.11b.
+  account with `system_account` false; the Account/cloud account rows, Fingerprint,
+  and Disk Encryption helper text are omitted or adapted per
+  [adr/0122](adr/0122-reference-interface-language-across-chrome.md). The pane and
+  Quick Settings tile are T-15.11b.
 
 ### The Users & Groups pane and tile (T-15.11b)
 
-The Settings pane and the Control Center tile ship as one functional unit over
+The Settings pane and the Quick Settings tile ship as one functional unit over
 the T-15.11a adapter, through the bridge host (ADR
 [0139](adr/0139-users-groups-pane-and-tile.md)) rather than by linking the Rust
 crate into the app.
@@ -1265,15 +1265,15 @@ crate into the app.
   controls disable and the user list stays live. The pane shows a one-line
   absence note (and a separate note when only the provider is missing); the
   tile hides on `unavailable`.
-- **The Linux adaptation of the reference.** The Apple Account/iCloud rows,
-  Touch ID, and the FileVault helper text are dropped or adapted per
-  [adr/0122](adr/0122-tahoe-interface-language-across-chrome.md);
+- **The Linux adaptation of the reference.** The Account/cloud account rows,
+  Fingerprint, and the Disk Encryption helper text are dropped or adapted per
+  [adr/0122](adr/0122-reference-interface-language-across-chrome.md);
   `Network account server` is dropped (no directory provider, and a disabled
   `Edit…` would be a dead control). `Add User…`/`Add Group…` open dialogs that
   perform the explicit writes; each user/group info button opens a dialog that
   edits the account type, disabled state, and automatic login (or group
   membership) and can delete the account/group.
-- **The Control Center tile fits without a scroll.** A fourteenth tile needed
+- **The Quick Settings tile fits without a scroll.** A fourteenth tile needed
   the panel's per-tile vertical padding compacted from `xs` to `xxs`; a
   scrolling panel was rejected because the compositor forwards no pointer-axis
   events (`ShellProtocol::onPointerAxis` is a no-op), so the scroll would be
@@ -1323,7 +1323,7 @@ halves, both reused, never reimplemented
 
 ### The Printers & Scanners pane and tile (T-15.12b)
 
-The Settings pane and the Control Center tile ship as one functional unit over
+The Settings pane and the Quick Settings tile ship as one functional unit over
 the T-15.12a adapter, through the bridge host (ADR
 [0141](adr/0141-printers-scanners-pane-and-tile.md)) rather than by linking the
 Rust crate into the app.
@@ -1357,7 +1357,7 @@ Rust crate into the app.
   `Set as Default Printer` action. T229 adds `Add Printer or Scanner…`
   (`lpinfo -v` discovery + `lpadmin` add) and an `Options & Supplies…` sheet
   (`lpoptions -l`/`-o`). A queue with no options is an honest empty sheet.
-- **The Control Center tile fits without a scroll.** The fifteenth tile needed
+- **The Quick Settings tile fits without a scroll.** The fifteenth tile needed
   the content gap compacted from `xs` to `xxs` (and the new tile's own gap
   compacted to `xs`); the fixed 360×1160 surface still holds every tile.
 
@@ -1403,7 +1403,7 @@ applications may reach the resources portals mediate, as
 
 ### The Privacy & Security pane and tile (T-15.13b)
 
-The Settings pane and the Control Center tile ship in T-15.13b over this
+The Settings pane and the Quick Settings tile ship in T-15.13b over this
 adapter, through the bridge host like the other T-15 adapters
 ([adr/0143](adr/0143-privacy-security-pane-and-tile.md)). That task declares
 no settingsd key — the portal store is the state — and wires the pane's flat
@@ -1411,7 +1411,7 @@ list of portal categories and the tile's app-count summary. It must not add a
 second permission implementation. The Secret Service and polkit host services
 the reference also names are not part of this adapter.
 
-- **The Control Center tile fits without a scroll.** The sixteenth tile needed
+- **The Quick Settings tile fits without a scroll.** The sixteenth tile needed
   the tiles' internal gap compacted from `sm` to `xs` (the content gap stays
   `xxs`); the fixed 360×1160 surface still holds every tile.
 
@@ -1500,27 +1500,27 @@ The accessibility adapter, `dragonfruit-accessibility-adapter`
 
 ### The Accessibility pane and tile (T-15.14b)
 
-The Settings pane and the Control Center tile ship in T-15.14b over this
+The Settings pane and the Quick Settings tile ship in T-15.14b over this
 adapter, through the bridge host like the other T-15 adapters
 ([adr/0145](adr/0145-accessibility-pane-and-tile.md)). The pane's live rows are
 read-only (the `Screen Reader` flag and the toolkit bridge), so it declares no
 new settingsd key: its one durable preference is the existing
 `accessibility.reduceMotion`, which the shell theme, the Dock, and the
-compositor already apply live. The Apple-only `Vision`/`Hearing` rows with no
+compositor already apply live. The reference-only `Vision`/`Hearing` rows with no
 Linux host owner are omitted. The compositor magnifier now exists (T-16.6b,
 [adr/0155](adr/0155-compositor-magnifier.md)); its Settings row and durable
 settingsd key are a follow-up, and a display-contrast preference is likewise
 left as a follow-up rather than shipped as a dead control. It must
 not add a second accessibility implementation.
 
-- **The Control Center tile fits without a scroll.** The seventeenth tile is a
+- **The Quick Settings tile fits without a scroll.** The seventeenth tile is a
   compact single-row summary and needed the tiles' internal gap compacted once
   more from `xs` to `xxs` (the content gap stays `xxs`); the fixed 360×1160
   surface still holds every tile.
 
 ### The Network advanced (VPN) pane and tile (T-15.15b)
 
-The Settings Network pane and the Control Center VPN tile ship in T-15.15b
+The Settings Network pane and the Quick Settings VPN tile ship in T-15.15b
 over the T-15.15a adapter, through the bridge host like the other T-15 adapters
 ([adr/0147](adr/0147-network-advanced-vpn-pane-and-tile.md)). The pane carries
 the honest VPN surface the macOS Network capture does not pin: a `VPN` group
@@ -1532,7 +1532,7 @@ layered: `unavailable` hides the item, a daemon with no VPN configured is
 rule), and a readable list polkit refuses to change stays visible with the
 writes disabled. It must not add a second VPN implementation.
 
-- **The Control Center tile fits without a scroll.** The eighteenth tile is a
+- **The Quick Settings tile fits without a scroll.** The eighteenth tile is a
   compact single-line summary; the Accessibility and VPN tiles are single-line,
   and the fixed surface grows to the 1164 px the nested output leaves below the
   bar, so all eighteen tiles fit without clipping.
@@ -1872,7 +1872,7 @@ interface and the second interactive one. Contract frozen in ADR
 - **The mode is a Dragonfruit option extension.** A `mode` string option
   (`fullscreen`/`region`/`window`) lets the desktop shortcut and the headless
   tests request a selection; a standard frontend that omits it is `fullscreen`
-  (or `region` when `interactive`). The desktop's Cmd+Shift+3/4 shortcut drives
+  (or `region` when `interactive`). The desktop's Super+Shift+3/4 shortcut drives
   the same overlay without a portal request (`beginLocal`).
 - **The selection UI is a shell overlay.** `Dragonfruit.Screenshot`/
   `SelectionOverlay.qml` is a pure view — full-output scrim, a mode badge, a
@@ -1978,10 +1978,10 @@ surface. Contract in
   caps (50 entries / 1 MiB each / 8 MiB total), honours pinned entries, refuses
   the common password-manager secret hints, clears the unpinned entries on lock
   (pinned survive), and serializes to a best-effort JSON file under the app's
-  data directory. The Control Center's clipboard section renders the store and
+  data directory. The Quick Settings' clipboard section renders the store and
   raises copy / pin / clear requests; copying an entry re-serves it through the
   data-control device — the one time the shell takes selection ownership.
-  `tst_clipboardhistory` and the Control Center tests are the headless proof.
+  `tst_clipboardhistory` and the Quick Settings tests are the headless proof.
 
 ## polkit authentication agent (T-13.6)
 

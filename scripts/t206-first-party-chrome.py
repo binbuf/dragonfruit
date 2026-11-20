@@ -8,7 +8,7 @@ window surface. T206 gives those two surfaces app-local optical presets:
 * Settings sidebar Light 0.986/0.857, toolbar Light 0.961/0.965;
 * Files sidebar Light 0.985/0.858, toolbar Light 0.994/0.922;
 * Files sidebar Dark 0.935/0.218, toolbar Dark 0.900/0.247;
-* Settings Dark is adapted from the measured Finder pair because System
+* Settings Dark is adapted from the measured Files pair because System
   Settings Dark has no independent fit.
 
 The presets are near-opaque scalar tint/alpha. The reference's small sidebar

@@ -41,7 +41,7 @@ files that matter:
 
 The checkout is a design reference only. The production build and ordinary
 gates must work without it. Do not vendor the mockup or its assets into this
-repository. Do not copy Apple captures, names, or artwork.
+repository. Do not copy reference captures, names, or artwork.
 
 The mockup's sheet buttons are inert, its lists are fixed examples, and its
 material is a CSS approximation. The task set must use the real adapters,
@@ -92,7 +92,7 @@ group headings. The groups are logical, not titled:
 |---|---|
 | Top | Software Update status row, Wi-Fi, Bluetooth, Network, VPN, Energy |
 | Middle | General, Accessibility, Appearance, Desktop & Dock, Displays, Menu Bar, Search, Wallpaper, Screen Saver |
-| Bottom | Notifications, Sound, Focus, Lock Screen, Privacy & Security, Users & Groups, Internet Accounts, Keyboard, Mouse, Trackpad, Game Controllers, Printers & Scanners |
+| Bottom | Notifications, Sound, Focus, Lock Screen, Privacy & Security, Users & Groups, Online Accounts, Keyboard, Mouse, Trackpad, Game Controllers, Printers & Scanners |
 
 The spacer is 13 pt. The status row is a real row: it shows the current update
 state and badge from the update provider, and opens General → Software Update.
@@ -220,20 +220,20 @@ disabled row is only for a real service that is present but unavailable.
 
 Do not add a settingsd key for a mockup row unless the key has a consumer in
 the same change. If a new key is needed, add the schema revision, the client
-mirror, `docs/settings-keys.md`, the consumer test, and the map row together.
+mirror, `docs/design/settings-keys.md`, the consumer test, and the map row together.
 
 ### 3.8 Removed, renamed, and merged panes
 
 | Current | Decision |
 |---|---|
-| Biometrics & Password | **Removed.** No fprintd/Touch ID feature is offered. Delete the pane, map rows, tests, and docs. |
-| Overview (Mission Control) | **Removed as a top-level pane.** Its rows move to Desktop & Dock → Workspace Overview. Keep `settings://pane/mission-control` and `settings://pane/overview` as aliases to that section. |
+| Biometrics & Password | **Removed.** No fprintd/Fingerprint feature is offered. Delete the pane, map rows, tests, and docs. |
+| Overview (Overview) | **Removed as a top-level pane.** Its rows move to Desktop & Dock → Workspace Overview. Keep `settings://pane/mission-control` and `settings://pane/overview` as aliases to that section. |
 | Quick Settings | **Removed as a top-level pane.** Rename it **Menu Bar Controls** and move it under Menu Bar. Keep `settings://pane/control-center` and `settings://pane/quick-settings` as aliases to Menu Bar → Menu Bar Controls. |
 | Screen Saver | **Kept as its own pane** after Wallpaper. The mockup puts it under Wallpaper; this is the one deliberate deviation. Wallpaper keeps a `Screen Saver…` footer link. |
-| Online Accounts | The mockup's **Internet Accounts** label is the macOS term; the naming gate maps it to the generic **Online Accounts**. Keep the stable `online-accounts` id, keep the title Online Accounts, and add `settings://pane/internet-accounts` as an alias plus the search synonym. |
+| Online Accounts | The mockup's **Online Accounts** label is the macOS term; the naming gate maps it to the generic **Online Accounts**. Keep the stable `online-accounts` id, keep the title Online Accounts, and add `settings://pane/internet-accounts` as an alias plus the search synonym. |
 | Autofill & Passwords | Renamed **Passwords & Keys**. Keep the `passwords` id. |
 | Backup | Renamed **Backups**. Keep the `backup` id. |
-| Mission Control | Renamed **Workspace Overview** in the Desktop & Dock section. |
+| Overview | Renamed **Workspace Overview** in the Desktop & Dock section. |
 | Stage | Renamed **Workspace Focus**. |
 | Storage | Stays a hidden General sub-pane; `settings://pane/storage` remains an alias. |
 | VPN | Becomes always visible, with the mockup's empty state. The optional-profile gate is removed. |
@@ -274,7 +274,7 @@ recording:
 | `settings://pane/overview` | Desktop & Dock → Workspace Overview |
 | `settings://pane/control-center` | Menu Bar → Menu Bar Controls |
 | `settings://pane/quick-settings` | Menu Bar → Menu Bar Controls |
-| `settings://pane/internet-accounts` | Internet Accounts |
+| `settings://pane/internet-accounts` | Online Accounts |
 | `settings://pane/biometrics` | Refused; the pane no longer exists |
 
 A refused link returns `false` from the shell resolver and is surfaced by the
@@ -334,7 +334,7 @@ owner. A task may not add a row that is not in this table or the mockup.
 
 Mockup: intro + big list of 12 rows (About, Software Update, Storage,
 Passwords & Keys, Date & Time, Language & Region, Login Items & Extensions,
-Sharing, Startup Disk, Backups, Device Management, Transfer or Reset).
+Sharing, Startup Disk, Backups, device management, Transfer or Reset).
 
 | Mockup row | Disposition | Owner / key |
 |---|---|---|
@@ -348,7 +348,7 @@ Sharing, Startup Disk, Backups, Device Management, Transfer or Reset).
 | Sharing | ship with live service rows | host sharing services |
 | Startup Disk | ship; read-only disk + restart | firmware/boot adapter |
 | Backups | ship; rename | `backup.*` |
-| Device Management | **omit** | No Linux MDM/profile owner in scope; map reason |
+| device management | **omit** | No Linux MDM/profile owner in scope; map reason |
 | Transfer or Reset | ship | reset/transfer actions |
 
 Sub-pane dispositions:
@@ -387,7 +387,7 @@ Sub-pane dispositions:
 Time, Language & Region, Login Items & Extensions, Sharing, Startup Disk,
 Backups, Transfer or Reset. Every row is a 52 pt `SettingsBigRow` with a 29 pt
 category tile; Passwords & Keys and Backups carry the mockup sub lines, and
-the other rows stay single-line. Device Management is not rendered: it is a
+the other rows stay single-line. device management is not rendered: it is a
 `state: "omitted"` row in `SettingsMap` with the reason “no Linux MDM/profile
 owner in scope”. The row tiles map to the closest vendored Phosphor glyphs
 (`info`, `download-simple`, `hard-drives`, `lock-simple`, `clock-counter-clockwise`,
@@ -674,7 +674,7 @@ duplicate the Menu Bar pane's Search visibility row.
 
 ### 5.10 Notifications and Focus
 
-- **Notifications**: intro, Notification Center description, Show previews,
+- **Notifications**: intro, Notifications description, Show previews,
   Show Notifications (sleeping/locked/mirroring), Application Notifications
   with the live app list and per-app editor. Remove the inline Focus section;
   Focus is its own pane.
@@ -705,7 +705,7 @@ Mockup: intro + big list of privacy categories + Security section + Advanced….
 Map each category to a real portal/permission owner. Keep Location Services
 (`privacy.locationServices`), Camera, Microphone, Screen Recording, Files &
 Folders, Local Network, Bluetooth, Input Monitoring, and other categories the
-portal store actually reports. Omit Apple-only or ownerless categories
+portal store actually reports. Omit reference-only or ownerless categories
 (Sensitive Content Warning, Personalized Ads, and any category with no portal
 owner) with map reasons.
 
@@ -718,13 +718,13 @@ The per-category detail page follows the mockup: description, app rows with
 switches, Add/Remove, and the System Services row where the host exposes it.
 No fake per-app permission is rendered.
 
-### 5.13 Users & Groups and Internet Accounts
+### 5.13 Users & Groups and Online Accounts
 
 - **Users & Groups**: mockup top-level list (User/Admin, Guest User), Add
   Group/Add User, automatic login disabled by LUKS, Network account server.
   Keep the real accountsservice/group provider; move the full user/group lists
   and dialogs to the mockup's detail/sheet surfaces.
-- **Internet Accounts**: rename, banner, empty state, Add Account…. Keep GOA
+- **Online Accounts**: rename, banner, empty state, Add Account…. Keep GOA
   as the delegate and the absent-service state.
 - **Biometrics & Password**: removed. Delete the pane, map rows, tests, and
   docs; do not leave a dead sidebar entry or a stale deep link.
@@ -812,14 +812,14 @@ before the task is marked done.
 | Flag | Decision | Review in |
 |---|---|---|
 | VPN visibility | Always visible with the mockup empty state; the old optional-profile gate is removed. | T285/T288 |
-| Accessibility depth | Keep the sub-panes with a real owner/delegate; omit the Apple-only sub-panes with map reasons. | T291a–T291e |
-| Privacy categories | Keep the categories with a real portal owner; omit Apple-only/ownerless categories with map reasons. | T298a/T298b |
-| Device Management | Omitted; no Linux MDM/profile owner in scope. | T287 |
+| Accessibility depth | Keep the sub-panes with a real owner/delegate; omit the reference-only sub-panes with map reasons. | T291a–T291e |
+| Privacy categories | Keep the categories with a real portal owner; omit reference-only/ownerless categories with map reasons. | T298a/T298b |
+| device management | Omitted; no Linux MDM/profile owner in scope. | T287 |
 | Search history/telemetry | Omitted; no search-history or telemetry owner. | T294 |
 | Menu Bar controls | Now Playing, Text Input, Backups, and Timer are omitted until a real status item exists. | T293a/T293b |
 | Game Controllers Home Button | Omitted unless a real controller-service consumer exists. | T300d |
 | Linux-only rows | Appearance icon/cursor/material, Dock hover/minimize, window rules, Menu Bar overflow/global menu, Search web/indexing, and Sound per-app volume stay reachable in advanced sheets. | T290/T292a/T293a/T294/T297a |
-| Accent palette and icons | Use the design-system palette and Phosphor/Tabler glyphs, not the mockup's Apple hex values or SVG paths. | T286/T290 |
+| Accent palette and icons | Use the design-system palette and Phosphor/Tabler glyphs, not the mockup's reference hex values or SVG paths. | T286/T290 |
 | Glass tint scope | Keep `appearance.transparency` and state its attached-menu scope; a global glass-tint key is a follow-up. | T290 |
 | T284 matrix | T302a supersedes the visual matrix; the real-host interaction matrix remains the release sign-off input. T302b batches the human sign-off. | T302a/T302b |
 
@@ -852,7 +852,7 @@ before the task is marked done.
 | T298a | Privacy | [298a-privacy.md](../tasks/system-settings-2/298a-privacy.md) |
 | T298b | Security | [298b-security.md](../tasks/system-settings-2/298b-security.md) |
 | T299a | Users & Groups | [299a-users-groups.md](../tasks/system-settings-2/299a-users-groups.md) |
-| T299b | Internet Accounts | [299b-internet-accounts.md](../tasks/system-settings-2/299b-internet-accounts.md) |
+| T299b | Online Accounts | [299b-internet-accounts.md](../tasks/system-settings-2/299b-internet-accounts.md) |
 | T299c | Biometrics removal | [299c-biometrics-removal.md](../tasks/system-settings-2/299c-biometrics-removal.md) |
 | T300a | Keyboard | [300a-keyboard.md](../tasks/system-settings-2/300a-keyboard.md) |
 | T300b | Mouse | [300b-mouse.md](../tasks/system-settings-2/300b-mouse.md) |

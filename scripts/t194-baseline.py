@@ -5,7 +5,7 @@
 The starting Dragonfruit appearance is recorded from the committed v0.1.1
 nested captures (``t20-chrome-*``) and the T-21 presentation benchmark.  The
 script crops the surfaces the glass work compares — Dock, menu bar, attached
-menu, detached menu, Control Center and notification banner — into stable
+menu, detached menu, Quick Settings and notification banner — into stable
 ``t194-glass-baseline-*`` files, hashes them, and records the frame, region,
 allocation and transport counters from the benchmark's stationary (idle) and
 moving (Dock sweep) snapshots.
@@ -48,7 +48,7 @@ SURFACES = [
     ("bar", "dock", "menu bar"),
     ("menu_attached", "menubar", "attached menu-bar dropdown"),
     ("menu_detached", "contextmenu", "detached Dock context menu"),
-    ("control_center", "controlcenter", "Control Center panel"),
+    ("control_center", "controlcenter", "Quick Settings panel"),
     ("banner", "notification", "notification banner"),
 ]
 
@@ -343,7 +343,7 @@ def _gaps(open_status: dict | None) -> list[dict]:
         {
             "id": "notification_center_unmapped",
             "status": "unmapped",
-            "reason": "no Notification Center shell surface is mapped; history and the "
+            "reason": "no Notifications shell surface is mapped; history and the "
             "compositor input action exist, but the reference stack/lower-panel fits are "
             "evidence only",
             "owner": "T204",
@@ -373,7 +373,7 @@ def _gaps(open_status: dict | None) -> list[dict]:
         {
             "id": "dark_banner_lower_panel",
             "status": "missing",
-            "reason": "dark banner and dark Notification Center lower panel are uncovered "
+            "reason": "dark banner and dark Notifications lower panel are uncovered "
             "as independent reference fits",
             "owner": "T205",
             "evidence": "docs/tasks/glass/plan/REFERENCE.md",

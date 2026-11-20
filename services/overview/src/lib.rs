@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! The Mission Control and hot corners adapter (T-15.5a).
+//! The Overview and hot corners adapter (T-15.5a).
 //!
-//! Mission Control and hot corners are **compositor-native** features: the
+//! Overview and hot corners are **compositor-native** features: the
 //! compositor detects a corner (`compositor/src/input/hot_corners.rs`) and
 //! drives the single overview state machine
 //! (`compositor/src/overview/mod.rs`); the shell learns about both over the

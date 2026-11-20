@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-T-05.6 must judge the full Mission Control gesture against one 60 Hz frame and
+T-05.6 must judge the full Overview gesture against one 60 Hz frame and
 record the shortfall honestly. The T-03 idle/latency instruments
 ([0009](0009-idle-trace-instrumentation.md), [0010](0010-latency-and-scanout-instruments.md))
 measure the whole session, so idle frames hide the gesture cost. The overview

@@ -47,7 +47,7 @@ They stay unchanged; this ADR only changes the look selected by default.
 ## Consequences
 
 - Sessions started after this change use the replacement glass by default: the
-  compositor veil, role presets, menu families, Control Center and
+  compositor veil, role presets, menu families, Quick Settings and
   notification materials, and the first-party app chrome.
 - A plain `reboot` no longer needs the environment variable to see the
   replacement; the variable is now only an explicit A/B or rollback switch.
@@ -63,6 +63,6 @@ They stay unchanged; this ADR only changes the look selected by default.
 - `compositor/src/material_preset.rs` (`Rollout`)
 - `design-system/Glass.qml`, `shell/src/shellcontroller.cpp`
 - `apps/settings/SettingsBridge.cpp`, `apps/files/FilesSettings.cpp`
-- `docs/settings-keys.md`, `docs/rendering.md`, `docs/runbook-drm-session.md`
+- `docs/design/settings-keys.md`, `docs/rendering.md`, `docs/design/runbook-drm-session.md`
 - ADR [0226](0226-t207-nested-acceptance-matrix.md), ADR
   [0227](0227-t208-native-rollout-gate.md)

@@ -2,8 +2,8 @@
 
 Compositor↔shell communication runs over **private, versioned Wayland
 protocols** — never by scraping public protocols
-([01-architecture.md](../docs/design/01-architecture.md)). The XMLs live in
-[`protocols/`](../protocols/) and ship as a lockstep set with the compositor
+([01-architecture.md](01-architecture.md)). The XMLs live in
+[`protocols/`](../../protocols/) and ship as a lockstep set with the compositor
 and shell; the versioning rules are in
 [ipc-versioning.md](ipc-versioning.md).
 
@@ -48,7 +48,7 @@ are logged.
 ### Trust model
 
 The model lives in
-[`compositor/src/shell/trust.rs`](../compositor/src/shell/trust.rs) and is
+[`compositor/src/shell/trust.rs`](../../compositor/src/shell/trust.rs) and is
 deliberately pure so the refusal matrix is unit-tested without a live
 compositor:
 
@@ -125,7 +125,7 @@ the request (the Dock has its own auto-hide).
   stable key keeps its element id and cached filtered texture across unrelated
   scene damage and tint-only changes. Removed regions and surfaces drop their
   slots and textures.
-- The filtered path runs the Kawase/liquid-glass chain; a veil preset resolves
+- The filtered path runs the Kawase/Glass chain; a veil preset resolves
   to the sharp path, which samples the compositor's region scene texture with
   no blur allocation. Neither path exposes the texture to QML or reads it back
   to the CPU.
@@ -166,7 +166,7 @@ is acked with `done` after the scene applies it (FR-3).
   `workspace_entered`/`left`, `output_entered`/`left`, `closed`, `done`.
 - **`df_workspace`** is one Space on one output. Spaces are per-output and
   ordered; activation is lockstep across outputs
-  ([03-workspaces.md](../docs/design/03-workspaces.md)). A fullscreen window
+  ([03-workspaces.md](03-workspaces.md)). A fullscreen window
   owns a dedicated, transient Space (`fullscreen` true). Requests: `activate`,
   `set_wallpaper`; events: `name`, `index`, `activated`, `fullscreen`,
   `wallpaper`, `removed`, `done`.
@@ -175,7 +175,7 @@ is acked with `done` after the scene applies it (FR-3).
   `done`, `removed`. Requests set mode/scale/transform (applied through
   Smithay's `Output::change_current_state`); VRR and night light are accepted
   and acked but their backend plumbing is a T-16 displays-pane item (see
-  [PROGRESS.md](tasks/legacy/PROGRESS.md), T-02 (legacy)).
+  `tasks/legacy/PROGRESS.md`, T-02 (legacy)).
 - **Manager requests** include the cross-cutting controls: workspace
   create/remove/reorder/activate, `enter`/`exit_mission_control`,
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,
@@ -189,8 +189,8 @@ is acked with `done` after the scene applies it (FR-3).
   offscreen pass of the frame and writes a PNG there, answering
   `screenshot_saved`/`screenshot_failed`. It is the only capture path, and no
   client-facing grab protocol exists
-  ([02-compositor.md](../docs/design/02-compositor.md), ADR
-  [0079](design/adr/0079-screenshot-capture-delivery-and-save-copy.md)).
+  ([02-compositor.md](02-compositor.md), ADR
+  [0079](adr/0079-screenshot-capture-delivery-and-save-copy.md)).
   `set_launch_origin` hands the Dock entry's tile rectangle to the compositor
   so a launching app's window appears from it and minimize/restore scale into
   and out of it (T-02.1b/T-02.2); it is keyed by `app_id` and remembered for
@@ -198,13 +198,13 @@ is acked with `done` after the scene applies it (FR-3).
   it is never sent. The shell now has a caller (T-14.7l): the Dock's
   `entryTileRect` signal feeds a bounded `desktopId -> rect` cache, and every
   launch path sends the rect in output coordinates before spawning the child
-  ([ADR 0105](design/adr/0105-dock-launch-origin-tile-handoff.md)).
+  ([ADR 0105](adr/0105-dock-launch-origin-tile-handoff.md)).
   `set_minimize_target` (v11) is the T237 counterpart for the
   `dock.minimizeIntoTileIcon=off` mapping: an empty window id publishes the
   Dock's shared minimized-region rect, a decimal window id publishes that
   minimized entry's resting tile, and a non-positive rect clears it. The
   compositor prefers a per-window tile, then the region, then the app tile,
-  then the centered fallback ([ADR 0258](design/adr/0258-dock-motion-launch-lift-and-minimize-targets.md)).
+  then the centered fallback ([ADR 0258](adr/0258-dock-motion-launch-lift-and-minimize-targets.md)).
   `set_motion_policy` forwards the resolved
   `appearance.colorScheme`, `dock.titlebarDoubleClick`, and
   `dock.minimizedAnimation`; `set_input_policy` forwards
@@ -214,7 +214,7 @@ is acked with `done` after the scene applies it (FR-3).
 - **Manager events** carry the cross-cutting broadcasts: `workspace_activated`,
   `focused`, `attention` (xdg-activation / demands-attention → Dock bounce),
   `hot_corner` (the same event whether triggered by pointer, gesture, or
-  keyboard), `overview_changed` (Mission Control), `app_switcher` (v4) with one
+  keyboard), `overview_changed` (Overview), `app_switcher` (v4) with one
   `app_switcher_entry` (v4) per app in recency order (the shell overlay's cards,
   T-06.2a), `input_action`, `progress`, and `app_accelerator`. `activation_result`
   (v8) is the compositor's reply to `activate_app`: `found` is 0 when the app had
@@ -237,11 +237,11 @@ We studied the wlr protocols and own our own; the meaningful deviations:
 
 | Area | wlr precedent | Dragonfruit | Why |
 |---|---|---|---|
-| Access | public extension surface | token-gated, trusted processes only | chrome is a privilege, not a public API ([02-compositor.md](../docs/design/02-compositor.md)) |
-| Versioning | per-interface `version` | lockstep set + handshake refusal | cross-version mixing is unsupported ([01-architecture.md](../docs/design/01-architecture.md)) |
+| Access | public extension surface | token-gated, trusted processes only | chrome is a privilege, not a public API ([02-compositor.md](02-compositor.md)) |
+| Versioning | per-interface `version` | lockstep set + handshake refusal | cross-version mixing is unsupported ([01-architecture.md](01-architecture.md)) |
 | Window identity | `wlr-foreign-toplevel` handle | compositor-stable `WindowId` in the handle | survives shell restarts; the shell never invents ids |
 | Workspaces | none | first-class `df_workspace` + lockstep activation | Spaces are a compositor primitive (T-05) |
-| Mission Control / app switcher | none | `overview_changed`, `app_switcher`, recency order | compositor-driven, shell-rendered ([04-shell.md](../docs/design/04-shell.md)) |
+| Overview / app switcher | none | `overview_changed`, `app_switcher`, recency order | compositor-driven, shell-rendered ([04-shell.md](04-shell.md)) |
 | Launch feedback | `xdg-activation` is public | `attention` broadcast to the shell | Dock bounce (T-10) without polling |
 | Output extras | mode/scale/transform | + VRR, night light, reserved zones | Displays pane (T-16) and chrome reserves |
 | Capture | `wlr-screencopy` exists | never advertised; portal-only | "if a capture is not a portal request, the answer is no" |
@@ -259,7 +259,7 @@ Both bindings are generated from the same XMLs:
 - **Rust** (services, the compositor, tests): `wayland-scanner`'s
   `generate_client_code!` / `generate_server_code!`. The compositor's server
   bindings are in
-  [`compositor/src/shell_protocol/mod.rs`](../compositor/src/shell_protocol/mod.rs);
+  [`compositor/src/shell_protocol/mod.rs`](../../compositor/src/shell_protocol/mod.rs);
   the conformance suite generates client bindings from the same files.
 - **Qt/C++** (shell, T-08): generate with Qt's `qtwaylandscanner` (or
   `wayland-scanner client-header` + `private-code`) against the same XMLs.

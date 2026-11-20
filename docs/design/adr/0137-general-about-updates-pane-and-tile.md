@@ -8,14 +8,14 @@
   ADR [0136](0136-general-about-updates-adapter.md),
   ADR [0135](0135-menu-bar-pane-and-tile.md),
   ADR [0120](0120-storage-pane-and-tile.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md)
+  ADR [0122](0122-reference-interface-language-across-chrome.md)
 
 ## Context
 
 T-15.10a shipped `dragonfruit-update-adapter`, which projects the host stack:
 the host identity (About) and the distribution update provider (Updates) behind
 a `SystemSource` seam. T-15.10b must ship the Settings General pane and the
-Control Center Software Update tile as one functional unit, with a documented
+Quick Settings Software Update tile as one functional unit, with a documented
 absence case, and must not add a second update implementation.
 
 The host identity is a real read of `/etc/os-release`, `/proc`, and the DMI
@@ -40,7 +40,7 @@ cross the `org.dragonfruit.SystemStatus1` session-bus bridge.
 - **The Settings pane is `General`, the tile is `Software Update`.** The pane
   (`apps/settings/GeneralPane.qml`) mirrors the capture's grouped disclosure
   rows — `About` and `Software Update` — each opening its dialog, because that
-  is the reference anatomy. The Control Center tile shows the live update
+  is the reference anatomy. The Quick Settings tile shows the live update
   summary plus the one action the state calls for (check, install, or restart)
   and a `General Settings…` link (T-16's launch entry point). No new settingsd
   keys: About is a live read and the update writes are explicit actions, like
@@ -55,7 +55,7 @@ cross the `org.dragonfruit.SystemStatus1` session-bus bridge.
   live and only the update controls disable. The Settings pane shows a one-line
   note when the bridge host is absent; the tile hides then too. The
   absent-provider matrix is asserted in `tst_settings_absence.qml`.
-- **The Control Center panel stays fixed-height.** The Software Update tile is
+- **The Quick Settings panel stays fixed-height.** The Software Update tile is
   added to the existing fixed 360×1160 surface by tightening the tile padding to
   the `spacing.xs` token across the panel (the inter-tile gap was already `xs`);
   the panel's content fits the surface with margin, asserted by

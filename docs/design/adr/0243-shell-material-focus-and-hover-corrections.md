@@ -4,8 +4,8 @@
 
 Status: accepted (2026-11-09)
 
-The component review uses the sibling `macos-design-review` repository's
-`docs/LINUX-HANDOFF.md`, `docs/SURFACE-REVIEW.md` and material schema. Those
+The component review uses the local reference workspace's handoff notes,
+surface review, and material schema. Those
 notes distinguish the sharp menu-bar veil, sampled shell cards and near-opaque
 app chrome. The Apps material fit remains an open reference row; the detached
 menu material is an adaptation for the drawer, not a new measured fit.

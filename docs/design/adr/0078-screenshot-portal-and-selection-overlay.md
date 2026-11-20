@@ -8,7 +8,7 @@ accepted
 
 T-13.3a adds the fourth concrete portal backend interface,
 `org.freedesktop.impl.portal.Screenshot`, and the selection UI the track's demo
-names: Cmd+Shift+3/4 and region/window/fullscreen selection. Like the
+names: Super+Shift+3/4 and region/window/fullscreen selection. Like the
 FileChooser (T-13.2a/ADR [0076](0076-filechooser-portal-and-presenter-seam.md)
 and T-13.2b/ADR [0077](0077-filechooser-picker-seat.md)) the standard method is
 *interactive*: it does not return until a presenter has produced a capture. The
@@ -47,8 +47,8 @@ and where the selection UI and its presenter client live.
   chosen rectangle to the capture seam (`captureRequested`) and the URI back to
   the portal (`complete`). The desktop's own shortcut calls `beginLocal` —
   the same view, no portal request. A missing portal is a normal state.
-- **The shortcut is split at the compositor.** Cmd+Shift+3 is
-  `InputAction::Screenshot` (fullscreen) and Cmd+Shift+4 is
+- **The shortcut is split at the compositor.** Super+Shift+3 is
+  `InputAction::Screenshot` (fullscreen) and Super+Shift+4 is
   `InputAction::ScreenshotRegion`; both already flowed through the one shortcut
   engine and are routed to the shell as `screenshot` / `screenshot-region`.
 

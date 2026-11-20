@@ -4,7 +4,7 @@
 
 Machine half of the T-20.4 frame-budget capture: it talks to the compositor's
 synthetic-input harness (``DRAGONFRUIT_SYNTHETIC_INPUT``), pins the material to
-``Full`` so the sampled blur/liquid-glass pass runs, drives a burst of animation
+``Full`` so the sampled blur/Glass pass runs, drives a burst of animation
 frames through the real animation clock, and reads the material/degrade state
 back over ``query material`` and ``query degrade``. The shell script
 (``scripts/t20-frame-budget.sh``) starts the demo, calls this, and then cleanly

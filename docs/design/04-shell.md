@@ -3,7 +3,7 @@
 ## Summary
 
 The shell is a Qt Quick process rendering the always-
-visible desktop chrome: menu bar, Dock, Control Center, notification center,
+visible desktop chrome: menu bar, Dock, Quick Settings, Notifications,
 and OSD. It talks to the compositor over private, versioned Wayland protocols
 and to system services over D-Bus.
 
@@ -34,7 +34,7 @@ shell/
 
 ## Shell surfaces
 
-Menu bar, Dock, Control Center, notification banners, and OSD are Wayland
+Menu bar, Dock, Quick Settings, notification banners, and OSD are Wayland
 surfaces created by the shell process through the private shell protocol
 (layer-shell-style reserved zones and stacking layers — see
 [02-compositor.md](02-compositor.md)). The chrome renders independently of
@@ -97,12 +97,12 @@ and [performance priorities](STATUS.md#9-chrome-performance-priorities).
 [a compositor-material surface](../design/02-compositor.md#backdrop-blur-pass-t-042),
 not a flat rectangle: the compositor frosts each panel with its `MaterialRole`
 (`Chrome` menu bar, `Dock` Dock, `Popup` menus/popovers/OSD/notifications/
-Control Center, `Drawer` Applications drawer) before the QML surface
+Quick Settings, `Drawer` Applications drawer) before the QML surface
 composites over it. The QML side therefore draws a **token-driven scrim**, not
 an opaque fill: the popup-family cards (the `Popup`/`Popover`/`ContextMenu`
 components, the Dock popovers, the OSD card, notification banners, and the
-Control Center panel) put `material.popupOpacity` in the fill so the sampled
-backdrop and liquid-glass pass read through, and keep their `border` hairline
+Quick Settings panel) put `material.popupOpacity` in the fill so the sampled
+backdrop and Glass pass read through, and keep their `border` hairline
 at full opacity as the rim complement. The menu bar and Dock already did this
 (`material.chromeOpacity`, `controls.dock.plate.fillOpacity`). Any QML surface
 that should show the material but paints an opaque fill makes the material
@@ -118,7 +118,7 @@ explicit future failure path, but a tier selection no longer emits it.
 `ShellProtocol` stores the role table and emits `materialRoleStateChanged`.
 `ShellController` owns one `MaterialPolicy` (`shell/src/materialpolicy.h`);
 the menu bar applies the `Chrome` role, the Dock the `Dock` role, and the whole
-popup family (`Popup` for menus, Dock popovers, Control Center, notification
+popup family (`Popup` for menus, Dock popovers, Quick Settings, notification
 banners, and the OSD; `Drawer` for the Applications drawer) reads the same
 policy object. A transient overlay therefore cannot pull the persistent chrome
 down, and QML never re-derives the degrade policy. A known v4 role wins over
@@ -156,14 +156,14 @@ The top menu bar hosts, from left to right:
   (no equivalent yet), Sleep, Restart, Shut Down, Lock Screen, and Log Out.
 - The **application menu** — the focused application's name, always present
   and bold, carrying the standard About / Settings / Hide / Hide Others /
-  Show All / Quit items. On the empty desktop this is **Files** (the Finder
+  Show All / Quit items. On the empty desktop this is **Files** (the Files
   model: the file manager owns the desktop — see [09-files.md](09-files.md)).
 - The active application's own menus (File, Edit, View, …) via the
   menu-broker (see [06-global-menu.md](06-global-menu.md)).
 - One status-item registry, left-to-right by priority: Wi-Fi, Bluetooth,
   battery, Sound, Search, Notifications, Focus/DND, Date & Time (clock),
   accessibility, third-party StatusNotifier items, then the Quick Settings
-  (Control Center) entry point and the Mission Control button/gesture target.
+  (Quick Settings) entry point and the Overview button/gesture target.
   The registry owns order, visibility, keyboard traversal and overflow
   (T231); the clock is a first-class extra whose click opens the Date & Time
   calendar panel.
@@ -179,7 +179,7 @@ overlay accepts pointer input only while the menu is logically open; the
 App-owned Files/desktop context menus paint the opaque local fallback because
 they have no trusted compositor backdrop. The Bluetooth slot now reads the
 existing bridge-host adapter and Menu Bar visibility key; it raises the same
-power/device/settings actions as the Control Center tile and hides on absence.
+power/device/settings actions as the Quick Settings tile and hides on absence.
 
 Menu-bar rendering follows the chrome frame pacer
 ([ADR 0285](adr/0285-menu-bar-rendering-follows-frame-pacer.md)). Pointer
@@ -244,7 +244,7 @@ measured width rule, `always` sets `StatusItemRegistry.forceOverflow` so the
 overflow affordance is present and every third-party item starts in it.
 `menu.control.workspaces` adds the live active-Space indicator from
 `ShellProtocol::overviewWorkspaces()` (hidden with one Space; activation opens
-Mission Control). Display and Screen Casting are shown disabled with the
+Overview). Display and Screen Casting are shown disabled with the
 exact "no menu-bar item" reason rather than as dead toggles.
 
 The system menu and application menu are **shell-owned chrome**, not part of
@@ -274,7 +274,7 @@ menu, submenu, Dock menu, tray menu, and top-bar dropdown.
 first-party Settings app through the same `.desktop` launch path as the Dock
 (the installed `org.dragonfruit.Settings.desktop`); if Settings is already
 running its window is focused instead of a second launch. Lock Screen routes to
-the same `ext-session-lock-v1` path as the Cmd+Ctrl+Q shortcut. The
+the same `ext-session-lock-v1` path as the Super+Ctrl+Q shortcut. The
 **"Quit to \<previous desktop\>"** row (T-12.6b) is shown only when the session
 was started by the dev harness (`DRAGONFRUIT_DEV_RETURN`); it runs the
 harness's return and logs out. The row's presence and label are unit-tested in
@@ -353,7 +353,7 @@ offscreen QPA, the compositor's pointer events are re-injected as
 `DockPointer` alias), because a zero timestamp makes `QQuickDragHandler` measure
 a bogus initial movement and grab the press before the sibling `TapHandler` can
 see the tap (T-14.7x). A stationary tap therefore always reaches the entry. The
-rule is chrome-wide: menu bar / main, Control Center, the FileChooser overlay,
+rule is chrome-wide: menu bar / main, Quick Settings, the FileChooser overlay,
 screenshot, screencast, polkit, overview, and the notification banner all inject
 through `ChromePointer`, so a later `DragHandler` anywhere cannot ship dead
 controls with green tests. See
@@ -533,12 +533,12 @@ plate geometry, the input region, and the live panel rect; it is the union of
 the entry rects about the *resting* plate's fixed anchored edge (so the geometry
 never feeds back into the entry layout) and `restingPlateRect` fixes that edge.
 The shell reads
-`surfaceThickness`/`reservedThickness` from it rather than re-deriving the math. The visual language follows the macOS Tahoe Dock
+`surfaceThickness`/`reservedThickness` from it rather than re-deriving the math. The visual language follows the the reference design Dock
 reference (local captures under `docs/reference/macos/`, never shipped): a
 rimmed translucent glass plate, rounded-square icon tiles at a consistent
 inset, and coherent hover/press/running states — reproduced with our own
 geometry and tokens, never Apple assets (ADR
-[0091](adr/0091-dock-tahoe-floating-glass-language.md)). The reserved zone is
+[0091](adr/0091-dock-floating-glass-language.md)). The reserved zone is
 the resting plate plus that margin; auto-hide reserves nothing. The plate is
 **cosmetic**, and its size is deliberately *not* driven by the magnified row:
 its cross axis (the bar's height on a bottom Dock) is fixed at the resting
@@ -930,7 +930,7 @@ pins as a stack (T-14.7k). The picker remains a **management** surface, not the
 launcher: the primary "start an app" affordance is the **Applications drawer**
 (T-19.2), a full-output `overlay` launcher listing every launchable app
 alphabetically with a search field, category pills, and a fixed-size tile grid,
-launching through the same path as the Dock. The Spotlight-equivalent *search*
+launching through the same path as the Dock. The Search-equivalent *search*
 pane remains deferred; the drawer's search filters its own list only. See
 [ADR 0090](adr/0090-dock-app-management-picker-and-drops.md),
 [ADR 0167](adr/0167-applications-drawer.md),
@@ -1015,10 +1015,10 @@ rather than a dead click. See T-14.7g.
 ## Applications drawer
 
 The **Applications drawer** (T-19.2) is the shell's primary "start an app"
-affordance, the macOS Launchpad analogue. It is a full-output `overlay` layer
+affordance, the macOS Applications analogue. It is a full-output `overlay` layer
 surface (namespace `apps-drawer`, keyboard on demand) fed by the app-index
 corpus: every launchable app, alphabetical by default, with the measured
-Spotlight Apps top row (a 34 pt Back button, a 58 pt rounded `SearchField`
+Search Apps top row (a 34 pt Back button, a 58 pt rounded `SearchField`
 with placeholder "Applications", and a 34 pt More button), a row of 26 pt
 translucent category capsule chips (default `All`), and the measured
 115×92 pt tile grid (77 pt icon, 18 pt label, 115 pt column pitch, 102 pt row
@@ -1067,12 +1067,12 @@ bar). It opens from F4 (`InputAction::ShowApps`) or the permanent Applications
 tile on the Dock: the shell injects the tile immediately after the first pinned
 tile (so it is second from the left on a default Dock), and it is a fixed
 affordance that cannot be dragged, reordered, or removed (its context menu's
-**Remove from Dock** row is disabled). The Spotlight-equivalent search pane
+**Remove from Dock** row is disabled). The Search-equivalent search pane
 remains deferred. See [ADR 0167](adr/0167-applications-drawer.md).
 
 ## App switcher
 
-The Cmd-Tab-style app switcher is **compositor-driven and shell-rendered**:
+The Super-Tab-style app switcher is **compositor-driven and shell-rendered**:
 the compositor owns the global keybind, the window list, and workspace
 awareness; the shell draws the overlay. Switching is **app-level, not
 window-level** — the macOS mental model:
@@ -1087,8 +1087,8 @@ Per-window selection is covered by the Dock window chooser and Mission
 Control (see [03-workspaces.md](03-workspaces.md)); the switcher stays
 app-first.
 
-The compositor-side state machine (T-06.1) lives in `app_switcher.rs`: Cmd+Tab
-opens/closes, Tab and the arrows cycle apps, Cmd+` (Cmd+Shift+`) cycles windows
+The compositor-side state machine (T-06.1) lives in `app_switcher.rs`: Super+Tab
+opens/closes, Tab and the arrows cycle apps, Super+` (Super+Shift+`) cycles windows
 within the selected app, Command release commits the selected window through
 the existing activation path (cross-Space, restore-if-minimized, and the same
 `activate_app` resolver the Dock uses), and Escape cancels with no focus
@@ -1099,13 +1099,13 @@ projection to draw the centered `app-switcher` `overlay` chrome surface
 recency order with the selection highlighted and an accessible `app_id`/name
 fallback, and the reduced-motion variant. The compositor renders the **live**
 window surfaces through the T-04 scene transform underneath — never thumbnails
-— and follows the window cursor, so Cmd+` swaps the preview. The shell does not
+— and follows the window cursor, so Super+` swaps the preview. The shell does not
 re-derive recency, cycle, or commit; pointer presses on the live previews are
 hit-tested by the compositor and commit or cancel the overlay (T-06.2b).
 
 ## Hot corners
 
-Configurable screen-corner triggers (Mission Control, notification center,
+Configurable screen-corner triggers (Overview, Notifications,
 desktop reveal, lock screen) are detected in the compositor's input path and
 dispatched to the shell, so they behave identically whether triggered by
 pointer, gesture, or keyboard.
@@ -1119,7 +1119,7 @@ part of the workspace scene and slides with it during switches (see
 Desktop icons belong to **Files** — the macOS model, where the file manager
 owns the desktop — rendered through a compositor desktop-layer surface. The
 T-19.3 implementation ships `dragonfruit-files --desktop`, the `background`
-layer between wallpaper and windows, icon view, click/Cmd/Shift multi-select,
+layer between wallpaper and windows, icon view, click/Super/Shift multi-select,
 rubber-band selection, open, and a background menu (see
 [09-files.md](09-files.md#desktop-icons-owned-by-files)). The session plan
 provisions the desktop token and starts
@@ -1142,7 +1142,7 @@ design-system motion rules as the rest of the chrome.
 ## Authentication agent
 
 The shell hosts the polkit authentication agent, so privileged operations
-requested by Settings, Control Center, and our services surface one
+requested by Settings, Quick Settings, and our services surface one
 consistent, design-system prompt rather than a toolkit default (see
 [07-system-integration.md](07-system-integration.md)).
 
@@ -1171,13 +1171,13 @@ clock for both the visible slot and the passive `StatusItemMeasure` width
 probe; neither the measurement row nor a slot owns a second boundary timer.
 See [ADR 0289](adr/0289-bounded-list-delegates-and-shared-clock.md).
 
-## Control Center
+## Quick Settings
 
 The user sees one highly curated panel. Internally it is sensibly reusing
 Linux components:
 
 ```text
-Control Center
+Quick Settings
 │
 ├── Wi-Fi ───────────── NetworkManager
 ├── Bluetooth ───────── BlueZ
@@ -1204,7 +1204,7 @@ marks, so the panel footer and the Settings pane cannot drift.
 A notification service and an on-screen-display service (volume/brightness
 changes, caps lock, battery warnings) run as independent components, following
 the modern-desktop pattern of separate notifications, OSD, and idle services.
-Focus/DND state lives with the notification service so Control Center and the
+Focus/DND state lives with the notification service so Quick Settings and the
 menu bar share one source of truth.
 
 **T-11.1a status.** `services/notifications` (`dragonfruit-notifications`)
@@ -1235,7 +1235,7 @@ with `suppressed: true` and counted in the policy's batch (cleared on return
 to `off`). The shell-facing interface adds `FocusPolicy()` (JSON `mode`,
 `allowList`, `batchedCount`), `SetFocusMode`, and `SetFocusAllowList`, and
 keeps the T-11.1a `DoNotDisturb`/`SetDoNotDisturb` pair as a compat mapping.
-The menu-bar reflection and Control Center tiles are T-11.2b/T-11.3b. See
+The menu-bar reflection and Quick Settings tiles are T-11.2b/T-11.3b. See
 [adr/0058](adr/0058-focus-dnd-policy-semantics.md).
 
 **T-11.2b status.** The menu bar reflects the policy. The shell reads
@@ -1248,7 +1248,7 @@ always part of the accessible name. The existing Dock launch-failure
 notification (T-11.1b) remains the failure path. See
 [adr/0059](adr/0059-menu-bar-focus-reflection.md).
 
-**T204 status (Notification Center).** The Center is mapped. Its entry points
+**T204 status (Notifications).** The Center is mapped. Its entry points
 are the menu-bar Notifications item (T231; the clock now opens the Date & Time
 panel instead), the compositor's `notification-center` input action (the
 default Control-Shift-N shortcut and any configured hot corner), all routed
@@ -1322,9 +1322,9 @@ second policy: selecting a profile installs its mode and its own allowed-apps /
 allowed-people lists into the one `FocusPolicy`, and a manual mode change
 selects the synthetic `custom` profile. The service serves the catalog and the
 active profile in `FocusPolicy()` (`profiles`, `activeProfile`,
-`activeProfileLabel`, `allowedPeople`); the menu bar, Control Center, and
+`activeProfileLabel`, `allowedPeople`); the menu bar, Quick Settings, and
 Settings all read that one view, and the profile label is the user-facing name
-(Control Center's subtitle and the menu-bar item's accessible name). Allowed
+(Quick Settings' subtitle and the menu-bar item's accessible name). Allowed
 people come from the optional `sender` / `x-dragonfruit-sender` `Notify` hint;
 an allow-listed person is admitted exactly like an allow-listed app, because
 the freedesktop contract has no person field. Per-app notification settings are
@@ -1336,7 +1336,7 @@ and `tst_dockcore` cover the behavior. See
 [adr/0252](adr/0252-notification-center-ramp-widgets-and-actions.md) and
 [adr/0253](adr/0253-focus-profiles-and-allowed-people.md).
 
-**T-11.3a status.** The Control Center panel exists: the menu-bar item (or the
+**T-11.3a status.** The Quick Settings panel exists: the menu-bar item (or the
 Control-Option-C shortcut, routed as the compositor's `control-center` input
 action) opens a top-right `control-center` overlay surface rendered from
 `shell/control-center/ControlCenter.qml`. The panel ships three tiles —
@@ -1345,14 +1345,14 @@ through the T-07 bridge host), and Display (the brightness slider, written to
 settingsd `display.brightness` and forwarded to the compositor as
 `df_output.set_brightness`). Escape and click-away dismiss it. The Wi-Fi radio
 is still read-only in the panel (`wifiWritable: false`); the NetworkManager
-adapter has a join path, but the Control Center radio toggle is not wired to it
+adapter has a join path, but the Quick Settings radio toggle is not wired to it
 yet ([STATUS.md](STATUS.md) G-10). Focus/DND, dark mode, and the a11y pass are
 T-11.3b. See [adr/0060](adr/0060-control-center-panel-and-brightness.md).
 
 **T-11.3b status.** T-11.3b added Focus/DND and Dark Mode to the original
 Wi-Fi, Sound, and Display tiles. The T-15 breadth wave then grew the panel to
 the full 18-tile set (Wi-Fi, Bluetooth, Storage, Focus, Sound, Display, Dark
-Mode, Keyboard, Mission Control, Battery, Lock Screen, Menu Bar, Software
+Mode, Keyboard, Overview, Battery, Lock Screen, Menu Bar, Software
 Update, Users, Printers, Privacy, Accessibility, VPN) plus the clipboard
 section; the tile-fit and absence rules are in
 [07-system-integration.md](07-system-integration.md). The Focus switch is Do
@@ -1374,23 +1374,23 @@ only log — opening Settings directly on a pane is a follow-up
 [adr/0061](adr/0061-control-center-toggles-and-a11y.md).
 
 **T235 status (measured grid and Edit Controls).** The panel is now the
-measured Control Center: a 292 pt module field (`4×64 + 3×12`), four 64 pt
+measured Quick Settings: a 292 pt module field (`4×64 + 3×12`), four 64 pt
 columns with 12 pt gaps, and modules spanning 1×1 (64×64), 2×1 (140×64), 2×2
 (140×140) and 4×1 (292×64). `shell/control-center/ControlCenterRegistry.qml`
 owns the 22-category catalogue, the measured 13-module default inventory
-(Wi-Fi, Bluetooth, Now Playing, AirDrop, Stage Manager, Screen Mirroring, Dark
-Mode, Capture Screen, Focus, Display, Sound, AirPlay Audio, Edit Controls) and
+(Wi-Fi, Bluetooth, Now Playing, Nearby Transfer, Stage Manager, Screen Casting, Dark
+Mode, Capture Screen, Focus, Display, Sound, Screen Casting Audio, Edit Controls) and
 the packing/pages/span rules. Expanded modules grow the outer panel: the Wi-Fi
 and Bluetooth sheets are 308 pt wide (the measured 308×87 and 308×64), and
-Focus, Screen Mirroring, Now Playing, Sound, Display and Battery have their own
+Focus, Screen Casting, Now Playing, Sound, Display and Battery have their own
 sheets. The outer plate stays α=0.265/tint=0.373, capsules 0.391/0.317, and the
 expanded outer plate is the separate measured `controlCenterExpandedOuter`
-preset (0.286/0.257); Control Center remains dark glass in Light. Edit
+preset (0.286/0.257); Quick Settings remains dark glass in Light. Edit
 Controls is the 736×900 catalogue with a 245 pt sidebar and 22 categories; it
 writes the same `quickSettings.modules`/`page2`/`page3`/`pageCount`/
 `activePage`/`menuBarOnly`/`spans`/`perDisplay` keys the live panel reads, all
 through the one settingsd client. Modules without a provider show an explicit
-unavailable state and reason (AirDrop, Stage Manager, Now Playing, Keyboard
+unavailable state and reason (Nearby Transfer, Stage Manager, Now Playing, Keyboard
 Brightness, Fast User Switching, ...). Menu-bar pinning is the catalogue's
 separate keyboard/AT-SPI target, not the grid drag. `make
 t235-control-center-capture` records the grid, sheets, pages, resize, absence

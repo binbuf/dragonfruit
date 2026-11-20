@@ -11,7 +11,7 @@
 ## Context
 
 T-15.14 splits the macOS Accessibility surface into an adapter (T-15.14a) and a
-Settings pane plus Control Center tile (T-15.14b). [07-system-integration.md]
+Settings pane plus Quick Settings tile (T-15.14b). [07-system-integration.md]
 and [08-settings.md] route the pane to
 "`settingsd` → compositor magnification + toolkit/AT-SPI settings": the
 compositor owns magnification, `settingsd` owns the durable presentation

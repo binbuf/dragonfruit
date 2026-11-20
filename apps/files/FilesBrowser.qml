@@ -17,7 +17,7 @@ QtObject {
     // The location the window is showing.
     property string currentUri: ""
     // The visited locations, oldest first, and the cursor into it. Selecting
-    // a new location truncates the redo tail, Finder-style.
+    // a new location truncates the redo tail, Files-style.
     property var history: []
     property int historyIndex: -1
     // Per-location view state: uri -> "icon" | "list". The schema names all

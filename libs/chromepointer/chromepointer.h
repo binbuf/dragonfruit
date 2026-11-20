@@ -12,7 +12,7 @@ class QWindow;
 // The compositor delivers chrome-surface pointer events over the private shell
 // protocol; the shell runs its chrome on the offscreen QPA, so `ShellController`
 // re-synthesizes them as `QMouseEvent`s into each offscreen chrome window (menu
-// bar, Control Center, Dock, chooser, screenshot, screencast, polkit, overview,
+// bar, Quick Settings, Dock, chooser, screenshot, screencast, polkit, overview,
 // notification banner). A bare `QMouseEvent` has `timestamp() == 0`, which makes
 // `QQuickDragHandler` measure a bogus initial movement and take the exclusive
 // grab on the press, so a sibling `TapHandler` never receives the tap.

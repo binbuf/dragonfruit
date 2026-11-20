@@ -13,7 +13,7 @@ network details, or Settings link; Bluetooth had paired devices but no
 discovery or nearby devices; Battery had the charge state but no power mode or
 Settings link; Sound had volume/mute but no output routing or Settings link;
 Search and Quick Settings had no explicit parity case. The Settings links in
-the Control Center were log-only stubs, so a click could not reach a pane.
+the Quick Settings were log-only stubs, so a click could not reach a pane.
 
 ## Decision
 
@@ -41,7 +41,7 @@ the Control Center were log-only stubs, so a click could not reach a pane.
 4. **Search and Quick Settings stay registry entries.** Search activation
    opens the Applications drawer (existing T231 path) and its visibility is the
    existing `menu.control.search` key. The Quick Settings item opens the one
-   Control Center panel; the panel footer adds `Quick Settings Settings…` so
+   Quick Settings panel; the panel footer adds `Quick Settings Settings…` so
    the extra also reaches its customization pane.
 
 ## Consequences
@@ -53,5 +53,5 @@ the Control Center were log-only stubs, so a click could not reach a pane.
 - The running-instance deep-link endpoint is a small Settings-app addition;
   the shell never parses a pane id itself.
 - The capture matrix (`make t232-extras-capture`) records each extra in light
-  and dark, plus the Control Center panel. Live host daemons remain manual
+  and dark, plus the Quick Settings panel. Live host daemons remain manual
   evidence, as with the other bridge-host surfaces.

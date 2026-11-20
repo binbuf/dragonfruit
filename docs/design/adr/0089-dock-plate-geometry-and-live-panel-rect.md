@@ -41,7 +41,7 @@ implemented.
   progress-based and interruptible.
 - **The shell declares the live panel rect.** An additive
   `df_layer_surface.set_panel_rect(x, y, w, h)` request (interface version
-  bump per `docs/ipc-versioning.md`; lockstep version unchanged) lets a chrome
+  bump per `docs/design/ipc-versioning.md`; lockstep version unchanged) lets a chrome
   surface name the rect it is actually painting. The Dock sends the live plate
   rect on every commit; the compositor intersects it with the surface geometry
   and uses it as the backdrop panel. When unset, the existing

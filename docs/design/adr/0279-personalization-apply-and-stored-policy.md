@@ -46,7 +46,7 @@ badge but not the rest of the macOS per-app sheet.
 4. **Notifications: store what the service cannot consume.** The four global
    presentation preferences stay settingsd keys but are marked stored-only in
    the map and the pane, because the service has no display-state input. The
-   four extra per-app options (lock screen, Notification Center count,
+   four extra per-app options (lock screen, Notifications count,
    previews, grouping) are one JSON blob (`notifications.appOptions`) until
    the service grows those fields. The service still owns allow/style/sound/
    badge and enforces them in admission.

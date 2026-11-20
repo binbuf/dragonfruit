@@ -1,14 +1,14 @@
-# ADR 0254 — Control Center measured grid, module registry, and Edit Controls
+# ADR 0254 — Quick Settings measured grid, module registry, and Edit Controls
 
 - **Status:** accepted
 - **Date:** 2026-11-10
 - **Task:** T235
 - **Related:** ADR 0222, `docs/design/23-macos-structural-surface-review.md` §6,
-  `docs/design/04-shell.md` Control Center
+  `docs/design/04-shell.md` Quick Settings
 
 ## Context
 
-The T-11/T-15 Control Center was a curated list of full-width tiles. The
+The T-11/T-15 Quick Settings was a curated list of full-width tiles. The
 2026-11-08 structural review measured the reference as a nested dark-glass
 grid: a 292 pt module field made of four 64 pt cells with 12 pt gaps, modules
 spanning 1×1/2×1/2×2/4×1, expanded sheets that grow the outer panel, and a
@@ -33,7 +33,7 @@ management surface for pages, spans or the full inventory.
    `controlCenterExpanded` region inside a separate
    `controlCenterExpandedOuter` plate (α=0.286/tint=0.257, measured). The
    collapsed outer plate stays α=0.265/tint=0.373 and the module capsules
-   stay α=0.391/tint=0.317. Control Center remains dark glass in Light.
+   stay α=0.391/tint=0.317. Quick Settings remains dark glass in Light.
 4. **Customization is one typed write path.** The Edit Controls surface writes
    `quickSettings.modules`, `page2`, `page3`, `pageCount`, `activePage`,
    `menuBarOnly`, `spans` and `perDisplay` through the shell's one settingsd
@@ -46,7 +46,7 @@ management surface for pages, spans or the full inventory.
    state and reason; it is never invented. The catalogue carries the measured
    addable modules even when their provider is absent.
 7. **One page is still one surface.** `quickSettings.perDisplay` is durable and
-   the panel reads it, but the shell still creates one Control Center surface;
+   the panel reads it, but the shell still creates one Quick Settings surface;
    per-display surfaces remain an explicit OPEN row.
 
 ## Consequences

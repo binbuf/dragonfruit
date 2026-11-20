@@ -14,7 +14,7 @@
 //!    [`VpnAdapter::refresh`] (or absence/error).
 //! 2. [`VpnSnapshot::from_data`] joins the settings connections to the active
 //!    connections, types each [`VpnKind`] and [`VpnState`], and derives the
-//!    labels the pane and the Control Center tile draw.
+//!    labels the pane and the Quick Settings tile draw.
 //! 3. The adapter drives the shared subscription lifecycle, so a
 //!    NetworkManager restart re-subscribes and re-syncs with no user-visible
 //!    error.

@@ -94,7 +94,7 @@ impl CornerRadii {
     }
 
     /// The largest radius; used where a single radius is still required
-    /// (the liquid-glass shader's SDF, the fallback feather).
+    /// (the Glass shader's SDF, the fallback feather).
     pub const fn max(self) -> i32 {
         let top = if self.top_left > self.top_right {
             self.top_left

@@ -4,7 +4,7 @@
 // The Storage pane never touches D-Bus: it binds the `Settings` singleton, and
 // the bridge forwards reads and writes here. The live `DbusStorageClient`
 // talks to the bridge host's `org.dragonfruit.SystemStatus1.Storage` interface
-// (the same adapter the Control Center tile reads), and `MockStorageClient`
+// (the same adapter the Quick Settings tile reads), and `MockStorageClient`
 // serves a deterministic fixture for the headless pane tests
 // (`DF_STORAGE_FIXTURE`). Absence is a normal state: `available()` is false and
 // the view is empty — never an error.

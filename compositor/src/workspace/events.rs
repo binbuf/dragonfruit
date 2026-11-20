@@ -2,7 +2,7 @@
 //! Workspace event broadcasts (T-05 FR-8).
 //!
 //! The compositor is the sole owner of workspace state; the shell, Dock,
-//! and Mission Control are observers. They learn about workspace changes
+//! and Overview are observers. They learn about workspace changes
 //! from this stream over the private protocol (T-07), never by polling.
 //! Until T-07 exists, [`WorkspaceDispatch`] is the single outbox, mirroring
 //! [`WindowDispatch`](crate::window::WindowDispatch).

@@ -14,7 +14,7 @@
 //! 1. An [`AccessibilitySource`] returns the raw [`AccessibilityData`] once per
 //!    [`AccessibilityAdapter::refresh`] (or absence/error).
 //! 2. [`AccessibilitySnapshot::from_data`] types the two flags and derives the
-//!    labels and glyph the pane and the Control Center tile draw.
+//!    labels and glyph the pane and the Quick Settings tile draw.
 //! 3. The adapter drives the shared subscription lifecycle, so a bus that comes
 //!    and goes re-subscribes and re-syncs with no user-visible error.
 //!
@@ -34,7 +34,7 @@
 //! durable accessibility preferences are `settingsd`'s and magnification is
 //! compositor-owned ([07-system-integration.md], principle 3), so this adapter
 //! has no writes — exactly as the input adapter is the inventory half. The
-//! Settings pane and Control Center tile land with T-15.14b.
+//! Settings pane and Quick Settings tile land with T-15.14b.
 //!
 //! # Testing
 //!

@@ -1,6 +1,6 @@
 [package]
 name = "dragonfruit-overview"
-description = "Mission Control and hot corners adapter: trigger configuration, overview state, and events (T-15.5a)"
+description = "Overview and hot corners adapter: trigger configuration, overview state, and events (T-15.5a)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

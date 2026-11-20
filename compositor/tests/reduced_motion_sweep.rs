@@ -25,7 +25,7 @@
 //!    must keep its reduced-motion single-step branch.
 //!
 //! The runtime behavior of each enumerated kind (appear/minimize/restore/
-//! close/zoom/fullscreen, Mission Control, Spaces switch, Desktop Reveal) is
+//! close/zoom/fullscreen, Overview, Spaces switch, Desktop Reveal) is
 //! asserted one frame at a time by the existing reduced-motion conformance
 //! tests in `window_conformance.rs` and `shell_protocol_conformance.rs`; this
 //! suite is the always-on structural gate that a *new* animation cannot slip

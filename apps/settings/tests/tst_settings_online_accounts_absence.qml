@@ -45,11 +45,11 @@ Item {
             compare(pane.ready, false);
             compare(pane.absenceNote.visible, true);
             compare(findChild(pane.absenceNote, "onlineAccountsAbsenceText").text,
-                    "Internet accounts are not installed.");
+                    "Online accounts are not installed.");
             compare(pane.absenceButton.text, "How to install\u2026");
             pane.absenceButton.clicked();
             compare(pane.delegateDialog.open, true);
-            compare(pane.delegateDialog.title, "Internet accounts are not installed");
+            compare(pane.delegateDialog.title, "Online accounts are not installed");
             pane.delegateDialog.accept();
         }
     }

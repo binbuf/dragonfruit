@@ -39,7 +39,7 @@ in-repo tests own versus the compositor.
   restart (`on-failure`), and a compositor death ends the session and stops
   everything else, never restarting the anchor.
 - **The T-12 capture is `docs/captures/t12-session.*`**: the nested desktop,
-  the first-party lock UI after the real Cmd+Ctrl+Q chord, a short clip, a
+  the first-party lock UI after the real Super+Ctrl+Q chord, a short clip, a
   `query lock`/`query session` transcript, and the kill-matrix test output.
   It is produced by `make session-capture`; the greeter/login ends of the
   demo remain DRM-gated (T-12.6).
@@ -49,7 +49,7 @@ in-repo tests own versus the compositor.
 - T-15.8b reads the `x` keys directly; "Never" is `0`, not a text spelling.
   The `from_keys` `never` spelling remains a parser leniency only.
 - Bumping `SCHEMA_VERSION` to 5 migrates older settings files by filling the
-  new defaults; `docs/settings-keys.md` and the shell's `MockSettingsClient`
+  new defaults; `docs/design/settings-keys.md` and the shell's `MockSettingsClient`
   defaults are kept in lockstep by their own tests.
 - The no-live-under-lock kill matrix on real hardware (VM, deliberate crash)
   is T-16.8a/T-17.5a; this ADR only fixes the in-repo half and the vocabulary.

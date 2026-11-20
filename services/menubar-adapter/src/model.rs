@@ -74,8 +74,8 @@ impl MenuBarAutoHide {
 /// One configurable control that can appear in the menu bar.
 ///
 /// The set is the Linux adaptation of the macOS `Menu Bar Controls` list:
-/// `Spotlight` is our deferred Search pane so it is omitted, and `AirDrop`,
-/// `Screen Mirroring`, and `Display` have no Linux equivalent and are omitted.
+/// `Search` is our deferred Search pane so it is omitted, and `Nearby Transfer`,
+/// `Screen Casting`, and `Display` have no Linux equivalent and are omitted.
 /// The ids match the shell's status-item ids (`shell/menubar/StatusItem.qml`,
 /// `shell/src/shellcontroller.cpp`), so a projection maps straight onto the
 /// status row; `Sound` carries the audio adapter's `volume` id.

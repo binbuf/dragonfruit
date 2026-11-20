@@ -2,8 +2,8 @@
 import QtQuick
 import Dragonfruit
 
-// The Control Center panel (T-11.3a/T-11.3b, measured grid T235): one
-// quick-settings surface opened from the menu-bar Control Center item (or its
+// The Quick Settings panel (T-11.3a/T-11.3b, measured grid T235): one
+// quick-settings surface opened from the menu-bar Quick Settings item (or its
 // keyboard shortcut). It is rendered into its own top-right `overlay` layer
 // surface by `ShellController`; this item is the panel's whole scene.
 //
@@ -1680,7 +1680,7 @@ Item {
                         }
                     }
 
-                    // Screen Mirroring: display settings plus an empty list.
+                    // Screen Casting: display settings plus an empty list.
                     Rectangle {
                         id: screenMirroringSheet
                         objectName: "screenMirroringSheet"

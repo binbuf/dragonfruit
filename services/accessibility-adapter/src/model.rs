@@ -4,7 +4,7 @@
 //!
 //! The model owns only the projection a consumer should not repeat: it types
 //! the two `org.a11y.Status` booleans, derives the labels and glyph the pane
-//! header and the Control Center tile draw, and computes the change stream
+//! header and the Quick Settings tile draw, and computes the change stream
 //! between two reads. It never enables a screen reader or turns on the
 //! accessibility bridge — the host stack owns that state; this is what it
 //! publishes.
@@ -67,7 +67,7 @@ impl AccessibilitySnapshot {
         }
     }
 
-    /// The Control Center label: `Screen Reader On`, `On`, or `Off`.
+    /// The Quick Settings label: `Screen Reader On`, `On`, or `Off`.
     pub fn label(&self) -> &'static str {
         if self.screen_reader {
             "Screen Reader On"

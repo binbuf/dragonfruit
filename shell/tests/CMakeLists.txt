@@ -292,8 +292,8 @@ set_tests_properties(tst_materialpolicy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Control Center tile -> owner mapping tests (T-11.3b / T-15.5b): the Focus and
-# dark-mode toggle spellings plus the Mission Control / hot corners trigger
+# Quick Settings tile -> owner mapping tests (T-11.3b / T-15.5b): the Focus and
+# dark-mode toggle spellings plus the Overview / hot corners trigger
 # summary the shell projects from the settingsd values. No bus, Wayland, or QML.
 qt_add_executable(tst_controlcenterpolicy
     tst_controlcenterpolicy.cpp
@@ -515,7 +515,7 @@ set_tests_properties(tst_focusschedule PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Notification Center state tests (T204): stable-keyed history normalization,
+# Notifications state tests (T204): stable-keyed history normalization,
 # active-only actions, keyboard selection, DND-suppressed rows, reconnect and
 # close reasons. No bus, Wayland, or QML.
 qt_add_executable(tst_notificationcenter
@@ -535,7 +535,7 @@ set_tests_properties(tst_notificationcenter PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Notification Center widget stack (T234): the 19-category catalogue, the
+# Notifications widget stack (T234): the 19-category catalogue, the
 # measured default Calendar card, add/remove/resize and provider absence.
 qt_add_executable(tst_widgetmodel
     tst_widgetmodel.cpp
@@ -575,7 +575,7 @@ set_tests_properties(tst_notifications PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Control Center panel tests (T-11.3a): the tile model and the Wi-Fi/volume/
+# Quick Settings panel tests (T-11.3a): the tile model and the Wi-Fi/volume/
 # brightness gestures render and raise the right requests.
 qt_add_executable(tst_controlcenter
     tst_controlcenter.cpp

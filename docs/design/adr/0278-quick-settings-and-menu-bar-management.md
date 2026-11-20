@@ -39,7 +39,7 @@ catalogue in the Settings app would be a second truth.
    menu-bar-only, per-display, and the `menu.control.*` marks the surface
    writes. A reset never leaves a control hidden with no visible reason.
 6. **The per-display row is disabled with the exact reason.** The shell ships
-   one Control Center surface; per-display panels need a compositor overlay per
+   one Quick Settings surface; per-display panels need a compositor overlay per
    output.
 7. **Menu Bar per-control options have real consumers.** Battery percentage is
    the existing `power.showPercentage`; Focus `menu.control.focusAlways` keeps
@@ -59,7 +59,7 @@ catalogue in the Settings app would be a second truth.
 - The panel, Edit Controls, and the Settings pane cannot drift: one registry,
   one key family, one reset.
 - `SCHEMA_VERSION` is 34; the new keys are additive and documented in
-  `docs/settings-keys.md`.
+  `docs/design/settings-keys.md`.
 - A future per-display panel must remove the disabled row and give the policy
   a real surface; the key is already durable.
 - A future menu-bar Display or Screen Casting item must replace the disabled

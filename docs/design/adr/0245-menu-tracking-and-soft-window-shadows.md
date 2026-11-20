@@ -2,7 +2,7 @@
 
 Status: accepted (2026-11-09)
 
-The sibling `macos-design-review/docs/REPORT.md` §3.5 describes immediate menu
+The local reference report §3.5 describes immediate menu
 opening, strongly frosted menu cards, and soft window shadows extending about
 30 pt. Its Apps material remains unmeasured. This pass builds on ADR 0244;
 the drawer opacity and submenu grace interval below are product choices,

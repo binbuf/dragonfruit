@@ -44,7 +44,7 @@ automatically.
 
 ## Why both Tabler and Phosphor?
 
-Tabler's outline set is the right match for the Tahoe-like line language of the
+Tabler's outline set is the right match for the Glass-like line language of the
 menu bar, Files, and the shell chrome. The System Settings category tile needs
 a **solid** near-white mark, and Tabler's filled set does not cover every
 category, so the tile keeps the pinned Phosphor `fill` weight

@@ -55,7 +55,7 @@ per interaction).
   the idle trace. The daemon-signal subscription (NetworkManager signals,
   `pw-mon`, UPower `PropertiesChanged`) lands with them; until then a view
   updates on open/action, not on every daemon push.
-- T-11 (Control Center) and T-15 (remaining adapters) consume the same
+- T-11 (Quick Settings) and T-15 (remaining adapters) consume the same
   service rather than re-hosting adapters.
 - `make e2e` runs `cargo test -p dragonfruit-system-status`, so the bridge
   core cannot regress silently; the D-Bus transport itself is compile-checked

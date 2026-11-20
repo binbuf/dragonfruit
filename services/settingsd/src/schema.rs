@@ -162,7 +162,7 @@ pub enum KeySemantic {
     Color,
     /// An empty string or an absolute path with no control characters.
     AbsolutePath,
-    /// Control Center module ids from the one shell registry.
+    /// Quick Settings module ids from the one shell registry.
     ModuleList,
     /// Weekday ids (`mon`…`sun`).
     DayList,
@@ -177,7 +177,7 @@ pub enum KeySemantic {
 }
 
 impl KeySemantic {
-    /// The Control Center inventory. Kept here as the daemon-side mirror of
+    /// The Quick Settings inventory. Kept here as the daemon-side mirror of
     /// `shell/control-center/ControlCenterRegistry.qml` so a persisted page
     /// list cannot name a module the shell does not have.
     pub const MODULES: &'static [&'static str] = &[
@@ -414,7 +414,7 @@ impl KeySpec {
                 }
                 for item in items {
                     if !KeySemantic::MODULES.contains(&item.as_str()) {
-                        return Err(self.invalid(format!("unknown Control Center module {item:?}")));
+                        return Err(self.invalid(format!("unknown Quick Settings module {item:?}")));
                     }
                 }
                 Ok(())
@@ -756,7 +756,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 1,
-        summary: "Vertical swipe opens Mission Control.",
+        summary: "Vertical swipe opens Overview.",
     },
     // ── Trackpad gesture breadth (T280) ─────────────────────────────────
     // The More Gestures rows. The recognizer already owns the master switch,
@@ -805,7 +805,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: true,
         since: 37,
-        summary: "Two-finger swipe from the right edge opens Notification Center.",
+        summary: "Two-finger swipe from the right edge opens Notifications.",
     },
     KeySpec {
         key: "gestures.showDesktop",
@@ -1758,7 +1758,7 @@ pub const KEYS: &[KeySpec] = &[
         min: Some(0.0),
         max: Some(1.0),
         owner: "apps/settings",
-        consumer: "apps/settings Battery pane",
+        consumer: "apps/settings Energy pane",
         semantic: KeySemantic::None,
         stored_only: false,
         since: 22,
@@ -1982,11 +1982,11 @@ pub const KEYS: &[KeySpec] = &[
         since: 11,
         summary: "Output balance from Left (0.0) to Right (1.0); 0.5 is centered.",
     },
-    // ── Mission Control / hot corners (T-15.5b) ─────────────────────────
-    // Mission Control and hot corners are compositor-native: the compositor
+    // ── Overview / hot corners (T-15.5b) ─────────────────────────
+    // Overview and hot corners are compositor-native: the compositor
     // owns the one overview machine and the corner detector, and the shell
     // mirrors both over `df_toplevel_manager`. These keys are the durable
-    // trigger *configuration* the Mission Control pane writes; the action ids
+    // trigger *configuration* the Overview pane writes; the action ids
     // are the `HotCornerAction::id()` spellings the compositor's
     // `HotCornerConfig` uses. T276 adds the per-corner modifier and
     // `overview.switchToAppSpace`; the shell forwards the whole snapshot in
@@ -2171,7 +2171,7 @@ pub const KEYS: &[KeySpec] = &[
         summary: "Activating an app window on another Space switches to that Space.",
     },
     // ── Notifications presentation (T-15.7b) ────────────────────────────
-    // The four global "Notification Center" preferences the Notifications
+    // The four global "Notifications" preferences the Notifications
     // pane owns. They are presentation policy, not the notification service's
     // queue or Focus admission rule (that lives in `services/notifications`,
     // ADR 0058/0130), so they belong in settingsd like the other desktop
@@ -2713,7 +2713,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 24,
-        summary: "Show the Notifications item in the menu bar when the service is present.",
+        summary: "Show Notifications item in the menu bar when the service is present.",
     },
     KeySpec {
         key: "menu.control.controlCenter",
@@ -3416,7 +3416,7 @@ pub const KEYS: &[KeySpec] = &[
         summary: "Derive the accent from the wallpaper when no explicit accent is set.",
     },
     // ── Quick Settings customization (T227) ──────────────────────────────
-    // The ordered module ids the Control Center panel renders. An empty list
+    // The ordered module ids the Quick Settings panel renders. An empty list
     // means the built-in order. `menuBarOnly` names modules that stay in the
     // menu bar but are removed from the panel.
     KeySpec {
@@ -3436,7 +3436,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::ModuleList,
         stored_only: false,
         since: 21,
-        summary: "Ordered Control Center module ids; empty means the built-in order.",
+        summary: "Ordered Quick Settings module ids; empty means the built-in order.",
     },
     KeySpec {
         key: "quickSettings.menuBarOnly",
@@ -3451,7 +3451,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 21,
-        summary: "Module ids that stay in the menu bar and are hidden from the Control Center panel.",
+        summary: "Module ids that stay in the menu bar and are hidden from the Quick Settings panel.",
     },
     // ── T235: measured grid, pages and per-display policy ────────────────
     KeySpec {
@@ -3467,7 +3467,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::ModuleList,
         stored_only: false,
         since: 25,
-        summary: "Ordered module ids on the second Control Center page.",
+        summary: "Ordered module ids on the second Quick Settings page.",
     },
     KeySpec {
         key: "quickSettings.page3",
@@ -3482,7 +3482,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::ModuleList,
         stored_only: false,
         since: 25,
-        summary: "Ordered module ids on the third Control Center page.",
+        summary: "Ordered module ids on the third Quick Settings page.",
     },
     KeySpec {
         key: "quickSettings.pageCount",
@@ -3497,7 +3497,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 25,
-        summary: "How many Control Center pages exist (1-3).",
+        summary: "How many Quick Settings pages exist (1-3).",
     },
     KeySpec {
         key: "quickSettings.activePage",
@@ -3512,7 +3512,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 25,
-        summary: "The Control Center page shown when the panel opens.",
+        summary: "The Quick Settings page shown when the panel opens.",
     },
     KeySpec {
         key: "quickSettings.perDisplay",
@@ -3527,7 +3527,7 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 25,
-        summary: "Show Control Center on every display instead of the active display only.",
+        summary: "Show Quick Settings on every display instead of the active display only.",
     },
     KeySpec {
         key: "quickSettings.spans",
@@ -3557,10 +3557,10 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 34,
-        summary: "User-facing names for the Control Center pages; empty entries fall back to Page N.",
+        summary: "User-facing names for the Quick Settings pages; empty entries fall back to Page N.",
     },
     // ── Search (T227) ────────────────────────────────────────────────────
-    // Durable Spotlight-equivalent preferences. T246 owns the search service
+    // Durable Search-equivalent preferences. T246 owns the search service
     // that reads them; until then the pane reports the service as absent.
     KeySpec {
         key: "search.categories",
@@ -4211,9 +4211,9 @@ mod tests {
             .is_err());
     }
 
-    /// The Mission Control / hot corners keys (T-15.5b): the four corner
+    /// The Overview / hot corners keys (T-15.5b): the four corner
     /// assignments, additive in revision 13. The gesture trio that also opens
-    /// Mission Control stays the revision-1 `gestures.*` keys.
+    /// Overview stays the revision-1 `gestures.*` keys.
     #[test]
     fn the_hot_corner_keys_are_declared_in_revision_thirteen() {
         for (key, default) in [
@@ -4250,8 +4250,8 @@ mod tests {
         }
     }
 
-    /// The Notifications presentation keys (T-15.7b): the four global
-    /// Notification Center preferences the Notifications pane owns, additive
+    /// Notifications presentation keys (T-15.7b): the four global
+    /// Notifications preferences Notifications pane owns, additive
     /// in revision 14. The Focus mode and per-app allow list stay on the
     /// notification adapter, not here.
     #[test]

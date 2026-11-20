@@ -35,7 +35,7 @@ Item {
         }
         return "titlebar";
     }
-    // The 66 pt Disk Utility variant: `unified` plus the labelled toolbar row.
+    // The 66 pt Disks variant: `unified` plus the labelled toolbar row.
     property bool labelledToolbar: false
     // A document/app-specific toolbar row added to the style baseline.
     property real extraToolbarRow: 0

@@ -7,7 +7,7 @@ accepted
 ## Context
 
 T-15.1a landed `dragonfruit-bluetooth` as a library with no consumer. T-15.1b
-must ship the Settings Bluetooth pane and the Control Center tile together (no
+must ship the Settings Bluetooth pane and the Quick Settings tile together (no
 half-panes), both rendering the same adapter and calling its four writes. The
 C++ Settings app and shell cannot link a Rust adapter (D-Bus is the services
 seam, [0029](0029-system-status-bridge-host.md)); the other menu-bar surfaces
@@ -32,7 +32,7 @@ adapters the existing `StatusHost` owns.
   write invents a snapshot.
 - **The shell and the app each hold a thin client.** The shell's
   `DbusSystemStatusClient` gains the four writes and a `bluetoothState` signal
-  (the Control Center tile and the model's second hide rule); the Settings app
+  (the Quick Settings tile and the model's second hide rule); the Settings app
   gets a small `BluetoothClient` seam with a `DF_BLUETOOTH_FIXTURE` in-process
   mock, exactly as the Wallpaper pane uses `DF_WALLPAPER_FIXTURE`. Panes never
   touch D-Bus directly.

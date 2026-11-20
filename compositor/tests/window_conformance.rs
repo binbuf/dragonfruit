@@ -4783,7 +4783,7 @@ fn parse_spaces(report: &str) -> Vec<SpaceReport> {
         .collect()
 }
 
-/// T-05.1a acceptance: with Mission Control open, the **live** window surfaces
+/// T-05.1a acceptance: with Overview open, the **live** window surfaces
 /// are transformed into the documented grid — one uniform scale, centered in
 /// non-overlapping cells, each mapped from its committed geometry. The
 /// transform interpolates on the shared overview progress and reverses when
@@ -4804,7 +4804,7 @@ fn overview_grid_transforms_live_surfaces_into_the_grid() {
     // Closed: no grid.
     assert!(
         !parse_grid(&input.query("query grid")).active,
-        "there must be no grid before Mission Control opens"
+        "there must be no grid before Overview opens"
     );
 
     let mut mapped = Vec::new();
@@ -4820,7 +4820,7 @@ fn overview_grid_transforms_live_surfaces_into_the_grid() {
     let decorations = parse_decorations(&input.query("query decorations"));
     assert_eq!(decorations.len(), 3, "three live surfaces: {decorations:?}");
 
-    // Open Mission Control and catch it mid-transition: the transform is the
+    // Open Overview and catch it mid-transition: the transform is the
     // interpolated rect, not yet the grid cell.
     input.send("swipe-begin 4");
     input.send("swipe-update 0 -100");
@@ -4908,7 +4908,7 @@ fn overview_grid_transforms_live_surfaces_into_the_grid() {
 
 /// T-05.1b acceptance: a committing client ("video") keeps advancing at the
 /// reduced grid scale — fresh buffers keep producing compositor frames while
-/// Mission Control is open and the grid keeps tracking the one live surface
+/// Overview is open and the grid keeps tracking the one live surface
 /// (never a frozen thumbnail) — and the T-04 material degrade tier is
 /// selectable and applied to the grid composition.
 #[test]
@@ -4928,7 +4928,7 @@ fn overview_grid_keeps_live_video_advancing_and_applies_degrade_tier() {
         map_toplevel_with_app_id(&mut state, &mut queue, "org.dragonfruit.Video");
     let mut files = vec![initial];
 
-    // Open Mission Control and settle it.
+    // Open Overview and settle it.
     input.send("swipe-begin 4");
     input.send("swipe-update 0 -100");
     input.send("swipe-update 0 -100");
@@ -5144,7 +5144,7 @@ fn overview_gesture_frame_budget_is_traced_and_reports_the_degrade_tier() {
     assert_eq!(idle.budget_us, 16_000);
     assert_eq!(idle.tier, "full", "the default material tier is Full");
 
-    // A full Mission Control gesture: open on the animation clock (the
+    // A full Overview gesture: open on the animation clock (the
     // discrete keyboard trigger shares the one progress pipeline and renders
     // ~12 frames over its 200 ms curve), then close it the same way.
     input.send("key 29 down");
@@ -5229,7 +5229,7 @@ fn overview_gesture_frame_budget_is_traced_and_reports_the_degrade_tier() {
     );
 }
 
-/// T-05.2 acceptance: with Mission Control open, a left click on a **live**
+/// T-05.2 acceptance: with Overview open, a left click on a **live**
 /// representation hit-tests the interpolated grid transform (not the
 /// committed geometry), routes through the one selection round-trip, closes
 /// the overview, and focuses that window. The other live surfaces stay mapped
@@ -5257,7 +5257,7 @@ fn overview_click_selects_and_focuses_the_live_representation() {
         mapped.push((surface, toplevel, file));
     }
 
-    // Open Mission Control and settle it: three live representations.
+    // Open Overview and settle it: three live representations.
     input.send("swipe-begin 4");
     input.send("swipe-update 0 -100");
     input.send("swipe-update 0 -100");
@@ -5311,7 +5311,7 @@ fn overview_click_selects_and_focuses_the_live_representation() {
     );
 }
 
-/// T-05.3 acceptance: with Mission Control open, pressing on a **live**
+/// T-05.3 acceptance: with Overview open, pressing on a **live**
 /// representation and dragging it onto another Space's workspace-strip card
 /// assigns the window to that Space through `move_to_workspace`. The overview
 /// stays open and the moved window leaves the active grid; every live surface
@@ -5350,7 +5350,7 @@ fn overview_drag_moves_the_live_representation_between_spaces() {
         .clone();
     assert!(target.windows == 0, "destinations start empty: {spaces:?}");
 
-    // Open Mission Control and settle it: three live representations.
+    // Open Overview and settle it: three live representations.
     input.send("swipe-begin 4");
     input.send("swipe-update 0 -100");
     input.send("swipe-update 0 -100");

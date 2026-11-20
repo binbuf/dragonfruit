@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Drive the live nested session and capture the T-20.2 liquid-glass stills.
+"""Drive the live nested session and capture the T-20.2 Glass stills.
 
 Machine half of the T-20.2 live visual check: on the running nested session it
 sends synthetic-input commands (the T-03 harness installed when
@@ -18,7 +18,7 @@ path, then screenshots the nested window with Spectacle.
 The screenshot is the active nested window (Spectacle ``-a``): it is
 alpha-cropped to the window and then cropped center-x / bottom to the nested
 1920x1200 output, matching the T-17/T-19 capture harness. Driven by
-``scripts/capture-t20-liquid-glass.sh``.
+``scripts/capture-t20-material-tiers.sh``.
 
 Requires a host Wayland session, ``spectacle``, python3 with Pillow, and the
 built tree.

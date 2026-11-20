@@ -271,10 +271,10 @@ constexpr int kBannerCardHeight = 96;
 constexpr int kBannerCardActionsHeight = 132;
 constexpr int kBannerTopGap = 8;
 
-// The Notification Center (T204): a fixed panel surface anchored to the
+// Notifications (T204): a fixed panel surface anchored to the
 // top-right corner below the menu bar. The QML panel fills the surface, so
 // its input region is the whole thing; the surface is clamped to the output
-// height on fractional scales like the Control Center.
+// height on fractional scales like the Quick Settings.
 // T234: the measured right-edge panel width (structural review §5.1).
 constexpr int kNotificationCenterWidth = 344;
 constexpr int kNotificationCenterHeight = 620;
@@ -285,12 +285,12 @@ constexpr int kNotificationCenterTopGap = 8;
 constexpr int kWidgetGalleryWidth = 1027;
 constexpr int kWidgetGalleryHeight = 552;
 
-// The Control Center panel (T-11.3a): a fixed panel surface anchored to the
+// The Quick Settings panel (T-11.3a): a fixed panel surface anchored to the
 // top-right corner below the menu bar. The panel fills the surface, so its
 // input region is the whole thing.
 // T-11.3b grows the panel to fit five tiles (Wi-Fi, Focus, Sound, Display,
 // Dark Mode); T-13.5b adds the clipboard-history section below them; T-15.5b
-// adds the Mission Control summary tile; T-15.9b adds the Menu Bar summary
+// adds the Overview summary tile; T-15.9b adds the Menu Bar summary
 // tile; T-15.12b adds the Printers tile; T-15.13b adds the Privacy tile;
 // T-15.14b adds the compact Accessibility tile (the tiles' internal gap
 // compacted once more to `xxs` so the fixed surface still holds every tile);
@@ -715,7 +715,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (QStyleHints *hints = QGuiApplication::styleHints()) {
         connect(hints, &QStyleHints::colorSchemeChanged, this,
                 &ShellController::applyCompositorPolicy);
-        // `auto` also changes the Control Center's effective dark state (the
+        // `auto` also changes the Quick Settings' effective dark state (the
         // Dark Mode tile), so refresh an open panel too.
         connect(hints, &QStyleHints::colorSchemeChanged, this, [this]() {
             if (m_controlCenterOpen)
@@ -872,7 +872,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     // T231: the clock opens the Date & Time panel in QML; Notifications is the
-    // menu-bar entry point for the Notification Center, routed through the
+    // menu-bar entry point for Notifications, routed through the
     // registry's `statusItemActivated`.
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
     connect(m_item, SIGNAL(statusItemActivated(QString)), this,
@@ -1044,7 +1044,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_item, SIGNAL(muteToggleRequested()), this, SLOT(onMuteToggleRequested()));
     connect(m_item, SIGNAL(statusMenuRefreshRequested(QString)), this,
             SLOT(onStatusMenuRefreshRequested(QString)));
-    // T202: the Bluetooth status menu shares the Control Center tile's one
+    // T202: the Bluetooth status menu shares the Quick Settings tile's one
     // action policy and bridge-host slots.
     connect(m_item, SIGNAL(bluetoothPowerToggleRequested(bool)), this,
             SLOT(onBluetoothToggleRequested(bool)));
@@ -1307,7 +1307,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The running projection may have arrived before the Dock scene existed.
     rebuildDockEntries();
 
-    // Mission Control overview chrome (T-11 Slice B): a third offscreen scene.
+    // Overview overview chrome (T-11 Slice B): a third offscreen scene.
     // It is a pure projection of the compositor's workspace/window state; the
     // compositor renders the live surfaces underneath.
     m_overviewWindow = createChromeProducer()->window();
@@ -1544,7 +1544,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // first apply above ran before it.
     applyStatusItems();
 
-    // Notification Center (T204): a top-right offscreen scene rendered into
+    // Notifications (T204): a top-right offscreen scene rendered into
     // its own `notification-center` overlay surface. It is a pure view of the
     // normalized service history; actions and dismissal go back through the
     // same `NotificationClient` the banner uses.
@@ -1677,7 +1677,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         QTimer::singleShot(0, this, [this]() { showWidgetGallery(); });
     }
 
-    // Control Center panel (T-11.3a): a top-right offscreen scene rendered
+    // Quick Settings panel (T-11.3a): a top-right offscreen scene rendered
     // into its own overlay surface. It is a pure view; the taps/gestures it
     // raises are forwarded to the bridge host or written to settingsd here.
     m_controlCenterWindow = createChromeProducer()->window();
@@ -1697,7 +1697,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_controlCenterItem->setParentItem(m_controlCenterWindow->contentItem());
-    // T-21.2c: Control Center is the transient Popup role.
+    // T-21.2c: Quick Settings is the transient Popup role.
     setMaterialProperties(m_controlCenterItem,
                           m_materialPolicy.applied(MaterialPolicy::Popup));
     connect(controlCenterObject, SIGNAL(closed()), this, SLOT(onControlCenterClosed()));
@@ -2177,7 +2177,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // surface anchored to the Dock's edge (T-10 sections 9/13).
     if (!m_protocol->createDockPopupSurface(m_dockPosition))
         return false;
-    // The Mission Control overview chrome is a full-output `overlay` surface,
+    // The Overview overview chrome is a full-output `overlay` surface,
     // unmapped until the overview opens (T-11 Slice B).
     if (!m_protocol->createOverviewSurface())
         return false;
@@ -2190,13 +2190,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (!m_protocol->createBannerSurface(kBannerWidth, kBannerSurfaceHeight,
                                          barHeight + kBannerTopGap))
         return false;
-    // The Notification Center is a top-right `overlay` surface, unmapped until
+    // Notifications is a top-right `overlay` surface, unmapped until
     // the clock, keyboard action or configured hot corner opens it (T204).
     if (!m_protocol->createNotificationCenterSurface(
             kNotificationCenterWidth, kNotificationCenterHeight,
             barHeight + kNotificationCenterTopGap))
         return false;
-    // The Control Center panel is a top-right `overlay` surface, unmapped until
+    // The Quick Settings panel is a top-right `overlay` surface, unmapped until
     // the menu-bar item (or its shortcut) opens it (T-11.3a).
     if (!m_protocol->createControlCenterSurface(kControlCenterWidth, kControlCenterHeight,
                                                 barHeight + kControlCenterTopGap))
@@ -2336,7 +2336,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         });
     }
 
-    // Capture/demo seam (T-21.4a): enter Mission Control once the chrome is up
+    // Capture/demo seam (T-21.4a): enter Overview once the chrome is up
     // so the native visual sweep can capture the live-surface grid without a
     // synthetic keyboard gesture. The compositor owns the overview; this only
     // forwards the same request the menu-bar item sends. Never set in a normal
@@ -2345,7 +2345,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         QTimer::singleShot(1500, this, &ShellController::onMissionControlRequested);
     }
 
-    // Capture/demo seam (T-21.2c): open the Control Center once the chrome is
+    // Capture/demo seam (T-21.2c): open the Quick Settings once the chrome is
     // up so the forced-tier overlay capture can show its material without a
     // synthetic chord. Never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_CONTROL_CENTER_FIXTURE")) {
@@ -2996,7 +2996,7 @@ void ShellController::applyStatusItems()
                         statusState(wifi), QStringLiteral("status"),
                         controlEnabled("wifi"));
 
-    // T202: Bluetooth is live through the same bridge host the Control Center
+    // T202: Bluetooth is live through the same bridge host the Quick Settings
     // tile uses. An absent daemon hides the slot; an error stays visible but
     // inert; the Menu Bar pane's `menu.control.bluetooth` key remains additive.
     QString bluetoothGlyph = bluetooth.value(QStringLiteral("glyph")).toString();
@@ -3088,7 +3088,7 @@ void ShellController::applyStatusItems()
 
     // T231: Search and Notifications join the registry as action extras. The
     // shell routes their activation to the Applications drawer and the
-    // Notification Center; the clock no longer doubles as the Center's entry.
+    // Notifications; the clock no longer doubles as the Center's entry.
     items << statusItem(QStringLiteral("search"), QStringLiteral("search"), QString(),
                         tr("Search"), true, 0.8, true, StatusPriority::Search,
                         tr("Search"), QString(), QStringLiteral("ok"),
@@ -3136,7 +3136,7 @@ void ShellController::applyStatusItems()
 
     // T277: the Linux-only workspace indicator. It is a live projection of
     // the compositor's per-output Space list; it hides when there is only one
-    // Space. Activation opens Mission Control's workspace strip.
+    // Space. Activation opens Overview's workspace strip.
     if (workspacesVisible && m_protocol) {
         const QVariantList workspaces = m_protocol->overviewWorkspaces();
         int activeIndex = -1;
@@ -3216,7 +3216,7 @@ void ShellController::applyStatusMenuData()
     m_item->setProperty("batteryMenu", m_statusModel->battery());
     m_item->setProperty("bluetoothMenu", m_statusModel->bluetooth());
     applyStatusItems();
-    // A live Wi-Fi/volume change reaches an open Control Center too.
+    // A live Wi-Fi/volume change reaches an open Quick Settings too.
     if (m_controlCenterOpen)
         applyControlCenterData();
 }
@@ -4288,7 +4288,7 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
     scheduleRender();
 }
 
-// --- Notification Center (T204) --------------------------------------------
+// --- Notifications (T204) --------------------------------------------
 
 void ShellController::toggleNotificationCenter()
 {
@@ -4303,7 +4303,7 @@ void ShellController::showNotificationCenter()
     if (!m_notificationCenterItem || !m_notificationCenter)
         return;
     // One ambient panel at a time: opening the Center retires an open menu,
-    // the Control Center, the Applications drawer and Mission Control rather
+    // the Quick Settings, the Applications drawer and Overview rather
     // than stacking transient overlays.
     if (m_item) {
         QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, false));
@@ -4631,7 +4631,7 @@ void ShellController::onWidgetGalleryCloseRequested()
 void ShellController::onNotificationCenterConfigured(int width, int height, quint32)
 {
     // The compositor's pre-layout configure is the full output; the panel's
-    // own size follows (the same rule as the Control Center).
+    // own size follows (the same rule as the Quick Settings).
     updateNotificationCenterGeometry();
     if (width != kNotificationCenterWidth || height != m_notificationCenterHeight)
         return;
@@ -4898,7 +4898,7 @@ void ShellController::applyControlCenterData()
     // Network advanced (VPN) (T-15.15b): the tile reflects the bridge host's
     // NetworkManager VPN view (the same view the Settings pane reads).
     const QVariantMap vpn = m_statusModel ? m_statusModel->vpn() : QVariantMap();
-    // Mission Control and hot corners are compositor-native: the shell owns the
+    // Overview and hot corners are compositor-native: the shell owns the
     // compositor mirror and the settingsd values, so it projects the tile's
     // summary locally (T-15.5b) instead of reading a services-layer host.
     const QVariantMap missionControl =
@@ -5196,9 +5196,9 @@ void ShellController::onKeyboardSettingsRequested()
 
 void ShellController::onMissionControlSettingsRequested()
 {
-    // Launching Settings on the Mission Control pane is T-16; the entry point
+    // Launching Settings on the Overview pane is T-16; the entry point
     // is wired and logs until then.
-    qInfo() << "shell: Mission Control Settings requested (T-16)";
+    qInfo() << "shell: Overview Settings requested (T-16)";
 }
 
 void ShellController::onBatterySettingsRequested()
@@ -5347,7 +5347,7 @@ void ShellController::onControlCenterWriteRequested(const QString &key,
         coerced = list;
     }
     if (!m_settingsClient->set(key, coerced)) {
-        fprintf(stderr, "dragonfruit-shell: Control Center rejected %s: %s\n",
+        fprintf(stderr, "dragonfruit-shell: Quick Settings rejected %s: %s\n",
                 qPrintable(key),
                 qPrintable(m_settingsClient->validate(key, coerced)));
     }
@@ -7621,7 +7621,7 @@ void ShellController::onKeyboardFocused(bool focused)
 {
     if (m_item)
         m_item->setProperty("shellFocused", focused);
-    // The Control Center panel is dismissed by a click-away. Focus may move
+    // The Quick Settings panel is dismissed by a click-away. Focus may move
     // from the bar to the panel in the same dispatch (a click on a tile), so
     // defer the check one event-loop turn: if the panel then holds keyboard,
     // this was not a dismissal.
@@ -7631,7 +7631,7 @@ void ShellController::onKeyboardFocused(bool focused)
                 hideControlCenter();
         });
     }
-    // Same click-away rule for the Notification Center. Its dedicated focus
+    // Same click-away rule for Notifications. Its dedicated focus
     // signal normally handles this; the bar's focus loss is the fallback for
     // an open triggered by the clock while the bar held the keyboard.
     if (!focused && m_notificationCenterOpen) {
@@ -7798,7 +7798,7 @@ void ShellController::onKeyEvent(quint32 key, bool pressed, quint32 modifiers)
         hideOsd();
         return;
     }
-    // T-11.3a: Escape dismisses an open Control Center panel no matter which
+    // T-11.3a: Escape dismisses an open Quick Settings panel no matter which
     // chrome surface currently holds the keyboard.
     if (pressed && qtKey == Qt::Key_Escape && m_controlCenterOpen) {
         hideControlCenter();
@@ -8123,7 +8123,7 @@ void ShellController::onInputAction(const QString &action, const QString &)
         if (m_dockItem)
             QMetaObject::invokeMethod(m_dockItem, "reveal");
     } else if (action == QLatin1String("control-center")) {
-        // T-11.3a: the Control Center keyboard shortcut toggles the panel.
+        // T-11.3a: the Quick Settings keyboard shortcut toggles the panel.
         toggleControlCenter();
     } else if (action == QLatin1String("notification-center")) {
         // T204: the same action comes from the declared keyboard shortcut and
@@ -9868,7 +9868,7 @@ void ShellController::onDockPopupPointerLeft()
     onDockPointerLeft();
 }
 
-// --- Mission Control overview chrome (T-11 Slice B) -------------------------
+// --- Overview overview chrome (T-11 Slice B) -------------------------
 
 void ShellController::refreshOverviewData()
 {
@@ -10148,7 +10148,7 @@ void ShellController::onNotificationFocusPolicy(const QByteArray &json)
         return;
     m_notificationModel->applyFocusPolicyJson(json);
     applyStatusItems();
-    // A live Focus/DND change reaches an open Control Center too (the tile
+    // A live Focus/DND change reaches an open Quick Settings too (the tile
     // reflects the mode and the suppression count).
     if (m_controlCenterOpen)
         applyControlCenterData();

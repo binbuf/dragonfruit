@@ -269,11 +269,11 @@ See [ADR 0294](adr/0294-shell-popup-frame-lifecycle.md) and
 `ShortcutHint` is the one renderer for a row's `shortcut` field. It never
 prints `Ctrl+Alt+Delete`: the chord is parsed into a canonical row of key
 glyphs. The vocabulary follows the desktop's keymap roles
-([keymap.md](../keymap.md)):
+([keymap.md](keymap.md)):
 
 | Role | Glyph | Accepted input |
 |---|---|---|
-| Super (Command role) | `⌘` | `Super`, `Cmd`, `Command`, `Meta`, `Win`, `⌘` |
+| Super (Command role) | `⌘` | `Super`, `Super`, `Command`, `Meta`, `Win`, `⌘` |
 | Control | `⌃` | `Ctrl`, `Control`, `⌃` |
 | Option / Alt | `⌥` | `Alt`, `Option`, `Opt`, `⌥` |
 | Shift | `⇧` | `Shift`, `⇧` |
@@ -302,7 +302,7 @@ glyphs. The vocabulary follows the desktop's keymap roles
 - Modifier glyphs use `textTertiary`, the key label uses `textSecondary`, and
   a highlighted row uses `accentContent` for both. The hint is decorative to
   AT-SPI; the menu item's accessible description carries the raw chord.
-- There are **no keycap boxes**: the Tahoe reference shows plain right-aligned
+- There are **no keycap boxes**: the reference shows plain right-aligned
   symbols, and boxes add noise at a 26 px row height. The glyphs come from the
   bundled Inter face, so they tint and scale like the rest of the row and need
   no additional icon asset.
@@ -450,9 +450,9 @@ for a controlled recapture. ADR
 [0221](adr/0221-menu-family-presets-and-exit.md) records the mapping and the
 fallback boundary.
 
-### Control Center materials (T203)
+### Quick Settings materials (T203)
 
-The Control Center is three distinct materials, not one Popup plate with a
+The Quick Settings is three distinct materials, not one Popup plate with a
 second alpha layered on it. The outer plate uses `controlCenterOuter`
 (Light 0.265/0.373, Dark 0.489/0.677). Each visible tile is its own
 `controlCenterModule` capsule. The measured Wi-Fi Light fit 0.391/0.317 is the
@@ -486,7 +486,7 @@ moves the visible material without a stale region.
 
 ### Notification materials (T205)
 
-The banner and the Notification Center are three materials, not one Popup
+The banner and Notifications are three materials, not one Popup
 plate. The transient banner uses `notificationBanner` (Light 0.549/0.976); the
 Center stack uses `notificationStack` (Light 0.551/0.706, Dark 0.507/0.550);
 the separately toned lower panel uses `notificationLowerPanel` (Light
@@ -495,7 +495,7 @@ uncovered as independent fits; their token confidence is `adapted` and capture
 rows label them underconstrained.
 
 The compositor's replacement rail builds all three with the same measured
-flat-band family as the Dock/Control Center, consuming the resolved
+flat-band family as the Dock/Quick Settings, consuming the resolved
 alpha/tint directly. The `notification` surface declares one `banner` region
 sized to the visible card (96 pt, or 132 pt with actions), so the transparent
 strip below a no-action banner is never frosted. The `notification-center`
@@ -545,7 +545,7 @@ Traffic lights use a 16 pt AppKit AX/hit frame with a 13 pt drawn circle and
 `(titleRow - 16) / 2`, which is the measured 8 pt in a 32 pt bar and 18 pt in
 a 52 pt bar, and keeps expanded/preference lights in their title row.
 Tab/path/status/format bars are content, not chrome;
-`component.accessoryBar` carries the 28/30/28 pt Finder bars and the 20 pt
+`component.accessoryBar` carries the 28/30/28 pt Files bars and the 20 pt
 TextEdit format bar. The Files path bar consumes the 30 pt token. See
 [05-window-decorations.md](05-window-decorations.md) and
 [ADR 0242](adr/0242-window-chrome-style-system.md).
@@ -559,7 +559,7 @@ path bar stay opaque. The measured Light Settings sidebar/toolbar are
 0.986/0.857 and 0.961/0.965; the measured Light Files pair is 0.985/0.858 and
 0.994/0.922; the measured Dark Files pair is 0.935/0.218 and 0.900/0.247.
 Settings Dark has no independent fit and is an explicit adaptation from the
-Finder dark pair. The Files surfaces stay independent in both schemes.
+Files dark pair. The Files surfaces stay independent in both schemes.
 
 These are client-alpha presets, not compositor-sampled passes. The app window
 is a normal transparent Wayland surface, so the resolved tint/alpha is
@@ -618,7 +618,7 @@ The corner lens is parameterized by distance *inside* the rim, directed by the
 outward SDF normal and gated by `4·nx²·ny²`: exactly zero on flat edges and
 flat sides, one at the 45° corner. `cornerLensPeak` 13.6 is the displacement
 along the normal, whose horizontal component at 15 pt inside is the measured
-9.6 pt. The persistent Dock/Control Center roles resolve to `Reduced`
+9.6 pt. The persistent Dock/Quick Settings roles resolve to `Reduced`
 (T-21.2c); that tier keeps the flat-band corner lens and drops only the generic
 edge-lens `refraction`, so the measured corner refraction is on the production
 path rather than only at `Full` (T235a). The shader applies the measured flat

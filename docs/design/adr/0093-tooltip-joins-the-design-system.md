@@ -7,8 +7,8 @@ accepted
 ## Context
 
 The Dock needs a macOS-style hover name label (T-14.7i), the design language
-now follows the macOS Tahoe reference
-([ADR 0091](0091-dock-tahoe-floating-glass-language.md)), and
+now follows the reference design
+([ADR 0091](0091-dock-floating-glass-language.md)), and
 [09-files.md](../09-files.md) already promises a tooltip for elided file names
 that has no component behind it. There was no `Tooltip` in the design system;
 `Popover` is the closest surface but takes focus and carries an anchor arrow,

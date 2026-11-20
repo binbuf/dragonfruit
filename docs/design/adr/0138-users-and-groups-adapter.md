@@ -6,12 +6,12 @@
   [08-settings.md](../08-settings.md),
   ADR [0128](0128-battery-power-profiles-adapter.md),
   ADR [0136](0136-general-about-updates-adapter.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md)
+  ADR [0122](0122-reference-interface-language-across-chrome.md)
 
 ## Context
 
 T-15.11 splits the macOS Users & Groups surface into an adapter (T-15.11a) and
-a Settings pane plus Control Center tile (T-15.11b). [08-settings.md] routes the
+a Settings pane plus Quick Settings tile (T-15.11b). [08-settings.md] routes the
 pane to "accountsservice + distro provider". AccountsService
 (`org.freedesktop.Accounts`) owns the user list over the system bus; it has **no
 group API**, so "Users **and** Groups" needs a second source. The task requires
@@ -76,6 +76,6 @@ on a group-write absence (the users half is independent).
 - `HostAccounts` is the live `AccountSource`: its user read is a real
   AccountsService client, its group half is absent until a `GroupProvider` is
   attached, which is the honest state until packaging supplies one.
-- T-15.11b adds the Settings pane and Control Center tile. It declares any
+- T-15.11b adds the Settings pane and Quick Settings tile. It declares any
   settingsd presentation preferences and wires the pane/tile; it must not add a
   second account or group implementation.

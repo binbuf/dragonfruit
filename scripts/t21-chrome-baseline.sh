@@ -6,7 +6,7 @@
 # Runs the nested demo with the synthetic-input harness and the opt-in
 # `DRAGONFRUIT_CHROME_STATS=1` counters, drives the six baseline scenarios
 # (idle, slow Dock sweep, menu-bar dropdown, Dock popover, one app launch,
-# Mission Control with 10+ windows), and brackets every scenario with a
+# Overview with 10+ windows), and brackets every scenario with a
 # SIGUSR1 snapshot on the shell and the compositor. The committed baseline is
 # docs/captures/t21-chrome-baseline.txt; T-21.1c's after run sets
 # T21_REPORT_TITLE/T21_TRANSPORT_LABEL and OUT to write the transport-after

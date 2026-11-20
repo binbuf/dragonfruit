@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the Privacy and Security half of the host (T-15.13b): the
-//! view the Settings pane and Control Center tile decode, plus the two explicit
+//! view the Settings pane and Quick Settings tile decode, plus the two explicit
 //! permission writes applied once through the adapter.
 
 use dragonfruit_privacy_adapter::{

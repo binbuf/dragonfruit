@@ -8,7 +8,7 @@
 
 T194 pinned the reference evidence and the v0.1.1 baseline. The next step needs
 one optical vocabulary for the Dock, the menu-bar veil, attached/detached/status
-menus, tooltips, Control Center regions, notification regions, and first-party
+menus, tooltips, Quick Settings regions, notification regions, and first-party
 window chrome. It must stay separate from the existing `MaterialRole` wire
 values and the `DegradeTier` ladder, because those describe transport and
 budget pressure rather than the look of a particular surface.

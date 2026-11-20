@@ -3,7 +3,7 @@
 ## Status
 
 Accepted 2026-11-19. Completes the T290a–T290g rewrite of the Appearance pane.
-It refines [ADR 0275](0275-appearance-groups-provider-rows-and-tahoe-accent.md)
+It refines [ADR 0275](0275-appearance-groups-provider-rows-and-accent.md)
 (the T274 six-card layout, now history) and keeps every key, owner, and
 consumer that ADR recorded. The target is
 [25-system-settings-visual-parity.md](../25-system-settings-visual-parity.md)

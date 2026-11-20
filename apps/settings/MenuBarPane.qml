@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Menu Bar pane (T-15.9b, completed by T277).
 //
-// The pane and the Control Center Menu Bar tile are one functional unit. The
+// The pane and the Quick Settings Menu Bar tile are one functional unit. The
 // menu bar is shell-native: the shell's `MenuBar` owns the chrome, the status
 // row, and the clock, the menu-broker resolves the focused app's menus, and
 // settingsd owns the durable preferences. This pane is the configuration half

@@ -467,7 +467,7 @@ pub struct ResolvedPreset {
     pub tone_weight: f32,
     /// Clear-lens ↔ frosted-panel axis. 1.0 is the measured default; values
     /// below 1 frost the plate and weaken the lens, values above 1 clear it
-    /// and strengthen the lens. Derived from the Liquid Glass slider.
+    /// and strengthen the lens. Derived from the Glass slider.
     pub materialize: f32,
     pub foreground: f32,
     pub slider_applied: bool,
@@ -558,7 +558,7 @@ fn calibration(preset: Preset, scheme: Scheme) -> Calibration {
         (Preset::AppsDrawer, Scheme::Dark) => cal!(apps_drawer, dark),
     };
     // T203: the flat-band + rim + capsule-end lens fields are carried for the
-    // Dock and the Control Center family. Other presets keep the legacy
+    // Dock and the Quick Settings family. Other presets keep the legacy
     // adaptive tint/rim (the generated zero defaults).
     macro_rules! lens {
         ($preset:ident, $scheme:ident) => {
@@ -904,7 +904,7 @@ pub fn resolve(input: ResolveInput) -> ResolvedPreset {
         }
     };
 
-    // The Liquid Glass axis: the measured default is a clear lens over a
+    // The Glass axis: the measured default is a clear lens over a
     // frosted body. Moving toward the clear end strengthens the lens and
     // reduces the frost; moving toward the frosted end does the reverse. The
     // Dock's measured alpha/tint stay fixed, so the flat band never moves.

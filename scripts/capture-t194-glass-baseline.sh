@@ -5,7 +5,7 @@
 #
 # On a host with a usable Wayland screenshot path this runs the existing
 # ``capture-t20-chrome-material.sh`` scenario set (Dock, menu bar, attached and
-# detached menus, Control Center, banner; light and dark) into a scratch
+# detached menus, Quick Settings, banner; light and dark) into a scratch
 # directory, then derives the T194 surface crops and baseline manifest from it.
 #
 # When the host path is unavailable the script does not fake a capture.  It

@@ -60,7 +60,7 @@ Item {
 
     // A faint scrim so the cards read against any wallpaper. The compositor
     // still draws the live preview surfaces underneath; this only deepens
-    // contrast (the Mission Control pattern).
+    // contrast (the Overview pattern).
     Rectangle {
         objectName: "switcherScrim"
         anchors.fill: parent

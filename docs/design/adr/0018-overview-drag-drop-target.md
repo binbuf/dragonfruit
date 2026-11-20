@@ -1,4 +1,4 @@
-# 0018 — Mission Control drag drops onto the workspace-strip card under the pointer
+# 0018 — Overview drag drops onto the workspace-strip card under the pointer
 
 ## Status
 
@@ -6,7 +6,7 @@ accepted
 
 ## Context
 
-T-05.3 drags a **live** Mission Control representation onto another Space and
+T-05.3 drags a **live** Overview representation onto another Space and
 assigns the window there. Only the active Space's surfaces are in the grid —
 neighbour-Space reveal (drawing surfaces unmapped from the `Space`) is a later
 T-05 slice — so the destination Space is not visible inside the grid. The shell

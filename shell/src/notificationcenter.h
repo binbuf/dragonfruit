@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Notification Center state (T204).
+// Notifications state (T204).
 //
 // The notification service owns the queue, the history, expiry, Focus/DND and
 // the banner. The shell owns one decoded history view and this small,

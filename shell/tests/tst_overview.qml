@@ -4,7 +4,7 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Overview
 
-// Mission Control overview chrome tests (T-11 Slice B): the workspace strip
+// Overview overview chrome tests (T-11 Slice B): the workspace strip
 // (including fullscreen Spaces), the minimized-window bottom strip, the
 // selection signals, and the shared progress fade. Runs headless on the
 // offscreen platform + software scene graph.

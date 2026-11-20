@@ -9,7 +9,7 @@ accepted
 T189a made `df_output.material_role_state` (v4) carry an effective material
 per `MaterialRole`, and T189b applied `Chrome`/`Dock` through the shell's
 `MaterialPolicy`. The popup family still assumed the sampled backdrop: menus,
-Dock popovers, Control Center, notification banners, the OSD, and the
+Dock popovers, Quick Settings, notification banners, the OSD, and the
 Applications drawer painted the translucent `material.popupOpacity` scrim even
 when the compositor reported no blur. That left a flat translucent slab, and
 the transient roles were not using the role-keyed state at all.
@@ -18,7 +18,7 @@ the transient roles were not using the role-keyed state at all.
 
 - `ShellController` applies `Popup` to the menu-bar scene (dropdowns, submenus,
   status menus, tray context menu), the Dock scene (context menu, window
-  chooser, stack/overflow/trash/app-picker popovers), Control Center,
+  chooser, stack/overflow/trash/app-picker popovers), Quick Settings,
   notification banners, and the OSD. It applies `Drawer` to the Applications
   drawer. The same `MaterialPolicy` object owns the decision; QML never
   re-runs the degrade ladder.
@@ -45,7 +45,7 @@ the transient roles were not using the role-keyed state at all.
 - Every blur-assuming popup/overlay has a deliberate milky fallback and a
   recorded reason, and a transient overlay cannot pull the persistent chrome
   down.
-- Tests cover the Dock popover family, menu popovers, Control Center,
+- Tests cover the Dock popover family, menu popovers, Quick Settings,
   notifications, the OSD, and the Applications drawer in light and dark for
   Full/Reduced/Minimal (including `software`/`minimal` reasons).
 - Forced-tier captures cover the same overlay family; the capture trace records

@@ -7,7 +7,7 @@ accepted
 ## Context
 
 T-20 landed the two-pass GPU material (offscreen scene texture, Kawase blur,
-liquid-glass shader) on the nested backend. The native DRM rail still drew the
+Glass shader) on the nested backend. The native DRM rail still drew the
 pre-T-20 feather backdrop. The 2026-11-02 audit
 ([`../architecture-audit-native-rendering.md`](../architecture-audit-native-rendering.md))
 identified the missing `chrome_blur_panels` call as the root cause, corrected
@@ -68,7 +68,7 @@ to its no-blur complement.
 
 - [`../architecture-audit-native-rendering.md`](../architecture-audit-native-rendering.md)
   — the implementation audit and the P0/P1/P2 record.
-- [`0182-tahoe-liquid-glass-material-pass.md`](0182-tahoe-liquid-glass-material-pass.md)
+- [`0182-glass-material-pass.md`](0182-glass-material-pass.md)
   — the material decision.
 - [`0183-chrome-material-rollout.md`](0183-chrome-material-rollout.md)
   — the chrome role rollout.

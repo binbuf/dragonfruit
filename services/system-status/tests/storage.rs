@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the storage half of the host (T-15.2b): the view the
-//! Settings pane and Control Center tile decode, plus the three explicit
+//! Settings pane and Quick Settings tile decode, plus the three explicit
 //! writes applied once through the adapter.
 
 use dragonfruit_storage::{MockStorage, StorageData, StorageDriveData, StorageVolumeData};

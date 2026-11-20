@@ -11,7 +11,7 @@
 ## Context
 
 T-15.8 splits the Lock Screen surface into an adapter (T-15.8a) and a Settings
-pane plus Control Center tile (T-15.8b). Unlike Bluetooth, storage, audio, and
+pane plus Quick Settings tile (T-15.8b). Unlike Bluetooth, storage, audio, and
 input, this subsystem has **no external daemon**: the session's idle/lock
 engine (`services/session/src/idle.rs`) owns the `idle.*` stage delays and the
 compositor owns the one fail-secure lock state
@@ -76,7 +76,7 @@ is the shell's `df_toplevel_manager` client, which T-15.8b wires).
   `make e2e` (`cargo test -p dragonfruit-lock-adapter`).
 - The concrete bridge source is the shell's `df_toplevel_manager` client,
   which is C++: T-15.8b wires the pane and tile (likely shell-native plus
-  settingsd keys, per the T-15.5b/Mission Control precedent) and declares the
+  settingsd keys, per the T-15.5b/Overview precedent) and declares the
   `lock.*` display keys this adapter names. Until then the live path is the
   seam the bridge fills; the mock is the tested path.
 - A later task that wants to *apply* a policy change must write the settings

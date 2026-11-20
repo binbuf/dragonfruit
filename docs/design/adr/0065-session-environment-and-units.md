@@ -52,7 +52,7 @@ harness (T-12.6) all consume, so they are fixed here.
   `.desktop` session file and logout teardown. It does not re-encode the
   environment or the units.
 - T-12.6c's second-VT harness reuses `--wait-socket`/`--print-env` and the
-  dedicated-user rule documented in `docs/testing-ladder.md` rung 2.
+  dedicated-user rule documented in `docs/design/testing-ladder.md` rung 2.
 - The compositor stays unchanged: it already pre-mints
   `DRAGONFRUIT_LAUNCH_TOKEN` and writes the hand-off file (`shell::provision`).
 - The `--wait-socket` helper uses file existence, not a connect test; a stale

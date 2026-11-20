@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // The Settings app's Notifications and Focus seam (T-15.7b).
 //
-// The Notifications and Focus panes never touch D-Bus: they bind the
+// Notifications and Focus panes never touch D-Bus: they bind the
 // `Settings` singleton, and the bridge forwards reads and the two Focus writes
 // here. The live `DbusNotificationsClient` talks to the bridge host's
 // `org.dragonfruit.SystemStatus1.Notifications` interface (the same adapter

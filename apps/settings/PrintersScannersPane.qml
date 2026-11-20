@@ -5,7 +5,7 @@ import Dragonfruit.Settings
 
 // The Printers & Scanners pane (T-15.12b).
 //
-// The pane and the Control Center tile are one functional unit: both read the
+// The pane and the Quick Settings tile are one functional unit: both read the
 // same host-stack adapter (CUPS queues + SANE devices) through the bridge host.
 // The pane mirrors the macOS pane (SystemSettings_PrintersScanners.md /
 // System_Preferences.md): a `Default printer` popup, a `Default paper size`

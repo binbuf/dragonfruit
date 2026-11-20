@@ -9,7 +9,7 @@ accepted
 T-11.1a shipped one `do_not_disturb` bit in the notification service: on
 suppresses every banner while still recording the history
 ([0056](0056-notification-service-surface-and-shell-banner.md)). The T-11
-design wants three-way consistency between the menu bar, the Control Center,
+design wants three-way consistency between the menu bar, the Quick Settings,
 and Settings later ([11-control-center-notifications.md](../tracks/11-control-center-notifications.md)),
 and the legacy design names modes (off / Focus / DND) plus per-app overrides
 and "suppress the banner, keep history"
@@ -46,8 +46,8 @@ service must freeze those rules before any surface binds to them.
 
 ## Consequences
 
-- Settings, the menu bar, and the Control Center all bind to the same three
-  names and the same rule; `docs/settings-keys.md` can add a Focus section
+- Settings, the menu bar, and the Quick Settings all bind to the same three
+  names and the same rule; `docs/design/settings-keys.md` can add a Focus section
   without re-deciding semantics.
 - Critical alerts are guaranteed to break through Focus but are silenced by
   DND; an app that needs to override DND must be on the allow list. This is

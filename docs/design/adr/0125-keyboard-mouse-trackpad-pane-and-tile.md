@@ -5,7 +5,7 @@
 - **Context:** [07-system-integration.md](../07-system-integration.md),
   [08-settingsd-live-settings.md](../tracks/08-settingsd-live-settings.md),
   ADR [0124](0124-input-device-adapter.md),
-  ADR [0122](0122-tahoe-interface-language-across-chrome.md)
+  ADR [0122](0122-reference-interface-language-across-chrome.md)
 
 ## Context
 
@@ -19,7 +19,7 @@ settingsd keys for rows with no adapter owner, the adapter for device state.
 
 ## Decision
 
-The pane and the Control Center tile are one functional unit.
+The pane and the Quick Settings tile are one functional unit.
 
 1. **Inventory.** `services/system-status` grows an `InputHost` and a read-only
    `org.dragonfruit.SystemStatus1.Input` interface (`State()`/`Refresh()` over
@@ -51,8 +51,8 @@ The pane and the Control Center tile are one functional unit.
   already has `PointerSettings`, but the private protocol's `set_input_policy`
   carries only keyboard repeat and gesture gating today. A later task extends it
   (a new append-only request) to apply the pointer keys.
-- The Control Center panel grew by one compact tile; its fixed height is 880
+- The Quick Settings panel grew by one compact tile; its fixed height is 880
   from 780, covered by the fit test and the live capture.
-- The pane drops the Apple-only `Dictation`, `Text Input`/`Input Sources`,
-  `Force Click and haptic feedback`, and `Look up & data detectors` rows, and
+- The pane drops the reference-only `Dictation`, `Text Input`/`Input Sources`,
+  `Pressure Click and haptic feedback`, and `Look up & data detectors` rows, and
   the `Keyboard Shortcuts…` editor, which has no first-party surface yet.

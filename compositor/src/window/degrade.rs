@@ -99,7 +99,7 @@ pub const ENV_FRAME_BUDGET_US: &str = "DRAGONFRUIT_FRAME_BUDGET_US";
 /// uses the same `MaterialRole`/`BackdropSpec` inputs, never a correctness one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MaterialPath {
-    /// A GLES 3.x / Vulkan-capable GPU: the sampled blur + liquid-glass pass.
+    /// A GLES 3.x / Vulkan-capable GPU: the sampled blur + Glass pass.
     #[default]
     Gpu,
     /// The software/headless path: no scene texture, no readback, the
@@ -399,12 +399,12 @@ impl DegradeTier {
         Some(spec.scaled(self.geometry_scale()))
     }
 
-    /// The Tahoe liquid-glass pass at this tier (T-20.2), or `None` when blur
+    /// The reference Glass pass at this tier (T-20.2), or `None` when blur
     /// is off. `Full` keeps refraction + specular + tint; `Reduced` keeps the
     /// specular rim, the adaptive tint and the measured flat-band corner lens,
     /// and drops only the generic edge-lens `refraction`. The corner lens is a
     /// cheap UV displacement, not the expensive edge pass, and it is the
-    /// Dock/Control Center perimeter identity: the persistent roles live at
+    /// Dock/Quick Settings perimeter identity: the persistent roles live at
     /// `Reduced` by design (T-21.2c), so dropping it there would make the
     /// measured plate disappear on the normal path (T235a). The smaller blur
     /// radius still comes from [`Self::blur`].
@@ -1030,7 +1030,7 @@ mod tests {
 
     #[test]
     fn reduced_keeps_the_measured_flat_band_corner_lens() {
-        // T235a: the persistent Dock/Control Center roles live at Reduced by
+        // T235a: the persistent Dock/Quick Settings roles live at Reduced by
         // design (T-21.2c). The flat-band corner lens is the measured plate
         // identity, not the expensive generic edge pass, so Reduced must keep
         // it. Only the non-flat edge-lens refraction drops.

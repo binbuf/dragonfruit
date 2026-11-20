@@ -4,7 +4,7 @@
 // The Network pane never touches D-Bus: it binds the `Settings` singleton, and
 // the bridge forwards reads and writes here. The live `DbusVpnClient` talks to
 // the bridge host's `org.dragonfruit.SystemStatus1.Vpn` interface (the same
-// NetworkManager VPN projection the Control Center tile reads), and
+// NetworkManager VPN projection the Quick Settings tile reads), and
 // `MockVpnClient` serves a deterministic fixture for the headless pane tests
 // (`DF_VPN_FIXTURE`). The adapter owns the connection state, so the pane has no
 // settingsd key of its own; the two writes (`Connect`/`Deactivate`, by UUID)

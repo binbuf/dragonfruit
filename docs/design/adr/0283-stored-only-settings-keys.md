@@ -5,7 +5,7 @@
 | **Status** | accepted |
 | **Date** | 2026-11-16 |
 | **Task** | T282 |
-| **Companions** | [24-system-settings.md](../24-system-settings.md) §3.7, [08-settings.md](../08-settings.md), `docs/settings-keys.md` |
+| **Companions** | [24-system-settings.md](../24-system-settings.md) §3.7, [08-settings.md](../08-settings.md), `docs/design/settings-keys.md` |
 
 ## Context
 

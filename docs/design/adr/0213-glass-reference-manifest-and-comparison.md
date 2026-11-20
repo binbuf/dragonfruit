@@ -6,7 +6,7 @@
 
 ## Context
 
-The Liquid Glass work starts from a macOS workstation capture set that is not
+The Glass work starts from a macOS workstation capture set that is not
 part of the Dragonfruit repository and must never become a build dependency.
 The reference analysis scripts resize the candidate to the reference rectangle
 and compare whole images, so a crop or a blur regression can pass as a colour
@@ -20,7 +20,7 @@ record before any rendering work begins.
    analysis scripts, crop rectangles, ICC assumptions and SHA-256 hashes in
    `docs/captures/glass-reference-manifest.json`. A reference run resolves the
    root from `--reference-root`, `DRAGONFRUIT_REFERENCE_ROOT`, or the sibling
-   `../macos-liquid-glass`; a requested run fails on a missing root, revision
+   `../macos-Glass`; a requested run fails on a missing root, revision
    mismatch, or any changed source/crop/script hash. The structural check and
    all product gates work without the checkout.
 2. **Colour inputs are converted once to sRGB.** Embedded ICC profiles are

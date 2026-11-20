@@ -14,7 +14,7 @@
 //! * D-Bus interfaces follow `org.dragonfruit.*` names with a per-major
 //!   version suffix ([`dbus_name`]).
 //!
-//! See docs/ipc-versioning.md for the full policy.
+//! See docs/design/ipc-versioning.md for the full policy.
 
 /// The desktop name — the public contract toolkits, portals, and
 /// desktop files use to find Dragonfruit-specific behavior.
@@ -217,7 +217,7 @@ impl std::fmt::Display for LockstepMismatch {
             f,
             "lockstep mismatch: peer speaks v{}, this build is v{} — \
              compositor, shell, and protocols must ship as one set \
-             (docs/ipc-versioning.md)",
+             (docs/design/ipc-versioning.md)",
             self.theirs, self.ours
         )
     }
@@ -274,7 +274,7 @@ mod tests {
 
     /// Every protocol XML must declare the lockstep version this build
     /// speaks, using the marker comment. This test is the mechanical
-    /// enforcement of docs/ipc-versioning.md: it fails the build when
+    /// enforcement of docs/design/ipc-versioning.md: it fails the build when
     /// compositor/shell code and protocol XMLs disagree.
     #[test]
     fn protocol_xmls_match_lockstep_version() {
@@ -291,7 +291,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
             assert!(
                 text.contains("SPDX-License-Identifier: MIT"),
-                "{}: protocol XMLs must be MIT so any third party may implement them (docs/licensing.md)",
+                "{}: protocol XMLs must be MIT so any third party may implement them (docs/design/licensing.md)",
                 path.display()
             );
             assert!(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! The libinput keyboard, mouse, and trackpad adapter (T-15.4a).
 //!
-//! The Settings Keyboard/Mouse/Trackpad pane and the Control Center tile do
+//! The Settings Keyboard/Mouse/Trackpad pane and the Quick Settings tile do
 //! not read libinput themselves. They read an [`InputAdapter`], which holds the
 //! last device inventory libinput reported and exposes the three-state contract
 //! from `dragonfruit-system-adapters` ([07-system-integration.md]): available,

@@ -5,7 +5,7 @@
 // singleton, and the bridge forwards reads and writes here. The live
 // `DbusAccountsClient` talks to the bridge host's
 // `org.dragonfruit.SystemStatus1.Accounts` interface (the same adapter the
-// Control Center tile reads), and `MockAccountsClient` serves a deterministic
+// Quick Settings tile reads), and `MockAccountsClient` serves a deterministic
 // fixture for the headless pane tests (`DF_ACCOUNTS_FIXTURE`). Absence is a
 // normal state: `available()` is false and the view is empty — never an error.
 #pragma once

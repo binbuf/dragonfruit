@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! The reusable scene-transform pass (T-04.3).
 //!
-//! T-05's Mission Control live-surface transform and T-06's app switcher both
+//! T-05's Overview live-surface transform and T-06's app switcher both
 //! need to draw the *real* surfaces scaled, translated, clipped to their
 //! rounded corners, and (optionally) over a blurred backdrop — never
 //! thumbnails, never client re-renders ([02-compositor.md](../../docs/design/02-compositor.md)).

@@ -9,5 +9,5 @@ rust-version.workspace = true
 
 # One crate, no dependencies: every process in the desktop embeds these
 # constants, which is what makes cross-version mixing detectable at
-# handshake (docs/ipc-versioning.md).
+# handshake (docs/design/ipc-versioning.md).
 [dependencies]

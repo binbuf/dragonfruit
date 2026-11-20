@@ -78,7 +78,7 @@ left the fallback segmented and double-painted.
 
 The corner-gated UV nudge and the five-level Kawase composite were superseded by
 the physical-bevel plate model in
-[`docs/proposals/dock-plate-liquid-glass.md`](../../proposals/dock-plate-liquid-glass.md)
+[`docs/proposals/dock-plate-Glass.md`](../../proposals/dock-plate-Glass.md)
 (R1–R5, implemented in `3911430`/`32400c4`). The uniform-perimeter decision
 above still holds; the changes are the measured two-path Gaussian
 (`sharpFraction` 0.192, σ 3.86 pt), a padded sample domain, a height-field/
@@ -108,7 +108,7 @@ diagnostic A/B stills remain local-only.
 
 ## References
 
-- `docs/design/proposals/dock-liquid-glass-perimeter.md`
+- `docs/design/proposals/dock-Glass-perimeter.md`
 - `compositor/src/window/{blur,dock_optics}.rs`, `shell/dock/Dock.qml`
 - `tests/glass/test_glass_shader.py`, `shell/tests/tst_dock.qml`
 - ADR [0217](0217-dock-optics-fit.md), ADR [0112](0112-dock-plate-single-rounded-edge.md)

@@ -126,7 +126,7 @@ def main() -> int:
     x0, y0, x1, y1 = window_bounds(px, w, h)
     win_w, win_h = x1 - x0 + 1, y1 - y0 + 1
     red, diameter = traffic_light(px, x0, y0, x1)
-    unit = (diameter or 28) / UNIT_PX  # px per one 14 pt unit (≈2 at Retina)
+    unit = (diameter or 28) / UNIT_PX  # px per one 14 pt unit (≈2 at HiDPI)
 
     def units(px_len):
         return round(px_len / unit, 1)

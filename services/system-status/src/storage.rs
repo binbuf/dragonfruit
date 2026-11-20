@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 const KIND_STORAGE: &str = "storage";
 
 /// The bridge host for the storage adapter: one state path and the explicit
-/// mount/unmount/eject writes the Settings pane and Control Center tile offer.
+/// mount/unmount/eject writes the Settings pane and Quick Settings tile offer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StorageHost<S> {
     adapter: StorageAdapter<S>,

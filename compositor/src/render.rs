@@ -366,7 +366,7 @@ pub struct BlurPanel {
     /// Extra rim/shadow/veil reach beyond `panel` (T197).
     pub overscan: i32,
     pub spec: BlurSpec,
-    /// The Tahoe liquid-glass parameters for this panel (T-20.2).
+    /// The reference Glass parameters for this panel (T-20.2).
     pub glass: GlassSpec,
     /// The menu-bar no-blur veil parameters (T200), when this region resolved
     /// to `NoBlurVeil`. The sharp path draws the depth LUT over the live
@@ -520,7 +520,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             // A no-blur veil carries its depth LUT; every other preset has no
             // veil and keeps the glass/sharp compose.
             let veil = crate::window::menubar_veil::VeilSpec::for_resolved(&resolved);
-            // T203: the Control Center family uses the same measured flat-band
+            // T203: the Quick Settings family uses the same measured flat-band
             // + rim + capsule-end lens model as the Dock. Each module is its
             // own region stacked over the outer plate, so the composite is
             // built from the resolved own-layer values rather than a second
@@ -651,7 +651,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                 CornerRadii::uniform(spec.corner_radius.round().max(0.0) as i32)
             });
             let mut spec = spec;
-            // The liquid-glass shader still carries one SDF radius; clipping
+            // The Glass shader still carries one SDF radius; clipping
             // uses the full per-corner set. The maximum keeps the rim inside
             // every rounded corner.
             spec.corner_radius = corners.max() as f32;
@@ -1265,7 +1265,7 @@ pub fn send_frame_callbacks(
 /// `window`'s surfaces.
 ///
 /// X11 windows (`window.x11_surface().is_some()`) are integer-scaled by
-/// policy ([`docs/xwayland-scaling.md`], T-16.3a): Xwayland is a Wayland
+/// policy ([`docs/design/xwayland-scaling.md`], T-16.3a): Xwayland is a Wayland
 /// client but represents X11 clients that cannot interpret fractional
 /// metrics, so they only ever see the integer `wl_output.scale`. The
 /// compositor downscales them itself in a later slice (T-16.3b).

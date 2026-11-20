@@ -10,7 +10,7 @@ macOS-style role names map to physical xkb modifiers as follows:
 
 | Logical role | Physical key | xkb modifier | `df_ipc::keymap` constant |
 |---|---|---|---|
-| Command (Cmd) | Super / Windows | `Mod4` | `ModifierRole::Command` |
+| Command (Super) | Super / Windows | `Mod4` | `ModifierRole::Command` |
 | Option | Alt | `Mod1` | `ModifierRole::Option` |
 | Control | Ctrl | `Control` | `ModifierRole::Control` |
 | Shift | Shift | `Shift` | `ModifierRole::Shift` |
@@ -26,7 +26,7 @@ Layout, model, and variant are deliberately left to the user's
 ## Global shortcut engine
 
 - The compositor owns system shortcuts (workspace switching, Mission
-  Control, app switcher, screenshots, notification center, desktop reveal,
+  Control, app switcher, screenshots, Notifications, desktop reveal,
   lock screen). Bindings are matched in the seat's key filter, before a
   key reaches any client, and the release of an intercepted key is
   swallowed too so clients never see half a chord.
@@ -50,18 +50,18 @@ are listed here for reference.
 |---|---|
 | `Ctrl+Left` / `Ctrl+Right` | Previous / next Space |
 | `Ctrl+1` … `Ctrl+9` | Activate Space by index |
-| `Ctrl+Up` | Mission Control |
+| `Ctrl+Up` | Overview |
 | `Ctrl+Down` | Desktop Reveal |
-| `Cmd+Tab` | App switcher |
-| `Cmd+Shift+3` / `Cmd+Shift+4` | Screenshot |
-| `Cmd+Ctrl+Q` | Lock screen |
-| `Ctrl+Shift+N` | Notification center |
+| `Super+Tab` | App switcher |
+| `Super+Shift+3` / `Super+Shift+4` | Screenshot |
+| `Super+Ctrl+Q` | Lock screen |
+| `Ctrl+Shift+N` | Notifications |
 
 ## Gestures and hot corners
 
 Three/four-finger horizontal swipes switch Spaces; four-finger vertical
-swipes open Mission Control / reveal the desktop; pinches drive the same
-Mission Control / reveal pipeline. Hot corners use a short dwell so a
+swipes open Overview / reveal the desktop; pinches drive the same
+Overview / reveal pipeline. Hot corners use a short dwell so a
 pointer merely crossing one does not trigger it. Every trigger — keyboard,
 gesture, hot corner, shell, portal — resolves to the same
 `InputAction` and feeds the same 0→1 progress pipeline, so behavior is

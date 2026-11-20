@@ -2,7 +2,7 @@
 
 This document records the Dragonfruit licensing decision. It is a
 **blocker for the first public release** (see
-[../docs/design/14-risks.md](../docs/design/14-risks.md)): nothing is
+[14-risks.md](14-risks.md)): nothing is
 distributed publicly until the rules below are reviewed and signed off.
 
 ## Decision
@@ -20,7 +20,7 @@ restrictions to track.
 | `protocols/df-ipc/` (shared IPC crate) | MIT |
 | `protocols/*.xml` (private Wayland protocols) | MIT |
 | `design-system/` (QML module `Dragonfruit`) | MIT |
-| `shell/` (menu bar, Dock, Control Center, notifications, screenshot) | MIT |
+| `shell/` (menu bar, Dock, Quick Settings, notifications, screenshot) | MIT |
 | `apps/` (Settings, Files) | MIT |
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
 | `assets/icons/tabler/` (line-glyph set and pinned filled marks) | MIT |
@@ -54,31 +54,31 @@ constraints between components. Two rules still matter:
 
 - **Rust crates.** The whole dependency graph is permissively licensed
   (MIT, Apache-2.0, BSD-2-Clause/BSD-3-Clause, ISC, Zlib, Unlicense).
-  The exact set is pinned in `Cargo.lock`; see [NOTICE](../NOTICE).
+  The exact set is pinned in `Cargo.lock`; see [NOTICE](../../NOTICE).
 - **Qt is (L)GPL-licensed or commercial.** We use the open (L)GPL Qt
   under its terms, linked dynamically from the system/distro packages.
   MIT first-party code linking LGPL-3.0 Qt is compatible, and no
   Dragonfruit component may obligate a Qt commercial license.
 - **System libraries** (libdrm, libinput, libseat, xkbcommon, wayland,
   systemd, NetworkManager, PipeWire, …) keep their own licenses; see
-  [NOTICE](../NOTICE).
+  [NOTICE](../../NOTICE).
 - **Fonts.** Inter is bundled under the SIL OFL 1.1 (see
-  [../LICENSES/OFL-1.1.txt](../LICENSES/OFL-1.1.txt)); it has no Reserved
+  [../../LICENSES/OFL-1.1.txt](../../LICENSES/OFL-1.1.txt)); it has no Reserved
   Font Name. OFL condition 2 requires the copyright notice and license text
   to accompany every copy of the Font Software, so any binary distribution
   (packages, images) must include `LICENSES/OFL-1.1.txt` or the equivalent
   notice — a packaging acceptance item for T-16.9/T-16.10.
 - **Icons.** Tabler Icons 3.50.0 (`v3.50.0`, commit
   `6904efd245391ad396df17654738f52f6da8c40e`) is bundled under the MIT license
-  (see [../LICENSES/Tabler.txt](../LICENSES/Tabler.txt)) as the line-glyph
+  (see [../../LICENSES/Tabler.txt](../../LICENSES/Tabler.txt)) as the line-glyph
   set and the pinned filled app marks. The Settings category tiles use
-  Phosphor 2.0.8 (MIT, [../LICENSES/Phosphor.txt](../LICENSES/Phosphor.txt))
+  Phosphor 2.0.8 (MIT, [../../LICENSES/Phosphor.txt](../../LICENSES/Phosphor.txt))
   because the tile needs a solid near-white glyph. Both sets are vendored as
   data, not linked code; the asset READMEs record the upstream version, commit,
   source path, and the exact pinned files, and `make check-tabler` /
   `make check-phosphor` fail if a registry or a glyph reference drifts. No
   Apple artwork is vendored or reproduced (see
-  [../docs/design/14-risks.md](design/14-risks.md)).
+  [14-risks.md](14-risks.md)).
 - **WhiteSur place/app artwork.** WhiteSur `2026-09-10` (commit
   `73d8040da51a9ed74e47c7366e7e9ff437601a5c`) is bundled as a separable
   **GPL-3.0-only** data asset under `assets/icons/whitesur/`: colored folder,
@@ -87,18 +87,18 @@ constraints between components. Two rules still matter:
   replaced independently. This is a deliberate, recorded exception to the
   permissive-asset default; every binary distribution must ship the GPL-3.0
   text, the provenance record in
-  [`assets/icons/whitesur/README.md`](../assets/icons/whitesur/README.md), and
+  [`assets/icons/whitesur/README.md`](../../assets/icons/whitesur/README.md), and
   the corresponding source. See
-  [ADR 0251](design/adr/0251-whitesur-place-icons.md). The artwork is
+  [ADR 0251](adr/0251-whitesur-place-icons.md). The artwork is
   third-party open work, not Apple artwork.
 - **Cursor theme.** Capitaine cursors is bundled as a separable data asset
   under the LGPL-3.0-or-later (see
-  [../assets/cursors/capitaine-cursors/COPYING](../assets/cursors/capitaine-cursors/COPYING)
-  and [../LICENSES/LGPL-3.0-or-later.txt](../LICENSES/LGPL-3.0-or-later.txt)).
+  [../../assets/cursors/capitaine-cursors/COPYING](../../assets/cursors/capitaine-cursors/COPYING)
+  and [../../LICENSES/LGPL-3.0-or-later.txt](../../LICENSES/LGPL-3.0-or-later.txt)).
   It is not linked into first-party code: the compositor loads the XCursor
   files at runtime, the theme directory can be replaced independently, and
   the upstream source is identified in
-  [../assets/cursors/capitaine-cursors/README.md](../assets/cursors/capitaine-cursors/README.md).
+  [../../assets/cursors/capitaine-cursors/README.md](../../assets/cursors/capitaine-cursors/README.md).
   Any binary distribution must ship that notice and license text, and must
   make the corresponding upstream source available under the LGPL terms.
 
@@ -107,7 +107,7 @@ constraints between components. Two rules still matter:
 Every shipped icon, font, cursor, and wallpaper — plus the runtime wallpaper
 provider and the not-yet-shipped sound and illustration categories — has a
 source/license row in
-[design/asset-manifest.json](design/asset-manifest.json). The manifest names
+[asset-manifest.json](asset-manifest.json). The manifest names
 the path, upstream source, version, license, license text, notice, and install
 location. `make check-assets` validates it and fails if a file under `assets/`
 is unlisted. No asset with an unknown license may ship.
@@ -115,10 +115,10 @@ is unlisted. No asset with an unknown license may ship.
 ## Optional services and packaging markers
 
 The chosen optional services are separate processes (or dynamically linked
-libraries) with the notices in [NOTICE](../NOTICE). They are never hard
+libraries) with the notices in [NOTICE](../../NOTICE). They are never hard
 dependencies: the core desktop installs, starts, and works with the required
 host stack only. The canonical marker table is
-[packaging/optional-services.json](../packaging/optional-services.json),
+[packaging/optional-services.json](../../packaging/optional-services.json),
 shared by the Fedora and Debian packages:
 
 - `Recommends` for the preferred backend or strongly expected service (restic,
@@ -132,7 +132,7 @@ shared by the Fedora and Debian packages:
   licenses are verified against the actual archive at packaging time (T259).
 
 The eight naming/licensing decisions are recorded in
-[ADR 0229](design/adr/0229-naming-and-optional-service-decisions.md). Display
+[ADR 0229](adr/0229-naming-and-optional-service-decisions.md). Display
 managers are session-entry integrations, not dependencies; GDM is the reference
 and SDDM the secondary tested path, with LightDM and greetd supported.
 
@@ -147,7 +147,7 @@ follows the same credit package:
   `-filled` suffix where the set has a second weight), so a future update is a
   reviewable file swap plus a registry regeneration.
 - **License text and notice.** The set ships its own `LICENSE` beside the
-  assets, a copy in `LICENSES/`, a row in [NOTICE](../NOTICE), and a row in the
+  assets, a copy in `LICENSES/`, a row in [NOTICE](../../NOTICE), and a row in the
   component table above. MIT sets need no special distribution obligation
   beyond preserving the notice; a new copyleft icon set is a review blocker
   unless it is added as an explicitly recorded separable data asset, as
@@ -166,12 +166,12 @@ follows the same credit package:
   a byte-for-byte copy of WhiteSur's `file-manager.svg`. Tabler and Phosphor
   are MIT; WhiteSur is GPL-3.0-only and separable (ADR 0251).
 - **No Apple artwork.** The original-assets rule in
-  [14-risks.md](design/14-risks.md) still applies: third-party open icon sets
+  [14-risks.md](14-risks.md) still applies: third-party open icon sets
   are allowed; Apple's assets and pixel-copied proprietary artwork are not.
 
 ## Qt commercial decision trigger
 
-From [../docs/design/14-risks.md](../docs/design/14-risks.md): if the
+From [14-risks.md](14-risks.md): if the
 project ever needs a **statically linked, non-LGPL Qt distribution, or
 Qt modules only available under a commercial license**, that is a
 deliberate project-level decision — it changes distribution terms and
@@ -181,8 +181,8 @@ Record any such decision here if it is ever made.
 ## Fetched third-party content (wallpaper)
 
 Two different things share this surface (ADRs
-[0055](design/adr/0055-online-wallpaper-content-provider.md) /
-[0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md)):
+[0055](adr/0055-online-wallpaper-content-provider.md) /
+[0094](adr/0094-bundled-default-wallpaper-and-lazy-cache.md)):
 
 - The **shipped built-in wallpapers**
   (`assets/graphics/wallpapers/Default.jpg`, `Lagoon.jpg`, and `Midnight.jpg`)
@@ -228,7 +228,7 @@ name or branding should ask first.
 
 - Every source file carries an `SPDX-License-Identifier: MIT` header.
 - Every crate/package directory carries a `LICENSE` file.
-- Full license text lives in [../LICENSES/](../LICENSES/).
+- Full license text lives in [../../LICENSES/](../../LICENSES/).
 - The `protocol_xmls_match_lockstep_version` test in
   `protocols/df-ipc` fails the build if a protocol XML loses its MIT
   SPDX marker.

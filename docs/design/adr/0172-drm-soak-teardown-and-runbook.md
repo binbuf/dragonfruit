@@ -42,10 +42,10 @@ Two facts shape the work:
   hardware, and `scripts/multi-gpu-probe.py` mirrors it from sysfs. A host with
   one card records `docs/captures/t03-multigpu.open.txt`; two or more cards
   record `t03-multigpu.txt`.
-- **The runbook owns the hardware rail.** `docs/runbook-drm-session.md` is the
+- **The runbook owns the hardware rail.** `docs/design/runbook-drm-session.md` is the
   one place with the dedicated-user second-VT workflow, the libvirt/virtio-GPU
   VM path, the four acceptance commands, the demo walkthrough, teardown
-  expectations, and troubleshooting. `docs/testing-ladder.md` links it from
+  expectations, and troubleshooting. `docs/design/testing-ladder.md` links it from
   rungs 2 and 3.
 
 ## Consequences

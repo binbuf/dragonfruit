@@ -11,7 +11,7 @@
 ## Context
 
 T-15.12 splits the macOS Printers & Scanners surface into an adapter (T-15.12a)
-and a Settings pane plus Control Center tile (T-15.12b). [07-system-integration.md]
+and a Settings pane plus Quick Settings tile (T-15.12b). [07-system-integration.md]
 routes the surface to "CUPS + SANE". CUPS owns the print queues; SANE owns the
 scanner devices. The task requires state, events, and absent-daemon behavior,
 unit-tested against a mock, and forbids reimplementing printing or scanning.

@@ -113,7 +113,7 @@ fn main() -> ExitCode {
     };
 
     // Lockstep from the first commit: compositor, shell, and protocol XMLs
-    // ship as one set; cross-version mixing is rejected (docs/ipc-versioning.md).
+    // ship as one set; cross-version mixing is rejected (docs/design/ipc-versioning.md).
     df_ipc::assert_lockstep_compatible(LOCKSTEP_VERSION)
         .expect("the built-in lockstep version must be compatible with itself");
 

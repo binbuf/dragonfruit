@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Bridge tests for the input half of the host (T-15.4b): the inventory view
-//! the Settings pane and Control Center tile decode. The adapter is
+//! the Settings pane and Quick Settings tile decode. The adapter is
 //! read-only, so there is no write to exercise.
 
 use dragonfruit_input::{InputData, InputDeviceData, MockInput};

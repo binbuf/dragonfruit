@@ -6,8 +6,8 @@
 | **Date** | 2026-11-08 |
 | **Release** | v0.2.0 |
 | **Reference build** | macOS 27.0.1 (26A434), Apple silicon, 1800×1169 pt @2× |
-| **Reference evidence** | `macos-design-review/docs/SURFACE-REVIEW.md`, `experience_measurements.json`, `REPORT.md` §3.9 |
-| **Scope** | window-chrome height taxonomy, About, Applications drawer, Notification Center, Control Center, Finder |
+| **Reference evidence** | the local surface review, experience measurements, and reference report §3.9 |
+| **Scope** | window-chrome height taxonomy, About, Applications drawer, Notifications, Quick Settings, Files |
 | **Related** | [total experience](22-total-experience.md), [window decorations](05-window-decorations.md), [Files](09-files.md), [Settings](08-settings.md), [experience schema](experience-schema.md), [ADR 0241](adr/0241-macos-structural-surface-review.md) |
 
 ## 1. Why this document exists
@@ -15,8 +15,8 @@
 The material campaign answered **what the glass is made of**. The 2026-11-08
 structural review answers **how the chrome and the major shell surfaces are
 arranged**: the window-chrome height system, the two About surfaces, the
-Spotlight Apps drawer, Notification Center's material ramp, Control Center's
-module grid, and Finder's window anatomy.
+Search Apps drawer, Notifications' material ramp, Quick Settings'
+module grid, and Files's window anatomy.
 
 Those findings are now part of the Dragonfruit design contract. This document
 distils them into implementation rules and names the task that owns each rule.
@@ -27,19 +27,19 @@ status.
 
 ### 2.1 Measured taxonomy
 
-`macos-design-review/tools/titlebar_probe.swift` creates one AppKit window per
+the local reference workspace's titlebar probe creates one AppKit window per
 toolbar style and reads `contentLayoutRect` back.
 
 | Style | Chrome height | Dragonfruit style id | Notes |
 |---|---:|---|---|
-| Borderless / panel | **0 pt** | `borderless` | HUDs, Quick Look-style panels, overlays |
+| Borderless / panel | **0 pt** | `borderless` | HUDs, Preview-style panels, overlays |
 | Titled, no toolbar | **32 pt** | `titlebar` | Minimum real window chrome; close/minimise/zoom live here |
 | `.fullSizeContentView` | **32 pt** | `titlebar` | Content underlaps; layout inset stays 32 pt |
 | Transparent title bar | **32 pt** | `titlebar` | Material changes, height does not |
 | `.unifiedCompact` | **40 pt** | `unifiedCompact` | Shorter toolbar row; regular controls |
 | `.expanded` | **48 pt** | `expanded` | Title above the toolbar row |
 | `.unified` | **52 pt** | `unified` | Default modern toolbar |
-| `.unified` + icon-and-label | **66 pt** | `unified` + labelled row | Disk Utility; not a separate style |
+| `.unified` + icon-and-label | **66 pt** | `unified` + labelled row | Disks; not a separate style |
 | `.preference` | **88 pt** | `preference` | Title row plus centred preference toolbar |
 
 The practical range is **0 → 32 → 40 → 48 → 52 → 66 → 88 pt**. Real apps can
@@ -57,10 +57,10 @@ window means small chrome”).
 | App / window | Chrome | Evidence |
 |---|---:|---|
 | TextEdit document | 32 pt | close-button inset 8 pt; formatting bar is a separate 20 pt accessory |
-| Finder Get Info | 32 pt | auxiliary window; content starts 32 pt below the frame |
+| Files Get Info | 32 pt | auxiliary window; content starts 32 pt below the frame |
 | About This System | 32 pt | utility panel; no visible title text |
-| Finder, Safari, System Settings, Photos, Activity Monitor, Calculator | 52 pt | `AXToolbar` or split view starts 52 pt below the frame |
-| Disk Utility | 66 pt | unified toolbar with icon-and-label items |
+| Files, Safari, System Settings, Photos, System Monitor, Calculator | 52 pt | `AXToolbar` or split view starts 52 pt below the frame |
+| Disks | 66 pt | unified toolbar with icon-and-label items |
 | Pages template chooser | 38–43 pt | compact chrome; 12×14 pt traffic lights |
 | Pages document | 70 pt | expanded chrome: 28 pt title row + 42 pt toolbar |
 | Safari Settings | 88 pt | preference chrome: 32 pt title row + 56 pt toolbar |
@@ -82,13 +82,13 @@ window means small chrome”).
   - Horizontal spacing is 23 pt centre-to-centre between close, minimise and
     zoom.
 - **Inline title:** vertically centred in the toolbar, at the leading edge
-  after the traffic lights and navigation group. Finder's title occupies a
+  after the traffic lights and navigation group. Files's title occupies a
   227×52 pt region in a 900 pt-wide window.
-- **Toolbar groups:** Finder uses an 81 pt back/forward group, a 164 pt
+- **Toolbar groups:** Files uses an 81 pt back/forward group, a 164 pt
   view-mode group, then Group (47 pt), Share (36 pt), Edit Tags (38 pt),
   Action (37 pt), and Search (40 pt). Groups are separated by glass capsules,
   not one continuous bar.
-- **Accessory bars are content, not chrome.** Finder's tab bar (28 pt), path
+- **Accessory bars are content, not chrome.** Files's tab bar (28 pt), path
   bar (30 pt) and status bar (28 pt) sit inside the content area. TextEdit's
   formatting bar is a 20 pt visible bar inside a 36 pt AX group. Do not add
   these to the window-chrome height.
@@ -105,7 +105,7 @@ window means small chrome”).
    is hidden.
 4. `.fullSizeContentView` and transparent title bars keep the 32 pt layout
    inset; they change what is painted behind the chrome, not the hit target.
-5. Keep tab/path/status bars in the content layer. Finder's tab bar is 28 pt,
+5. Keep tab/path/status bars in the content layer. Files's tab bar is 28 pt,
    its path bar 30 pt and its status bar 28 pt.
 6. Map an app's toolbar style from its declared behaviour, not from its
    screenshot. A compact utility window can still use a 52 pt unified toolbar.
@@ -196,17 +196,17 @@ shadow are distinct from popover glass. Light/dark offscreen captures and
 localization review, long-name fit, and a system-menu live visual pass remain
 `OPEN` pending native reference/host evidence.
 
-## 4. Applications drawer is Spotlight Apps
+## 4. Applications drawer is Search Apps
 
 ### 4.1 What it actually is
 
-On macOS 26 and 27, **Launchpad is gone**. The Dock tile labelled **Apps**
-opens the **Applications** browse mode inside Spotlight. The same mode is
-reachable with `Command-1` after Spotlight opens, or from the Spotlight menu.
+On macOS 26 and 27, **Applications is gone**. The Dock tile labelled **Apps**
+opens the **Applications** browse mode inside Search. The same mode is
+reachable with `Command-1` after Search opens, or from the Search menu.
 There are no pages, no user folders, no drag-to-rearrange grid, and no page
 dots.
 
-The correct reference is **Spotlight Apps**, not the old Launchpad page model.
+The correct reference is **Search Apps**, not the old Applications page model.
 
 ### 4.2 Measured geometry
 
@@ -238,7 +238,7 @@ interaction, not a page-based launcher.
 ### 4.4 Implementation rules
 
 1. Dragonfruit's drawer is **search-first, category-filtered, and
-   scrollable**. Copying the old Launchpad page model is a regression against
+   scrollable**. Copying the old Applications page model is a regression against
    the reference build.
 2. Keep the 7-column, 115×92 pt grid at this display size; derive columns from
    width rather than hard-coding 7.
@@ -258,17 +258,17 @@ adds the measured list mode and “View content as” Grid/List choice, the
 suggestions section, the remaining multi-display capture, and the
 OPEN-DRAWER-01/02 evidence rows.
 
-## 5. Notification Center is a vertical material ramp
+## 5. Notifications is a vertical material ramp
 
 ### 5.1 Layout
 
-Notification Center is a right-edge overlay, not a floating window:
+Notifications is a right-edge overlay, not a floating window:
 
 | Element | Geometry |
 |---|---|
 | Overlay window | Full screen 1800×1169 pt; content right-aligned |
 | Panel content | 344 pt wide, starting at x=1440, y=64; scroll area 752×1063 pt |
-| Header | “Notification Center” 159×21 pt; Clear All 20×20 pt |
+| Header | “Notifications” 159×21 pt; Clear All 20×20 pt |
 | Banner stack | 344×75 pt at y=93 |
 | Widget | Calendar 164×164 pt at y=200 |
 | Actions | Edit Widgets 87×24 pt; Clear Notifications menu 24×24 pt |
@@ -331,7 +331,7 @@ plus allowed-people presentation. Evidence:
 `tst_settings_notifications`, `tst_controlcenter` and `tst_dockcore` for the
 shared profile projection.
 
-## 6. Control Center is a nested dark-glass grid
+## 6. Quick Settings is a nested dark-glass grid
 
 ### 6.1 Default panel geometry
 
@@ -345,15 +345,15 @@ visible glass because it includes the off-screen hosting area.
 | Wi-Fi | 140×64 pt |
 | Bluetooth | 140×64 pt |
 | Now Playing | 140×140 pt |
-| AirDrop | 140×64 pt |
+| Nearby Transfer | 140×64 pt |
 | Stage Manager | 64×64 pt |
-| Screen Mirroring | 64×64 pt |
+| Screen Casting | 64×64 pt |
 | Dark Mode | 64×64 pt |
 | Capture Screen | 64×64 pt |
 | Focus | 140×64 pt |
 | Display | 292×64 pt group with a 217×14 pt slider |
 | Sound | 292×64 pt group with a 180×14 pt slider |
-| AirPlay Audio | 26×26 pt |
+| Screen Casting Audio | 26×26 pt |
 | Edit Controls | 93×24 pt |
 
 The 292 pt module field is exactly `4×64 + 3×12`.
@@ -365,7 +365,7 @@ The 292 pt module field is exactly `4×64 + 3×12`.
 | Wi-Fi | 308×87 pt: known network row (280×32), Other Networks disclosure, Wi-Fi Settings… |
 | Bluetooth | 308×64 pt: two device rows (280×32 each), Bluetooth Settings… |
 | Focus | Two rows (Do Not Disturb, Reduce Interruptions) plus Focus Settings… |
-| Screen Mirroring | Display Settings… plus an empty device list |
+| Screen Casting | Display Settings… plus an empty device list |
 | Now Playing | 140×140 pt module; previous/play/next 30×30 pt |
 
 The Wi-Fi and Bluetooth sheets expand the outer panel; the panel grows behind
@@ -377,13 +377,13 @@ default outer panel (0.265/0.373) but not identical.
 “Edit Controls” opens a 736×900 pt window with a 245 pt category sidebar and
 22 categories:
 
-All Controls, Battery, Clock, Connectivity, Desktop & Finder, Display &
+All Controls, Battery, Clock, Connectivity, Desktop & Files, Display &
 Brightness, Fast User Switching, Focus, Home, Keyboards, Lock Screen, Notes,
 Now Playing, Screenshot, Shortcuts, Sounds, Utilities, Voice Memos,
 Accessibility, Hearing Accessibility, Motor Accessibility, Vision
 Accessibility.
 
-This is the real inventory of what Control Center can contain. The default
+This is the real inventory of what Quick Settings can contain. The default
 panel is only a subset.
 
 ### 6.4 Materials
@@ -395,7 +395,7 @@ panel is only a subset.
 | Wi-Fi-expanded outer panel | 0.286 | 0.257 |
 | Bluetooth expanded list | ~0.13 luma | not invertible |
 
-Control Center is **dark glass even in Light appearance**. The modules are
+Quick Settings is **dark glass even in Light appearance**. The modules are
 separate capsules nested on the outer panel; the measured module value is an
 effective glass-on-glass value. Keep the nesting and the strong lensing at the
 capsule ends; do not flatten it to one translucent rectangle.
@@ -418,7 +418,7 @@ capsule ends; do not flatten it to one translucent rectangle.
 
 **Owner:** T235. Landed: the 292 pt module field, the 4-column 64 pt/12 pt
 grid, the 1×1/2×1/2×2/4×1 spans, the measured 13-module default inventory, the
-308 pt expanded sheets (Wi-Fi, Bluetooth, Focus, Screen Mirroring, Now
+308 pt expanded sheets (Wi-Fi, Bluetooth, Focus, Screen Casting, Now
 Playing, Sound, Display, Battery) that grow the outer panel, the 736×900 pt
 Edit Controls catalogue with a 245 pt sidebar and the 22 categories, the three
 page model, per-control span resizing, keyboard/AT-SPI menu-bar pinning, and
@@ -429,7 +429,7 @@ materials are unchanged (0.265/0.373, 0.391/0.317, expanded outer
 the absence states. Pointer drag-to-menu-bar, per-display surfaces and
 open/close/expand/edit motion remain `OPEN` (see §9).
 
-## 7. Finder is the reference file-manager anatomy
+## 7. Files is the reference file-manager anatomy
 
 ### 7.1 Window geometry
 
@@ -446,7 +446,7 @@ open/close/expand/edit motion remain `OPEN` (see §9).
 | Toolbar hidden | Content starts 64 pt below the frame; sidebar is hidden too |
 
 The toolbar-hidden measurement confirms Apple's documentation: hiding the
-toolbar also hides the Finder sidebar and moves the status bar.
+toolbar also hides the Files sidebar and moves the status bar.
 
 ### 7.2 Toolbar and sidebar
 
@@ -488,13 +488,13 @@ single-column auxiliary window, not a wide sheet.
 
 ### 7.5 Implementation rules
 
-1. Finder is the reference for the **sidebar + toolbar + content + bottom
+1. Files is the reference for the **sidebar + toolbar + content + bottom
    bars** window layout. Use it for Files and any inspector-heavy app.
 2. The toolbar is 52 pt; the tab/path/status bars are content-layer bars.
 3. Hiding the toolbar is a mode change, not just a visibility toggle: it also
    hides the sidebar and moves the status bar.
 4. The sidebar is near-opaque vibrancy; the toolbar is nearly opaque. Do not
-   apply the 0.55 popover alpha to Finder chrome.
+   apply the 0.55 popover alpha to Files chrome.
 5. The four view modes need separate layout components; a single grid with a
    different column count is not enough.
 6. Search, gallery preview, tags, sidebar/toolbar customization, the dark
@@ -508,7 +508,7 @@ explicit reasons on the disabled Column/Gallery states, and the 328×1034 pt
 Get Info window with its seven-section single column and multi-selection
 aggregation. The remaining tab/search/tag/customization/motion work stays
 tracked in `09-files.md` and `STATUS.md`. The manifest surface is `N-FILES`
-(Files window); `N-PREV` remains the Quick Look overlay, so the two surfaces do
+(Files window); `N-PREV` remains the Preview overlay, so the two surfaces do
 not share evidence rows.
 
 ## 8. Cross-surface rules
@@ -518,22 +518,22 @@ not share evidence rows.
 2. **There are at least four material families in this set:**
    - popover/menu glass (~0.55 alpha);
    - window chrome/vibrancy (~0.90–0.99 alpha);
-   - Control Center dark modules (~0.39 alpha, dark even in Light);
-   - Notification Center bands (0.407–0.551 alpha, three different values).
+   - Quick Settings dark modules (~0.39 alpha, dark even in Light);
+   - Notifications bands (0.407–0.551 alpha, three different values).
 3. **Accessory bars are content.** Tabs, path bars, status bars and format
    bars do not increase the title-bar height.
-4. **Expanded surfaces grow their parent.** Control Center modules expand the
-   panel; Notification Center widgets live in the panel; the app drawer is a
-   standalone Spotlight mode.
+4. **Expanded surfaces grow their parent.** Quick Settings modules expand the
+   panel; Notifications widgets live in the panel; the app drawer is a
+   standalone Search mode.
 5. **Search-first launchers replace page-based launchers.** The reference build
-   has no Launchpad pages or folders.
+   has no Applications pages or folders.
 6. **Use original assets.** Reproduce the interaction and geometry, not
    Apple's bitmaps, product images, sounds, trademarks or code.
 
 ## 9. Evidence and OPEN rows
 
 The shareable geometry is
-`macos-design-review/docs/experience_measurements.json`. Local screenshots and
+the local experience measurements. Local screenshots and
 AX dumps remain in that repository's gitignored `captures/` directory.
 
 The structural review still leaves these rows open:
@@ -547,13 +547,13 @@ The structural review still leaves these rows open:
 | OPEN-DRAWER-01 | Drawer open/close/launch motion | T248 |
 | OPEN-DRAWER-02 | Full keyboard, empty/no-results, iPhone-app rows, multi-display | T248 |
 | OPEN-NC-01 | Focus-active widget styling, the live Weather provider and inline reply; empty, actions and the live Calendar variant are implemented (`tst_notifications`, `make t234-notifications-capture`) | T234 follow-up |
-| OPEN-NC-02 | Notification Center open/close motion; the banner enter/exit and stack-count motion are implemented (`tst_notifications::test_the_banner_stack_peeks_and_reduced_motion`, rerun `make t234-notifications-capture`) | T234 follow-up |
+| OPEN-NC-02 | Notifications open/close motion; the banner enter/exit and stack-count motion are implemented (`tst_notifications::test_the_banner_stack_peeks_and_reduced_motion`, rerun `make t234-notifications-capture`) | T234 follow-up |
 | OPEN-CC-01 | Live provider evidence for Keyboard Brightness and Fast User Switching (both are addable and show their explicit absent state) | T235 follow-up |
-| OPEN-CC-02 | Pointer drag between the panel grid and the menu bar; per-display Control Center surfaces (pages, resizing and keyboard/AT-SPI pinning are implemented) | T235 follow-up |
-| OPEN-CC-03 | Control Center open/close, expand/collapse and edit-mode motion | T235 follow-up |
-| OPEN-FINDER-01 | Search, gallery preview, tags | T230d / T244a / Files track |
-| OPEN-FINDER-02 | Sidebar/toolbar customization | Files track |
-| OPEN-FINDER-03 | Dark all-view matrix and motion | T244a / Files track |
+| OPEN-CC-02 | Pointer drag between the panel grid and the menu bar; per-display Quick Settings surfaces (pages, resizing and keyboard/AT-SPI pinning are implemented) | T235 follow-up |
+| OPEN-CC-03 | Quick Settings open/close, expand/collapse and edit-mode motion | T235 follow-up |
+| OPEN-FILES-01 | Search, gallery preview, tags | T230d / T244a / Files track |
+| OPEN-FILES-02 | Sidebar/toolbar customization | Files track |
+| OPEN-FILES-03 | Dark all-view matrix and motion | T244a / Files track |
 
 These are explicit debt rows, not silent assumptions. Each task must replace
 its rows with a capture, a test, or a narrower `OPEN` row with a rerun command.
@@ -571,7 +571,7 @@ The capture PNGs are local evidence under `docs/captures/` (gitignored by
 repository policy); the committed runner and make target are the durable
 artifact.
 
-T234 resolves the Notification Center layout/material/action evidence locally:
+T234 resolves Notifications layout/material/action evidence locally:
 `make t234-notifications-capture` writes light/dark banner, populated Center,
 empty Center and separate-gallery stills at the measured 344 pt and 1027×552 pt sizes,
 and `ctest -R '^(tst_notifications|tst_widgetmodel|tst_settings_notifications|tst_controlcenter|tst_dockcore)$'` pins the 344 pt ramp,
@@ -585,7 +585,7 @@ Focus-active widget styling, the live Weather provider, inline reply and
 Center open/close motion; rerun
 `make t234-notifications-capture` after those land.
 
-T235 resolves the Control Center grid/catalogue evidence locally:
+T235 resolves the Quick Settings grid/catalogue evidence locally:
 `make t235-control-center-capture` writes the measured 360×1164 grid in
 light/dark, the Wi-Fi/Bluetooth/Focus/Now Playing/Sound/Display/Battery
 expanded sheets, page 2, resized controls, the explicit-absence panel, and the
@@ -606,7 +606,7 @@ append-only state ids:
 |---|---|---|
 | `N-WIN` | `chrome-borderless` … `chrome-preference`, `traffic-lights-titlebar`, `traffic-lights-unified`, `accessory-bars`, `fullscreen-chrome-hidden`, `fullscreen-chrome-revealed`, `long-title`, `rtl-titlebar` | T230b |
 | `SET-GENERAL` | `about-panel`, `about-page`, `about-dark`, `about-localized` | T230c |
-| `Q-AD` | `spotlight-grid`, `spotlight-list`, `suggestions`, `search-focused`, `category-chips`, `no-results`, `launch-motion`, `spotlight-keyboard`, `iphone-apps` | T248 |
+| `Q-AD` | `search-grid`, `search-list`, `suggestions`, `search-focused`, `category-chips`, `no-results`, `launch-motion`, `search-keyboard`, `mobile-apps` | T248 |
 | `S-NC` | `panel-layout`, `banner-stack`, `widget-stack`, `widget-gallery`, `material-ramp`, `empty`, `reply-actions`, `focus-active`, `widget-variants`, `motion-open-close`, `motion-banner-stack` | T234 |
 | `S-CC` | `grid`, `module-sizes`, `expanded-wifi`, `expanded-bluetooth`, `expanded-focus`, `edit-controls`, `addable-modules`, `pages`, `resize`, `menu-bar-pinning`, `motion-open-close`, `motion-expand`, `motion-edit` | T235 |
 | `N-FILES` | `chrome`, `toolbar-hidden`, `view-icon`, `view-list`, `view-column`, `view-gallery`, `get-info`, `search`, `gallery-preview`, `tags`, `customization`, `dark-matrix`, `motion` | T230d / T244a / Files track |
@@ -615,7 +615,7 @@ Every uncaptured state is an `OPEN` row with `axes: open-intended`, the exact
 rerun command, the owner, and the impact in its `reason`. The 14 review ids
 above appear verbatim in those reasons. The measured geometry and material
 values are in `docs/captures/experience-thresholds.json` under the same surface
-ids. `N-FILES` is a new surface; `N-PREV` stays the Quick Look overlay.
+ids. `N-FILES` is a new surface; `N-PREV` stays the Preview overlay.
 
 ## 10. Task map
 
@@ -626,7 +626,7 @@ ids. `N-FILES` is a new surface; `N-PREV` stays the Quick Look overlay.
 | About panel + full About page | T230c | `docs/tasks/0.2.0/230c-t-22.2a-about-two-surfaces.md` |
 | Files chrome and Get Info inspector | T230d | `docs/tasks/0.2.0/230d-t-22.2a-files-chrome-inspector.md` |
 | Files column and gallery views | T244a | `docs/tasks/0.2.0/244a-t-22.4-files-column-gallery.md` |
-| Notification Center layout, widgets and ramp | T234 | `docs/tasks/0.2.0/234-t-22.2-notifications-focus-widgets.md` |
-| Control Center grid, edit catalogue and customization | T235 | `docs/tasks/0.2.0/235-t-22.2-quick-settings-customization.md` |
-| Spotlight Apps drawer model | T248 | `docs/tasks/0.2.0/248-t-22.5-apps-drawer.md` |
+| Notifications layout, widgets and ramp | T234 | `docs/tasks/0.2.0/234-t-22.2-notifications-focus-widgets.md` |
+| Quick Settings grid, edit catalogue and customization | T235 | `docs/tasks/0.2.0/235-t-22.2-quick-settings-customization.md` |
+| Search Apps drawer model | T248 | `docs/tasks/0.2.0/248-t-22.5-apps-drawer.md` |
 | Acceptance harness consumes the new rows | T260 | `docs/tasks/0.2.0/260-t-22.8-acceptance-harness.md` |

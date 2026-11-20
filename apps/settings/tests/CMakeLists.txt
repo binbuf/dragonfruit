@@ -292,10 +292,10 @@ set_tests_properties(tst_settings_input PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Mission Control & Hot Corners-pane tests (T-15.5b): the four hot-corner
+# Overview & Hot Corners-pane tests (T-15.5b): the four hot-corner
 # assignments and the gesture rows round-trip through settingsd's schema
 # defaults live, an external change converges, and the absence note is gated.
-# The pane writes only settingsd keys (Mission Control itself is
+# The pane writes only settingsd keys (Overview itself is
 # compositor-native), so no adapter fixture is needed.
 qt_add_executable(tst_settings_mission_control
     tst_settings_mission_control.cpp

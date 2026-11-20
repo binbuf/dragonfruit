@@ -2,7 +2,7 @@
 //! Sort keys and the natural name collation ([09-files.md]).
 //!
 //! A [`SortSpec`] is one immutable ordering: the primary [`SortKey`], a
-//! [`SortDirection`], and the Finder "folders first" toggle. The model holds
+//! [`SortDirection`], and the Files "folders first" toggle. The model holds
 //! one spec and can change it without touching node ids or the arrival order,
 //! so a view re-sorts without invalidating selection.
 //!
@@ -100,7 +100,7 @@ impl SortDirection {
 ///
 /// `folders_first` is applied before the primary key and is **not** reversed
 /// by [`SortDirection::Descending`]: directories stay on top, matching the
-/// Finder/Nautilus convention and the design's "folders-first toggle".
+/// Files/Nautilus convention and the design's "folders-first toggle".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SortSpec {
     /// The primary field.
@@ -112,7 +112,7 @@ pub struct SortSpec {
 }
 
 impl Default for SortSpec {
-    /// Name, ascending, folders first — the Finder default.
+    /// Name, ascending, folders first — the Files default.
     fn default() -> Self {
         Self {
             key: SortKey::Name,

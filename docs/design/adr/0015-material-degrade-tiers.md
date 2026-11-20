@@ -8,8 +8,8 @@ accepted
 
 The T-04 materials are the first compositor work with a real iGPU frame-budget
 risk: the chrome backdrop (`BackdropPass`, ADR 0013) and the elevation shadows
-(T-04.1a) emit many translucent layers per surface, and T-05's Mission Control
-and T-11's Control Center will compose them over live surfaces. T-04.4a must
+(T-04.1a) emit many translucent layers per surface, and T-05's Overview
+and T-11's Quick Settings will compose them over live surfaces. T-04.4a must
 make them give ground under budget pressure — the track names "smaller radius
 → blur off" — without each future feature inventing its own fallback. T-05.1b
 ("degrade tier applied"), T-05.6 ("apply T-04 degrade tiers under pressure"),

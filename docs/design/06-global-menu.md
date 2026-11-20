@@ -89,7 +89,7 @@ Shortcuts are **dispatched, not merely displayed**:
   asks the compositor to register the keybindings while the owning window is
   focused.
 - Conflicts resolve by focus: the active window's menu wins, and system
-  shortcuts (workspace switching, Mission Control, app switcher) take
+  shortcuts (workspace switching, Overview, app switcher) take
   precedence over application accelerators.
 
 The visual grammar for every menu row is the design-system

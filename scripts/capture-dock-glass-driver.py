@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Capture the T-14.7j Dock Tahoe visual language.
+"""Capture the T-14.7j Dock reference visual language.
 
-Driven by ``scripts/capture-dock-tahoe.sh`` (run that, not this). Requires a
+Driven by ``scripts/capture-dock-glass.sh`` (run that, not this). Requires a
 host Wayland session, ``spectacle``, and Pillow.
 
 For the light and dark schemes it parks the pointer off the Dock (resting),
@@ -41,14 +41,14 @@ BTN_LEFT = 272
 
 
 def log(message):
-    print(f"capture-dock-tahoe: {message}", flush=True)
+    print(f"capture-dock-glass: {message}", flush=True)
 
 
 class Synthetic:
     def __init__(self, path):
         self.path = path
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        self.client = f"/tmp/opencode-dock-tahoe-{os.getpid()}.sock"
+        self.client = f"/tmp/opencode-dock-glass-{os.getpid()}.sock"
         try:
             os.unlink(self.client)
         except FileNotFoundError:
@@ -164,7 +164,7 @@ def capture_scheme(synth, cap, scheme):
     synth.motion(AWAY_X, AWAY_Y)
     time.sleep(0.4)
 
-    dest = os.path.join(cap.outdir, f"t14-dock-tahoe-{scheme}.png")
+    dest = os.path.join(cap.outdir, f"t14-dock-glass-{scheme}.png")
     stack([resting, hovered, magnified, pressed],
           ["resting", "hovered (Trash)", "magnified", "pressed"], dest)
 
@@ -186,7 +186,7 @@ def capture_reduced(synth, cap):
     synth.button(False)
     synth.motion(AWAY_X, AWAY_Y)
 
-    dest = os.path.join(cap.outdir, "t14-dock-tahoe-reduced.png")
+    dest = os.path.join(cap.outdir, "t14-dock-glass-reduced.png")
     stack([resting, pressed],
           ["minimal tier / reduced motion — resting (no glass claim)",
            "minimal tier / reduced motion — pressed"], dest)
