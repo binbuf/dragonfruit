@@ -1,4 +1,16 @@
-# Agent instructions
+### Architecture & Documentation
+
+- Keep `docs/design/*.md` aligned with the application's current and intended architecture.
+- Don't add anything into git that isn't part of core design and ADRs. Proposals, tracks, diagnostics, logs should be gitignored.
+  - Sometimes temporary docs are used like tasks, research, proposals but most of these are temporary workspace files. Permanent design files should only be in `docs/design`.
+- Update design documents when requirements, implementation direction, or architecture change.
+- Track incomplete design goals accurately; distinguish planned functionality from implemented functionality.
+- Create or update `docs/design/adr/*.md` for significant architectural decisions and pivots.
+- Preserve decision history; supersede outdated ADRs rather than deleting them.
+
+### Quality
+
+- Never silently substitute a partial implementation for the requested functionality. Document blockers and incomplete requirements explicitly.
 
 ## Coding rules
 
@@ -6,11 +18,14 @@
 
 ## Documentation rules
 
-- Don't add anything into git that isn't part of core design and ADRs. Proposals, tracks, diagnostics, logs should be gitignored.
-- Keep `docs/design` updated. If design is deviating from intended path then update accordingly. If on intended path but work is complete, notate progress.
-  - Updat `docs/design/adr/*.md` when we make new design decisions so we can track progress.
 
 ## Git staging and commits
+
+- Prefer to squash branches when merging to `main`
+- Don't check anything into git that shouldn't be there (e.g. logs, telemetry, possibly configs, credentials, etc)
+  - Git add and commit when a task session is completing
+  - Temporary files can be checked into the non-main branches as long as they're removed before merging to `main` via squash
+
 
 Before every `git add` or `git commit`:
 
@@ -47,7 +62,7 @@ Before every `git add` or `git commit`:
    git diff --cached
    ```
 
-7. Never commit secrets, credentials, tokens, private keys, or personal data.
+7. Never commit secrets, credentials, tokens, private keys, or personal data (unless user manually requests it or does it in a non main branch).
    If one is already tracked, stop and flag it rather than committing around
    it.
 
