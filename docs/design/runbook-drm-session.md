@@ -174,12 +174,15 @@ WAYLAND_DISPLAY=<socket> grim - > docs/captures/t03-drm-loop-still.png
 
 Inspect the still: full desktop, no stray artifacts.
 
-The DRM backend does **not** implement `capture_screenshot` yet, so `grim` or
-a portal still is not the trusted native capture path on this rail. For
-native stills use the dev-only KMS readback
-[`scripts/t208-kms-readback.c`](../../scripts/t208-kms-readback.c) (the T191b/T208
-`pidfd_getfd` + `drmModeGetFB2` + dma-buf/EGL method; primary plane only). The
-trusted fullscreen row uses
+The DRM backend implements the trusted `capture_screenshot` request through the
+same offscreen pass as the nested backend (ADR
+[0308](adr/0308-drm-screenshot-capture.md)). Use the session's Cmd+Shift+3
+fullscreen shortcut or the portal presenter to exercise it; `grim` remains an
+ordinary client and is not the trusted capture path. For primary-plane
+readback evidence use the dev-only KMS tool
+[`scripts/t208-kms-readback.c`](../../scripts/t208-kms-readback.c) (the
+T191b/T208 `pidfd_getfd` + `drmModeGetFB2` + dma-buf/EGL method; primary plane
+only). The trusted fullscreen row uses
 [`scripts/t208-shell-fullscreen.c`](../../scripts/t208-shell-fullscreen.c) after
 stopping the shell so the compositor reissues its launch token.
 

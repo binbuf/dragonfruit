@@ -2246,8 +2246,12 @@ where
 /// RGBA texture and read it back, cropped to `rect` (or the whole output).
 /// Returns the image and the path-independent PNG payload; `render_frame`
 /// writes it and replies to the shell.
-fn capture_frame<E>(
-    renderer: &mut GlowRenderer,
+///
+/// Shared by the nested and DRM backends. The caller owns the element list and
+/// passes the same one it is about to composite, so the capture is the current
+/// desktop view rather than a separately rebuilt scene.
+pub(crate) fn capture_frame<R, E>(
+    renderer: &mut R,
     elements: &[E],
     state: &crate::state::DfState,
     output: &smithay::output::Output,
@@ -2255,11 +2259,16 @@ fn capture_frame<E>(
     rect: Option<smithay::utils::Rectangle<i32, smithay::utils::Physical>>,
 ) -> Result<(image::RgbaImage, String), String>
 where
-    E: smithay::backend::renderer::element::RenderElement<GlowRenderer>,
+    R: smithay::backend::renderer::Renderer
+        + smithay::backend::renderer::Bind<smithay::backend::renderer::gles::GlesTexture>
+        + smithay::backend::renderer::Offscreen<smithay::backend::renderer::gles::GlesTexture>
+        + smithay::backend::renderer::ExportMem,
+    R::TextureId: smithay::backend::renderer::Texture,
+    R::Error: std::fmt::Debug,
+    E: smithay::backend::renderer::element::RenderElement<R>,
 {
     use smithay::backend::allocator::Fourcc;
     use smithay::backend::renderer::gles::GlesTexture;
-    use smithay::backend::renderer::{Bind, ExportMem, Offscreen};
     use smithay::utils::{Buffer as BufferCoord, Transform};
 
     let size = output
@@ -2316,8 +2325,8 @@ where
 }
 
 /// Write a produced capture to the path the shell supplied and reply, or
-/// reply with the failure reason (T-13.3b).
-fn resolve_capture(
+/// reply with the failure reason (T-13.3b). Shared with the DRM backend.
+pub(crate) fn resolve_capture(
     state: &mut crate::state::DfState,
     result: Result<(image::RgbaImage, String), String>,
 ) {

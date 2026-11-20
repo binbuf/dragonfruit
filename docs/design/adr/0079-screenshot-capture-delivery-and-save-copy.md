@@ -33,12 +33,12 @@ too large for one still frame; (b) is forbidden by policy and the gate.
   under the point in the compositor (the shell never receives window geometry).
   `width`/`height` <= 0 means the whole output.
 - **The capture is a second, offscreen render pass of the same element list.**
-  The nested backend renders the frame's already-built elements into a
-  `GlesTexture` (`create_buffer` + `bind`), reads it back with
-  `copy_framebuffer`/`map_texture`, crops, and writes PNG. The shell unmaps its
-  own screenshot overlay before requesting, so the scrim is not captured. The
-  pass runs before the window render so the winit EGL surface is restored for
-  the submit.
+  The nested and DRM backends render the frame's already-built elements into a
+  `GlesTexture` (`create_buffer` + `bind`), read it back with
+  `copy_framebuffer`/`map_texture`, crop, and write PNG. The shell unmaps its
+  own screenshot overlay before requesting, so the scrim is not captured. On
+  the nested rail the pass runs before the window render so the winit EGL
+  surface is restored for the submit.
 - **Save/copy is the shell's.** `ScreenshotWriter` (dockcore) writes the image
   into `Pictures/Screenshots` (`DF_SCREENSHOT_DIR` overrides it for headless
   tests and fixtures) and puts the image plus the saved `file://` URI on the
@@ -55,11 +55,18 @@ capture with a zero rectangle and saves the result to the XDG Desktop through
 flows keep the `Pictures/Screenshots` destination and the overlay described
 above.
 
+## Update — ADR [0308](0308-drm-screenshot-capture.md)
+
+The capture pass is no longer nested-only. The same renderer-generic helper is
+called by the DRM backend with its live element list, so the native rail can
+satisfy the fullscreen and region requests. Headless remains the only backend
+that answers `screenshot_failed`.
+
 ## Consequences
 
-- The nested backend implements capture; the DRM backend (untested hardware)
-  and the headless backend (no render target) fail the request explicitly with
-  `screenshot_failed`, so the shell's presenter never hangs.
+- The nested and DRM backends implement capture; the headless backend (no
+  render target) fails the request explicitly with `screenshot_failed`, so the
+  shell's presenter never hangs.
 - Coordinates are output-local pixels at scale 1; a fractional-scale or
   transformed-output crop is a later refinement (the PipeWire path owns it).
 - The clipboard copy uses `QGuiApplication`'s clipboard; the real Wayland

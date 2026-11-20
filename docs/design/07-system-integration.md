@@ -1899,10 +1899,12 @@ interface and the second interactive one. Contract frozen in ADR
   The Cmd+Shift+3 fullscreen shortcut writes to the XDG Desktop directory;
   portal requests and the region/window flows write to `Pictures/Screenshots`
   (`DF_SCREENSHOT_DIR` overrides both for tests and fixtures). A waiting portal
-  request is completed with the saved URI. The nested backend implements the
-  render; DRM and headless answer `screenshot_failed`. Contract in ADRs
-  [0079](adr/0079-screenshot-capture-delivery-and-save-copy.md) and
-  [0307](adr/0307-screenshot-shortcut-immediate-desktop-save.md).
+  request is completed with the saved URI. The nested and DRM backends
+  implement the render from the same element list; headless answers
+  `screenshot_failed`. Contract in ADRs
+  [0079](adr/0079-screenshot-capture-delivery-and-save-copy.md),
+  [0307](adr/0307-screenshot-shortcut-immediate-desktop-save.md), and
+  [0308](adr/0308-drm-screenshot-capture.md).
 - `portal/tests/screenshot.rs` drives the blocking round trip for each mode
   with a test client as the presenter; `tst_screenshot` (bridge: mode,
   selection hand-off, cancel, and a round-trip against a fake

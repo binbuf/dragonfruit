@@ -20,6 +20,11 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Native screenshots.** The DRM backend now renders the requested frame
+  through the same offscreen capture pass as the nested backend instead of
+  answering `screenshot_failed`, so Cmd+Shift+3 and the region overlay produce
+  files on a native session. A screenshot overlay no longer stays mapped when a
+  pointer-move frame finishes after the selection is accepted.
 - **Large lists.** Folder stacks and the Add Application picker now render
   through one virtualized list viewport instead of a `Repeater` that built a
   delegate for every entry. Object count follows the visible rows plus a small

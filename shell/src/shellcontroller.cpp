@@ -5934,6 +5934,13 @@ void ShellController::hideScreenshot()
     m_screenshotActive = false;
     m_screenshotPending = false;
     m_screenshotButtons = Qt::NoButton;
+    // A pointer-move render can still be in flight when the selection is
+    // accepted. Drop its GPU view before unmapping, otherwise the deferred
+    // commit lands after hide and maps the overlay again (the "stuck
+    // screenshot" failure).
+    if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(
+            m_producers.value(m_screenshotWindow)))
+        discardChromeView(gpu, GpuChromeFrameProducer::PrimaryView);
     if (m_protocol) {
         m_protocol->setScreenshotInputRegion(0, 0);
         m_protocol->hideScreenshot();
@@ -5961,7 +5968,9 @@ void ShellController::renderScreenshot()
                       {{QStringLiteral("screenshot"), logical, QRect(),
                         [this, logical](const QImage &image) {
                             return m_protocol->commitScreenshotImage(image, logical);
-                        }}});
+                        },
+                        0,
+                        [this]() { return m_screenshotActive; }}});
 }
 
 void ShellController::scheduleScreenshotRender()
