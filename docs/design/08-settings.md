@@ -81,7 +81,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 |---|---|
 | Wi-Fi, Network | NetworkManager (Wi-Fi, services, VPN connections) + the firewall adapter (firewalld/ufw/nftables) ([adr/0146](adr/0146-network-advanced-vpn-adapter.md), [adr/0147](adr/0147-network-advanced-vpn-pane-and-tile.md), [adr/0234](adr/0234-network-panes-model-order-firewall.md)) |
 | Bluetooth | BlueZ |
-| Battery | UPower + power-profiles-daemon where present; T289 renders the mockup order (Low Power Mode, Battery Health + Show Detail, the `power.historyRange` range control, the live UPower status pill, the `SettingsChart` Battery Level chart, and an Options… sheet with the real `power.*` policy, Power Adapter, and Lock Screen rows) ([adr/0293](adr/0293-battery-displays-pane-adaptations.md)) |
+| Energy | UPower + power-profiles-daemon where present; T289 renders the mockup order (Low Power Mode, Battery Health + Show Detail, the `power.historyRange` range control, the live UPower status pill, the `SettingsChart` Battery Level chart, and an Options… sheet with the real `power.*` policy, Power Adapter, and Lock Screen rows). The id stays `battery`; macOS calls the same pane Battery on a laptop and Energy on a desktop ([adr/0293](adr/0293-battery-displays-pane-adaptations.md), [adr/0300](adr/0300-energy-category.md)) |
 | General | `settingsd` + host/distro adapters (About, native/PackageKit Updates, Storage usage, Login Items, Language & Region, Date & Time, Sharing, Backup, Startup Disk, Reset) ([adr/0235](adr/0235-general-group-host-adapters.md)) |
 | Appearance | `settingsd` (design-system themes, Light/Dark/Auto mode tiles, accent with custom hex, highlight, folder color, icon style, sidebar icon size, wallpaper tint, scroll bars, attached-menu Glass tint) plus the Advanced Appearance sheet for the Linux-only icon/cursor/window/material rows ([adr/0236](adr/0236-settings-appearance-quick-settings-search-displays.md), [adr/0275](adr/0275-appearance-groups-provider-rows-and-tahoe-accent.md), [adr/0296](adr/0296-appearance-pane-adaptations.md)) |
 | Accessibility | live AT-SPI read + `settingsd` + compositor + delegates — mockup intro plus a big list of in-place sub-panes. T291a ships **Vision**: read-only screen-reader/bridge status plus `Open Orca`, Display accommodations (`increaseContrast`, `reduceTransparency`, `differentiateWithoutColor`, `textSize`, the shared `appearance.cursorSize`), the compositor magnifier (`magnifier`, `magnifierZoom`, `magnifierMode`), Motion (`reduceMotion`, `dimFlashingLights`), and the speech-dispatcher Read & Speak delegate. T291b adds **Physical and Motor**: Keyboard (stored-only `input.keyboardNavigation` plus the `onboard`/`wvkbd` on-screen-keyboard delegate) and Pointer Control (live `input.doubleClickSpeed`). T291c adds **Hearing**: Audio keeps Balance on the stored-only `sound.balance` key shared with the Sound pane, while Hearing Devices, Subtitles and Captioning, Live Captions, and Spoken Name are map omissions with reasons. Ownerless rows in every section are map omissions with reasons; Speech and General/Shortcut follow in T291d–T291e ([adr/0144](adr/0144-accessibility-adapter.md), [adr/0145](adr/0145-accessibility-pane-and-tile.md), [adr/0276](adr/0276-accessibility-pane-accommodations.md), [adr/0297](adr/0297-accessibility-big-list-and-vision.md), [adr/0299](adr/0299-accessibility-hearing.md)) |
@@ -364,7 +364,7 @@ Menu Bar pane rows for them are T233's). Revision 35 (T278) adds
 `notifications.appOptions`, `focus.customProfiles`, `focus.customProfile`, and
 `lock.requirePasswordAfter`.
 
-## The T229 panes (Sound, Keyboard/Input, Mouse/Trackpad, Controllers, Users & Groups, Printers & Scanners, Battery/Storage)
+## The T229 panes (Sound, Keyboard/Input, Mouse/Trackpad, Controllers, Users & Groups, Printers & Scanners, Energy/Storage)
 
 T229 closes the remaining Settings breadth with real host adapters and one
 absence path per row. The catalog now has **28 shipped panes** (Online Accounts
@@ -397,12 +397,12 @@ remains optional).
 - **Printers & Scanners** adds `lpinfo -v` discovery, `lpadmin` add, and a
   per-queue `lpoptions -l`/`-o` Options & Supplies sheet. A queue with no
   options is an honest empty sheet; a host with no CUPS disables Add/Options.
-- **Battery** adds the Options group (`power.showPercentage`, persisted
+- **Energy** adds the Options group (`power.showPercentage`, persisted
   `power.historyRange`) and a Power Settings group that reads `idle.blank`/
   `idle.lock` and navigates to Lock Screen. Storage's usage categories and
   Manage row are now shipped rows in the map.
 
-T273 completes the three data panes. Battery's chart is a real bounded
+T273 completes the three data panes. Energy's chart is a real bounded
 session sampler in `services/power` (`system-status` publishes `history`),
 with an explicit empty state and Refresh until two points exist; screen-on
 usage is one honest row instead of a second empty chart. Schema revision 30
@@ -417,7 +417,7 @@ the one source for every disabled row, and the advanced sheet no longer
 duplicates brightness or rotation. `make t273-data-panes-capture` writes
 live/empty/absence stills in light and dark.
 
-T289 applies the mockup's visual order to both data panes. Battery is Low
+T289 applies the mockup's visual order to both data panes. Energy is Low
 Power Mode and Battery Health, the `power.historyRange` segmented range, the
 live UPower status pill (with the real charge estimate), the `SettingsChart`
 Battery Level chart, and an Options… sheet that owns the `power.*` policy,
@@ -581,7 +581,7 @@ overview` → Desktop & Dock) and the reference names live in the synonym table
 Ranking is field-weighted: exact label, label prefix, word start, substring,
 then synonyms, pane description/section, pane title, and help text. A pane whose
 own name matches sorts first, so `display` opens Displays before an Accessibility
-row called Display, and `battery` opens Battery before the menu-bar Battery
+row called Display, and `battery` opens Energy before the menu-bar Battery
 checkbox. Owner/key/absence/control terms are a separate lower band: an owner
 query still finds its pane, but a technical-only match never outranks a
 user-word match. A pane synonym belongs to the pane entry, not to every row in
@@ -966,7 +966,7 @@ Two absence families appear, and a pane can mix them:
 | Network | NetworkManager + firewall adapter (bridge host) | note; every section stays (Wi-Fi, Firewall, Other Services, VPN); only the NetworkManager rows disable; the firewall keeps its own state and stays usable when NM is absent; a read-only VPN never disables the firewall; "No firewall detected" or Unavailable (never a fake Off) | **hides** |
 | Bluetooth | BlueZ (bridge host) | note; the toggle/My Devices/Nearby/Advanced sections stay with an empty state; only power/discovery disable; the discoverable note is conditional on a live, discoverable adapter; no write | **hides** |
 | VPN | NetworkManager VPN (bridge host) | always-visible top-level pane; note; the connections section keeps its empty state; Connect/Deactivate/Add are no-ops; no plugin disables Add; every write reports its outcome | **hides** |
-| Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write; Options stay live on defaults | **hides** |
+| Energy | UPower + power-profiles-daemon (bridge host) | note; no profile write; Options stay live on defaults | **hides** |
 | Storage | UDisks2/GIO (bridge host) | note; no mount/eject | **hides** |
 | General | settingsd + General/Updates host (bridge host) | the list stays complete; each row says Unavailable only for its own absent half; About/Software Update keep the identity when the provider is gone | **hides** (the update tile hides only when the host is absent) |
 | Sound | PipeWire/WirePlumber (bridge host) + settingsd | routing half note; Test disabled; Sound Effects/Balance stay live on defaults | volume tile `enabled: audioAvailable` |

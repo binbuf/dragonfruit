@@ -122,7 +122,7 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `input.trackpad.pinchZoom` | b | true | | apps/settings | stored-only: compositor/input trackpad gestures bridge pending | Pinch with two fingers to zoom (T280). |
 | `input.trackpad.rotate` | b | true | | apps/settings | stored-only: compositor/input trackpad gestures bridge pending | Rotate with two fingers to rotate the content (T280). |
 | `power.showPercentage` | b | false | | apps/settings | shell/MenuBar battery item | Show the battery percentage beside the menu-bar glyph. |
-| `power.historyRange` | x | 0 | 0–1 | apps/settings | apps/settings Battery pane | Battery usage range: 0 = last 24 hours, 1 = last 10 days. |
+| `power.historyRange` | x | 0 | 0–1 | apps/settings | apps/settings Energy pane | Battery usage range: 0 = last 24 hours, 1 = last 10 days. |
 | `power.dimOnBattery` | b | false | | apps/settings | shell/display forwarder | Reduce the display brightness while the machine runs on battery. |
 | `power.preventSleep` | b | false | | apps/settings | session/idle engine | Keep the session awake by disabling the automatic suspend stage. |
 | `idle.dim` | x | 150 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen dims; 0 disables the stage. |

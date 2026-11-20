@@ -201,7 +201,10 @@ QtObject {
           description: "", shipped: true,
           owner: "NetworkManager VPN", deepLink: "settings://pane/vpn",
           absence: "disabled-with-reason" },
-        { id: "battery", title: qsTr("Battery"), icon: "battery", group: "connectivity",
+        // T289 follow-up: macOS labels this pane Battery on a laptop and
+        // Energy on a desktop. One label for both hardware classes; the id
+        // stays `battery` because history, deep links, and the map persist it.
+        { id: "battery", title: qsTr("Energy"), icon: "battery", group: "connectivity",
           description: "", shipped: true,
           owner: "UPower + power-profiles-daemon",
           deepLink: "settings://pane/battery",
@@ -341,12 +344,14 @@ QtObject {
         deepLink: "settings://pane/general"
     })
 
-    // Deep-link aliases for the ids that moved. `storage` was already an
-    // alias (a hidden General sub-pane). `mission-control`/`overview` land on
-    // Desktop & Dock -> Workspace Overview; `control-center`/`quick-settings`
-    // land on Menu Bar -> Menu Bar Controls; `internet-accounts` is the
-    // title-level rename of the stable `online-accounts` id. An id that is
-    // neither a pane nor here is refused by `resolve()`.
+    // Deep-link aliases for the ids that moved, plus the visible-label alias.
+    // `storage` was already an alias (a hidden General sub-pane).
+    // `mission-control`/`overview` land on Desktop & Dock -> Workspace
+    // Overview; `control-center`/`quick-settings` land on Menu Bar -> Menu Bar
+    // Controls; `internet-accounts` is the title-level rename of the stable
+    // `online-accounts` id; `energy` is the label spelling of the stable
+    // `battery` id. An id that is neither a pane nor here is refused by
+    // `resolve()`.
     readonly property var aliases: ({
         "storage": { paneId: "general", subPaneId: "storage", anchor: "" },
         "mission-control": { paneId: "desktop-dock", subPaneId: "",
@@ -358,7 +363,9 @@ QtObject {
         "quick-settings": { paneId: "menu-bar", subPaneId: "controls",
                             anchor: "" },
         "internet-accounts": { paneId: "online-accounts", subPaneId: "",
-                               anchor: "" }
+                               anchor: "" },
+        // The visible label is Energy; the canonical id stays `battery`.
+        "energy": { paneId: "battery", subPaneId: "", anchor: "" }
     })
 
     // Panes that left the top-level catalog. The map carries the same list

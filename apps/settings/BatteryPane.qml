@@ -3,7 +3,12 @@ import QtQuick
 import Dragonfruit
 import Dragonfruit.Settings
 
-// The Battery pane (T-15.6b; mockup order T289).
+// The Energy pane (id `battery`; T-15.6b, mockup order T289).
+//
+// macOS labels this pane Battery on a laptop and Energy on a desktop; the
+// sidebar uses Energy on every machine so the category does not change with
+// the hardware. The id stays `battery` because history, deep links, and the
+// map persist it (ADR 0300, docs/design/26-settings-logic.md §2).
 //
 // The pane and the Control Center tile are one functional unit. `Low Power
 // Mode` selects the active power profile through the `Settings` singleton to
@@ -732,7 +737,7 @@ Item {
     Dialog {
         id: optionsDialog
         objectName: "batteryOptionsDialog"
-        title: qsTr("Battery Options")
+        title: qsTr("Energy Options")
         message: qsTr("These preferences apply to this session. A dimmed row "
                       + "names the host or service that owns it.")
 

@@ -1,5 +1,11 @@
 # 0293 — Battery and Displays follow the mockup order; sheets own the extra rows
 
+> **Label note (2026-11-20).** The pane this ADR calls Battery is titled
+> **Energy** in the sidebar; the id stays `battery`. macOS uses Battery on a
+> laptop and Energy on a desktop for the same pane. See
+> [ADR 0300](0300-energy-category.md) and
+> [`26-settings-logic.md`](../26-settings-logic.md) §2.
+
 | | |
 |---|---|
 | **Status** | accepted |

@@ -28,6 +28,7 @@ numbered records.
 | [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md) | Measured window chrome, About, Spotlight Apps, Notification Center, Control Center and Finder anatomy; decision in [ADR 0241](adr/0241-macos-structural-surface-review.md) |
 | [24-system-settings.md](24-system-settings.md) | System Settings target: measured window/IA, every macOS Tahoe pane row, Linux adaptations, absence/empty states, 2026-11-14 findings register, and the T263–T284 task map in the `system-settings` set |
 | [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md) | The 2026-11-17 mockup target: reduced IA, chrome/density, per-category dispositions, Menu Bar Controls and OS glyph, and the T285–T302b session-sized task map in the `system-settings-2` set |
+| [26-settings-logic.md](26-settings-logic.md) | Per-category behaviour logic: which rows exist on which hardware, and the deliberate divergences from the macOS reference; Energy is the first completed category |
 | [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row to its owner and absence path |
 | [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
 | [distro-adapter-contract.md](distro-adapter-contract.md) | Cross-distro adapter traits, command matrix, dependency sets, mock, and probe (T221) |

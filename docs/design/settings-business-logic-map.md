@@ -84,7 +84,7 @@ app's sidebar may group panes differently, but the catalog is complete.
 | 3 | Bluetooth | Bluetooth | Ship | BlueZ |
 | 4 | Network | Network | Ship/Adapt | NetworkManager + firewall adapter |
 | 4.1 | — | VPN | Ship/Adapt | NetworkManager VPN (always-visible pane) |
-| 5 | Battery | Battery | Ship | UPower + power-profiles-daemon |
+| 5 | Battery | Energy | Ship | UPower + power-profiles-daemon |
 | 6 | General | General | Ship | `settingsd` + adapters |
 | 6.1 | About | About This System | Ship | host info + distro adapter |
 | 6.2 | Software Update | Software Update | Ship | PackageKit/distro adapter |
@@ -284,7 +284,12 @@ grew an `absent` mode so the capture can show the structural absence without a
 second process.
 
 <a id="pane-battery"></a>
-### 5.4 Battery
+### 5.4 Energy
+
+The macOS label is Battery on a laptop and Energy on a desktop; Dragonfruit
+uses **Energy** on every machine and keeps the `battery` id. See
+[26-settings-logic.md](26-settings-logic.md) §2 and
+[ADR 0300](adr/0300-energy-category.md).
 
 Owner: UPower + power-profiles-daemon/platform profile. Absence: note; no
 profile write; read-only level if available.
@@ -316,6 +321,8 @@ pill reads UPower's live charge state, and the Options… footer opens a sheet
 that owns every `power.*` policy row, the Power Adapter values, and the Lock
 Screen link. The rows keep their `SettingsMap` entries; `tst_settings_battery`
 walks the rendered rows (sheet included) and fails on a row with no map row.
+The sidebar title is **Energy**; the id stays `battery`, and
+`settings://pane/energy` is an alias.
 
 <a id="pane-general"></a>
 ### 5.5 General

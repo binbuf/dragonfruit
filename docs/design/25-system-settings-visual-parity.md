@@ -90,7 +90,7 @@ group headings. The groups are logical, not titled:
 
 | Group | Entries |
 |---|---|
-| Top | Software Update status row, Wi-Fi, Bluetooth, Network, VPN, Battery |
+| Top | Software Update status row, Wi-Fi, Bluetooth, Network, VPN, Energy |
 | Middle | General, Accessibility, Appearance, Desktop & Dock, Displays, Menu Bar, Search, Wallpaper, Screen Saver |
 | Bottom | Notifications, Sound, Focus, Lock Screen, Privacy & Security, Users & Groups, Internet Accounts, Keyboard, Mouse, Trackpad, Game Controllers, Printers & Scanners |
 
@@ -124,7 +124,7 @@ The mockup uses three content shapes:
 - **Big-list pane**: a card of 52 pt icon rows that opens a sub-pane. General,
   Accessibility, Privacy & Security, and the top-level Focus list use this.
 - **Custom pane**: a wall-top preview, a chart, a storage bar, a hero, or a
-  device grid. Wallpaper, Battery, Storage, About, and Lock Screen use this.
+  device grid. Wallpaper, Energy, Storage, About, and Lock Screen use this.
 
 Every pane ends with an optional footer of right-aligned buttons (or left-
 aligned Add/Remove actions) and an optional note. The mockup's footer spacing
@@ -295,7 +295,7 @@ it. Biometrics has no alias, so `resolve()` returns null and the shell sets
 | `bluetooth` | Bluetooth | ship | BlueZ |
 | `network` | Network | ship | NetworkManager + firewall adapter |
 | `vpn` | VPN | ship (always visible) | NetworkManager VPN |
-| `battery` | Battery | ship | UPower + power-profiles-daemon |
+| `battery` | Energy | ship | UPower + power-profiles-daemon |
 | `general` | General | ship | settingsd + host/distro adapters |
 | `storage` | — (hidden) | General → Storage alias | UDisks2 + filesystem usage |
 | `accessibility` | Accessibility | ship | settingsd + compositor + AT-SPI |
@@ -447,20 +447,20 @@ search synonym; the four panes keep their structural absence.
 `make t288-settings-connectivity-capture` writes connected/empty/absent stills
 in light and dark.
 
-### 5.3 Battery and Displays
+### 5.3 Energy and Displays
 
 | Pane | Target |
 |---|---|
-| Battery | Low Power Mode popup, Battery Health, Last 24 Hours / Last 10 Days, status pill, Battery Level chart, Options…. Keep Power Adapter/Power Settings in an advanced section or the existing Options sheet. |
+| Energy | Low Power Mode popup, Battery Health, Last 24 Hours / Last 10 Days, status pill, Battery Level chart, Options…. Keep Power Adapter/Power Settings in an advanced section or the existing Options sheet. |
 | Displays | Display row, Resolution radios, scaling note, Brightness, auto-brightness, Ambient color (Adaptive color), Preset (color profile), Refresh rate, projector row, Advanced…/Night Light…. Move Arrangement, Rotation, and Color Profile into the Advanced sheet. |
 
 “Preset” maps to the existing color-profile adapter; “Ambient color” maps to
 adaptive color. “Projector mode” uses the existing “When connected to TV” row;
 if the host has no TV/projector signal, the row is an absence row with a reason.
 
-**Landed (T289).** Battery is the mockup order: Low Power Mode (the real
-power-profiles `Select`), Battery Health with a `Show Detail` action, the
-Last 24 Hours / Last 10 Days `SegmentedControl` bound to
+**Landed (T289).** Energy (the mockup label is Battery) is the mockup order: Low
+Power Mode (the real power-profiles `Select`), Battery Health with a `Show
+Detail` action, the Last 24 Hours / Last 10 Days `SegmentedControl` bound to
 `power.historyRange`, the live charge-status pill (UPower's charge state plus
 the real time-to-empty/time-to-full estimate), the `SettingsChart` Battery
 Level chart with 100/50/0 % and range-labelled axes, and the Options… footer.
@@ -470,6 +470,15 @@ the mockup's example clock time. The Options… sheet holds the real `power.*`
 policy rows, the Linux-only Power Adapter values, and the Lock Screen link;
 they stay live when UPower is absent. “Last charged to 100%” and Screen On
 Usage remain honest not-available rows.
+
+**Label and desktop logic.** The sidebar says **Energy** on every machine.
+macOS uses Battery on a laptop and Energy on a desktop for the same pane; the
+mockup is a MacBook capture, so it says Battery. The id stays `battery` and
+`settings://pane/energy` is an alias. The laptop/desktop row split and the
+deliberate divergences from the capture are in
+[26-settings-logic.md](26-settings-logic.md) §2 and
+[ADR 0300](adr/0300-energy-category.md). Do not rename the category back to
+match the capture.
 
 Displays is the mockup order: a `SettingsIconRow` display row (the real output
 name plus its logical `W × H (scale) · Hz`, chevron into the per-output sheet),
@@ -822,7 +831,7 @@ before the task is marked done.
 | T286 | Shell chrome, sidebar, toolbar, shared components | [286-t-24.1b-settings-shell-and-components.md](../tasks/system-settings-2/286-t-24.1b-settings-shell-and-components.md) |
 | T287 | General | [287-t-24.1c-settings-general.md](../tasks/system-settings-2/287-t-24.1c-settings-general.md) |
 | T288 | Wi-Fi, Bluetooth, Network, VPN | [288-t-24.1d-settings-connectivity.md](../tasks/system-settings-2/288-t-24.1d-settings-connectivity.md) |
-| T289 | Battery, Displays | [289-t-24.1e-settings-battery-displays.md](../tasks/system-settings-2/289-t-24.1e-settings-battery-displays.md) |
+| T289 | Energy, Displays | [289-t-24.1e-settings-battery-displays.md](../tasks/system-settings-2/289-t-24.1e-settings-battery-displays.md) |
 | T290a–T290g | Appearance: build/test seam (a), mode tiles (b), Glass preview/tint (c), Theme card (d), Windows/scroll radios (e), Advanced sheet/footer (f), capture/scale/docs/ADR 0296 (g) | [plan/ROADMAP.md](../tasks/system-settings-2/plan/ROADMAP.md) |
 | T291a | Accessibility list and Vision | [291a-accessibility-vision.md](../tasks/system-settings-2/291a-accessibility-vision.md) |
 | T291b | Accessibility Physical and Motor | [291b-accessibility-physical-motor.md](../tasks/system-settings-2/291b-accessibility-physical-motor.md) |

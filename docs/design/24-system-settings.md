@@ -716,7 +716,13 @@ capability states. The live Wayland walk (details, reorder, firewall with NM
 stopped, add a VPN, stop each adapter) is T284's.
 
 
-### 4.4 Battery — T273
+### 4.4 Energy (Battery) — T273
+
+The sidebar title is **Energy** on every machine. macOS uses Battery on a
+laptop and Energy on a desktop for the same pane; the id stays `battery`. The
+laptop/desktop row split and the deliberate divergences from the MacBook
+capture are in [26-settings-logic.md](26-settings-logic.md) §2 and
+[ADR 0300](adr/0300-energy-category.md).
 
 Owner: UPower + power-profiles-daemon/logind. Absence: keep the section
 structure and settingsd options; disable host reads.
@@ -737,7 +743,7 @@ structure and settingsd options; disable host reads.
 one point per successful read, same-instant reads replace, repeats inside
 60 s are deduplicated, and the ring covers ten days at one point a minute.
 `system-status` publishes it as `history` on the battery view
-(`state`/`count`/`samples` with `secondsAgo` and `percent`), so the Battery
+(`state`/`count`/`samples` with `secondsAgo` and `percent`), so the Energy
 pane charts real session points. Before two points exist the pane shows an
 explicit empty state with **Refresh history**; it never draws two permanently
 empty frames. Screen-on usage has no session sampler, so it is one row that
@@ -1826,7 +1832,7 @@ The rules:
 | Keyboard | Compose key | Keyboard → Text Input | `composeKey` | compositor/input | `input.composeKey` | compositor XKB layout (option not exposed) | disabled-with-reason | T281 |
 | Keyboard | Layout, model, options | Keyboard → Text Input | `sources` | ibus/fcitx5 + `localectl` | `input.sources` | shell/compositor keymap, ibus/fcitx5 delegate | delegated | T280 |
 | Trackpad | Gesture mapping | Trackpad → More gestures | `gestures` | `settingsd` | `gestures.*` | compositor/input (enabled/spaceSwitch/missionControl live; rest stored-only) | live-on-defaults | T280 |
-| Power | Charge threshold | Battery → Power adapter | `adapter.chargeLimit` | UPower | `Battery.ChargeThreshold` | UPower read-only | read-only | T273 |
+| Power | Charge threshold | Energy → Power adapter | `adapter.chargeLimit` | UPower | `Battery.ChargeThreshold` | UPower read-only | read-only | T273 |
 | Session | Dim stage | Lock Screen → timing | `idleDim` | `settingsd` | `idle.dim` | session/idle engine | live-on-defaults | T281 |
 | Session | Display-off stage | Lock Screen → timing | `displayBattery` | `settingsd` | `idle.blank` | session/idle engine | live-on-defaults | T278 |
 | Session | Lock stage | Lock Screen → timing | `requirePassword` | `settingsd` | `lock.requirePasswordAfter` | session/idle engine (derives `idle.lock`) | live-on-defaults | T278 |
@@ -1910,7 +1916,7 @@ from the first live T263 run; they are part of the same release bar.
 
 | # | Finding | Evidence | Task |
 |---|---|---|---|
-| P0-1 | Absent adapters collapse whole panes to one note or hide whole sections (General, Battery, Storage, Users, Printers, Game Controllers, Online Accounts) | `GeneralPane.qml`, `BatteryPane.qml`, `StoragePane.qml`, `UsersGroupsPane.qml`, `PrintersScannersPane.qml`, `GameControllersPane.qml` | T269–T280 |
+| P0-1 | Absent adapters collapse whole panes to one note or hide whole sections (General, Energy, Storage, Users, Printers, Game Controllers, Online Accounts) | `GeneralPane.qml`, `BatteryPane.qml`, `StoragePane.qml`, `UsersGroupsPane.qml`, `PrintersScannersPane.qml`, `GameControllersPane.qml` | T269–T280 |
 | P0-2 | Many shipped controls write keys with no consumer (sound, notifications, search, backup, locale, `power.showPercentage`, `input.*`, `idle.*`) | `services/settingsd/src/schema.rs`, pane QML | T282 (landed: `stored_only` flag + consumer-module test; consumer-less keys labelled), pane tasks |
 | P0-3 | Adapter writes are fire-and-forget; failures invisible; dialogs close before the result | `*Client.cpp`, `WifiPane.qml`, `UsersGroupsPane.qml`, `BiometricsPane.qml`, `PrintersScannersPane.qml` | T282 (landed: every client parses the outcome and emits `writeFinished`; denied/failed fake-host test; pane row wiring for the remaining six panes tracked), T271, T279, T280 |
 | P0-4 | General hides About, Software Update, Storage, and Reset when one unrelated adapter is absent | `GeneralPane.qml` | T269 (landed) |

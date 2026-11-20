@@ -508,6 +508,9 @@ Item {
                     "controls");
             compare(SettingsPanes.resolve("internet-accounts").paneId,
                     "online-accounts");
+            // The visible category label is Energy; the id stays `battery`.
+            compare(SettingsPanes.paneById("battery").title, "Energy");
+            compare(SettingsPanes.resolve("energy").paneId, "battery");
             compare(SettingsPanes.resolve("general/software-update").paneId,
                     "general");
             compare(SettingsPanes.resolve("general/software-update").subPaneId,

@@ -67,12 +67,13 @@ QtObject {
           deepLink: "settings://pane/vpn",
           absence: "disabled-with-reason",
           absenceNote: qsTr("VPN is unavailable because NetworkManager is not running.") },
-        { id: "battery", title: qsTr("Battery"), icon: "battery", group: "connectivity",
+        // The visible label is Energy; the id stays `battery` (ADR 0300).
+        { id: "battery", title: qsTr("Energy"), icon: "battery", group: "connectivity",
           shipped: true,
           owner: "UPower + power-profiles-daemon", disposition: "ship",
           deepLink: "settings://pane/battery",
           absence: "disabled-with-reason",
-          absenceNote: qsTr("Battery and power profiles are unavailable because their host services are not running.") },
+          absenceNote: qsTr("Energy and power profiles are unavailable because their host services are not running.") },
         { id: "general", title: qsTr("General"), icon: "general", group: "desktop",
           shipped: true,
           owner: "settingsd + host/distro adapters", disposition: "ship",
@@ -209,7 +210,8 @@ QtObject {
 
     // T285: the deep-link aliases and removed panes, mirrored one-for-one from
     // `SettingsPanes.aliases`/`SettingsPanes.removed`. This is the only place
-    // the removal reason is explained; the debug view reads it.
+    // the removal reason is explained; the debug view reads it. `energy` is
+    // the label spelling of the stable `battery` id (ADR 0300).
     readonly property var aliases: ({
         "storage": { paneId: "general", subPaneId: "storage", anchor: "" },
         "mission-control": { paneId: "desktop-dock", subPaneId: "",
@@ -221,7 +223,9 @@ QtObject {
         "quick-settings": { paneId: "menu-bar", subPaneId: "controls",
                             anchor: "" },
         "internet-accounts": { paneId: "online-accounts", subPaneId: "",
-                               anchor: "" }
+                               anchor: "" },
+        // The visible label is Energy; the canonical id stays `battery`.
+        "energy": { paneId: "battery", subPaneId: "", anchor: "" }
     })
 
     readonly property var removed: [
