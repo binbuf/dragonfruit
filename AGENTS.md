@@ -7,6 +7,8 @@
 ## Documentation rules
 
 - Don't add anything into git that isn't part of core design and ADRs. Proposals, tracks, diagnostics, logs should be gitignored.
+- Keep `docs/design` updated. If design is deviating from intended path then update accordingly. If on intended path but work is complete, notate progress.
+  - Updat `docs/design/adr/*.md` when we make new design decisions so we can track progress.
 
 ## Git staging and commits
 
@@ -49,7 +51,7 @@ Before every `git add` or `git commit`:
    If one is already tracked, stop and flag it rather than committing around
    it.
 
-## Paths that stay out of git
+### Paths that stay out of git
 
 Treat the following as generated/local-only unless there is a deliberate,
 reviewed reason to version a specific file:
