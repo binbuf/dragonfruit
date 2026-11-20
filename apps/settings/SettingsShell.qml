@@ -425,9 +425,10 @@ Item {
         root.openTarget(SettingsPanes.resolve(id));
     }
 
-    // Open an in-place sub-pane now when its body is mounted. Only General
-    // queues across a Loader swap; another pane's sub-pane (Menu Bar's
-    // Menu Bar Controls, T293) opens once that pane body lands.
+    // Open an in-place sub-pane now when its body is mounted. A pane that is
+    // still loading queues the id; `PaneLoader.onLoaded` opens it once the
+    // body exists. This is the same path for General, Accessibility, and any
+    // later big-list pane.
     function openSubPane(id) {
         if (!id || id.length === 0)
             return;
@@ -438,12 +439,11 @@ Item {
             root.pendingSubPaneId = "";
             return;
         }
-        if (root.currentPaneId === "general")
-            root.pendingSubPaneId = id;
+        root.pendingSubPaneId = id;
     }
 
     function closeSubPane() {
-        if (root.currentPaneId === "general" && paneBody.item !== null
+        if (paneBody.item !== null
                 && paneBody.item.closeSubPane !== undefined)
             paneBody.item.closeSubPane();
     }
@@ -485,6 +485,12 @@ Item {
         root.selectPane(paneId);
         root.pendingPaneId = paneId;
         root.pendingSection = section || "";
+        // T291a: a section that lives inside an in-place sub-pane (the
+        // Appearance footer names Accessibility -> Display) opens that body
+        // before the scroll lands.
+        var sectionSubPane = SettingsMap.subPaneForSection(paneId, section || "");
+        if (sectionSubPane.length > 0)
+            root.openSubPane(sectionSubPane);
         if (root.currentPaneId === paneId && root.loadedPaneId === paneId)
             Qt.callLater(root.revealPending);
     }
@@ -1705,10 +1711,11 @@ Item {
                                     // row) only after the body exists.
                                     root.finishHistoryEntry();
                                 } else {
-                                    // A General sub-pane requested before the
-                                    // Loader swapped (Storage deep link).
+                                    // A sub-pane requested before the Loader
+                                    // swapped (a Storage or Accessibility
+                                    // deep link) opens once the body exists.
                                     if (root.pendingSubPaneId.length > 0
-                                            && root.currentPaneId === "general") {
+                                            && paneBody.item.openSubPane !== undefined) {
                                         paneBody.item.openSubPane(root.pendingSubPaneId);
                                         root.pendingSubPaneId = "";
                                     }

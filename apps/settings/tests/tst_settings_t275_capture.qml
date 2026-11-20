@@ -4,9 +4,12 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// T275 Accessibility headless visual check (not part of ctest): every section,
-// the delegate rows, and the absent-AT-SPI structure at the measured 740×820
-// window. Run through `scripts/capture-t275-accessibility.sh`.
+// T275 Accessibility headless visual check (not part of ctest).
+//
+// T291a replaced the long form with the mockup big list and in-place
+// sub-panes. This legacy target now captures the top-level list and the
+// Vision sub-pane it ships; T291b-T291e extend the list and their own
+// captures. Run through `scripts/capture-t275-accessibility.sh`.
 Item {
     id: stage
     width: 740
@@ -53,31 +56,31 @@ Item {
 
             shell.detailScroll.flickable.contentY = 0;
             waitForRendering(stage);
+            save(shell, "t275-accessibility-list-" + scheme);
+
+            pane.openSubPane("vision");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var vision = pane.subPaneLoader.item;
+            verify(vision);
+
+            shell.detailScroll.flickable.contentY = 0;
+            waitForRendering(stage);
             save(shell, "t275-accessibility-vision-" + scheme);
 
-            scrollTo(shell, pane.displayGroup);
+            scrollTo(shell, vision.displayGroup);
             save(shell, "t275-accessibility-display-" + scheme);
 
-            scrollTo(shell, pane.magnifierGroup);
+            scrollTo(shell, vision.zoomGroup);
             save(shell, "t275-accessibility-zoom-" + scheme);
 
-            scrollTo(shell, pane.motionGroup);
+            scrollTo(shell, vision.motionGroup);
             save(shell, "t275-accessibility-motion-" + scheme);
 
-            scrollTo(shell, pane.readSpeakGroup);
+            scrollTo(shell, vision.readSpeakGroup);
             save(shell, "t275-accessibility-read-speak-" + scheme);
-
-            scrollTo(shell, pane.hearingGroup);
-            save(shell, "t275-accessibility-hearing-" + scheme);
-
-            scrollTo(shell, pane.motorGroup);
-            save(shell, "t275-accessibility-motor-" + scheme);
-
-            scrollTo(shell, pane.speechGroup);
-            save(shell, "t275-accessibility-speech-" + scheme);
-
-            scrollTo(shell, pane.shortcutGroup);
-            save(shell, "t275-accessibility-shortcut-" + scheme);
 
             shell.destroy();
         }

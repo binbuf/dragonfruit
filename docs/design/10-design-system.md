@@ -214,6 +214,7 @@ closest shipped mark; `SettingsPanes.rowStyle(name)` is the lookup:
 | `startup` | `hard-drive` | Startup Disk |
 | `backup` | `arrow-clockwise` | Backups |
 | `transfer` | `arrows-clockwise` | Transfer or Reset |
+| `vision` | `scan` | Accessibility → Vision (no eye mark is vendored) |
 
 A row tile and the pane tile use the same `SettingsCategoryIcon` container, so
 the identity is consistent even where the glyph is an approximation.

@@ -776,9 +776,9 @@ Item {
         }
 
         // The Accessibility view is a host-stack adapter read, so with no
-        // bridge host it is the absence state: the live status rows keep their
-        // structure but say Unavailable, while every durable preference (a
-        // settingsd key) still applies (T275).
+        // bridge host it is the absence state: the Vision sub-pane keeps its
+        // structure but the live status rows say Unavailable, while every
+        // durable preference (a settingsd key) still applies (T291a).
         function test_accessibility_pane_degrades_cleanly_without_the_bridge_host() {
             var shell = make();
             compare(Settings.accessibilityAvailable, false,
@@ -786,29 +786,40 @@ Item {
             compare(Settings.accessibility.state, undefined);
 
             var pane = showPane(shell, "accessibility");
-            compare(pane.ready, false);
-            compare(pane.absenceNote.visible, true,
+            compare(pane.subPaneId, "");
+            compare(pane.listColumn.visible, true);
+            compare(pane.bigList.rows.children.length, 1);
+            compare(pane.visionRow.label, "Vision");
+
+            pane.openSubPane("vision");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var vision = pane.subPaneLoader.item;
+            verify(vision);
+
+            compare(vision.ready, false);
+            compare(vision.absenceNote.visible, true,
                     "the absence note explains the missing accessibility service");
-            verify(pane.absenceNote.text.length > 0);
-            // T275: the pane stays structured; only the live status/delegate
-            // rows change state.
-            compare(pane.visionGroup.visible, true);
-            compare(pane.hearingGroup.visible, true);
-            compare(pane.motorGroup.visible, true);
-            compare(pane.speechGroup.visible, true);
-            compare(pane.shortcutGroup.visible, true);
-            compare(pane.screenReaderLabel, "Unavailable");
-            compare(pane.bridgeLabel, "Unavailable");
+            verify(vision.absenceNote.text.length > 0);
+            // The pane stays structured; only the live status rows change.
+            compare(vision.screenReaderGroup.visible, true);
+            compare(vision.zoomGroup.visible, true);
+            compare(vision.displayGroup.visible, true);
+            compare(vision.motionGroup.visible, true);
+            compare(vision.readSpeakGroup.visible, true);
+            compare(vision.screenReaderLabel, "Unavailable");
+            compare(vision.bridgeLabel, "Unavailable");
+            compare(vision.screenReaderRow.trailingActionEnabled, true,
+                    "the delegate fixture is present even with no bridge host");
             // The durable preferences are settingsd keys: they stay live.
-            compare(pane.motionGroup.visible, true);
-            compare(pane.contrastGroup.visible, true);
-            pane.reduceMotionToggle.toggle();
+            vision.reduceMotionToggle.toggle();
             compare(Settings.values["accessibility.reduceMotion"], true);
-            pane.reduceTransparencyToggle.toggle();
-            pane.increaseContrastToggle.toggle();
+            vision.reduceTransparencyToggle.toggle();
+            vision.increaseContrastToggle.toggle();
             compare(Settings.values["accessibility.reduceTransparency"], true);
             compare(Settings.values["accessibility.increaseContrast"], true);
-            compare(pane.previewResolved.renderMode, "solid");
 
             // A refresh is a safe no-op with no host.
             Settings.refreshAccessibility();

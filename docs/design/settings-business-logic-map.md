@@ -541,32 +541,40 @@ omission. The screen reader is a status plus `Open Orca`, never a toggle
 (`org.a11y.Status` is read-only, ADR 0144). The compositor magnifier and the
 recorded shortcut are live over the v12 `set_accessibility_policy` request.
 
+T291a status: the long scroll is replaced by the mockup intro and a big list of
+in-place sub-panes ([adr/0297](../adr/0297-accessibility-big-list-and-vision.md)).
+Vision ships first; Physical and Motor, Hearing, Speech, and General follow in
+T291b–T291e. The Vision sub-pane groups its rows under **Screen Reader**,
+**Zoom**, **Display**, **Motion**, and **Read & Speak**. A Vision row with no
+real owner is a map `omitted` row with a reason and is neither rendered nor
+search-indexed; it is not a disabled control.
+
 #### 5.7.1 Vision
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
 | VoiceOver | Screen reader | Status + Open | Orca (AT-SPI) `org.a11y.Status.ScreenReaderEnabled` | Read-only live status; `Open Orca` launches the external reader or disables with a reason |
 | — | Accessibility bridge | Status | AT-SPI `org.a11y.Status.IsEnabled` | Read-only live status |
-| Hover Text | Hover text | — | shell overlay | Disabled: no hover-text overlay |
-| — Invert colors | Invert colors | — | compositor | Disabled: no whole-scene inversion |
+| Hover Text | Hover text | — | — | Omitted: no hover-text overlay |
+| — Invert colors | Invert colors | — | — | Omitted: no whole-scene inversion |
 | — Increase contrast | Increase contrast | Toggle | `accessibility.increaseContrast` | Live `Glass` |
 | — Reduce transparency | Reduce transparency | Toggle | `accessibility.reduceTransparency` | Live `Glass` |
 | — Differentiate without color | Differentiate without color | Toggle | `accessibility.differentiateWithoutColor` | Live `Theme` check glyph |
-| — Show window title icons | Show window title icons | — | compositor decoration | Disabled: no title-icon slot |
-| — Show toolbar button shapes | Show toolbar button shapes | — | design system | Disabled: no shape pass |
-| — Display contrast | Display contrast | — | compositor | Disabled: no contrast pass |
+| — Show window title icons | Show window title icons | — | — | Omitted: no title-icon slot |
+| — Show toolbar button shapes | Show toolbar button shapes | — | — | Omitted: no shape pass |
+| — Display contrast | Display contrast | — | — | Omitted: no contrast pass |
 | — Text size | Text size | Popup | `accessibility.textSize` | Live `Theme.textScale` |
-| — Menu bar size | Menu bar size | — | shell | Disabled: fixed menu-bar height |
+| — Menu bar size | Menu bar size | — | — | Omitted: fixed menu-bar height |
 | — Pointer size | Pointer size | Slider | `appearance.cursorSize` | Stored-only; applied at the next session start |
-| — Pointer colors | Pointer colors | — | compositor cursor | Disabled: no per-colour cursor override |
-| — Color filters | Color filters | — | compositor | Disabled: no filter pass |
+| — Pointer colors | Pointer colors | — | — | Omitted: no per-colour cursor override |
+| — Color filters | Color filters | — | — | Omitted: no filter pass |
 | Zoom | Use keyboard shortcuts to zoom | Toggle | `accessibility.magnifier` | Live compositor magnifier |
 | — | Zoom level | Slider | `accessibility.magnifierZoom` | Live (1.0–8.0) |
 | — | Follow | Popup | `accessibility.magnifierMode` | Live (`follow-focus`/`follow-caret`) |
 | Motion | Reduce motion | Toggle | `accessibility.reduceMotion` | Live Theme + compositor |
 | — Dim flashing lights | Dim flashing lights | Toggle | `accessibility.dimFlashingLights` | Live Dock attention amplitude |
-| — Auto-play animated images | Auto-play animated images | — | shell | Disabled: no animated-image surface |
-| — Prefer non-blinking cursor | Prefer non-blinking cursor | — | design system | Disabled: toolkit-owned cursor blink |
+| — Auto-play animated images | Auto-play animated images | — | — | Omitted: no animated-image surface |
+| — Prefer non-blinking cursor | Prefer non-blinking cursor | — | — | Omitted: toolkit-owned cursor blink |
 | Read & Speak | Read & speak | Action | speech-dispatcher/espeak-ng | Delegated; `Speak Sample` disabled when absent |
 | Audio Descriptions | Audio descriptions | — | — | Omitted: content-level |
 

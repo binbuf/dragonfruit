@@ -55,15 +55,12 @@ run_capture absent apps/settings/tests/tst_settings_t275_absence_capture.qml
 
 for scheme in light dark; do
     for image in \
+        docs/captures/t275-accessibility-list-$scheme.png \
         docs/captures/t275-accessibility-vision-$scheme.png \
         docs/captures/t275-accessibility-display-$scheme.png \
         docs/captures/t275-accessibility-zoom-$scheme.png \
         docs/captures/t275-accessibility-motion-$scheme.png \
         docs/captures/t275-accessibility-read-speak-$scheme.png \
-        docs/captures/t275-accessibility-hearing-$scheme.png \
-        docs/captures/t275-accessibility-motor-$scheme.png \
-        docs/captures/t275-accessibility-speech-$scheme.png \
-        docs/captures/t275-accessibility-shortcut-$scheme.png \
         docs/captures/t275-accessibility-absence-$scheme.png; do
         if [ ! -s "$image" ]; then
             echo "capture-t275-accessibility: $image was not written" >&2

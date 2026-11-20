@@ -64,6 +64,7 @@ set(DF_SETTINGS_QML_FILES
     BiometricsPane.qml
     OnlineAccountsPane.qml
     AccessibilityPane.qml
+    AccessibilityVisionPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml
@@ -201,6 +202,7 @@ df_qml_lint(app-settings
     GameControllersPane.qml
     PrivacyPane.qml
     AccessibilityPane.qml
+    AccessibilityVisionPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml

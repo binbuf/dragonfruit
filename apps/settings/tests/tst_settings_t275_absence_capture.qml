@@ -29,8 +29,15 @@ Item {
             waitForRendering(stage);
             var pane = shell.paneBody.item;
             verify(pane);
-            compare(pane.ready, false);
-            compare(pane.absenceNote.visible, true);
+            pane.openSubPane("vision");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var vision = pane.subPaneLoader.item;
+            verify(vision);
+            compare(vision.ready, false);
+            compare(vision.absenceNote.visible, true);
             grabImage(shell).save("docs/captures/t275-accessibility-absence-"
                                   + scheme + ".png");
             shell.destroy();

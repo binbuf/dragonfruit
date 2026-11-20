@@ -1027,6 +1027,17 @@ policy reads, and the row says the tier is chosen for the user.
 
 ### 4.8 Accessibility — T275
 
+> **Superseded in T291a.** The one-scroll five-section form below is replaced
+> by the mockup's big list of in-place sub-panes
+> ([adr/0297](adr/0297-accessibility-big-list-and-vision.md)). Vision ships
+> first (T291a); Physical and Motor, Hearing, Speech, and General follow in
+> T291b–T291e. The row tables remain the owner/disposition contract, with one
+> correction: a Vision row that has no real owner is now an explicit map
+> `omitted` row with a reason, not a disabled control. The shipped Vision rows
+> are Screen reader, Accessibility bridge, Increase contrast, Reduce
+> transparency, Differentiate without color, Text size, Pointer size, the
+> magnifier rows, Reduce motion, Dim flashing lights, and Read & speak.
+
 Owner: settingsd + compositor + AT-SPI + delegates. Absence: keep the
 five-section structure; only the live status rows and the delegates that
 need an external program disable with a reason.

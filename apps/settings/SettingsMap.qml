@@ -644,20 +644,29 @@ QtObject {
                          "disabled-with-reason", "shipped")
             ],
             "accessibility": [
-                // Vision (T275). The screen reader is a live status plus a
-                // delegate action, not a toggle: org.a11y.Status is read-only.
-                root.row("vision.screenReader", qsTr("Vision"), qsTr("Screen reader"),
-                         "status+open", "Orca (AT-SPI)",
+                // T291a rebuilds Accessibility as the mockup's big list of
+                // in-place sub-panes. Vision is the first shipped section; the
+                // later children (T291b-T291e) flip their own planned rows to
+                // shipped as each sub-pane body lands. A planned row is not
+                // rendered and not search-indexed.
+                //
+                // Vision. The screen reader is a live status plus a delegate
+                // action, not a toggle: org.a11y.Status is read-only (ADR 0144).
+                root.row("vision.screenReader", qsTr("Screen Reader"),
+                         qsTr("Screen reader"), "status+open", "Orca (AT-SPI)",
                          "org.a11y.Status.ScreenReaderEnabled", "delegated", "shipped"),
-                root.row("vision.bridge", qsTr("Vision"), qsTr("Accessibility bridge"),
-                         "status", "AT-SPI", "org.a11y.Status.IsEnabled",
-                         "read-only", "shipped"),
+                root.row("vision.bridge", qsTr("Screen Reader"),
+                         qsTr("Accessibility bridge"), "status", "AT-SPI",
+                         "org.a11y.Status.IsEnabled", "read-only", "shipped"),
+                // Apple-only Vision rows with no Linux owner. They are omitted
+                // from the sub-pane and carry the reason here.
                 root.row("vision.hoverText", qsTr("Vision"), qsTr("Hover text"),
-                         "toggle+options", "shell overlay + settingsd",
-                         "shell/hover-text", "disabled-with-reason", "shipped"),
+                         "omit", "omit", "omit", "omitted", "omitted", false, "",
+                         qsTr("No hover-text overlay reads the text under the pointer.")),
                 root.row("vision.display.invertColors", qsTr("Display"),
-                         qsTr("Invert colors"), "toggle", "compositor",
-                         "compositor/invert-colors", "disabled-with-reason", "shipped"),
+                         qsTr("Invert colors"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor has no whole-scene colour-inversion pass.")),
                 root.row("vision.display.increaseContrast", qsTr("Display"),
                          qsTr("Increase contrast"), "toggle",
                          "shell/design-system Glass", "accessibility.increaseContrast",
@@ -672,22 +681,24 @@ QtObject {
                          "accessibility.differentiateWithoutColor",
                          "live-on-defaults", "shipped"),
                 root.row("vision.display.titleIcons", qsTr("Display"),
-                         qsTr("Show window title icons"), "toggle",
-                         "compositor/window decoration", "compositor/title-icons",
-                         "disabled-with-reason", "shipped"),
+                         qsTr("Show window title icons"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("Window decoration has no title-icon slot.")),
                 root.row("vision.display.toolbarShapes", qsTr("Display"),
-                         qsTr("Show toolbar button shapes"), "toggle",
-                         "design system", "design-system/toolbar-shapes",
-                         "disabled-with-reason", "shipped"),
+                         qsTr("Show toolbar button shapes"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The design system has no toolbar shape-cue pass.")),
                 root.row("vision.display.displayContrast", qsTr("Display"),
-                         qsTr("Display contrast"), "slider", "compositor",
-                         "compositor/display-contrast", "disabled-with-reason", "shipped"),
+                         qsTr("Display contrast"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor has no display-contrast adjustment pass.")),
                 root.row("vision.display.textSize", qsTr("Display"),
                          qsTr("Text size"), "popup", "shell/design-system Theme",
                          "accessibility.textSize", "live-on-defaults", "shipped"),
                 root.row("vision.display.menuBarSize", qsTr("Display"),
-                         qsTr("Menu bar size"), "popup", "shell/MenuBar",
-                         "shell/menu-bar-size", "disabled-with-reason", "shipped"),
+                         qsTr("Menu bar size"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor allocates a fixed menu-bar height at session start.")),
                 // The cursor key is shared with Appearance and is applied by
                 // the compositor at the next session start, so the row is
                 // stored-only rather than pretending to be live.
@@ -696,11 +707,13 @@ QtObject {
                          "settingsd + compositor cursor", "appearance.cursorSize",
                          "live-on-defaults", "shipped", true),
                 root.row("vision.display.pointerColors", qsTr("Display"),
-                         qsTr("Pointer colors"), "swatches", "compositor cursor",
-                         "compositor/cursor-colors", "disabled-with-reason", "shipped"),
+                         qsTr("Pointer colors"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The cursor theme has no per-colour override.")),
                 root.row("vision.display.colorFilters", qsTr("Display"),
-                         qsTr("Color filters"), "popup", "compositor",
-                         "compositor/color-filters", "disabled-with-reason", "shipped"),
+                         qsTr("Color filters"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor has no colour-filter pass.")),
                 root.row("vision.magnifier", qsTr("Zoom"),
                          qsTr("Use keyboard shortcuts to zoom"), "toggle",
                          "compositor/magnifier", "accessibility.magnifier",
@@ -720,87 +733,89 @@ QtObject {
                          "shell/Dock attention bounce", "accessibility.dimFlashingLights",
                          "live-on-defaults", "shipped"),
                 root.row("vision.motion.autoPlayImages", qsTr("Motion"),
-                         qsTr("Auto-play animated images"), "toggle", "shell",
-                         "shell/auto-play-images", "disabled-with-reason", "shipped"),
+                         qsTr("Auto-play animated images"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The shell has no animated-image surface to gate.")),
                 root.row("vision.motion.nonBlinkingCursor", qsTr("Motion"),
-                         qsTr("Prefer non-blinking cursor"), "toggle",
-                         "design system", "design-system/non-blinking-cursor",
-                         "disabled-with-reason", "shipped"),
+                         qsTr("Prefer non-blinking cursor"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The text cursor blink is toolkit-owned; no per-app override exists.")),
                 root.row("vision.readSpeak", qsTr("Read & Speak"), qsTr("Read & speak"),
                          "action", "speech-dispatcher/espeak-ng", "spd-say",
                          "delegated", "shipped"),
                 root.row("vision.audioDescriptions", qsTr("Read & Speak"),
                          qsTr("Audio descriptions"), "omit", "omit", "omit",
-                         "omitted", "omitted"),
-                // Hearing (T275).
+                         "omitted", "omitted", false, "",
+                         qsTr("Audio descriptions are content-level, not a shell preference.")),
+                // Hearing (T291c).
                 root.row("hearing.flashScreen", qsTr("Hearing"),
                          qsTr("Flash the screen on alert"), "toggle", "shell",
-                         "shell/flash-screen", "disabled-with-reason", "shipped"),
+                         "shell/flash-screen", "disabled-with-reason", "planned"),
                 root.row("hearing.monoAudio", qsTr("Hearing"), qsTr("Mono audio"),
                          "toggle", "PipeWire", "PipeWire/mono-downmix",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "planned"),
                 root.row("hearing.balance", qsTr("Hearing"), qsTr("Balance"), "slider",
                          "apps/settings", "sound.balance", "live-on-defaults",
-                         "shipped", true),
+                         "planned", true),
                 root.row("hearing.backgroundSounds", qsTr("Hearing"),
                          qsTr("Background sounds"), "toggle+picker", "audio delegate",
-                         "audio/background-sounds", "disabled-with-reason", "shipped"),
+                         "audio/background-sounds", "disabled-with-reason", "planned"),
                 root.row("hearing.captions", qsTr("Hearing"), qsTr("Captions"),
                          "disclosure", "live-caption delegate", "caption/delegate",
-                         "delegated", "shipped"),
+                         "delegated", "planned"),
                 root.row("hearing.rtt", qsTr("Hearing"), qsTr("RTT"), "omit",
                          "omit", "omit", "omitted", "omitted"),
                 root.row("hearing.nameRecognition", qsTr("Hearing"),
                          qsTr("Name recognition"), "omit", "omit", "omit",
                          "omitted", "omitted"),
-                // Motor (T275).
+                // Physical and Motor (T291b).
                 root.row("motor.voiceControl", qsTr("Motor"), qsTr("Voice control"),
                          "toggle", "speech-to-text delegate",
-                         "speech-to-text/delegate", "delegated", "shipped"),
+                         "speech-to-text/delegate", "delegated", "planned"),
                 root.row("motor.keyboard.fullKeyboardAccess", qsTr("Motor"),
                          qsTr("Full keyboard access"), "toggle",
                          "compositor/input", "input/keyboard-navigation",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "planned"),
                 root.row("motor.keyboard.stickyKeys", qsTr("Motor"),
                          qsTr("Sticky keys"), "toggle+options", "compositor/input",
-                         "compositor/sticky-keys", "disabled-with-reason", "shipped"),
+                         "compositor/sticky-keys", "disabled-with-reason", "planned"),
                 root.row("motor.keyboard.slowKeys", qsTr("Motor"),
                          qsTr("Slow keys"), "toggle+delay", "compositor/input",
-                         "compositor/slow-keys", "disabled-with-reason", "shipped"),
+                         "compositor/slow-keys", "disabled-with-reason", "planned"),
                 root.row("motor.keyboard.onScreenKeyboard", qsTr("Motor"),
                          qsTr("On-screen keyboard"), "button",
                          "on-screen keyboard delegate", "onboard",
-                         "delegated", "shipped"),
+                         "delegated", "planned"),
                 root.row("motor.pointer.doubleClickSpeed", qsTr("Motor"),
                          qsTr("Double-click speed"), "slider",
                          "compositor/input pointer", "input.doubleClickSpeed",
-                         "live-on-defaults", "shipped"),
+                         "live-on-defaults", "planned"),
                 root.row("motor.pointer.mouseKeys", qsTr("Motor"),
                          qsTr("Mouse keys"), "toggle", "compositor/input",
-                         "compositor/mouse-keys", "disabled-with-reason", "shipped"),
+                         "compositor/mouse-keys", "disabled-with-reason", "planned"),
                 root.row("motor.pointer.ignoreTrackpad", qsTr("Motor"),
                          qsTr("Ignore built-in trackpad"), "toggle",
                          "compositor/input", "compositor/ignore-trackpad",
-                         "disabled-with-reason", "shipped"),
+                         "disabled-with-reason", "planned"),
                 root.row("motor.switchControl", qsTr("Motor"),
                          qsTr("Switch control"), "disclosure",
                          "switch-control delegate", "switch-control/delegate",
-                         "delegated", "shipped"),
-                // Speech (T275).
+                         "delegated", "planned"),
+                // Speech (T291d).
                 root.row("speech.liveSpeech", qsTr("Speech"), qsTr("Live speech"),
                          "action", "speech-dispatcher/espeak-ng", "spd-say",
-                         "delegated", "shipped"),
+                         "delegated", "planned"),
                 root.row("speech.personalVoice", qsTr("Speech"),
                          qsTr("Personal voice"), "omit", "omit", "omit",
                          "omitted", "omitted"),
                 root.row("speech.vocalShortcuts", qsTr("Speech"),
                          qsTr("Vocal shortcuts"), "omit", "omit", "omit",
                          "omitted", "omitted"),
-                // The recorded accessibility shortcut (T275).
+                // General -> Shortcut (T291e).
                 root.row("shortcut.recorder", qsTr("Accessibility Shortcut"),
                          qsTr("Accessibility shortcut"), "recorder",
                          "shell/compositor shortcut engine",
-                         "accessibility.shortcut", "live-on-defaults", "shipped")
+                         "accessibility.shortcut", "live-on-defaults", "planned")
             ],
             "control-center": [
                 root.row("modules", qsTr("Quick Settings"), qsTr("Modules"), "list",
@@ -1705,14 +1720,51 @@ QtObject {
         "reset": "reset"
     })
 
+    // T291a: the Accessibility big list is one pane with in-place sub-panes.
+    // Each child adds its own prefix as it lands a body; a row whose prefix is
+    // absent stays unlandable instead of deep-linking into a missing surface.
+    readonly property var accessibilityRowSubPanes: ({
+        "vision": "vision"
+    })
+
+    // T291a: a section deep link (the Appearance footer's "More in
+    // Accessibility Settings…" names Display) opens the sub-pane that owns the
+    // section. Keys are normalized section ids, so the match is
+    // case-insensitive.
+    readonly property var accessibilitySectionSubPanes: ({
+        "screen reader": "vision",
+        "zoom": "vision",
+        "display": "vision",
+        "motion": "vision",
+        "read & speak": "vision"
+    })
+
+    // The sub-pane id that renders a section, or "" when the section is on the
+    // pane itself.
+    function subPaneForSection(paneId, section) {
+        if (paneId !== "accessibility" || !section)
+            return "";
+        var wanted = String(section).trim().toLowerCase();
+        var mapped = root.accessibilitySectionSubPanes[wanted];
+        return mapped !== undefined ? mapped : "";
+    }
+
     // The sub-pane id that renders a row, or "" when the row is not inside an
-    // in-place General sub-pane.
+    // in-place General or Accessibility sub-pane.
     function subPaneForRow(paneId, rowId) {
-        if (paneId !== "general" || !rowId)
+        if ((paneId !== "general" && paneId !== "accessibility") || !rowId)
             return "";
         var row = root.rowFor(paneId, rowId);
         if (row === null)
             return "";
+        if (paneId === "accessibility") {
+            var accessDot = String(row.id).indexOf(".");
+            if (accessDot <= 0)
+                return "";
+            var accessMapped = root.accessibilityRowSubPanes[
+                        String(row.id).substring(0, accessDot)];
+            return accessMapped !== undefined ? accessMapped : "";
+        }
         if (row.id === "reset.startupDisk")
             return "startup";
         if (row.id === "reset.reset")

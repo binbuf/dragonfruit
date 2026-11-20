@@ -565,6 +565,18 @@ with no owner is omitted from the list and recorded in `SettingsMap` with the
 reason; the section heading stays if at least one sibling remains. This is the
 largest deliberate reduction from the mockup. It is reviewed in T291a–T291e.
 
+T291a makes the list executable. Accessibility is intro text plus a
+`SettingsBigList`; each child adds one row and one in-place sub-pane body, never
+a disabled placeholder. Vision ships first: the sub-pane keeps **Screen
+Reader** (read-only AT-SPI status + `Open Orca`), **Zoom**, **Display**,
+**Motion**, and **Read & Speak**. Hover Text, Invert colors, Show window title
+icons, Show toolbar button shapes, Display contrast, Menu bar size, Pointer
+colors, Color filters, Auto-play animated images, Prefer non-blinking cursor,
+and Audio Descriptions are `omitted` map rows with a reason; they are not
+rendered and not search-indexed. The AT-SPI absence state keeps the structure:
+the live status rows disable with the note while the settingsd rows stay live
+([adr/0297](adr/0297-accessibility-big-list-and-vision.md)).
+
 ### 5.6 Desktop & Dock
 
 | Mockup block | Target |

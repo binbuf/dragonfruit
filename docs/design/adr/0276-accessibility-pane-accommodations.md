@@ -1,6 +1,9 @@
 # 0276 — Accessibility is a five-section pane of live owners and honest delegates
 
-- **Status:** Accepted (T275)
+- **Status:** Accepted (T275); the one-scroll form is superseded by the
+  Accessibility big list and Vision sub-pane in
+  [ADR 0297](0297-accessibility-big-list-and-vision.md) (T291a). The row
+  shapes, owners, and absence rules below still hold.
 - **Date:** 2026-11-15
 - **Context:** [24-system-settings.md](../24-system-settings.md),
   [08-settings.md](../08-settings.md),

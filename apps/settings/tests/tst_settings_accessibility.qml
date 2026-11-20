@@ -4,15 +4,16 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.Settings
 
-// Accessibility pane tests (T275). Headless with `DF_SETTINGS_FIXTURE`,
+// Accessibility pane tests (T291a). Headless with `DF_SETTINGS_FIXTURE`,
 // `DF_ACCESSIBILITY_FIXTURE=1`, and `DF_ACCESSIBILITY_DELEGATE_FIXTURE=present`
 // (see CMakeLists.txt), so the `Settings` singleton, the AT-SPI view, and the
-// three external delegates are deterministic and in-process with no bus.
+// external delegates are deterministic and in-process with no bus.
 //
-// The cases cover the five-section inventory, the map/row lockstep, the
-// read-only screen-reader status plus its real Open Orca action, the live
-// display/motion/magnifier/shortcut keys, the hearing/motor/speech delegates,
-// absence structure, keyboard operation, and the 740×820 window.
+// The cases cover the mockup intro and big list, the in-place Vision sub-pane,
+// the Vision row inventory (rendered and omitted), the read-only screen-reader
+// status plus its real Open Orca action, the live display/motion/magnifier
+// keys, the speech delegate, absence structure, search/deep links, keyboard
+// operation, and the 740×820 window.
 Item {
     id: stage
     width: 900
@@ -62,6 +63,19 @@ Item {
             return pane;
         }
 
+        // Open the one in-place Vision sub-pane and return its body.
+        function openVision(shell) {
+            var pane = paneOf(shell);
+            pane.openSubPane("vision");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var vision = pane.subPaneLoader.item;
+            verify(vision, "the Vision sub-pane body must be loaded");
+            return vision;
+        }
+
         function collectRows(item, out) {
             if (!item)
                 return;
@@ -72,51 +86,102 @@ Item {
                 collectRows(children[i], out);
         }
 
-        // -- The five-section information architecture -----------------------
+        function renderedIds(vision) {
+            var rows = [];
+            collectRows(vision, rows);
+            return rows.map(function(row) { return String(row.settingsId); });
+        }
 
-        function test_the_five_sections_render_in_macos_order() {
+        // -- The mockup intro and top-level big list -------------------------
+
+        function test_the_pane_opens_with_the_mockup_intro_and_vision_row() {
             var shell = make();
             compare(shell.currentPaneId, "accessibility");
             compare(shell.currentPane.title, "Accessibility");
+
+            // The intro is the shell's SettingsIntro from the catalog
+            // description (doc 25 §3.3); the body starts at the big list.
+            verify(shell.hasIntro, "the Accessibility intro must render");
+            verify(shell.introText.indexOf("accessibility") >= 0,
+                   "the intro names the accessibility features");
+
+            var pane = paneOf(shell);
+            compare(pane.subPaneId, "");
+            compare(pane.listColumn.visible, true);
+            compare(pane.bigList.rows.children.length, 1,
+                    "T291a ships exactly the Vision row; later children add one each");
+            compare(pane.visionRow.visible, true);
+            compare(pane.visionRow.label, "Vision");
+            verify(pane.visionRow.height === 52,
+                   "the big row is the 52 pt token, not 53");
+            verify(pane.visionRow.category !== null,
+                   "the Vision row carries a category tile");
+            compare(pane.visionRow.category.source, "scan");
+
+            // No disabled placeholders for later sections.
+            for (var i = 0; i < pane.bigList.rows.children.length; ++i) {
+                var label = pane.bigList.rows.children[i].label;
+                verify(label !== "Physical and Motor");
+                verify(label !== "Hearing");
+                verify(label !== "Speech");
+                verify(label !== "General");
+            }
+        }
+
+        function test_the_vision_row_opens_and_closes_the_in_place_sub_pane() {
+            var shell = make();
             var pane = paneOf(shell);
 
-            compare(pane.visionGroup.visible, true);
-            compare(pane.visionGroup.title, "Vision");
-            compare(pane.displayGroup.visible, true);
-            compare(pane.magnifierGroup.visible, true);
-            compare(pane.motionGroup.visible, true);
-            compare(pane.readSpeakGroup.visible, true);
-            compare(pane.hearingGroup.visible, true);
-            compare(pane.hearingGroup.title, "Hearing");
-            compare(pane.motorGroup.visible, true);
-            compare(pane.motorGroup.title, "Motor");
-            compare(pane.speechGroup.visible, true);
-            compare(pane.speechGroup.title, "Speech");
-            compare(pane.shortcutGroup.visible, true);
-            compare(pane.shortcutGroup.title, "Accessibility Shortcut");
+            pane.visionRow.disclosureClicked();
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
 
-            // The section order is the reference order.
-            var content = pane.visionGroup.parent;
+            compare(pane.subPaneId, "vision");
+            compare(pane.subPaneTitle, "Vision");
+            compare(shell.paneTitle, "Vision");
+            compare(pane.listColumn.visible, false);
+            compare(pane.backButton.text, "‹ Accessibility");
+            verify(pane.subPaneLoader.item !== null);
+
+            pane.backButton.clicked();
+            tryVerify(function() { return pane.subPaneId === ""; });
+            waitForRendering(stage);
+            compare(pane.listColumn.visible, true);
+            compare(pane.subPaneLoader.status, Loader.Null);
+            compare(shell.paneTitle, "Accessibility");
+        }
+
+        // -- Vision rows ----------------------------------------------------
+
+        function test_the_vision_groups_render_in_mockup_order() {
+            var shell = make();
+            var vision = openVision(shell);
+
+            var content = vision.screenReaderGroup.parent;
             var order = [];
             for (var i = 0; i < content.children.length; ++i) {
                 var child = content.children[i];
                 if (child.title !== undefined && child.title.length > 0)
                     order.push(child.title);
             }
-            compare(order[0], "Vision");
-            verify(order.indexOf("Hearing") > order.indexOf("Vision"));
-            verify(order.indexOf("Motor") > order.indexOf("Hearing"));
-            verify(order.indexOf("Speech") > order.indexOf("Motor"));
-            verify(order.indexOf("Accessibility Shortcut") > order.indexOf("Speech"));
+            compare(order.join(","),
+                    "Screen Reader,Zoom,Display,Motion,Read & Speak");
+            compare(vision.screenReaderGroup.visible, true);
+            compare(vision.zoomGroup.visible, true);
+            compare(vision.displayGroup.visible, true);
+            compare(vision.motionGroup.visible, true);
+            compare(vision.readSpeakGroup.visible, true);
         }
 
-        function test_every_rendered_row_has_a_map_owner_and_key() {
+        function test_every_rendered_vision_row_has_a_map_owner_and_key() {
             var shell = make();
-            var pane = paneOf(shell);
+            var vision = openVision(shell);
             var rendered = [];
-            collectRows(pane, rendered);
-            verify(rendered.length >= 40,
-                   "the pane must render the full five-section inventory");
+            collectRows(vision, rendered);
+            verify(rendered.length >= 13,
+                   "the Vision sub-pane renders every shipped Vision row");
 
             for (var i = 0; i < rendered.length; ++i) {
                 var row = rendered[i];
@@ -127,42 +192,88 @@ Item {
                 var mapped = SettingsMap.rowFor("accessibility", row.settingsId);
                 verify(mapped !== null,
                        "rendered row " + row.settingsId + " has no map row");
-                verify(mapped.state === "shipped" || mapped.state === "omitted",
-                       "map row " + row.settingsId + " is not rendered");
-                if (mapped.state === "shipped") {
-                    verify(String(mapped.owner).length > 0 && mapped.owner !== "omit");
-                    verify(String(mapped.key).length > 0 && mapped.key !== "omit");
-                }
+                compare(mapped.state, "shipped",
+                        "rendered row " + row.settingsId + " must be shipped");
+                verify(String(mapped.owner).length > 0 && mapped.owner !== "omit");
+                verify(String(mapped.key).length > 0 && mapped.key !== "omit");
+                compare(SettingsMap.subPaneForRow("accessibility", mapped.id),
+                        "vision");
+                compare(SettingsMap.rowSurface("accessibility", mapped.id),
+                        "subpane");
+                verify(SettingsMap.isRowLandable("accessibility", mapped.id));
             }
 
-            // Every shipped/omitted map row has a rendered target.
-            var mapRows = SettingsMap.rowsFor("accessibility").filter(function(entry) {
-                return entry.state === "shipped" || entry.state === "omitted";
-            });
-            compare(rendered.length, mapRows.length,
-                    "the rendered rows and the map rows must be the same set");
+            // The rendered rows and the shipped map rows are the same set.
+            var expected = SettingsMap.visibleRowsFor("accessibility")
+                    .map(function(entry) { return String(entry.id); });
+            var actual = rendered.map(function(row) { return String(row.settingsId); });
+            compare(actual.sort().join(","), expected.sort().join(","));
+        }
+
+        function test_ownerless_vision_rows_are_omitted_with_a_reason() {
+            var omitted = [
+                "vision.hoverText",
+                "vision.display.invertColors",
+                "vision.display.titleIcons",
+                "vision.display.toolbarShapes",
+                "vision.display.displayContrast",
+                "vision.display.menuBarSize",
+                "vision.display.pointerColors",
+                "vision.display.colorFilters",
+                "vision.motion.autoPlayImages",
+                "vision.motion.nonBlinkingCursor",
+                "vision.audioDescriptions"
+            ];
+
+            var shell = make();
+            var vision = openVision(shell);
+            var ids = renderedIds(vision);
+            for (var i = 0; i < omitted.length; ++i) {
+                var id = omitted[i];
+                var row = SettingsMap.rowFor("accessibility", id);
+                verify(row !== null, id + " must stay in the map as an omission");
+                compare(row.state, "omitted", id + " must not be shipped");
+                compare(row.absence, "omitted", id + " must carry the omitted absence");
+                verify(row.reason.length > 0, id + " must document its reason");
+                compare(ids.indexOf(id), -1, id + " must not be rendered");
+                compare(SettingsMap.isRowLandable("accessibility", id), false,
+                        id + " must not be landable");
+                verify(SettingsMap.visibleRowsFor("accessibility")
+                       .map(function(entry) { return entry.id; }).indexOf(id) < 0,
+                       id + " must not be in the search index");
+            }
+
+            // The mockup labels stay searchable only through the omission
+            // reason text, never as a row result.
+            var results = SettingsSearch.search("hover text");
+            for (var r = 0; r < results.length; ++r) {
+                verify(!(results[r].kind === "row"
+                         && results[r].paneId === "accessibility"
+                         && results[r].targetRow === "vision.hoverText"),
+                       "an omitted row must never be a search result");
+            }
         }
 
         // -- Screen reader: read-only status + real Open action --------------
 
         function test_the_screen_reader_row_is_a_status_plus_open_action() {
             var shell = make();
-            var pane = paneOf(shell);
-            compare(pane.ready, true);
-            compare(pane.screenReaderOn, true);
-            compare(pane.enabledOn, true);
-            compare(pane.screenReaderLabel, "On");
-            compare(pane.bridgeLabel, "On");
-            compare(findChild(pane, "accessibilityScreenReaderValue").text, "On");
-            compare(findChild(pane, "accessibilityBridgeValue").text, "On");
+            var vision = openVision(shell);
+            compare(vision.ready, true);
+            compare(vision.screenReaderOn, true);
+            compare(vision.enabledOn, true);
+            compare(vision.screenReaderLabel, "On");
+            compare(vision.bridgeLabel, "On");
+            compare(findChild(vision, "accessibilityScreenReaderValue").text, "On");
+            compare(findChild(vision, "accessibilityBridgeValue").text, "On");
 
             // The row is a status, not a toggle: the map says delegated and
             // the action launches the external screen reader.
             compare(SettingsMap.rowFor("accessibility", "vision.screenReader").absence,
                     "delegated");
-            compare(pane.screenReaderRow.trailingAction, "Open Orca");
-            compare(pane.screenReaderRow.trailingButton.enabled, true);
-            pane.screenReaderRow.trailingActionClicked();
+            compare(vision.screenReaderRow.trailingAction, "Open Orca");
+            compare(vision.screenReaderRow.trailingButton.enabled, true);
+            vision.screenReaderRow.trailingActionClicked();
             compare(Settings.accessibilityLastDelegate, "screen-reader");
         }
 
@@ -170,37 +281,37 @@ Item {
 
         function test_display_keys_round_trip_and_apply_to_the_theme() {
             var shell = make();
-            var pane = paneOf(shell);
+            var vision = openVision(shell);
 
-            pane.reduceTransparencyToggle.toggle();
+            vision.reduceTransparencyToggle.toggle();
             compare(Settings.values["accessibility.reduceTransparency"], true);
             compare(Glass.reduceTransparency, true);
 
-            pane.increaseContrastToggle.toggle();
+            vision.increaseContrastToggle.toggle();
             compare(Settings.values["accessibility.increaseContrast"], true);
             compare(Glass.increaseContrast, true);
 
-            pane.differentiateWithoutColorToggle.toggle();
+            vision.differentiateWithoutColorToggle.toggle();
             compare(Settings.values["accessibility.differentiateWithoutColor"], true);
             compare(Theme.differentiateWithoutColor, true);
 
-            pane.textSizeSelect.activateIndex(2);
+            vision.textSizeSelect.activateIndex(2);
             compare(Settings.values["accessibility.textSize"], "large");
             compare(Theme.textSize, "large");
             verify(Theme.textScale > 1.0, "large text must raise the type scale");
             verify(Theme.primitive.font.sizeMd > 13,
                    "the primitive type scale must follow the text size");
 
-            pane.textSizeSelect.activateIndex(1);
+            vision.textSizeSelect.activateIndex(1);
             compare(Settings.values["accessibility.textSize"], "default");
             compare(Theme.textScale, 1.0);
         }
 
         function test_pointer_size_is_the_shared_cursor_key() {
             var shell = make();
-            var pane = paneOf(shell);
-            pane.pointerSizeSlider.setValue(32);
-            pane.pointerSizeSlider.commit();
+            var vision = openVision(shell);
+            vision.pointerSizeSlider.setValue(32);
+            vision.pointerSizeSlider.commit();
             compare(Settings.values["appearance.cursorSize"], 32);
             // The map marks the row stored-only: the compositor applies it at
             // the next session start, not live.
@@ -212,12 +323,12 @@ Item {
 
         function test_motion_keys_round_trip() {
             var shell = make();
-            var pane = paneOf(shell);
-            pane.reduceMotionToggle.toggle();
+            var vision = openVision(shell);
+            vision.reduceMotionToggle.toggle();
             compare(Settings.values["accessibility.reduceMotion"], true);
             compare(Theme.reducedMotion, true);
 
-            pane.dimFlashingLightsToggle.toggle();
+            vision.dimFlashingLightsToggle.toggle();
             compare(Settings.values["accessibility.dimFlashingLights"], true);
             compare(Theme.dimFlashingLights, true);
 
@@ -229,94 +340,86 @@ Item {
 
         function test_magnifier_keys_round_trip_live() {
             var shell = make();
-            var pane = paneOf(shell);
-            compare(pane.magnifier, false);
-            compare(pane.magnifierToggle.checked, false);
+            var vision = openVision(shell);
+            compare(vision.magnifier, false);
+            compare(vision.magnifierToggle.checked, false);
 
-            pane.magnifierToggle.toggle();
+            vision.magnifierToggle.toggle();
             compare(Settings.values["accessibility.magnifier"], true);
-            compare(pane.magnifier, true);
+            compare(vision.magnifier, true);
 
-            pane.magnifierZoomSlider.setValue(3.5);
-            pane.magnifierZoomSlider.commit();
+            vision.magnifierZoomSlider.setValue(3.5);
+            vision.magnifierZoomSlider.commit();
             compare(Settings.values["accessibility.magnifierZoom"], 3.5);
 
-            pane.magnifierModeSelect.activateIndex(1);
+            vision.magnifierModeSelect.activateIndex(1);
             compare(Settings.values["accessibility.magnifierMode"], "follow-caret");
-            compare(pane.magnifierMode, "follow-caret");
+            compare(vision.magnifierMode, "follow-caret");
         }
 
-        // -- Hearing / Motor / Speech delegates ------------------------------
+        // -- Read & Speak delegate -------------------------------------------
 
-        function test_hearing_balance_round_trips() {
+        function test_read_and_speak_delegate_launches() {
             var shell = make();
-            var pane = paneOf(shell);
-            pane.balanceSlider.setValue(0.75);
-            pane.balanceSlider.commit();
-            compare(Settings.values["sound.balance"], 0.75);
-            compare(SettingsMap.rowFor("accessibility", "hearing.balance").storedOnly,
-                    true);
-        }
-
-        function test_speech_and_on_screen_keyboard_delegates_launch() {
-            var shell = make();
-            var pane = paneOf(shell);
-
-            compare(pane.speechAvailable, true);
-            pane.readSpeakRow.trailingActionClicked();
+            var vision = openVision(shell);
+            compare(vision.speechAvailable, true);
+            vision.readSpeakRow.trailingActionClicked();
             compare(Settings.accessibilityLastDelegate, "speech");
-
-            pane.liveSpeechRow.trailingActionClicked();
-            compare(Settings.accessibilityLastDelegate, "speech");
-
-            compare(pane.onScreenKeyboardAvailable, true);
-            pane.onScreenKeyboardRow.trailingActionClicked();
-            compare(Settings.accessibilityLastDelegate, "on-screen-keyboard");
         }
 
-        function test_motor_double_click_speed_round_trips() {
+        // -- Search and deep links -------------------------------------------
+
+        function test_a_search_result_lands_in_the_vision_sub_pane() {
+            var results = SettingsSearch.search("reduce motion");
+            var found = null;
+            for (var i = 0; i < results.length; ++i) {
+                if (results[i].kind === "row"
+                        && results[i].paneId === "accessibility"
+                        && results[i].targetRow === "vision.motion.reduceMotion")
+                    found = results[i];
+            }
+            verify(found !== null,
+                   "the Reduce motion row must be searchable by its synonym");
+            compare(found.deepLink,
+                    "settings://pane/accessibility/row/vision.motion.reduceMotion");
+
+            // Start elsewhere so the accessibility body is cold; the shell
+            // must queue the sub-pane until the pane body exists.
             var shell = make();
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            verify(shell.deepLink(found.deepLink));
+            tryVerify(function() {
+                return shell.currentPaneId === "accessibility"
+                        && shell.paneBody.status === Loader.Ready;
+            });
             var pane = paneOf(shell);
-            pane.doubleClickSpeedSlider.setValue(650);
-            pane.doubleClickSpeedSlider.commit();
-            compare(Settings.values["input.doubleClickSpeed"], 650);
-        }
-
-        // -- Accessibility shortcut recorder + engine consumer ---------------
-
-        function test_the_shortcut_recorder_writes_the_canonical_chord() {
-            var shell = make();
-            var pane = paneOf(shell);
-            compare(pane.accessibilityShortcut, "");
-
-            pane.shortcutRecorder.startRecording();
-            compare(pane.shortcutRecorder.recording, true);
-            keyClick(Qt.Key_A, Qt.ControlModifier | Qt.ShiftModifier);
-            compare(Settings.values["accessibility.shortcut"], "Ctrl+Shift+A");
-            compare(pane.shortcutRecorder.chord, "Ctrl+Shift+A");
-            compare(pane.shortcutRecorder.recording, false);
-
-            // Backspace with no modifiers clears the recorded chord.
-            pane.shortcutRecorder.startRecording();
-            keyClick(Qt.Key_Backspace);
-            compare(Settings.values["accessibility.shortcut"], "");
+            tryVerify(function() {
+                return pane.subPaneId === "vision"
+                        && pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            compare(shell.paneTitle, "Vision");
+            tryVerify(function() {
+                return shell.currentRowId === "vision.motion.reduceMotion";
+            });
         }
 
         // -- Keyboard / AT-SPI ----------------------------------------------
 
         function test_the_live_controls_are_keyboard_operable() {
             var shell = make();
-            var pane = paneOf(shell);
+            var vision = openVision(shell);
 
-            pane.reduceTransparencyToggle.forceActiveFocus();
+            vision.reduceTransparencyToggle.forceActiveFocus();
             keyClick(Qt.Key_Space);
             compare(Settings.values["accessibility.reduceTransparency"], true);
 
-            pane.increaseContrastToggle.forceActiveFocus();
+            vision.increaseContrastToggle.forceActiveFocus();
             keyClick(Qt.Key_Space);
             compare(Settings.values["accessibility.increaseContrast"], true);
 
-            pane.differentiateWithoutColorToggle.forceActiveFocus();
+            vision.differentiateWithoutColorToggle.forceActiveFocus();
             keyClick(Qt.Key_Space);
             compare(Settings.values["accessibility.differentiateWithoutColor"], true);
         }
@@ -329,26 +432,11 @@ Item {
             verify(pane.width > 0 && pane.width <= 740,
                    "the pane must not exceed the 740 px window");
             verify(pane.implicitHeight > 0);
-            // The detail scroll owns the overflow; the pane itself is one
-            // column, so there is no horizontal overflow.
             verify(pane.implicitWidth <= 740);
-        }
 
-        // -- The live glass preview (retained from T-15.14b) -----------------
-
-        function test_reduce_transparency_and_contrast_drive_the_preview() {
-            var shell = make();
-            shell.glassRollout = "legacy";
-            var pane = paneOf(shell);
-            var plainEdge = pane.previewResolved.edge;
-
-            pane.reduceTransparencyToggle.toggle();
-            pane.increaseContrastToggle.toggle();
-            compare(Glass.reduceTransparency, true);
-            compare(Glass.increaseContrast, true);
-            compare(pane.previewResolved.renderMode, "solid");
-            verify(pane.previewResolved.edge > plainEdge);
-            compare(pane.previewResolved.sliderApplied, false);
+            var vision = openVision(shell);
+            verify(vision.width > 0 && vision.width <= 740);
+            verify(vision.implicitHeight > 0);
         }
     }
 }
