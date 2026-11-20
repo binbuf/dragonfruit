@@ -1017,22 +1017,17 @@ Item {
         function test_t286_status_row_is_live_and_opens_software_update() {
             var shell = makeSized(740, 820);
             waitForRendering(stage);
-            // The updates client fills its view asynchronously; under load the
-            // status row can render before the label arrives. Wait for the
-            // live view instead of racing it (T288 gate flake).
-            tryVerify(function() {
-                return Settings.updates !== undefined
-                        && Settings.updates.label !== undefined;
-            });
+            // The provider's live label wins when it answered (the host in
+            // this session); otherwise the row keeps the neutral catalog
+            // label. Either way it is never "Up to Date" by invention, and
+            // this case never waits on a provider read it does not make.
             var item = shell.sidebarStatusItem;
             compare(item.status, true);
             compare(item.id, "general/software-update");
-            compare(item.label, String(Settings.updates.label));
+            verify(item.label.length > 0);
             verify(item.statusLabel.length > 0);
-            if (Number(Settings.updates.updateCount || 0) > 0)
-                compare(item.badge, String(Settings.updates.updateCount));
-            else
-                compare(item.badge, "");
+            if (Settings.updatesAvailable !== true)
+                compare(item.label, SettingsPanes.sidebarStatus.label);
 
             // The rendered status row is the first entry and is selectable.
             compare(shell.sidebar.entries[0].type, "status");
@@ -1046,6 +1041,26 @@ Item {
                 return shell.paneBody.item.subPaneId === "software-update";
             });
             compare(shell.currentPaneId, "general");
+        }
+
+        // T291e: once a provider answers, the row shows its label and count;
+        // an absent host reads "Unavailable" and never invents "Up to Date".
+        function test_t291e_status_row_follows_the_provider() {
+            var shell = makeSized(740, 820);
+            Settings.refreshUpdates();
+            waitForRendering(stage);
+            var item = shell.sidebarStatusItem;
+            if (Settings.updatesAvailable === true) {
+                var view = Settings.updates;
+                verify(String(view.label || "").length > 0);
+                compare(item.label, String(view.label));
+                var count = Number(view.updateCount || 0);
+                compare(item.badge, count > 0 ? String(count) : "");
+                return;
+            }
+            compare(item.statusLabel, "Unavailable");
+            compare(item.badge, "");
+            compare(item.label, SettingsPanes.sidebarStatus.label);
         }
 
         function test_t286_selected_row_scrolls_into_view() {

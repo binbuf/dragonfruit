@@ -656,7 +656,12 @@ ships alive because Live Speech has a real owner.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | Live compositor shortcut engine; opens this pane |
+| Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | Live compositor shortcut engine; opens this pane (the row reuses the one `ShortcutRecorder`; Backspace clears it) |
+
+The General sub-pane is the last row of the Accessibility big list. With it the
+pane has no `planned` rows: every section is either rendered from shipped rows
+or recorded as `omitted` rows with a reason, and an omitted row is never
+search-indexed.
 
 <a id="pane-control-center"></a>
 ### 5.8 Quick Settings

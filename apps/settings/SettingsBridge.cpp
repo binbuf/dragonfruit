@@ -428,6 +428,10 @@ UpdatesClient *SettingsBridge::ensureUpdates()
         m_updates = new MockUpdatesClient(this);
     else
         m_updates = new DbusUpdatesClient(this);
+    // T291e: the D-Bus client publishes its absent view from the event loop
+    // (the bridge subscribes after construction), so the status row resolves
+    // to Unavailable on a bus-less or host-less session instead of waiting on
+    // a read that never happens.
     connect(m_updates, &UpdatesClient::changed, this,
             [this](const QVariantMap &) { emit updatesChanged(); });
     connect(m_updates, &UpdatesClient::availableChanged, this,

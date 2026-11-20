@@ -10,8 +10,9 @@ import Dragonfruit.Settings
 // external delegates are deterministic and in-process with no bus.
 //
 // The cases cover the mockup intro and big list, the in-place Vision,
-// Physical and Motor, Hearing, and Speech sub-panes, every row inventory (rendered and
-// omitted), the read-only screen-reader status plus its real Open Orca action,
+// Physical and Motor, Hearing, Speech, and General sub-panes, every row
+// inventory (rendered and omitted), the read-only screen-reader status plus its
+// real Open Orca action,
 // the live display/motion/magnifier keys, the speech and on-screen-keyboard
 // delegates, the keyboard-navigation, pointer, and balance keys, absence
 // structure, search/deep links, keyboard operation, and the 740×820 window.
@@ -117,6 +118,19 @@ Item {
             return speech;
         }
 
+        // Open the in-place General sub-pane and return its body.
+        function openGeneral(shell) {
+            var pane = paneOf(shell);
+            pane.openSubPane("general");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var general = pane.subPaneLoader.item;
+            verify(general, "the General sub-pane body must be loaded");
+            return general;
+        }
+
         function collectRows(item, out) {
             if (!item)
                 return;
@@ -149,9 +163,9 @@ Item {
             var pane = paneOf(shell);
             compare(pane.subPaneId, "");
             compare(pane.listColumn.visible, true);
-            compare(pane.bigList.rows.children.length, 4,
-                    "T291a-T291d ship Vision, Physical and Motor, Hearing, and "
-                    + "Speech; T291e adds General");
+            compare(pane.bigList.rows.children.length, 5,
+                    "the mockup list: Vision, Physical and Motor, Hearing, "
+                    + "Speech, and General");
             compare(pane.visionRow.visible, true);
             compare(pane.visionRow.label, "Vision");
             compare(pane.motorRow.visible, true);
@@ -160,12 +174,17 @@ Item {
             compare(pane.hearingRow.label, "Hearing");
             compare(pane.speechRow.visible, true);
             compare(pane.speechRow.label, "Speech");
+            compare(pane.generalRow.visible, true);
+            compare(pane.generalRow.label, "General");
 
-            // The mockup order: Vision, Physical and Motor, Hearing, Speech.
+            // The mockup order: Vision, Physical and Motor, Hearing, Speech,
+            // General.
             compare(pane.bigList.rows.children[0].label, "Vision");
             compare(pane.bigList.rows.children[1].label, "Physical and Motor");
             compare(pane.bigList.rows.children[2].label, "Hearing");
             compare(pane.bigList.rows.children[3].label, "Speech");
+            compare(pane.bigList.rows.children[4].label, "General");
+            compare(pane.bigList.rows.children[4], pane.generalRow);
 
             verify(pane.visionRow.height === 52,
                    "the big row is the 52 pt token, not 53");
@@ -175,6 +194,8 @@ Item {
                    "the Hearing row uses the same 52 pt token");
             verify(pane.speechRow.height === 52,
                    "the Speech row uses the same 52 pt token");
+            verify(pane.generalRow.height === 52,
+                   "the General row uses the same 52 pt token");
             verify(pane.visionRow.category !== null,
                    "the Vision row carries a category tile");
             compare(pane.visionRow.category.source, "scan");
@@ -187,12 +208,22 @@ Item {
             verify(pane.speechRow.category !== null,
                    "the Speech row carries a category tile");
             compare(pane.speechRow.category.source, "speaker-high");
+            verify(pane.generalRow.category !== null,
+                   "the General row carries a category tile");
+            compare(pane.generalRow.category.source, "gear");
 
-            // No disabled placeholders for later sections.
+            // Every row is a real section: no disabled placeholder and no
+            // duplicate section in the list.
+            var seen = {};
             for (var i = 0; i < pane.bigList.rows.children.length; ++i) {
                 var label = pane.bigList.rows.children[i].label;
-                verify(label !== "General");
+                verify(!seen[label], "duplicate big-list section " + label);
+                seen[label] = true;
+                compare(pane.bigList.rows.children[i].enabled, true,
+                        label + " must not be a disabled placeholder");
             }
+            compare(Object.keys(seen).sort().join(","),
+                    "General,Hearing,Physical and Motor,Speech,Vision");
         }
 
         function test_the_vision_row_opens_and_closes_the_in_place_sub_pane() {
@@ -938,6 +969,336 @@ Item {
                     speech.speechAvailable);
         }
 
+        // -- General ---------------------------------------------------------
+
+        function test_the_general_row_opens_and_closes_the_in_place_sub_pane() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            pane.generalRow.disclosureClicked();
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+
+            compare(pane.subPaneId, "general");
+            // The sub-pane title is "General"; the shell keeps the pane title
+            // and the back button names Accessibility, so a sub-pane never
+            // masquerades as the General pane.
+            compare(pane.subPaneTitle, "General");
+            compare(shell.paneTitle, "General");
+            compare(shell.currentPane.title, "Accessibility");
+            compare(pane.listColumn.visible, false);
+            compare(pane.backButton.text, "\u2039 Accessibility");
+            verify(pane.subPaneLoader.item !== null);
+
+            pane.backButton.clicked();
+            tryVerify(function() { return pane.subPaneId === ""; });
+            waitForRendering(stage);
+            compare(pane.listColumn.visible, true);
+            compare(pane.subPaneLoader.status, Loader.Null);
+            compare(shell.paneTitle, "Accessibility");
+        }
+
+        function test_the_general_group_renders_one_shortcut_row() {
+            var shell = make();
+            var general = openGeneral(shell);
+
+            var content = general.shortcutGroup.parent;
+            var order = [];
+            for (var i = 0; i < content.children.length; ++i) {
+                var child = content.children[i];
+                if (child.title !== undefined && child.title.length > 0)
+                    order.push(child.title);
+            }
+            compare(order.join(","), "Accessibility Shortcut");
+            compare(general.shortcutGroup.visible, true);
+            compare(general.shortcutGroup.sectionId, "shortcut");
+            compare(general.shortcutRow.label, "Accessibility shortcut");
+            verify(general.recorder !== null,
+                   "the row reuses the one ShortcutRecorder");
+        }
+
+        function test_every_rendered_general_row_has_a_map_owner_and_key() {
+            var shell = make();
+            var general = openGeneral(shell);
+            var rendered = [];
+            collectRows(general, rendered);
+            compare(rendered.length, 1,
+                    "the General sub-pane renders only the shortcut row");
+
+            for (var i = 0; i < rendered.length; ++i) {
+                var row = rendered[i];
+                verify(String(row.owner).length > 0,
+                       "rendered row " + row.settingsId + " has no owner");
+                verify(String(row.settingsKey).length > 0,
+                       "rendered row " + row.settingsId + " has no key/API");
+                var mapped = SettingsMap.rowFor("accessibility", row.settingsId);
+                verify(mapped !== null,
+                       "rendered row " + row.settingsId + " has no map row");
+                compare(mapped.state, "shipped",
+                        "rendered row " + row.settingsId + " must be shipped");
+                compare(mapped.absence, "live-on-defaults");
+                compare(mapped.key, "accessibility.shortcut");
+                compare(mapped.section, "Accessibility Shortcut");
+                verify(String(mapped.owner).length > 0 && mapped.owner !== "omit");
+                verify(mapped.reason.length === 0,
+                       "a shipped row never needs an omission reason");
+                compare(SettingsMap.subPaneForRow("accessibility", mapped.id),
+                        "general");
+                compare(SettingsMap.rowSurface("accessibility", mapped.id),
+                        "subpane");
+                verify(SettingsMap.isRowLandable("accessibility", mapped.id));
+            }
+
+            var expected = SettingsMap.visibleRowsFor("accessibility")
+                    .filter(function(entry) {
+                        return SettingsMap.subPaneForRow("accessibility", entry.id)
+                                === "general";
+                    })
+                    .map(function(entry) { return String(entry.id); });
+            var actual = rendered.map(function(row) { return String(row.settingsId); });
+            compare(actual.sort().join(","), expected.sort().join(","));
+        }
+
+        function test_the_shortcut_recorder_writes_and_clears_the_key() {
+            var shell = make();
+            var pane = paneOf(shell);
+            var general = openGeneral(shell);
+            compare(general.shortcut, "");
+            compare(general.recorder.chord, "");
+            compare(general.recorder.placeholder, "Record Shortcut");
+
+            // Record a chord with the one recorder; it reports the canonical
+            // spelling and the pane writes the durable key.
+            general.recorder.startRecording();
+            compare(general.recorder.recording, true);
+            keyClick(Qt.Key_A, Qt.ControlModifier | Qt.AltModifier);
+            compare(general.recorder.recording, false);
+            compare(general.recorder.chord, "Ctrl+Option+A");
+            compare(Settings.values["accessibility.shortcut"], "Ctrl+Option+A");
+
+            // The chord survives a reload of the sub-pane (the key is the
+            // state, the recorder only displays it).
+            pane.closeSubPane();
+            tryVerify(function() { return pane.subPaneId === ""; });
+            waitForRendering(stage);
+            general = openGeneral(shell);
+            compare(general.recorder.chord, "Ctrl+Option+A");
+
+            // Backspace with no modifier clears the key.
+            general.recorder.startRecording();
+            keyClick(Qt.Key_Backspace);
+            compare(general.recorder.chord, "");
+            compare(Settings.values["accessibility.shortcut"], "");
+
+            // Escape cancels without writing.
+            general.recorder.startRecording();
+            keyClick(Qt.Key_Escape);
+            compare(general.recorder.recording, false);
+            compare(Settings.values["accessibility.shortcut"], "");
+
+            // A lone modifier never records.
+            general.recorder.startRecording();
+            keyClick(Qt.Key_Shift);
+            compare(general.recorder.recording, true);
+            compare(general.recorder.chord, "");
+            keyClick(Qt.Key_Escape);
+        }
+
+        function test_the_shortcut_recorder_is_keyboard_and_at_spi_operable() {
+            var shell = make();
+            var general = openGeneral(shell);
+
+            var recorder = general.recorder;
+            verify(recorder.Accessible.name.length > 0,
+                   "the recorder exposes an accessible name");
+            compare(recorder.Accessible.focusable, true);
+            compare(recorder.activeFocusOnTab, true);
+            // The description changes with the state, so a screen reader reads
+            // the recorded chord instead of only "Record Shortcut".
+            verify(recorder.Accessible.description.indexOf("record") >= 0,
+                   "an empty recorder explains how to record");
+
+            recorder.forceActiveFocus();
+            keyClick(Qt.Key_Return);
+            compare(recorder.recording, true);
+            verify(recorder.Accessible.description.indexOf("Escape") >= 0,
+                   "a recording recorder explains Escape");
+            keyClick(Qt.Key_K, Qt.MetaModifier);
+            compare(Settings.values["accessibility.shortcut"], "Cmd+K");
+            verify(recorder.Accessible.description.indexOf("K") >= 0,
+                   "the recorded chord is the accessible description");
+
+            // The row itself names the same setting.
+            compare(general.shortcutRow.Accessible.name, "Accessibility shortcut");
+        }
+
+        function test_a_search_result_lands_in_the_general_sub_pane() {
+            var results = SettingsSearch.search("accessibility shortcut");
+            var found = null;
+            for (var i = 0; i < results.length; ++i) {
+                if (results[i].kind === "row"
+                        && results[i].paneId === "accessibility"
+                        && results[i].targetRow === "shortcut.recorder")
+                    found = results[i];
+            }
+            verify(found !== null,
+                   "the Accessibility shortcut row must be searchable by its "
+                   + "synonym");
+            compare(found.deepLink,
+                    "settings://pane/accessibility/row/shortcut.recorder");
+
+            var shell = make();
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            verify(shell.deepLink(found.deepLink));
+            tryVerify(function() {
+                return shell.currentPaneId === "accessibility"
+                        && shell.paneBody.status === Loader.Ready;
+            });
+            var pane = paneOf(shell);
+            tryVerify(function() {
+                return pane.subPaneId === "general"
+                        && pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            compare(shell.paneTitle, "General");
+            tryVerify(function() {
+                return shell.currentRowId === "shortcut.recorder";
+            });
+        }
+
+        function test_a_section_link_opens_the_general_sub_pane() {
+            // The Appearance-style section hand-off (a pane footer names a
+            // section) lands on the sub-pane that owns it.
+            var shell = make();
+            shell.openSection("accessibility", "Accessibility Shortcut");
+            var pane = paneOf(shell);
+            tryVerify(function() {
+                return pane.subPaneId === "general"
+                        && pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            compare(shell.paneTitle, "General");
+        }
+
+        // -- The whole pane: every mockup section, every omission ----------
+
+        function test_every_mockup_section_is_rendered_or_omitted_with_a_reason() {
+            // Doc 25 §5.5: the mockup's `accessibility/*` sub-panes and the
+            // section each one renders. A section is rendered when it has a
+            // shipped row; otherwise it stays an omission with a reason.
+            var mockupSections = [
+                "Screen Reader", "Zoom", "Display", "Motion",
+                "Read & Speak", "Voice Control", "Keyboard", "Pointer Control",
+                "Switch Control", "Hearing Devices", "Audio",
+                "Subtitles and Captioning", "Live Captions", "Spoken Name",
+                "Live Speech", "Custom Voice", "Vocal Shortcuts",
+                "Accessibility Shortcut"
+            ];
+            var rows = SettingsMap.rowsFor("accessibility");
+            var rendered = [];
+            var shell = make();
+            var pane = paneOf(shell);
+            var subPanes = ["vision", "motor", "hearing", "speech", "general"];
+            for (var p = 0; p < subPanes.length; ++p) {
+                var body = null;
+                pane.openSubPane(subPanes[p]);
+                tryVerify(function() {
+                    return pane.subPaneLoader.status === Loader.Ready;
+                });
+                waitForRendering(stage);
+                body = pane.subPaneLoader.item;
+                verify(body, subPanes[p] + " must render a body");
+                var ids = [];
+                collectRows(body, ids);
+                for (var r = 0; r < ids.length; ++r) {
+                    compare(SettingsMap.subPaneForRow("accessibility",
+                                                      ids[r].settingsId),
+                            subPanes[p],
+                            ids[r].settingsId + " rendered outside its sub-pane");
+                }
+                rendered = rendered.concat(renderedIds(body));
+                pane.closeSubPane();
+                waitForRendering(stage);
+            }
+
+            for (var s = 0; s < mockupSections.length; ++s) {
+                var section = mockupSections[s];
+                var inSection = rows.filter(function(entry) {
+                    return entry.section === section;
+                });
+                verify(inSection.length > 0,
+                       "mockup section " + section + " must stay in the map");
+                var shipped = inSection.filter(function(entry) {
+                    return entry.state === "shipped";
+                });
+                verify(SettingsMap.subPaneForSection("accessibility", section).length > 0,
+                       "section " + section + " must name its sub-pane");
+                if (shipped.length === 0) {
+                    // No empty heading: an ownerless section is omitted only.
+                    for (var o = 0; o < inSection.length; ++o) {
+                        compare(inSection[o].state, "omitted",
+                                section + " has no shipped row");
+                        compare(inSection[o].absence, "omitted");
+                        verify(inSection[o].reason.length > 0,
+                               inSection[o].id + " needs an omission reason");
+                    }
+                    continue;
+                }
+                for (var k = 0; k < shipped.length; ++k) {
+                    verify(rendered.indexOf(String(shipped[k].id)) >= 0,
+                           "shipped row " + shipped[k].id
+                           + " is not rendered by its section");
+                }
+            }
+
+            // Every shipped map row is rendered exactly once, and every
+            // rendered row is a shipped map row.
+            var shippedIds = SettingsMap.visibleRowsFor("accessibility")
+                    .map(function(entry) { return String(entry.id); });
+            compare(rendered.slice().sort().join(","), shippedIds.sort().join(","));
+            compare(new Set(rendered).size, rendered.length,
+                    "no row renders twice");
+            for (var m = 0; m < rendered.length; ++m) {
+                verify(SettingsMap.isRowLandable("accessibility", rendered[m]),
+                       rendered[m] + " must be landable");
+            }
+
+            // No section is planned any more: the pane is closed out.
+            var planned = rows.filter(function(entry) {
+                return entry.state === "planned";
+            });
+            compare(planned.length, 0,
+                    "the Accessibility pane ships no planned rows");
+        }
+
+        function test_every_omitted_row_has_a_reason_and_stays_unindexed() {
+            var rows = SettingsMap.rowsFor("accessibility");
+            var omitted = rows.filter(function(entry) {
+                return entry.state === "omitted";
+            });
+            verify(omitted.length > 0, "the pane records its omissions");
+            for (var i = 0; i < omitted.length; ++i) {
+                var row = omitted[i];
+                compare(row.absence, "omitted", row.id);
+                verify(row.reason.length > 0, row.id + " needs a reason");
+                compare(SettingsMap.isRowLandable("accessibility", row.id), false);
+                verify(SettingsMap.visibleRowsFor("accessibility")
+                       .map(function(entry) { return entry.id; }).indexOf(row.id) < 0,
+                       row.id + " must not be search-indexed");
+                // The label never becomes a row result.
+                var results = SettingsSearch.search(row.label);
+                for (var r = 0; r < results.length; ++r) {
+                    verify(!(results[r].kind === "row"
+                             && results[r].paneId === "accessibility"
+                             && String(results[r].targetRow) === String(row.id)),
+                           row.id + " must never be a row result");
+                }
+            }
+        }
+
         // -- Search and deep links -------------------------------------------
 
         function test_a_search_result_lands_in_the_vision_sub_pane() {
@@ -1170,6 +1531,12 @@ Item {
             var speech = openSpeech(shell);
             verify(speech.width > 0 && speech.width <= 740);
             verify(speech.implicitHeight > 0);
+
+            pane.closeSubPane();
+            waitForRendering(stage);
+            var general = openGeneral(shell);
+            verify(general.width > 0 && general.width <= 740);
+            verify(general.implicitHeight > 0);
         }
     }
 }

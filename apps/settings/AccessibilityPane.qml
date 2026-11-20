@@ -33,6 +33,7 @@ Item {
         case "motor": return qsTr("Physical and Motor");
         case "hearing": return qsTr("Hearing");
         case "speech": return qsTr("Speech");
+        case "general": return qsTr("General");
         default: return "";
         }
     }
@@ -44,6 +45,7 @@ Item {
     property alias motorRow: motorRow
     property alias hearingRow: hearingRow
     property alias speechRow: speechRow
+    property alias generalRow: generalRow
     property alias subPaneLoader: subPaneLoader
     property alias backButton: backButton
 
@@ -82,6 +84,7 @@ Item {
         case "motor": return motorComponent;
         case "hearing": return hearingComponent;
         case "speech": return speechComponent;
+        case "general": return generalComponent;
         default: return null;
         }
     }
@@ -141,6 +144,15 @@ Item {
                     label: qsTr("Speech")
                     onDisclosureClicked: root.openSubPane("speech")
                 }
+
+                SettingsBigRow {
+                    id: generalRow
+                    objectName: "accessibilityGeneralRow"
+                    width: parent.width
+                    category: SettingsPanes.rowStyle("general-accessibility")
+                    label: qsTr("General")
+                    onDisclosureClicked: root.openSubPane("general")
+                }
             }
         }
 
@@ -170,4 +182,5 @@ Item {
     Component { id: motorComponent; AccessibilityMotorPane { } }
     Component { id: hearingComponent; AccessibilityHearingPane { } }
     Component { id: speechComponent; AccessibilitySpeechPane { } }
+    Component { id: generalComponent; AccessibilityGeneralPane { } }
 }

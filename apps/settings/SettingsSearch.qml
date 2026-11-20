@@ -62,7 +62,8 @@ QtObject {
         "accessibility": ["a11y", "screen reader", "contrast", "motion", "vision",
                           "hearing", "motor", "zoom", "magnifier", "speech",
                           "read and speak", "physical", "physical and motor",
-                          "pointer control", "accessibility"],
+                          "pointer control", "accessibility shortcut", "hotkey",
+                          "key binding", "accessibility"],
         "menu-bar": ["menu bar controls", "control center", "quick settings",
                      "controls", "tiles", "modules", "status items", "clock",
                      "menu extras", "menu bar items"],
@@ -325,6 +326,14 @@ QtObject {
         "accessibility/speech.liveSpeech": [
             "speech", "live speech", "speak sample", "text to speech", "tts",
             "speech dispatcher", "spd-say", "espeak"
+        ],
+        // T291e: the General sub-pane. The one shipped row is the recorded
+        // accessibility shortcut; it carries the collision words (shortcut,
+        // hotkey, key binding) so those queries reach it.
+        "accessibility/shortcut.recorder": [
+            "accessibility shortcut", "shortcut", "shortcuts", "hotkey",
+            "hot key", "key binding", "keybinding", "key chord", "record",
+            "recorder", "general"
         ]
     })
 

@@ -790,11 +790,12 @@ Item {
             var pane = showPane(shell, "accessibility");
             compare(pane.subPaneId, "");
             compare(pane.listColumn.visible, true);
-            compare(pane.bigList.rows.children.length, 4);
+            compare(pane.bigList.rows.children.length, 5);
             compare(pane.visionRow.label, "Vision");
             compare(pane.motorRow.label, "Physical and Motor");
             compare(pane.hearingRow.label, "Hearing");
             compare(pane.speechRow.label, "Speech");
+            compare(pane.generalRow.label, "General");
 
             pane.openSubPane("vision");
             tryVerify(function() {

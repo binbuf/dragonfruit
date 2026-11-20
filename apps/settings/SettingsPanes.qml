@@ -140,17 +140,22 @@ QtObject {
         "transfer":      { source: "arrows-clockwise", gradientStart: "#a06bff", gradientEnd: "#6236c4" },
         // T291a/T291b: the Accessibility big-list row identities. The vendored
         // set has no dedicated eye mark, so Vision uses the closest shipped
-        // glyph; Physical and Motor takes the hand mark.
+        // glyph; Physical and Motor takes the hand mark. Every accessibility
+        // row keeps the same blue tile (T291c-T291e).
         "vision":        { source: "scan",          gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
         "motor":         { source: "hand-pointing", gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
         "hearing":       { source: "speaker-high",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
         // T291d: the vendored set has no mouth/speech mark, so Speech takes the
         // closest shipped speaker mark in the same accessibility blue tile.
-        "speech":        { source: "speaker-high",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
+        "speech":        { source: "speaker-high",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
+        // T291e: General is the Accessibility list's last row; the key is
+        // suffixed so it never collides with the General pane's `gear` tile.
+        "general-accessibility": { source: "gear",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
     })
 
-    // The General big-list row tile for a row identity (`about`, `update`,
-    // `storage`, `password`, ...). Null means the caller keeps the plain row.
+    // The big-list row tile for a row identity (`about`, `update`, `storage`,
+    // `password`, `general-accessibility`, ...). Null means the caller keeps
+    // the plain row.
     function rowStyle(name) {
         var style = root.categoryStyles[String(name || "")];
         return style === undefined ? null : style;

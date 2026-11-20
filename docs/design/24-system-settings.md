@@ -1037,9 +1037,10 @@ policy reads, and the row says the tier is chosen for the user.
 > by the mockup's big list of in-place sub-panes
 > ([adr/0297](adr/0297-accessibility-big-list-and-vision.md)). Vision ships
 > first (T291a), Physical and Motor second (T291b), Hearing third (T291c), and
-> Speech fourth (T291d); General follows in T291e. The row tables remain the
-> owner/disposition contract, with one correction: a row that has no real owner
-> is now an explicit map `omitted` row with a reason, not a disabled control.
+> Speech fourth (T291d), and General last (T291e), which closes the pane. The
+> row tables remain the owner/disposition contract, with one correction: a row
+> that has no real owner is now an explicit map `omitted` row with a reason,
+> not a disabled control.
 > The shipped Vision rows are Screen reader, Accessibility bridge, Increase
 > contrast, Reduce transparency, Differentiate without color, Text size, Pointer
 > size, the magnifier rows, Reduce motion, Dim flashing lights, and Read & speak.
@@ -1052,7 +1053,10 @@ policy reads, and the row says the tier is chosen for the user.
 > Background sounds, Captions, RTT, Name recognition, and Spoken name are
 > omitted with reasons. The only shipped Speech row is Live speech on the
 > speech-dispatcher/espeak-ng delegate (Speak sample); Custom voice and Vocal
-> shortcuts are omitted with reasons.
+> shortcuts are omitted with reasons. The only shipped General row is
+> Accessibility shortcut, which records `accessibility.shortcut` through the
+> shared `ShortcutRecorder`; the compositor installs the chord and no row in the
+> pane is left `planned`.
 
 Owner: settingsd + compositor + AT-SPI + delegates. Absence: keep the
 five-section structure; only the live status rows and the delegates that
@@ -1124,7 +1128,16 @@ explicit omission. It is never a fake toggle.
 | Personal Voice | Personal voice | — | — | omit: no equivalent |
 | Vocal Shortcuts | Vocal shortcuts | — | — | omit: no equivalent |
 | voice assistant | — | — | — | omit |
-| Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | ship; live compositor shortcut engine (v12) |
+
+#### General (T291e)
+
+| macOS row | Dragonfruit row | Control | Owner / key | Disposition |
+|---|---|---|---|---|
+| Shortcut | Accessibility shortcut | Recorder | `accessibility.shortcut` | ship; live compositor shortcut engine (v12); Backspace clears it |
+
+Every section above is rendered when it has a shipped row and otherwise
+recorded as an `omitted` map row with a reason; omitted rows are not
+search-indexed. No row stays `planned`.
 
 ### 4.9 Quick Settings — T277
 

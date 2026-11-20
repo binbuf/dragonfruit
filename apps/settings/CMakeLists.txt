@@ -21,6 +21,7 @@ set(DF_SETTINGS_QML_FILES
     SettingsAbsenceNotice.qml
     SettingsKeyRow.qml
     ShortcutRecorder.qml
+    AccessibilityGeneralPane.qml
     SettingsMenu.qml
     PaneLoader.qml
     AppearancePane.qml
@@ -68,6 +69,7 @@ set(DF_SETTINGS_QML_FILES
     AccessibilityMotorPane.qml
     AccessibilityHearingPane.qml
     AccessibilitySpeechPane.qml
+    AccessibilityGeneralPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml
@@ -169,6 +171,7 @@ df_qml_lint(app-settings
     SettingsAbsenceNotice.qml
     SettingsKeyRow.qml
     ShortcutRecorder.qml
+    AccessibilityGeneralPane.qml
     SettingsMenu.qml
     PaneLoader.qml
     AppearancePane.qml
@@ -209,6 +212,7 @@ df_qml_lint(app-settings
     AccessibilityMotorPane.qml
     AccessibilityHearingPane.qml
     AccessibilitySpeechPane.qml
+    AccessibilityGeneralPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml

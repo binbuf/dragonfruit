@@ -564,10 +564,10 @@ Dispositions:
 | Subtitles and Captioning | omit (no owner) |
 | Live Captions | omit (no owner) |
 | Spoken Name | omit (no owner) |
-| Live Speech | omit (no owner) |
+| Live Speech | delegate (speech-dispatcher); keep the sample action |
 | Custom Voice | omit (no owner) |
 | Vocal Shortcuts | omit (no owner) |
-| Shortcut | ship (`accessibility.shortcut`) |
+| Shortcut | ship (`accessibility.shortcut`, the shared `ShortcutRecorder`) |
 
 The top-level list keeps the mockup's section order. A sub-pane that ends up
 with no owner is omitted from the list and recorded in `SettingsMap` with the
@@ -622,6 +622,20 @@ and are `omitted` map rows with a reason; they are not rendered and not
 search-indexed. The section ships alive because Live Speech has a real owner;
 it is not removed. The capture writes the list and sub-pane in light/dark and
 the absent-engine state in five stills.
+
+T291e adds **General** last, in mockup order, with the gear tile. It ships one
+group, **Accessibility Shortcut**, whose **Accessibility shortcut** row reuses
+the existing `ShortcutRecorder` (no second editor) and writes the live
+`accessibility.shortcut` key; the compositor installs the chord and the
+`accessibility-shortcut` action opens this pane. The row is live, not
+stored-only: there is no delegate to be absent, so it records with no AT-SPI
+host. This closes the pane: the list is Vision, Physical and Motor, Hearing,
+Speech, General; every section in the table above is either rendered from its
+shipped rows or omitted with a map reason; and no row stays `planned`. The
+`tst_settings_accessibility` close-out case walks every mockup section and every
+omitted row, and `make t291e-settings-accessibility-general-capture` writes the
+complete list, every shipped sub-pane, the recorded shortcut, the reduce-motion
+and increase-contrast states, and the absent-host list in light and dark.
 
 ### 5.6 Desktop & Dock
 

@@ -29,9 +29,30 @@ DbusUpdatesClient::DbusUpdatesClient(QObject *parent)
     , m_interface(kInterface)
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
-    if (!bus.isConnected())
+    if (!bus.isConnected()) {
+        // T291e: absence is a normal state, not a silent empty map. A bus-less
+        // session (headless CI, a broken user session) publishes the absent
+        // view once so the shell's status row says "Unavailable" instead of
+        // keeping its neutral catalog label behind a read that never happens.
+        // The bridge connects `changed` after this constructor returns, so the
+        // read is deferred; `call()` reports the absent view from there. A
+        // later bus or host appears through RuntimeAdded and the first write.
+        QTimer::singleShot(0, this, [this]() { refresh(); });
         return;
+    }
     m_available = available();
+    if (!m_available) {
+        // T291e: a connected bus without the host is the same absence as a
+        // bus-less session. Publish the empty view now and once more after the
+        // bridge has subscribed, so the shell's status row says "Unavailable";
+        // the service watcher publishes the provider view when the host
+        // appears.
+        emit changed(m_view);
+        QTimer::singleShot(0, this, [this]() {
+            if (!m_available)
+                emit changed(m_view);
+        });
+    }
     m_busyTimer = new QTimer(this);
     m_busyTimer->setInterval(1000);
     connect(m_busyTimer, &QTimer::timeout, this, &DbusUpdatesClient::refresh);
@@ -103,6 +124,11 @@ void DbusUpdatesClient::call(const QString &method, const QVariantList &argument
             m_available = false;
             emit availableChanged(false);
         }
+        // T291e: the absent host publishes one empty view so the shell's
+        // status row resolves to "Unavailable" instead of waiting on a read
+        // that never arrives.
+        if (method == QStringLiteral("State") || method == QStringLiteral("Refresh"))
+            emit changed(m_view);
         return;
     }
     const bool isState = method == QStringLiteral("State")

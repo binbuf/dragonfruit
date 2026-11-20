@@ -858,11 +858,15 @@ QtObject {
                          qsTr("No vocal-shortcut trigger engine (voice sound "
                               + "recognition mapped to shell actions) exists in "
                               + "this build.")),
-                // General -> Shortcut (T291e).
+                // General -> Accessibility Shortcut (T291e). The last section of
+                // the list. The row reuses the one `ShortcutRecorder`; the
+                // compositor's shortcut engine installs the recorded chord and
+                // the `accessibility-shortcut` action opens this pane, so the
+                // row is live on the durable key, not stored-only.
                 root.row("shortcut.recorder", qsTr("Accessibility Shortcut"),
                          qsTr("Accessibility shortcut"), "recorder",
                          "shell/compositor shortcut engine",
-                         "accessibility.shortcut", "live-on-defaults", "planned")
+                         "accessibility.shortcut", "live-on-defaults", "shipped")
             ],
             "control-center": [
                 root.row("modules", qsTr("Quick Settings"), qsTr("Modules"), "list",
@@ -1774,7 +1778,8 @@ QtObject {
         "vision": "vision",
         "motor": "motor",
         "hearing": "hearing",
-        "speech": "speech"
+        "speech": "speech",
+        "shortcut": "general"
     })
 
     // T291a: a section deep link (the Appearance footer's "More in
@@ -1798,7 +1803,9 @@ QtObject {
         "spoken name": "hearing",
         "live speech": "speech",
         "custom voice": "speech",
-        "vocal shortcuts": "speech"
+        "vocal shortcuts": "speech",
+        "accessibility shortcut": "general",
+        "shortcut": "general"
     })
 
     // The sub-pane id that renders a section, or "" when the section is on the
