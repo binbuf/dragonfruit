@@ -31,6 +31,7 @@ Item {
         switch (root.subPaneId) {
         case "vision": return qsTr("Vision");
         case "motor": return qsTr("Physical and Motor");
+        case "hearing": return qsTr("Hearing");
         default: return "";
         }
     }
@@ -40,6 +41,7 @@ Item {
     property alias bigList: bigList
     property alias visionRow: visionRow
     property alias motorRow: motorRow
+    property alias hearingRow: hearingRow
     property alias subPaneLoader: subPaneLoader
     property alias backButton: backButton
 
@@ -76,6 +78,7 @@ Item {
         switch (id) {
         case "vision": return visionComponent;
         case "motor": return motorComponent;
+        case "hearing": return hearingComponent;
         default: return null;
         }
     }
@@ -117,6 +120,15 @@ Item {
                     label: qsTr("Physical and Motor")
                     onDisclosureClicked: root.openSubPane("motor")
                 }
+
+                SettingsBigRow {
+                    id: hearingRow
+                    objectName: "accessibilityHearingRow"
+                    width: parent.width
+                    category: SettingsPanes.rowStyle("hearing")
+                    label: qsTr("Hearing")
+                    onDisclosureClicked: root.openSubPane("hearing")
+                }
             }
         }
 
@@ -144,4 +156,5 @@ Item {
 
     Component { id: visionComponent; AccessibilityVisionPane { } }
     Component { id: motorComponent; AccessibilityMotorPane { } }
+    Component { id: hearingComponent; AccessibilityHearingPane { } }
 }

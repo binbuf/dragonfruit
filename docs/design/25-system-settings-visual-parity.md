@@ -588,6 +588,19 @@ An absent on-screen-keyboard program keeps the row and disables only `Open`
 with the missing-program reason. The capture writes the row, the sub-pane, the
 accommodation state, and the absent delegate in six stills.
 
+T291c adds **Hearing** after Physical and Motor, in mockup order, with the
+speaker tile. Only **Audio** has a real Linux owner: **Balance** writes the
+stored-only `sound.balance` key shared with the Sound pane. Hearing Devices
+(no hearing-aid or LE Audio service), Subtitles and Captioning (no caption
+delegate), Live Captions (no live-caption engine), and Spoken Name (no
+on-device name model) have no owner and are `omitted` map rows with a reason;
+they are not rendered and not search-indexed. The mockup's Mono audio, Flash
+the screen on alert, and Background sounds sit in the Audio group but have no
+key or service here, so they are omissions rather than disabled placeholders.
+The absent AT-SPI bridge leaves the Audio group and its settingsd row live.
+The capture writes the list and sub-pane in light/dark, the accommodation
+state, and the absent-bridge state in six stills.
+
 ### 5.6 Desktop & Dock
 
 | Mockup block | Target |

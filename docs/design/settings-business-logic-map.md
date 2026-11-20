@@ -559,6 +559,16 @@ Control, Sticky Keys, Slow Keys, Mouse Keys, Ignore built-in trackpad, and
 Switch Control are `omitted` map rows with reasons; they are not rendered and
 not search-indexed.
 
+T291c status: Hearing is the third big-list row, in mockup order. Its sub-pane
+has one rendered group, **Audio**, with Balance on the stored-only
+`sound.balance` key shared with the Sound pane. **Hearing Devices** has no
+hearing-aid or LE Audio service, **Subtitles and Captioning** has no caption
+delegate, **Live Captions** has no live-caption engine, and **Spoken Name** has
+no on-device name model; each is represented only by `omitted` map rows with a
+reason. Mono audio, Flash the screen on alert, and Background sounds are
+Audio-group omissions for the same reason. The absent AT-SPI bridge leaves the
+settingsd row live.
+
 #### 5.7.1 Vision
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
@@ -592,13 +602,15 @@ not search-indexed.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Behaviour / absence |
 |---|---|---|---|---|
-| — Flash the screen | Flash the screen on alert | — | shell | Disabled: no full-output flash surface |
-| — Play stereo as mono | Mono audio | — | PipeWire | Disabled: no per-session downmix |
+| Hearing Devices | Hearing devices | — | — | Omitted: no hearing-aid or LE Audio service |
+| — Flash the screen | Flash the screen on alert | — | — | Omitted: no full-output alert flash surface |
+| — Play stereo as mono | Mono audio | — | — | Omitted: no per-session downmix |
 | — Balance | Balance | Slider | `sound.balance` | Stored-only; audio consumer deferred |
-| — Background sounds | Background sounds | — | audio delegate | Disabled: no background-sound player |
-| Captions | Captions | — | live-caption delegate | Delegated; disabled when no delegate |
+| — Background sounds | Background sounds | — | — | Omitted: no background-sound player |
+| Captions | Captions | — | — | Omitted: no live-caption or subtitle delegate |
 | RTT | RTT | — | — | Omitted: no real-time text service |
 | Name Recognition | Name recognition | — | — | Omitted: no on-device name model |
+| Spoken Name | Spoken name | — | — | Omitted: no on-device spoken-name model |
 
 #### 5.7.3 Physical and Motor
 

@@ -9,12 +9,12 @@ import Dragonfruit.Settings
 // (see CMakeLists.txt), so the `Settings` singleton, the AT-SPI view, and the
 // external delegates are deterministic and in-process with no bus.
 //
-// The cases cover the mockup intro and big list, the in-place Vision and
-// Physical and Motor sub-panes, both row inventories (rendered and omitted),
-// the read-only screen-reader status plus its real Open Orca action, the live
-// display/motion/magnifier keys, the speech and on-screen-keyboard delegates,
-// the keyboard-navigation and pointer keys, absence structure, search/deep
-// links, keyboard operation, and the 740×820 window.
+// The cases cover the mockup intro and big list, the in-place Vision,
+// Physical and Motor, and Hearing sub-panes, every row inventory (rendered and
+// omitted), the read-only screen-reader status plus its real Open Orca action,
+// the live display/motion/magnifier keys, the speech and on-screen-keyboard
+// delegates, the keyboard-navigation, pointer, and balance keys, absence
+// structure, search/deep links, keyboard operation, and the 740×820 window.
 Item {
     id: stage
     width: 900
@@ -91,6 +91,19 @@ Item {
             return motor;
         }
 
+        // Open the in-place Hearing sub-pane and return its body.
+        function openHearing(shell) {
+            var pane = paneOf(shell);
+            pane.openSubPane("hearing");
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            var hearing = pane.subPaneLoader.item;
+            verify(hearing, "the Hearing sub-pane body must be loaded");
+            return hearing;
+        }
+
         function collectRows(item, out) {
             if (!item)
                 return;
@@ -123,33 +136,40 @@ Item {
             var pane = paneOf(shell);
             compare(pane.subPaneId, "");
             compare(pane.listColumn.visible, true);
-            compare(pane.bigList.rows.children.length, 2,
-                    "T291a/T291b ship Vision and Physical and Motor; later "
-                    + "children add one each");
+            compare(pane.bigList.rows.children.length, 3,
+                    "T291a/T291b/T291c ship Vision, Physical and Motor, and "
+                    + "Hearing; later children add one each");
             compare(pane.visionRow.visible, true);
             compare(pane.visionRow.label, "Vision");
             compare(pane.motorRow.visible, true);
             compare(pane.motorRow.label, "Physical and Motor");
+            compare(pane.hearingRow.visible, true);
+            compare(pane.hearingRow.label, "Hearing");
 
-            // The mockup order: Vision, then Physical and Motor.
+            // The mockup order: Vision, Physical and Motor, then Hearing.
             compare(pane.bigList.rows.children[0].label, "Vision");
             compare(pane.bigList.rows.children[1].label, "Physical and Motor");
+            compare(pane.bigList.rows.children[2].label, "Hearing");
 
             verify(pane.visionRow.height === 52,
                    "the big row is the 52 pt token, not 53");
             verify(pane.motorRow.height === 52,
                    "the Physical and Motor row uses the same 52 pt token");
+            verify(pane.hearingRow.height === 52,
+                   "the Hearing row uses the same 52 pt token");
             verify(pane.visionRow.category !== null,
                    "the Vision row carries a category tile");
             compare(pane.visionRow.category.source, "scan");
             verify(pane.motorRow.category !== null,
                    "the Physical and Motor row carries a category tile");
             compare(pane.motorRow.category.source, "hand-pointing");
+            verify(pane.hearingRow.category !== null,
+                   "the Hearing row carries a category tile");
+            compare(pane.hearingRow.category.source, "speaker-high");
 
             // No disabled placeholders for later sections.
             for (var i = 0; i < pane.bigList.rows.children.length; ++i) {
                 var label = pane.bigList.rows.children[i].label;
-                verify(label !== "Hearing");
                 verify(label !== "Speech");
                 verify(label !== "General");
             }
@@ -569,6 +589,173 @@ Item {
                     "live-on-defaults");
         }
 
+        // -- Hearing ---------------------------------------------------------
+
+        function test_the_hearing_row_opens_and_closes_the_in_place_sub_pane() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            pane.hearingRow.disclosureClicked();
+            tryVerify(function() {
+                return pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+
+            compare(pane.subPaneId, "hearing");
+            compare(pane.subPaneTitle, "Hearing");
+            compare(shell.paneTitle, "Hearing");
+            compare(pane.listColumn.visible, false);
+            verify(pane.subPaneLoader.item !== null);
+
+            pane.backButton.clicked();
+            tryVerify(function() { return pane.subPaneId === ""; });
+            waitForRendering(stage);
+            compare(pane.listColumn.visible, true);
+            compare(pane.subPaneLoader.status, Loader.Null);
+            compare(shell.paneTitle, "Accessibility");
+        }
+
+        function test_the_hearing_groups_render_in_mockup_order() {
+            var shell = make();
+            var hearing = openHearing(shell);
+
+            var content = hearing.audioGroup.parent;
+            var order = [];
+            for (var i = 0; i < content.children.length; ++i) {
+                var child = content.children[i];
+                if (child.title !== undefined && child.title.length > 0)
+                    order.push(child.title);
+            }
+            // Audio is the only group with a real Linux owner; the other
+            // mockup groups are map omissions, never empty headings.
+            compare(order.join(","), "Audio");
+            compare(hearing.audioGroup.visible, true);
+        }
+
+        function test_every_rendered_hearing_row_has_a_map_owner_and_key() {
+            var shell = make();
+            var hearing = openHearing(shell);
+            var rendered = [];
+            collectRows(hearing, rendered);
+            compare(rendered.length, 1,
+                    "the Hearing sub-pane renders only the Audio balance row");
+
+            for (var i = 0; i < rendered.length; ++i) {
+                var row = rendered[i];
+                verify(String(row.owner).length > 0,
+                       "rendered row " + row.settingsId + " has no owner");
+                verify(String(row.settingsKey).length > 0,
+                       "rendered row " + row.settingsId + " has no key/API");
+                var mapped = SettingsMap.rowFor("accessibility", row.settingsId);
+                verify(mapped !== null,
+                       "rendered row " + row.settingsId + " has no map row");
+                compare(mapped.state, "shipped",
+                        "rendered row " + row.settingsId + " must be shipped");
+                verify(String(mapped.owner).length > 0 && mapped.owner !== "omit");
+                verify(String(mapped.key).length > 0 && mapped.key !== "omit");
+                compare(SettingsMap.subPaneForRow("accessibility", mapped.id),
+                        "hearing");
+                compare(SettingsMap.rowSurface("accessibility", mapped.id),
+                        "subpane");
+                verify(SettingsMap.isRowLandable("accessibility", mapped.id));
+            }
+
+            var expected = SettingsMap.visibleRowsFor("accessibility")
+                    .filter(function(entry) {
+                        return SettingsMap.subPaneForRow("accessibility", entry.id)
+                                === "hearing";
+                    })
+                    .map(function(entry) { return String(entry.id); });
+            var actual = rendered.map(function(row) { return String(row.settingsId); });
+            compare(actual.sort().join(","), expected.sort().join(","));
+        }
+
+        function test_ownerless_hearing_rows_are_omitted_with_a_reason() {
+            var omitted = [
+                "hearing.devices",
+                "hearing.flashScreen",
+                "hearing.monoAudio",
+                "hearing.backgroundSounds",
+                "hearing.captions",
+                "hearing.rtt",
+                "hearing.nameRecognition",
+                "hearing.spokenName"
+            ];
+
+            var shell = make();
+            var hearing = openHearing(shell);
+            var ids = renderedIds(hearing);
+            for (var i = 0; i < omitted.length; ++i) {
+                var id = omitted[i];
+                var row = SettingsMap.rowFor("accessibility", id);
+                verify(row !== null, id + " must stay in the map as an omission");
+                compare(row.state, "omitted", id + " must not be shipped");
+                compare(row.absence, "omitted", id + " must carry the omitted absence");
+                verify(row.reason.length > 0, id + " must document its reason");
+                compare(ids.indexOf(id), -1, id + " must not be rendered");
+                compare(SettingsMap.isRowLandable("accessibility", id), false,
+                        id + " must not be landable");
+                verify(SettingsMap.visibleRowsFor("accessibility")
+                       .map(function(entry) { return entry.id; }).indexOf(id) < 0,
+                       id + " must not be in the search index");
+            }
+
+            // Every mockup Hearing section is represented in the map: Audio
+            // keeps the one shipped row, and the four ownerless sections keep
+            // only omitted rows with reasons.
+            var sections = ["Hearing Devices", "Audio", "Subtitles and Captioning",
+                            "Live Captions", "Spoken Name"];
+            var rows = SettingsMap.rowsFor("accessibility");
+            for (var s = 0; s < sections.length; ++s) {
+                var inSection = rows.filter(function(entry) {
+                    return entry.section === sections[s];
+                });
+                verify(inSection.length > 0,
+                       "section " + sections[s] + " must stay in the map");
+                var shipped = inSection.filter(function(entry) {
+                    return entry.state === "shipped";
+                });
+                if (sections[s] === "Audio")
+                    compare(shipped.length, 1);
+                else
+                    compare(shipped.length, 0,
+                            sections[s] + " has no owner and must not ship");
+                for (var r = 0; r < inSection.length; ++r) {
+                    if (inSection[r].state === "omitted")
+                        verify(inSection[r].reason.length > 0,
+                               inSection[r].id + " needs an omission reason");
+                }
+            }
+
+            // A stale mockup name never becomes a row result.
+            var results = SettingsSearch.search("spoken name");
+            for (var q = 0; q < results.length; ++q) {
+                verify(!(results[q].kind === "row"
+                         && results[q].paneId === "accessibility"),
+                       "an omitted hearing row must never be a row result");
+            }
+        }
+
+        function test_balance_is_the_shared_sound_key() {
+            var shell = make();
+            var hearing = openHearing(shell);
+            compare(hearing.balance, 0.5);
+
+            hearing.balanceSlider.setValue(0.25);
+            hearing.balanceSlider.commit();
+            compare(Settings.values["sound.balance"], 0.25);
+            compare(hearing.balance, 0.25);
+
+            // The map marks the durable preference stored-only: the audio
+            // engine does not consume balance yet.
+            var row = SettingsMap.rowFor("accessibility", "hearing.balance");
+            compare(row.storedOnly, true);
+            compare(row.key, "sound.balance");
+            compare(row.absence, "live-on-defaults");
+            verify(row.absence !== "disabled-with-reason",
+                   "a stored-only row is not a disabled row");
+        }
+
         // -- Search and deep links -------------------------------------------
 
         function test_a_search_result_lands_in_the_vision_sub_pane() {
@@ -641,6 +828,40 @@ Item {
             });
         }
 
+        function test_a_search_result_lands_in_the_hearing_sub_pane() {
+            var results = SettingsSearch.search("audio balance");
+            var found = null;
+            for (var i = 0; i < results.length; ++i) {
+                if (results[i].kind === "row"
+                        && results[i].paneId === "accessibility"
+                        && results[i].targetRow === "hearing.balance")
+                    found = results[i];
+            }
+            verify(found !== null,
+                   "the Balance row must be searchable by its audio synonym");
+            compare(found.deepLink,
+                    "settings://pane/accessibility/row/hearing.balance");
+
+            var shell = make();
+            shell.selectPane("general");
+            tryVerify(function() { return shell.paneBody.status === Loader.Ready; });
+            verify(shell.deepLink(found.deepLink));
+            tryVerify(function() {
+                return shell.currentPaneId === "accessibility"
+                        && shell.paneBody.status === Loader.Ready;
+            });
+            var pane = paneOf(shell);
+            tryVerify(function() {
+                return pane.subPaneId === "hearing"
+                        && pane.subPaneLoader.status === Loader.Ready;
+            });
+            waitForRendering(stage);
+            compare(shell.paneTitle, "Hearing");
+            tryVerify(function() {
+                return shell.currentRowId === "hearing.balance";
+            });
+        }
+
         // -- Keyboard / AT-SPI ----------------------------------------------
 
         function test_the_live_controls_are_keyboard_operable() {
@@ -674,6 +895,16 @@ Item {
                    "the slider must move with the keyboard");
         }
 
+        function test_the_hearing_controls_are_keyboard_operable() {
+            var shell = make();
+            var hearing = openHearing(shell);
+
+            hearing.balanceSlider.forceActiveFocus();
+            keyClick(Qt.Key_Right);
+            verify(Settings.values["sound.balance"] > 0.5,
+                   "the balance slider must move with the keyboard");
+        }
+
         // -- 740×820 ---------------------------------------------------------
 
         function test_the_pane_fits_the_measured_window() {
@@ -693,6 +924,12 @@ Item {
             var motor = openMotor(shell);
             verify(motor.width > 0 && motor.width <= 740);
             verify(motor.implicitHeight > 0);
+
+            pane.closeSubPane();
+            waitForRendering(stage);
+            var hearing = openHearing(shell);
+            verify(hearing.width > 0 && hearing.width <= 740);
+            verify(hearing.implicitHeight > 0);
         }
     }
 }

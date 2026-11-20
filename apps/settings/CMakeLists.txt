@@ -66,6 +66,7 @@ set(DF_SETTINGS_QML_FILES
     AccessibilityPane.qml
     AccessibilityVisionPane.qml
     AccessibilityMotorPane.qml
+    AccessibilityHearingPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml
@@ -205,6 +206,7 @@ df_qml_lint(app-settings
     AccessibilityPane.qml
     AccessibilityVisionPane.qml
     AccessibilityMotorPane.qml
+    AccessibilityHearingPane.qml
     WifiPane.qml
     NetworkPane.qml
     VpnPane.qml

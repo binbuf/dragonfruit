@@ -142,7 +142,8 @@ QtObject {
         // set has no dedicated eye mark, so Vision uses the closest shipped
         // glyph; Physical and Motor takes the hand mark.
         "vision":        { source: "scan",          gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
-        "motor":         { source: "hand-pointing", gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
+        "motor":         { source: "hand-pointing", gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
+        "hearing":       { source: "speaker-high",  gradientStart: "#2f7bff", gradientEnd: "#1450c4" }
     })
 
     // The General big-list row tile for a row identity (`about`, `update`,

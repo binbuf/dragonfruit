@@ -747,27 +747,6 @@ QtObject {
                          qsTr("Audio descriptions"), "omit", "omit", "omit",
                          "omitted", "omitted", false, "",
                          qsTr("Audio descriptions are content-level, not a shell preference.")),
-                // Hearing (T291c).
-                root.row("hearing.flashScreen", qsTr("Hearing"),
-                         qsTr("Flash the screen on alert"), "toggle", "shell",
-                         "shell/flash-screen", "disabled-with-reason", "planned"),
-                root.row("hearing.monoAudio", qsTr("Hearing"), qsTr("Mono audio"),
-                         "toggle", "PipeWire", "PipeWire/mono-downmix",
-                         "disabled-with-reason", "planned"),
-                root.row("hearing.balance", qsTr("Hearing"), qsTr("Balance"), "slider",
-                         "apps/settings", "sound.balance", "live-on-defaults",
-                         "planned", true),
-                root.row("hearing.backgroundSounds", qsTr("Hearing"),
-                         qsTr("Background sounds"), "toggle+picker", "audio delegate",
-                         "audio/background-sounds", "disabled-with-reason", "planned"),
-                root.row("hearing.captions", qsTr("Hearing"), qsTr("Captions"),
-                         "disclosure", "live-caption delegate", "caption/delegate",
-                         "delegated", "planned"),
-                root.row("hearing.rtt", qsTr("Hearing"), qsTr("RTT"), "omit",
-                         "omit", "omit", "omitted", "omitted"),
-                root.row("hearing.nameRecognition", qsTr("Hearing"),
-                         qsTr("Name recognition"), "omit", "omit", "omit",
-                         "omitted", "omitted"),
                 // Physical and Motor (T291b). Keyboard and Pointer Control are
                 // the two shipped groups; Voice Control and Switch Control have
                 // no Linux owner and are omitted with a reason.
@@ -809,6 +788,50 @@ QtObject {
                          "omitted", "omitted", false, "",
                          qsTr("No switch-control delegate or scanning input "
                               + "source exists in this build.")),
+                // Hearing (T291c). Audio is the one group with a real owner.
+                // Hearing Devices, Subtitles and Captioning, Live Captions, and
+                // Spoken Name have no Linux owner; their rows are omissions with
+                // a reason and are never rendered or search-indexed.
+                root.row("hearing.devices", qsTr("Hearing Devices"),
+                         qsTr("Hearing devices"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No hearing-aid or LE Audio hearing-device service "
+                              + "is integrated in this build.")),
+                root.row("hearing.flashScreen", qsTr("Audio"),
+                         qsTr("Flash the screen on alert"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("The compositor has no full-output alert flash "
+                              + "surface.")),
+                root.row("hearing.monoAudio", qsTr("Audio"), qsTr("Mono audio"),
+                         "omit", "omit", "omit", "omitted", "omitted", false, "",
+                         qsTr("PipeWire has no per-session stereo-to-mono downmix "
+                              + "in the control path this build uses.")),
+                root.row("hearing.balance", qsTr("Audio"), qsTr("Balance"), "slider",
+                         "apps/settings", "sound.balance", "live-on-defaults",
+                         "shipped", true,
+                         "apps/settings (balance write deferred)"),
+                root.row("hearing.backgroundSounds", qsTr("Audio"),
+                         qsTr("Background sounds"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No background-sound player or audio delegate is "
+                              + "shipped.")),
+                root.row("hearing.captions", qsTr("Subtitles and Captioning"),
+                         qsTr("Captions"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No live-caption or subtitle delegate exists in "
+                              + "this build.")),
+                root.row("hearing.rtt", qsTr("Subtitles and Captioning"),
+                         qsTr("RTT"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No real-time text service exists in this build.")),
+                root.row("hearing.nameRecognition", qsTr("Live Captions"),
+                         qsTr("Name recognition"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No on-device name-recognition model exists.")),
+                root.row("hearing.spokenName", qsTr("Spoken Name"),
+                         qsTr("Spoken name"), "omit", "omit", "omit",
+                         "omitted", "omitted", false, "",
+                         qsTr("No on-device spoken-name model exists.")),
                 // Speech (T291d).
                 root.row("speech.liveSpeech", qsTr("Speech"), qsTr("Live speech"),
                          "action", "speech-dispatcher/espeak-ng", "spd-say",
@@ -1733,7 +1756,8 @@ QtObject {
     // absent stays unlandable instead of deep-linking into a missing surface.
     readonly property var accessibilityRowSubPanes: ({
         "vision": "vision",
-        "motor": "motor"
+        "motor": "motor",
+        "hearing": "hearing"
     })
 
     // T291a: a section deep link (the Appearance footer's "More in
@@ -1749,7 +1773,12 @@ QtObject {
         "voice control": "motor",
         "keyboard": "motor",
         "pointer control": "motor",
-        "switch control": "motor"
+        "switch control": "motor",
+        "hearing devices": "hearing",
+        "audio": "hearing",
+        "subtitles and captioning": "hearing",
+        "live captions": "hearing",
+        "spoken name": "hearing"
     })
 
     // The sub-pane id that renders a section, or "" when the section is on the

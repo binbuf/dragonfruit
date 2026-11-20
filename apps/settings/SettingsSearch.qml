@@ -311,6 +311,13 @@ QtObject {
         "accessibility/motor.pointer.doubleClickSpeed": [
             "double click", "double-click", "double click speed",
             "click speed", "pointer control"
+        ],
+        // T291c: the Hearing sub-pane. Audio is the only rendered group, so
+        // only Balance carries synonyms; the omitted hearing rows stay out of
+        // the row index.
+        "accessibility/hearing.balance": [
+            "balance", "audio balance", "stereo balance", "left right",
+            "hearing", "audio"
         ]
     })
 

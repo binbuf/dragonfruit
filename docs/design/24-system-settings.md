@@ -1030,17 +1030,20 @@ policy reads, and the row says the tier is chosen for the user.
 > **Superseded in T291a.** The one-scroll five-section form below is replaced
 > by the mockup's big list of in-place sub-panes
 > ([adr/0297](adr/0297-accessibility-big-list-and-vision.md)). Vision ships
-> first (T291a) and Physical and Motor second (T291b); Hearing, Speech, and
-> General follow in T291c–T291e. The row tables remain the owner/disposition
-> contract, with one correction: a row that has no real owner is now an
-> explicit map `omitted` row with a reason, not a disabled control. The shipped
-> Vision rows are Screen reader, Accessibility bridge, Increase contrast, Reduce
-> transparency, Differentiate without color, Text size, Pointer size, the
-> magnifier rows, Reduce motion, Dim flashing lights, and Read & speak. The
-> shipped Physical and Motor rows are Full keyboard access (stored-only
+> first (T291a), Physical and Motor second (T291b), and Hearing third (T291c);
+> Speech and General follow in T291d–T291e. The row tables remain the
+> owner/disposition contract, with one correction: a row that has no real owner
+> is now an explicit map `omitted` row with a reason, not a disabled control.
+> The shipped Vision rows are Screen reader, Accessibility bridge, Increase
+> contrast, Reduce transparency, Differentiate without color, Text size, Pointer
+> size, the magnifier rows, Reduce motion, Dim flashing lights, and Read & speak.
+> The shipped Physical and Motor rows are Full keyboard access (stored-only
 > `input.keyboardNavigation`), On-screen keyboard (`onboard`/`wvkbd` delegate),
 > and Double-click speed (live `input.doubleClickSpeed`); Voice Control, Sticky
 > Keys, Slow Keys, Mouse Keys, Ignore built-in trackpad, and Switch Control are
+> omitted with reasons. The only shipped Hearing row is Balance (stored-only
+> `sound.balance`); Hearing Devices, Flash the screen on alert, Mono audio,
+> Background sounds, Captions, RTT, Name recognition, and Spoken name are
 > omitted with reasons.
 
 Owner: settingsd + compositor + AT-SPI + delegates. Absence: keep the
@@ -1086,13 +1089,15 @@ explicit omission. It is never a fake toggle.
 
 | macOS row | Dragonfruit row | Control | Owner / key | Disposition |
 |---|---|---|---|---|
-| — Flash the screen | Flash the screen on alert | — | shell | disabled-with-reason: no full-output flash surface |
-| — Play stereo as mono | Mono audio | — | PipeWire | disabled-with-reason: no per-session downmix |
+| Hearing Devices | Hearing devices | — | — | omit: no hearing-aid or LE Audio service |
+| — Flash the screen | Flash the screen on alert | — | — | omit: no full-output alert flash surface |
+| — Play stereo as mono | Mono audio | — | — | omit: no per-session downmix |
 | — Balance | Balance | Slider | `sound.balance` | stored-only; the audio engine consumer is deferred |
-| — Background sounds | Background sounds | — | audio delegate | disabled-with-reason: no background-sound player |
-| Captions | Captions | — | live-caption delegate | delegated; disabled when no delegate |
+| — Background sounds | Background sounds | — | — | omit: no background-sound player |
+| Captions | Captions | — | — | omit: no live-caption or subtitle delegate |
 | RTT | RTT | — | — | omit: no real-time text service |
 | Name Recognition | Name recognition | — | — | omit: no on-device name model |
+| Spoken Name | Spoken name | — | — | omit: no on-device spoken-name model |
 
 #### Motor and Speech
 
