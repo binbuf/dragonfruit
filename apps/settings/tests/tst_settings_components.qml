@@ -554,6 +554,51 @@ Item {
             tryVerify(function() { return !select.menu.open; });
         }
 
+        function test_select_menu_hover_selects_the_row_under_the_pointer() {
+            var host = createTemporaryObject(hostComponent, stage, {});
+            var select = createTemporaryObject(selectComponent, host,
+                                               { x: 20, y: 20 });
+            waitForRendering(stage);
+            select.openMenu();
+            tryVerify(function() { return select.menu.open; });
+            waitForRendering(stage);
+            wait(60);
+            var menu = select.menu;
+            var row = findChild(menu, "menuRow2");
+            verify(row !== null, "the third option row exists");
+            var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(menu.highlightedIndex, 2,
+                    "the row under the pointer is the selected row");
+        }
+
+        function test_scrolled_select_hover_selects_the_row_under_the_pointer() {
+            var host = createTemporaryObject(hostComponent, stage, {});
+            // Open on a value near the bottom so the menu scrolls to reveal
+            // the checked row before the pointer arrives.
+            var select = createTemporaryObject(longSelectComponent, host,
+                                               { x: 20, y: 20, currentIndex: 20 });
+            waitForRendering(stage);
+            select.openMenu();
+            tryVerify(function() { return select.menu.open; });
+            waitForRendering(stage);
+            wait(60);
+            var menu = select.menu;
+            verify(menu.scrolls, "the long option list scrolls");
+            var scroll = findChild(menu, "contextMenuScroll");
+            verify(scroll !== null);
+            verify(scroll.flickable.contentY > 0,
+                   "the checked row is revealed on open");
+            var row = findChild(menu, "menuRow18");
+            verify(row !== null, "a scrolled option row exists");
+            var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(menu.highlightedIndex, 18,
+                    "the scrolled row under the pointer is selected");
+        }
+
         function test_long_select_scrolls_inside_the_overlay() {
             var host = createTemporaryObject(hostComponent, stage, {});
             var select = createTemporaryObject(longSelectComponent, host,

@@ -324,22 +324,22 @@ Rectangle {
         if (activeStatusPopup) {
             var statusPopup = activeStatusPopup.popup;
             if (statusPopup.open) {
-                var statusOrigin = activeStatusPopup.mapToItem(menuBar, statusPopup.x,
-                                                               statusPopup.y);
+                var statusOrigin =
+                    activeStatusPopup.mapToItem(null, statusPopup.x, statusPopup.y);
                 return { x: statusOrigin.x, y: statusOrigin.y,
                          w: statusPopup.width, h: statusPopup.height };
             }
         }
         if (overflowMenuOpen && overflowContextMenu.open) {
             var overflowRect = overflowContextMenu.contentRect;
-            var overflowOrigin = overflowContextMenu.mapToItem(menuBar, overflowRect.x,
-                                                               overflowRect.y);
+            var overflowOrigin =
+                overflowContextMenu.mapToItem(null, overflowRect.x, overflowRect.y);
             return { x: overflowOrigin.x, y: overflowOrigin.y,
                      w: overflowRect.w, h: overflowRect.h };
         }
         if (trayMenuOpen && trayContextMenu.open) {
             var trayRect = trayContextMenu.contentRect;
-            var trayOrigin = trayContextMenu.mapToItem(menuBar, trayRect.x, trayRect.y);
+            var trayOrigin = trayContextMenu.mapToItem(null, trayRect.x, trayRect.y);
             return { x: trayOrigin.x, y: trayOrigin.y, w: trayRect.w, h: trayRect.h };
         }
         if (openMenuIndex < 0)
@@ -352,11 +352,11 @@ Rectangle {
         // clipping it.
         var rect = item.contentRect;
         if (rect && rect.w > 0 && rect.h > 0) {
-            var origin = item.mapToItem(menuBar, rect.x, rect.y);
+            var origin = item.mapToItem(null, rect.x, rect.y);
             return { x: origin.x, y: origin.y, w: rect.w, h: rect.h };
         }
         var popup = item.popup;
-        var topLeft = popup.mapToItem(menuBar, 0, 0);
+        var topLeft = popup.mapToItem(null, 0, 0);
         return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };
     }
     readonly property real dropdownX: _dropdownRect.x
@@ -381,7 +381,7 @@ Rectangle {
         if (activeStatusPopup) {
             var popup = activeStatusPopup.popup;
             if (popup.open) {
-                var p = activeStatusPopup.mapToItem(menuBar, popup.x, popup.y);
+                var p = activeStatusPopup.mapToItem(null, popup.x, popup.y);
                 var r = Theme.controls.contextMenu.radius;
                 out.push({ key: "menu", preset: "statusMenu",
                            x: p.x, y: p.y, w: popup.width, h: popup.height,
@@ -392,7 +392,7 @@ Rectangle {
         if (overflowMenuOpen && overflowContextMenu.open) {
             var overflowParent = overflowContextMenu.parent;
             var overflowOrigin = overflowParent
-                ? overflowParent.mapToItem(menuBar, overflowContextMenu.x,
+                ? overflowParent.mapToItem(null, overflowContextMenu.x,
                                            overflowContextMenu.y)
                 : Qt.point(overflowContextMenu.x, overflowContextMenu.y);
             var overflowRegions = overflowContextMenu.regions;
@@ -411,7 +411,7 @@ Rectangle {
         if (trayMenuOpen && trayContextMenu.open) {
             var trayParent = trayContextMenu.parent;
             var origin = trayParent
-                ? trayParent.mapToItem(menuBar, trayContextMenu.x, trayContextMenu.y)
+                ? trayParent.mapToItem(null, trayContextMenu.x, trayContextMenu.y)
                 : Qt.point(trayContextMenu.x, trayContextMenu.y);
             var regions = trayContextMenu.regions;
             for (var i = 0; i < regions.length; ++i) {
@@ -430,7 +430,7 @@ Rectangle {
             if (item) {
                 var itemParent = item.parent;
                 var itemOrigin = itemParent
-                    ? itemParent.mapToItem(menuBar, item.x, item.y)
+                    ? itemParent.mapToItem(null, item.x, item.y)
                     : Qt.point(item.x, item.y);
                 var itemRegions = item.regions;
                 for (var j = 0; j < itemRegions.length; ++j) {

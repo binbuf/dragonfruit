@@ -2124,6 +2124,31 @@ Item {
             compare(bar.appMenuAt(1).open, true);
         }
 
+        function test_dropdown_geometry_follows_the_reveal_transform() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                revealProgress: 0.5,
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            bar.openMenu(1);
+            waitForRendering(stage);
+            var item = bar.appMenuAt(1);
+            var rect = item.contentRect;
+            // The popup surface is placed in window coordinates, so it must
+            // include the bar's reveal transform. Mapping to the bar root
+            // drops it and the menu renders a strip away from its input.
+            var local = item.mapToItem(bar, rect.x, rect.y);
+            var expected = item.mapToItem(null, rect.x, rect.y);
+            fuzzyCompare(local.y - expected.y, bar.revealOffset, 0.001);
+            compare(bar.dropdownX, expected.x,
+                    "dropdown x follows the bar transform");
+            compare(bar.dropdownY, expected.y,
+                    "dropdown y follows the bar transform");
+        }
+
         function test_open_dropdown_hover_selects_the_row_under_the_pointer() {
             var fixed = fixedMenus();
             var bar = make(menuBarComponent, {

@@ -62,6 +62,12 @@ a stationary pointer:
   `rowColumn.implicitHeight`. After a live model update the delegates still
   reported the previous model's height for a frame, so the viewport and its
   scrollbar changed while the pointer was over the menu.
+- The menu-bar popup rectangle and material regions were mapped into the
+  bar's *local* coordinates. That dropped the bar's reveal `Translate`, so
+  the popup surface was placed a strip away from the QML popup while the bar
+  slid, and the row under the pointer was wrong. The mappings now target
+  window coordinates (`mapToItem(null, …)`), matching the surface placement
+  and the pointer translation.
 
 Both owners now read the pointer flag when they *schedule* the deferred
 reveal (the deferred call runs after `setHighlightFromPointer` restores it),

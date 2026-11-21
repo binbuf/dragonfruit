@@ -1112,6 +1112,41 @@ TestCase {
             compare(m.highlightedIndex, 2);
         }
 
+        function test_menu_hover_maps_every_row_with_separators_data() {
+            return [{ tag: "context", component: contextMenuComponent },
+                    { tag: "menubar", component: menuComponent }];
+        }
+
+        function test_menu_hover_maps_every_row_with_separators(data) {
+            // The shape a real exported menu has: separators, a disabled row
+            // and a submenu. Every selectable row must map to itself.
+            var menu = make(data.component, {
+                x: 10, y: 10,
+                model: [
+                    { label: "Alpha" },
+                    { type: "separator" },
+                    { label: "Beta" },
+                    { label: "Disabled", enabled: false },
+                    { label: "Gamma" },
+                    { label: "Options", type: "submenu",
+                      submenu: [ { label: "One" }, { label: "Two" } ] },
+                    { label: "Delta" }
+                ]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var expected = [0, -1, 2, -1, 4, 5, 6];
+            for (var i = 0; i < expected.length; ++i) {
+                var row = findChild(menu, "menuRow" + i);
+                verify(row !== null, "row " + i + " exists");
+                var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+                mouseMove(stage, p.x, p.y);
+                wait(40);
+                compare(menu.highlightedIndex, expected[i],
+                        "row " + i + " maps to its own index");
+            }
+        }
+
         function test_context_menu_regions_keep_the_submenu_detached() {
         var cm = make(contextMenuComponent, {
             model: [ { label: "Options", type: "submenu",

@@ -29,7 +29,9 @@ All notable user-visible changes are recorded here. The format follows
   the strip beside the child keeps the opener selected for a diagonal
   crossing. The menu-bar dropdown also sizes its scroll viewport from the
   entry list rather than the still-unpolished row column, so a live model
-  update cannot move rows under the pointer on the first frame.
+  update cannot move rows under the pointer on the first frame. The popup
+  rectangle now includes the bar's reveal transform, so a menu opened while
+  the bar is sliding is placed where it is drawn rather than a strip away.
 - **File dialogs.** The portal file chooser now serves all four kinds
   correctly. Open File honors multi-selection; Open Folder returns the chosen
   folder; Save File prefills the caller's name, accepts an absolute path, and
