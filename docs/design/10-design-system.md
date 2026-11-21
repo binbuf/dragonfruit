@@ -270,7 +270,10 @@ reconciliation, and the initial open highlight still reveal their row. The
 owner reads the pointer flag when it schedules the deferred reveal, because
 the call runs after the pointer selection has been committed. A hovered nested
 row keeps the child-card claim, so the opener stays selected while the pointer
-is in the submenu. The menu-bar viewport height is derived from the entry list,
+is in the submenu. Crossing to a sibling selects that sibling immediately; only
+the narrow strip beside the open child keeps the opener selected for the
+diagonal corridor, and the child itself stays open until the 150 ms dwell
+commits. The menu-bar viewport height is derived from the entry list,
 not the still-unpolished row column, so a live model update cannot resize the
 scroll area under the pointer. Menu rows still use repeaters
 within a bounded viewport. Large exported menus can therefore incur work for

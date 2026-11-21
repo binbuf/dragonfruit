@@ -27,11 +27,11 @@ Item {
     // stretches to the resolved panel width.
     property real constrainedWidth: -1
 
-    // `localX` is the pointer's x within the row. The menu owner uses it to
-    // keep the safe corridor toward an open child card: a pointer near the
-    // child side keeps the opener selected, while a pointer over the row's
-    // body selects the row immediately.
-    signal rowHovered(int index, real localX)
+    // `localX`/`localWidth` locate the pointer within the row. The menu owner
+    // uses them to keep the safe corridor toward an open child card: a
+    // pointer near the child side keeps the opener selected, while a pointer
+    // over the row's body selects the row immediately.
+    signal rowHovered(int index, real localX, real localWidth)
     signal rowLeft(int index)
     signal rowActivated(int index)
 
@@ -144,7 +144,8 @@ Item {
         onHoveredChanged: {
             // Disabled rows and separators also retire the previous selection.
             if (hovered)
-                root.rowHovered(root.entry.index);
+                root.rowHovered(root.entry.index, rowHover.point.position.x,
+                                root.width);
             else
                 root.rowLeft(root.entry.index);
         }

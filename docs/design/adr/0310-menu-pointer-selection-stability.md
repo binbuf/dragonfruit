@@ -66,10 +66,19 @@ a stationary pointer:
 Both owners now read the pointer flag when they *schedule* the deferred
 reveal (the deferred call runs after `setHighlightFromPointer` restores it),
 and the menu-bar viewport derives its height from `desiredPopupHeight` and
-the entry list. The 150 ms sibling/submenu crossing grace and the opener
-claim are unchanged: the opener stays selected while the pointer crosses
-toward the child.
+the entry list.
+
+The sibling crossing was also too broad. `hover()` kept the opener selected
+for the whole 150 ms dwell whenever *any* sibling was hovered, so sweeping
+across a menu with a child open left the highlight on the opener and never
+on the row under the cursor. The corridor is now geometric: `MenuRow`
+reports the pointer's x within the row, and the owner keeps the opener only
+on the strip beside the child (`component.contextMenu.rowHeight` wide, on
+the side the child opened). A pointer over the row body selects that row
+immediately; the child still stays open until the dwell commits, so a
+diagonal pass that reaches the child is unchanged.
 
 `tst_design_system` adds a partly visible child row that must not scroll on
-hover; `tst_menubar` adds row-hover selection and a bounded dropdown that
-must not scroll on hover.
+hover, and a sibling-body hover that must select the sibling while the child
+stays open; `tst_menubar` adds row-hover selection and a bounded dropdown
+that must not scroll on hover.

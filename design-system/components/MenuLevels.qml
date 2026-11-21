@@ -382,7 +382,11 @@ QtObject {
         root.pendingKey = "";
     }
 
-    function hover(level, index) {
+    // `keepOpener` is true while the pointer is in the safe corridor toward an
+    // open child card. The owner computes it from the pointer's x and the
+    // side the child opened on; a pointer over the row body must select that
+    // row even when a sibling's child is open.
+    function hover(level, index, keepOpener) {
         if (!root.menuOpen)
             return;
         // A new row claims the pointer before the leave timer retires the old
@@ -411,9 +415,11 @@ QtObject {
         root.pendingIndex = index;
         root.pendingKey = root.keyAt(list, index);
         var openIndex = root.openIndexAt(level);
-        if (openIndex >= 0 && openIndex !== index) {
-            // Crossing a sibling while a child is open: keep the child until
-            // the dwell completes, so a diagonal corridor works.
+        var crossingSibling = openIndex >= 0 && openIndex !== index;
+        if (crossingSibling && keepOpener === true) {
+            // The pointer is on the corridor toward the open child. Keep the
+            // child and the opener until the dwell decides, so a diagonal
+            // crossing does not flicker through the sibling.
             dwellTimer.start();
             return;
         }
@@ -421,7 +427,11 @@ QtObject {
             root.setHighlightFromPointer(level, index);
         else if (openIndex < 0 || openIndex === index)
             root.setHighlightFromPointer(level, -1);
-        if (e && e.type === "submenu" && e.enabled && openIndex !== index)
+        // Crossing to a sibling keeps the child open until the dwell, even
+        // though the sibling is already selected: the pointer may still turn
+        // back into the child.
+        if (crossingSibling
+                || (e && e.type === "submenu" && e.enabled && openIndex !== index))
             dwellTimer.start();
     }
 

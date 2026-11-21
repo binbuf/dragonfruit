@@ -447,9 +447,16 @@ Item {
     }
     // Keep the parent selected while the pointer crosses toward its submenu.
     // Entering the child cancels this pending change, including a diagonal
-    // crossing through another row. A stationary sibling still wins on dwell.
-    function onMainRowHovered(index) {
-        levels.hover(0, index);
+    // crossing through another row. A pointer over a sibling's body selects
+    // that sibling immediately; only the strip next to the open child is the
+    // safe corridor. A stationary sibling still wins on dwell.
+    function onMainRowHovered(index, localX, localWidth) {
+        var childOnRight = !root.submenuFlips;
+        var corridor = Theme.controls.contextMenu.rowHeight;
+        var keepOpener = localX >= 0 && localWidth > 0
+                && (childOnRight ? localX > localWidth - corridor
+                                 : localX < corridor);
+        levels.hover(0, index, keepOpener);
     }
     function onMainRowLeft(index) {
         levels.leave(0, index);
@@ -713,7 +720,8 @@ Item {
                     entry: modelData
                     constrainedWidth: parent ? parent.width : -1
                     highlighted: root.highlightedIndex === modelData.index
-                    onRowHovered: (index) => root.onMainRowHovered(index)
+                    onRowHovered: (index, localX, localWidth) =>
+                        root.onMainRowHovered(index, localX, localWidth)
                     onRowLeft: (index) => root.onMainRowLeft(index)
                     onRowActivated: (index) => root.activate(index)
                 }

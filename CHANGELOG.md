@@ -24,10 +24,12 @@ All notable user-visible changes are recorded here. The format follows
   scrolls the card out from under the cursor. The owner now reads the
   pointer-selection flag when it schedules the deferred reveal, so the
   submenu keeps the row under the pointer instead of scrolling, selecting a
-  neighbouring row, and scrolling again (the visible flicker). The menu-bar
-  dropdown also sizes its scroll viewport from the entry list rather than the
-  still-unpolished row column, so a live model update cannot move rows under
-  the pointer on the first frame.
+  neighbouring row, and scrolling again (the visible flicker). Moving to a
+  sibling row while a submenu is open now selects that row immediately; only
+  the strip beside the child keeps the opener selected for a diagonal
+  crossing. The menu-bar dropdown also sizes its scroll viewport from the
+  entry list rather than the still-unpolished row column, so a live model
+  update cannot move rows under the pointer on the first frame.
 - **File dialogs.** The portal file chooser now serves all four kinds
   correctly. Open File honors multi-selection; Open Folder returns the chosen
   folder; Save File prefills the caller's name, accepts an absolute path, and

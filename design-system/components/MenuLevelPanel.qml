@@ -250,9 +250,19 @@ Item {
                     checkSize: panel.checkSize
                     shortcutGap: panel.shortcutGap
                     highlighted: panel.highlightIndex === modelData.index
-                    onRowHovered: (index) => {
-                        if (panel.levels)
-                            panel.levels.hover(panel.level, index);
+                    onRowHovered: (index, localX, localWidth) => {
+                        if (!panel.levels)
+                            return;
+                        // Same corridor rule as the root menu: the strip on
+                        // the side the next child opens keeps this opener
+                        // selected; the row body selects the row.
+                        var childOnRight = !panel.flips;
+                        var corridor = panel.rowHeight;
+                        var keepOpener = localX >= 0 && localWidth > 0
+                                && (childOnRight
+                                    ? localX > localWidth - corridor
+                                    : localX < corridor);
+                        panel.levels.hover(panel.level, index, keepOpener);
                     }
                     onRowLeft: (index) => {
                         if (panel.levels)

@@ -740,6 +740,34 @@ TestCase {
             compare(menu.highlightedIndex, -1, "disabled rows retire stale selection");
         }
 
+        function test_submenu_sibling_hover_selects_the_row_under_the_pointer_data() {
+            return test_submenu_pointer_corridor_data();
+        }
+
+        function test_submenu_sibling_hover_selects_the_row_under_the_pointer(data) {
+            var menu = make(data.component, {
+                x: 10, y: 10,
+                model: [{ label: "Options", type: "submenu",
+                          submenu: [{ label: "One" }, { label: "Two" }] },
+                        { label: "Other" }, { label: "Third" }]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var opener = findChild(menu, "menuRow0");
+            mouseMove(opener, 20, opener.height / 2);
+            tryCompare(menu, "openSubmenuIndex", 0);
+            var sibling = findChild(menu, "menuRow1");
+            // Hold the dwell so the child cannot close before the assertion.
+            // The highlight itself must follow the pointer: only the narrow
+            // strip beside the child is the corridor.
+            menu.dwellInterval = 5000;
+            mouseMove(sibling, sibling.width / 2, sibling.height / 2);
+            compare(menu.highlightedIndex, 1,
+                    "the sibling under the pointer is selected immediately");
+            compare(menu.openSubmenuIndex, 0,
+                    "the child stays open until the dwell commits");
+        }
+
         function test_submenu_hover_is_cancelled_on_leave_data() {
             return test_submenu_pointer_corridor_data();
         }
