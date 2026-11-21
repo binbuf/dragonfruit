@@ -1009,6 +1009,40 @@ TestCase {
                     "the child row under the pointer is selected");
         }
 
+        function test_context_menu_submenu_hover_does_not_scroll() {
+            var children = [];
+            for (var i = 0; i < 20; ++i)
+                children.push({ label: "Child " + i });
+            var menu = make(contextMenuComponent, {
+                x: 10, y: 10,
+                availableRect: { x: 0, y: 0, w: 600, h: 200 },
+                model: [ { label: "Options", type: "submenu",
+                           submenu: children },
+                         { label: "Other" } ]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var opener = findChild(menu, "menuRow0");
+            mouseMove(opener, 20, opener.height / 2);
+            tryCompare(menu, "openSubmenuIndex", 0);
+            var sub = findChild(menu, "submenuPanel");
+            tryCompare(sub, "visible", true);
+            wait(Theme.motion.menuOpen.duration + 60);
+            var scroll = findChild(sub, "submenuScroll");
+            verify(scroll !== null);
+            // Row 7 is only partly visible at the viewport's bottom edge.
+            // Hovering it must select it in place, not scroll the card (which
+            // would move the row out from under the pointer).
+            var child = findChild(sub, "menuRow1_7");
+            verify(child !== null, "partly visible child row exists");
+            var p = child.mapToItem(stage, child.width / 2, 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(menu.submenuHighlightedIndex, 7);
+            compare(scroll.flickable.contentY, 0,
+                    "hover must not scroll the submenu under the pointer");
+        }
+
         function test_context_menu_clamped_submenu_hover_follows_the_pointer() {
             var menu = make(contextMenuComponent, {
                 x: 10, y: 300,

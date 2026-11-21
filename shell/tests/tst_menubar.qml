@@ -2124,6 +2124,68 @@ Item {
             compare(bar.appMenuAt(1).open, true);
         }
 
+        function test_open_dropdown_hover_selects_the_row_under_the_pointer() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            // The application menu has no separator: row 1 is "Quit Test".
+            bar.openMenu(1);
+            waitForRendering(stage);
+            wait(60);
+            var item = bar.appMenuAt(1);
+            compare(item.open, true);
+            var row = findChild(item, "menuRow1");
+            verify(row !== null, "the second row exists");
+            var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(item.highlightedIndex, 1,
+                    "the row under the pointer is the selected row");
+        }
+
+        function test_open_dropdown_hover_does_not_scroll() {
+            var rows = [];
+            for (var i = 0; i < 40; ++i)
+                rows.push({ label: "Row " + i });
+            var fixed = fixedMenus();
+            // Bound the dropdown so the row viewport is not an exact multiple
+            // of the row height: row 17 then ends partly below the viewport,
+            // which is the case that used to scroll on hover.
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                outputWidth: 1000,
+                outputHeight: 500,
+                appMenuModel: [ { title: "Long", items: rows } ],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            // Long is the first exported menu, at index 2.
+            bar.openMenu(2);
+            waitForRendering(stage);
+            wait(60);
+            var item = bar.appMenuAt(2);
+            compare(item.open, true);
+            var scroll = findChild(item, "menuBarMenuScroll");
+            verify(scroll !== null);
+            verify(scroll.flickable.contentHeight > scroll.flickable.height,
+                   "the dropdown overflows and can scroll");
+            // Row 17 is only partly visible at the viewport's bottom edge.
+            // Hovering its visible half must select it in place, not scroll
+            // the list (which would move a different row under the pointer).
+            var row = findChild(item, "menuRow17");
+            verify(row !== null, "partly visible row exists");
+            var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(item.highlightedIndex, 17);
+            compare(scroll.flickable.contentY, 0,
+                    "hover must not scroll the dropdown under the pointer");
+        }
+
         function test_open_menu_tracks_focus_switch() {
             var fixed = fixedMenus();
             var bar = make(menuBarComponent, {

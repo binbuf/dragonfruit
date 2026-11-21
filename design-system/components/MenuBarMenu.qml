@@ -628,11 +628,17 @@ Item {
             id: rowView
             objectName: "menuBarMenuScroll"
             width: popup.width - 2 * popup.horizontalPadding
+            // Size from the entries, not the Column. After a live model
+            // update the delegates still report the previous model's height,
+            // so the viewport (and its scrollbar) changed on the first frame
+            // and the row under the pointer could move.
+            readonly property real contentHeight:
+                Math.max(0, root.desiredPopupHeight
+                            - 2 * popup.verticalPadding)
             height: rowView.implicitHeight
             implicitWidth: root.naturalRowWidth
-            implicitHeight: Math.min(rowColumn.implicitHeight,
-                                     popup.maxContentHeight)
-            interactive: rowColumn.implicitHeight > height
+            implicitHeight: Math.min(contentHeight, popup.maxContentHeight)
+            interactive: contentHeight > height
             scrollbarVisible: interactive
 
             Column {

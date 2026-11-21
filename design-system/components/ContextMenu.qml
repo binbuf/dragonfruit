@@ -286,13 +286,20 @@ Item {
         }
         if (!levels.highlightFromPointer)
             root.keepRowVisible(root.openSubmenuIndex);
-        Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
+        // Same rule as the root list: a pointer selection is already under
+        // the cursor. Reveal the submenu row only for a keyboard/identity
+        // change, or the list scrolls out from under a stationary pointer and
+        // the highlight lands on a different row. Read the flag now: the
+        // deferred call runs after `setHighlightFromPointer` restores it.
+        if (!levels.highlightFromPointer)
+            Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
     }
     onSubmenuHighlightedIndexChanged: {
         if (!root.syncingSelection && levels.highlightIndexAt(1)
                 !== root.submenuHighlightedIndex)
             levels.setHighlight(1, root.submenuHighlightedIndex);
-        Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
+        if (!levels.highlightFromPointer)
+            Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
     }
     onEntriesChanged: levels.reconcile(true)
 

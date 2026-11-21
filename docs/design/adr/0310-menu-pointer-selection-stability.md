@@ -46,3 +46,30 @@ bar dropdowns, scroll-under-a-stationary-pointer selection, a clamped submenu
 above its owner, the opener highlight while moving through a submenu, and a
 partly visible row that must not scroll on hover. `tst_menubar` and `tst_dock`
 continue to cover the shell popup geometry, material regions, and dismissal.
+
+## Amendment (2026-11-21)
+
+The first pass gated the root list only. Two paths still moved content under
+a stationary pointer:
+
+- `ContextMenu` scheduled `submenuPanel.keepHighlightVisible()` from
+  `onOpenSubmenuIndexChanged` and `onSubmenuHighlightedIndexChanged` without
+  reading `highlightFromPointer`. A tall submenu therefore still scrolled on
+  hover. Because Qt re-evaluates hover when items move, the scroll changed
+  the row under the cursor, which selected another row and scrolled again:
+  the feedback loop read as a flicker and a wrong selection.
+- `MenuBarMenu` sized its dropdown viewport from
+  `rowColumn.implicitHeight`. After a live model update the delegates still
+  reported the previous model's height for a frame, so the viewport and its
+  scrollbar changed while the pointer was over the menu.
+
+Both owners now read the pointer flag when they *schedule* the deferred
+reveal (the deferred call runs after `setHighlightFromPointer` restores it),
+and the menu-bar viewport derives its height from `desiredPopupHeight` and
+the entry list. The 150 ms sibling/submenu crossing grace and the opener
+claim are unchanged: the opener stays selected while the pointer crosses
+toward the child.
+
+`tst_design_system` adds a partly visible child row that must not scroll on
+hover; `tst_menubar` adds row-hover selection and a bounded dropdown that
+must not scroll on hover.
