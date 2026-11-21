@@ -58,6 +58,7 @@ Item {
                         onHoveredChanged: if (hovered)
                                               stage.highlightedRow = index
                     }
+                    TapHandler {}
                 }
             }
         }
@@ -125,6 +126,34 @@ Item {
             waitForRendering(stage);
             compare(stage.highlightedRow, 2,
                     "restoring the host keeps the same row selected");
+        }
+
+        // A press schedules a render too. Rebasing only while no button is held
+        // left the pressed row's highlight on a neighbour during that render.
+        function test_translated_host_rebases_while_pressed() {
+            var win = stage.Window.window;
+            var row = translatedRepeater.itemAt(2);
+            verify(row !== null, "the third row exists");
+            var p = row.mapToItem(null, row.width / 2, row.height / 2);
+            ChromeInject.reset();
+            ChromeInject.move(win, p.x, p.y);
+            waitForRendering(stage);
+            compare(stage.highlightedRow, 2, "the pointed row starts selected");
+
+            ChromeInject.button(win, p.x, p.y, Qt.LeftButton, true);
+            var shift = 2 * row.height;
+            translatedHost.y -= shift;
+            ChromeInject.move(win, p.x, p.y - shift);
+            waitForRendering(stage);
+            compare(stage.highlightedRow, 2,
+                    "the pressed row stays selected while the host is translated");
+
+            translatedHost.y += shift;
+            ChromeInject.move(win, p.x, p.y);
+            waitForRendering(stage);
+            compare(stage.highlightedRow, 2,
+                    "the pressed row stays selected after the host is restored");
+            ChromeInject.button(win, p.x, p.y, Qt.LeftButton, false);
         }
     }
 }

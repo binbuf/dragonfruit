@@ -106,5 +106,10 @@ Both owners now rebase the injected pointer whenever the render origin changes,
 and restore it with the item. The pointer is always the same item-local point
 (`window = item-local + item-origin`), so the strip render, the content-sized
 popup view, and the restored input scene all see the row under the cursor.
+Rebasing is not limited to a button-up pointer: a press schedules a render too,
+and skipping the rebase while a button was held left the pressed row's
+highlight on a neighbour. The injected move carries the live button state, so
+the press and drag sequence is unchanged.
 `tst_chromepointerui` reproduces the translated-item hover jump and verifies
-that rebasing the injected pointer keeps the selected row stable.
+that rebasing the injected pointer keeps the selected row stable, with and
+without a held button.
