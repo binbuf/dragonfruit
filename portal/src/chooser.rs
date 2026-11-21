@@ -15,17 +15,19 @@
 //! streaming model Files uses. This module has no D-Bus dependency, so the
 //! options/result logic and the request lifecycle are unit-tested directly.
 //!
-//! **The presenter is deferred to T-13.2b.** The dialog does not exist yet;
-//! a presenter (today the test client, tomorrow the design-system picker)
-//! observes a request and completes it through the diagnostic surface. The
-//! registry is the one seam both use.
+//! **The presenter is the shell picker (T-13.2b, completed 2026-11).** A
+//! presenter observes a request and completes it through the diagnostic
+//! surface; the registry is the one seam both use. `SaveFiles` is resolved
+//! here, not in the picker: the presenter chooses a folder and this module
+//! appends the caller's `files` names, so the result is one URI per requested
+//! file (ADR [0309](../../../docs/design/adr/0309-filechooser-four-kinds-and-picker-completeness.md)).
 //!
 //! [09-files.md]: ../../../docs/design/09-files.md
 
 use std::collections::{BTreeMap, HashMap};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
@@ -192,11 +194,23 @@ impl ChooserRequest {
         }
     }
 
-    /// The success response for a presenter's selection: every selection is
-    /// normalized to a canonical `file://` URI and anything that cannot be
-    /// normalized is discarded. A selection that normalizes to nothing is an
-    /// error response, never a silent success.
+    /// The success response for a presenter's selection.
+    ///
+    /// `OpenFile` and `SaveFile` normalize every selection to a canonical
+    /// `file://` URI and discard anything that cannot be normalized. A
+    /// selection that normalizes to nothing is an error response, never a
+    /// silent success.
+    ///
+    /// `SaveFiles` is different by contract: the presenter chooses one
+    /// **folder**, and the result carries one URI per name in `options.files`,
+    /// in the same order (the spec's "names will be used as-is and appended to
+    /// the selected folder's path"). A name already present in the folder is
+    /// made unique (`report (2).txt`) instead of overwriting an unrelated
+    /// file, which the spec explicitly permits.
     pub fn success(&self, selections: &[String]) -> ChooserResponse {
+        if matches!(self.kind, ChooserKind::SaveFiles) {
+            return self.save_files_success(selections);
+        }
         let uris: Vec<String> = selections
             .iter()
             .filter(|selection| !selection.is_empty())
@@ -211,6 +225,56 @@ impl ChooserRequest {
         }
         if matches!(self.kind, ChooserKind::OpenFile) {
             results.insert("writable".to_owned(), OwnedValue::from(false));
+        }
+        ChooserResponse {
+            response: RESPONSE_SUCCESS,
+            results,
+        }
+    }
+
+    /// Build the `SaveFiles` result: the chosen folder plus each requested
+    /// file name, made unique against the folder and against each other.
+    fn save_files_success(&self, selections: &[String]) -> ChooserResponse {
+        let Some(folder_uri) = selections
+            .iter()
+            .filter(|selection| !selection.is_empty())
+            .find_map(|selection| normalize_uri(selection))
+        else {
+            return ChooserResponse::other();
+        };
+        let Some(folder) = Location::parse(&folder_uri)
+            .ok()
+            .and_then(|location| location.to_file_path())
+        else {
+            return ChooserResponse::other();
+        };
+        if !folder.is_dir() {
+            return ChooserResponse::other();
+        }
+
+        let mut taken: Vec<PathBuf> = Vec::new();
+        let mut uris: Vec<String> = Vec::new();
+        if self.options.files.is_empty() {
+            uris.push(folder_uri);
+        } else {
+            for name in &self.options.files {
+                // The spec forbids separators in `files`; taking the final
+                // component also keeps a malformed caller from escaping the
+                // chosen folder.
+                let Some(file_name) = name.file_name() else {
+                    continue;
+                };
+                let path = unique_child_path(&folder, file_name, &taken);
+                taken.push(path.clone());
+                uris.push(Location::file(path).uri().to_owned());
+            }
+        }
+        if uris.is_empty() {
+            return ChooserResponse::other();
+        }
+        let mut results: HashMap<String, OwnedValue> = HashMap::new();
+        if let Some(value) = string_array(&uris) {
+            results.insert("uris".to_owned(), value);
         }
         ChooserResponse {
             response: RESPONSE_SUCCESS,
@@ -280,6 +344,35 @@ pub fn normalize_uri(selection: &str) -> Option<String> {
         }
         Err(_) => Some(Location::file(selection).uri().to_owned()),
     }
+}
+
+/// The child path `folder/name`, made unique against what already exists and
+/// against the names this request has already claimed. `report.txt` becomes
+/// `report (2).txt`, `report (3).txt`, … so a SaveFiles request never
+/// overwrites an unrelated file.
+fn unique_child_path(folder: &Path, name: &OsStr, taken: &[PathBuf]) -> PathBuf {
+    let candidate = folder.join(name);
+    // `symlink_metadata` treats a dangling symlink as occupied, so a save never
+    // writes through an unrelated link.
+    let occupied = |path: &Path| path.symlink_metadata().is_ok();
+    if !occupied(&candidate) && !taken.iter().any(|path| path == &candidate) {
+        return candidate;
+    }
+    let stem = Path::new(name).file_stem().unwrap_or(name).to_os_string();
+    let extension = Path::new(name).extension().map(OsStr::to_os_string);
+    for number in 2u32.. {
+        let mut numbered = stem.clone();
+        numbered.push(format!(" ({number})"));
+        if let Some(extension) = &extension {
+            numbered.push(".");
+            numbered.push(extension);
+        }
+        let candidate = folder.join(&numbered);
+        if !occupied(&candidate) && !taken.iter().any(|path| path == &candidate) {
+            return candidate;
+        }
+    }
+    unreachable!("the numbered-name search always finds a free name")
 }
 
 /// One row the picker can render.
@@ -696,6 +789,62 @@ mod tests {
             RESPONSE_OTHER
         );
         assert_eq!(request.success(&[]).response, RESPONSE_OTHER);
+    }
+
+    #[test]
+    fn save_files_appends_the_requested_names_to_the_chosen_folder() {
+        let dir =
+            std::env::temp_dir().join(format!("df-chooser-save-files-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(dir.join("a.txt"), b"old").expect("existing file");
+
+        let mut options = HashMap::new();
+        options.insert("files".to_owned(), paths(&["a.txt", "b.txt"]));
+        let request =
+            ChooserRequest::new(ChooserKind::SaveFiles, "/req/3", "app", "", "", &options);
+        let folder = Location::file(&dir).uri().to_owned();
+        let response = request.success(&[folder]);
+        assert_eq!(response.response, RESPONSE_SUCCESS);
+        // `a.txt` already exists, so the result is the spec-permitted unique
+        // name; `b.txt` is untouched.
+        assert_eq!(
+            response.uris(),
+            vec![
+                Location::file(dir.join("a (2).txt")).uri().to_owned(),
+                Location::file(dir.join("b.txt")).uri().to_owned(),
+            ]
+        );
+
+        // No requested names still answers with the chosen folder.
+        let request = ChooserRequest::new(
+            ChooserKind::SaveFiles,
+            "/req/4",
+            "app",
+            "",
+            "",
+            &HashMap::new(),
+        );
+        assert_eq!(
+            request
+                .success(&[Location::file(&dir).uri().to_owned()])
+                .uris(),
+            vec![Location::file(&dir).uri().to_owned()]
+        );
+
+        // A file is not a folder.
+        let file = Location::file(dir.join("a.txt")).uri().to_owned();
+        let request = ChooserRequest::new(
+            ChooserKind::SaveFiles,
+            "/req/5",
+            "app",
+            "",
+            "",
+            &HashMap::new(),
+        );
+        assert_eq!(request.success(&[file]).response, RESPONSE_OTHER);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

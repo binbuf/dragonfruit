@@ -1064,6 +1064,19 @@ bool ShellProtocol::setChooserInputRegion(int width, int height)
     return true;
 }
 
+bool ShellProtocol::setChooserKeyboardGrab(bool grab)
+{
+    if (!m_chooserLayer)
+        return false;
+    df_layer_surface_set_keyboard_interaction(
+        m_chooserLayer,
+        grab ? DF_LAYER_SURFACE_KEYBOARD_INTERACTION_EXCLUSIVE
+             : DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::commitChooserImage(const QImage &image, const QSize &logicalSize)
 {
     if (!m_chooserSurface)

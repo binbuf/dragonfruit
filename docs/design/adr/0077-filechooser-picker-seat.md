@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted; the picker UI and SaveFiles semantics are superseded by
+[0309](0309-filechooser-four-kinds-and-picker-completeness.md). The overlay
+seat and presenter seam decided here still stand.
 
 ## Context
 

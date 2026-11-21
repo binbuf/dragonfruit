@@ -308,9 +308,11 @@ constexpr int kOsdSurfaceWidth = 220;
 constexpr int kOsdSurfaceHeight = 220;
 
 // The FileChooser picker (T-13.2b): a centered modal dialog rendered into a
-// dedicated `file-chooser` overlay surface while a portal request waits.
-constexpr int kChooserWidth = 640;
-constexpr int kChooserHeight = 440;
+// dedicated `file-chooser` overlay surface while a portal request waits. The
+// surface is sized for the four kinds (open file/folder, save file/folder)
+// with a favorites sidebar, breadcrumb path bar, entry list and footer.
+constexpr int kChooserWidth = 760;
+constexpr int kChooserHeight = 520;
 
 // The ScreenCast source picker (T-13.4a): a centered dialog rendered into a
 // dedicated `screencast` overlay surface while a portal request waits.
@@ -1880,8 +1882,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_chooserItem->setParentItem(m_chooserWindow->contentItem());
-    connect(chooserObject, SIGNAL(selectionChanged(int)), this,
-            SLOT(onChooserSelectionChanged(int)));
+    connect(chooserObject, SIGNAL(selectionChanged(int, int)), this,
+            SLOT(onChooserSelectionChanged(int, int)));
     connect(chooserObject, SIGNAL(entryActivated(int)), this,
             SLOT(onChooserEntryActivated(int)));
     connect(chooserObject, SIGNAL(browseRequested(QString)), this,
@@ -1889,7 +1891,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(chooserObject, SIGNAL(upRequested()), this, SLOT(onChooserUpRequested()));
     connect(chooserObject, SIGNAL(nameEdited(QString)), this,
             SLOT(onChooserNameEdited(QString)));
+    connect(chooserObject, SIGNAL(newFolderRequested()), this,
+            SLOT(onChooserNewFolderRequested()));
+    connect(chooserObject, SIGNAL(selectAllRequested()), this,
+            SLOT(onChooserSelectAllRequested()));
     connect(chooserObject, SIGNAL(accepted()), this, SLOT(onChooserAccepted()));
+    connect(chooserObject, SIGNAL(replaceAccepted()), this,
+            SLOT(onChooserReplaceAccepted()));
+    connect(chooserObject, SIGNAL(replaceDismissed()), this,
+            SLOT(onChooserReplaceDismissed()));
     connect(chooserObject, SIGNAL(cancelled()), this, SLOT(onChooserCancelled()));
     bindChromePacing(m_producers.value(m_chooserWindow), QStringLiteral("chooser"),
                      [this]() { renderChooser(); });
@@ -5602,10 +5612,15 @@ void ShellController::showChooser()
     applyChooserData();
     if (m_chooserWidth > 0 && m_chooserHeight > 0)
         renderChooser();
-    // Take active focus so Escape/Return reach the dialog.
-    m_chooserItem->forceActiveFocus();
-    if (m_protocol)
+    // The view focuses its own initial control (the Save name field for a save
+    // request, otherwise the entry list) once `active` flips true.
+    QMetaObject::invokeMethod(m_chooserItem, "focusInitial");
+    if (m_protocol) {
         m_protocol->setChooserInputRegion(m_chooserWidth, m_chooserHeight);
+        // A file dialog is modal: take the compositor keyboard immediately so
+        // Escape and the name field work without a click on the card.
+        m_protocol->setChooserKeyboardGrab(true);
+    }
 }
 
 void ShellController::hideChooser()
@@ -5613,7 +5628,11 @@ void ShellController::hideChooser()
     m_chooserActive = false;
     m_chooserPending = false;
     m_chooserButtons = Qt::NoButton;
+    m_chooserEntriesRevision = -1;
+    if (m_chooserItem)
+        m_chooserItem->setProperty("active", false);
     if (m_protocol) {
+        m_protocol->setChooserKeyboardGrab(false);
         m_protocol->setChooserInputRegion(0, 0);
         m_protocol->hideChooser();
     }
@@ -5623,17 +5642,39 @@ void ShellController::applyChooserData()
 {
     if (!m_chooserItem || !m_chooser)
         return;
-    m_chooserItem->setProperty("title", m_chooser->title());
-    m_chooserItem->setProperty("kind", m_chooser->kind());
-    m_chooserItem->setProperty("acceptLabel", m_chooser->acceptLabel());
-    m_chooserItem->setProperty("currentUri", m_chooser->currentUri());
-    m_chooserItem->setProperty("currentLabel", m_chooser->currentLabel());
-    m_chooserItem->setProperty("entries", m_chooser->entries());
-    m_chooserItem->setProperty("selectedIndex", m_chooser->selectedIndex());
-    m_chooserItem->setProperty("saveName", m_chooser->saveName());
-    m_chooserItem->setProperty("directoryMode", m_chooser->directoryMode());
-    m_chooserItem->setProperty("multiple", m_chooser->multiple());
-    m_chooserItem->setProperty("errorText", m_chooser->error());
+    // Only write a property when it really changed: replacing the entry list
+    // on every selection would reset the view's scroll position and hover.
+    const auto set = [this](const char *name, const QVariant &value) {
+        if (m_chooserItem->property(name) != value)
+            m_chooserItem->setProperty(name, value);
+    };
+    set("active", m_chooser->active());
+    set("title", m_chooser->title());
+    set("kind", m_chooser->kind());
+    set("appId", m_chooser->appId());
+    set("acceptLabel", m_chooser->acceptLabel());
+    set("currentUri", m_chooser->currentUri());
+    set("currentLabel", m_chooser->currentLabel());
+    set("breadcrumbs", m_chooser->breadcrumbs());
+    set("favorites", m_chooser->favorites());
+    // The entry list can be 100k rows: only push it when the listing really
+    // changed, never on a selection or name keystroke.
+    const int revision = m_chooser->entriesRevision();
+    if (revision != m_chooserEntriesRevision) {
+        m_chooserEntriesRevision = revision;
+        m_chooserItem->setProperty("entries", m_chooser->entries());
+    }
+    set("entriesRevision", revision);
+    set("loading", m_chooser->loading());
+    set("selectedIndex", m_chooser->selectedIndex());
+    set("selectedIndices", m_chooser->selectedIndices());
+    set("saveName", m_chooser->saveName());
+    set("saveFiles", m_chooser->saveFiles());
+    set("directoryMode", m_chooser->directoryMode());
+    set("multiple", m_chooser->multiple());
+    set("confirmReplace", m_chooser->confirmReplace());
+    set("replaceName", m_chooser->replaceName());
+    set("errorText", m_chooser->error());
 }
 
 void ShellController::renderChooser()
@@ -5702,9 +5743,11 @@ void ShellController::onChooserPointerButton(qreal x, qreal y, quint32 button, b
     else
         m_chooserButtons &= ~qtButton;
     const QPointF p(x, y);
+    const Qt::KeyboardModifiers modifiers =
+        qtModifiersFromXkb(m_protocol ? m_protocol->keyboardModifiers() : 0);
     sendChromePointer(m_chooserWindow,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
-                        qtButton, m_chooserButtons);
+                        qtButton, m_chooserButtons, modifiers);
     scheduleChooserRender();
 }
 
@@ -5722,8 +5765,14 @@ void ShellController::onChooserKeyboardFocused(bool focused)
     // Losing the keyboard is the click-away dismissal: a click on a window or
     // the desktop moves chrome keyboard focus away from the dialog. Cancelling
     // tells the portal the caller got no selection.
-    if (!focused && m_chooserActive && m_chooser)
+    if (!focused && m_chooserActive && m_chooser) {
         m_chooser->cancel();
+        return;
+    }
+    // The opening grab has done its job: keep the focus but return to
+    // on-demand so a later click elsewhere can dismiss the dialog.
+    if (focused && m_protocol)
+        m_protocol->setChooserKeyboardGrab(false);
 }
 
 void ShellController::onChooserKeyEvent(quint32 key, bool pressed)
@@ -5735,10 +5784,10 @@ void ShellController::onChooserKeyEvent(quint32 key, bool pressed)
     scheduleChooserRender();
 }
 
-void ShellController::onChooserSelectionChanged(int index)
+void ShellController::onChooserSelectionChanged(int index, int modifiers)
 {
     if (m_chooser)
-        m_chooser->select(index);
+        m_chooser->select(index, modifiers);
 }
 
 void ShellController::onChooserEntryActivated(int index)
@@ -5765,10 +5814,34 @@ void ShellController::onChooserNameEdited(const QString &name)
         m_chooser->setSaveName(name);
 }
 
+void ShellController::onChooserNewFolderRequested()
+{
+    if (m_chooser)
+        m_chooser->newFolder();
+}
+
+void ShellController::onChooserSelectAllRequested()
+{
+    if (m_chooser)
+        m_chooser->selectAll();
+}
+
 void ShellController::onChooserAccepted()
 {
     if (m_chooser)
         m_chooser->accept();
+}
+
+void ShellController::onChooserReplaceAccepted()
+{
+    if (m_chooser)
+        m_chooser->acceptReplace();
+}
+
+void ShellController::onChooserReplaceDismissed()
+{
+    if (m_chooser)
+        m_chooser->dismissReplace();
 }
 
 void ShellController::onChooserCancelled()

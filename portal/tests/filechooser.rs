@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use xdg_desktop_portal_dragonfruit::interfaces::FILE_CHOOSER_INTERFACE;
 use xdg_desktop_portal_dragonfruit::model::{DBUS_NAME, DBUS_PATH, STATUS_INTERFACE};
 use zbus::blocking::{Connection, MessageIterator};
-use zbus::zvariant::OwnedValue;
+use zbus::zvariant::{Array, OwnedValue, Type, Value};
 use zbus::MatchRule;
 
 /// The presenter sees exactly this when a request waits.
@@ -372,6 +372,81 @@ fn the_presenter_lists_a_directory_through_files_core() {
     assert!(refused.is_err());
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn save_files_returns_one_uri_per_requested_name() {
+    let bus = PrivateBus::start();
+    let (_service, _backend) = bus.serve();
+    let client = bus.connect();
+
+    let dir = std::env::temp_dir().join(format!("df-save-files-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+
+    let handle = "/org/freedesktop/portal/desktop/request/1_1/df_save_files";
+    let opened = opened_stream(&client);
+
+    let mut options = HashMap::new();
+    options.insert(
+        "current_folder".to_owned(),
+        ay(dir.to_str().expect("utf-8 temp path")),
+    );
+    options.insert("files".to_owned(), aay(&["one.txt", "two.txt"]));
+
+    let pending = chooser_on_its_own_connection(&bus, "SaveFiles", handle.to_owned(), options);
+
+    let (signal_handle, kind, _, _, _, _) = opened
+        .recv_timeout(Duration::from_secs(5))
+        .expect("FileChooserOpened arrives");
+    assert_eq!(signal_handle, handle);
+    assert_eq!(kind, "save-files");
+
+    // The presenter chooses the folder; the portal appends the names.
+    let completed: bool = diagnostic(
+        &client,
+        "CompleteFileChooser",
+        (
+            handle,
+            vec![dir.to_str().expect("utf-8 temp path").to_owned()],
+        ),
+    );
+    assert!(completed);
+
+    let (response, results) = pending
+        .join()
+        .expect("the SaveFiles thread")
+        .expect("SaveFiles succeeds");
+    assert_eq!(response, 0);
+    assert_eq!(
+        uris_of(&results),
+        vec![
+            format!("file://{}", dir.join("one.txt").display()),
+            format!("file://{}", dir.join("two.txt").display()),
+        ]
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A null-terminated `ay` option.
+fn ay(entry: &str) -> OwnedValue {
+    let mut bytes = entry.as_bytes().to_vec();
+    bytes.push(0);
+    OwnedValue::try_from(Array::from(bytes)).expect("ay")
+}
+
+/// A null-terminated `aay` option.
+fn aay(entries: &[&str]) -> OwnedValue {
+    let mut outer = Array::new(<Vec<u8> as Type>::SIGNATURE);
+    for entry in entries {
+        let mut bytes = entry.as_bytes().to_vec();
+        bytes.push(0);
+        outer
+            .append(Value::Array(Array::from(bytes)))
+            .expect("append an ay");
+    }
+    OwnedValue::try_from(outer).expect("aay")
 }
 
 /// The `uris` result decoded from a response vardict.

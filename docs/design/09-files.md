@@ -350,6 +350,15 @@ scroll trace is
 budget record stays in
 [`docs/captures/t10-files-perf.txt`](../captures/t10-files-perf.txt).
 
+**Implementation status (2026-11).** The portal's file dialog — the same
+`files-core` browsing in chooser mode — now serves all four entry points:
+open file (with multi-selection), open folder, save file (with an overwrite
+confirmation) and save folder (`SaveFiles`, where the portal appends the
+caller's file names). It has a favorites sidebar, breadcrumbs, New Folder,
+keyboard navigation, and an asynchronous delta listing. See
+[07-system-integration.md](07-system-integration.md#the-picker-ui-t-132b-completed-2026-11)
+and [ADR 0309](adr/0309-filechooser-four-kinds-and-picker-completeness.md).
+
 **Implementation status (T230d).** Files now matches Files's measured window
 anatomy at 900×600 pt: a 52 pt unified toolbar, a 198 pt sidebar, a 30 pt path
 bar and a 28 pt status bar. The path and status bars are content-layer

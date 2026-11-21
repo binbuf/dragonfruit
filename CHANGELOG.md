@@ -20,6 +20,15 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **File dialogs.** The portal file chooser now serves all four kinds
+  correctly. Open File honors multi-selection; Open Folder returns the chosen
+  folder; Save File prefills the caller's name, accepts an absolute path, and
+  asks before replacing an existing file; Save Folder returns the destination
+  folder, and the portal appends the caller's file names so each file gets its
+  own URI. The dialog gained a favorites sidebar, clickable breadcrumbs, New
+  Folder, column headers, keyboard navigation and selection, an empty/loading
+  state, and an opening keyboard grab. Large folders stream in without blocking
+  the shell, and a second request queues instead of replacing the live dialog.
 - **Native screenshots.** The DRM backend now renders the requested frame
   through the same offscreen capture pass as the nested backend instead of
   answering `screenshot_failed`, so Cmd+Shift+3 and the region overlay produce

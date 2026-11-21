@@ -158,12 +158,16 @@ private slots:
     void onChooserPointerLeft();
     void onChooserKeyboardFocused(bool focused);
     void onChooserKeyEvent(quint32 key, bool pressed);
-    void onChooserSelectionChanged(int index);
+    void onChooserSelectionChanged(int index, int modifiers);
     void onChooserEntryActivated(int index);
     void onChooserBrowseRequested(const QString &uri);
     void onChooserUpRequested();
     void onChooserNameEdited(const QString &name);
+    void onChooserNewFolderRequested();
+    void onChooserSelectAllRequested();
     void onChooserAccepted();
+    void onChooserReplaceAccepted();
+    void onChooserReplaceDismissed();
     void onChooserCancelled();
     void onChooserStarted();
     void onChooserFinished(bool completed);
@@ -1211,6 +1215,7 @@ private:
     QQuickItem *m_chooserItem = nullptr;
     int m_chooserWidth = 0;
     int m_chooserHeight = 0;
+    int m_chooserEntriesRevision = -1;
     bool m_chooserActive = false;
     bool m_chooserPending = false;
     bool m_chooserRenderPending = false;

@@ -396,6 +396,12 @@ public:
     // with the next buffer commit.
     bool setChooserInputRegion(int width, int height);
 
+    // Grab the keyboard for a newly mapped dialog, then drop the exclusive
+    // grab once focus arrives. `grab = true` takes focus immediately (the
+    // dialog opens with its field live); `grab = false` returns to on-demand
+    // so a click on another surface dismisses it.
+    bool setChooserKeyboardGrab(bool grab);
+
     // Attach `image` to the chooser surface and commit.
     bool commitChooserImage(const QImage &image, const QSize &logicalSize = QSize());
 
