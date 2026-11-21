@@ -537,6 +537,18 @@ damage, and the full-output diagnostic scene base no longer repaints the whole
 output on every frame. The scene tracker is reset on a texture reallocation or
 region-size/scale change so a fresh texture renders its whole region.
 
+A bounded region submits only the elements that intersect it, so an element
+that leaves the region is never submitted to the damage tracker. Its last
+pixels would otherwise survive in the cached scene texture — visible as a
+ghost of a departed window or its shadow through the Dock plate. The cache
+hashes the submitted element ids (`note_region_elements`); a set change resets
+the tracker and advances the scene generation, so every `PanelBlurKey` that
+includes the generation rebuilds instead of reusing the departed pixels. The
+same reset is a content discontinuity even when no blur key has been read yet,
+so `reset_tracker` advances the generation directly rather than relying on the
+next tracker install. This is the guard against a dark window/shadow ghost
+behind the Dock that only a compositor restart used to clear.
+
 The reference **Glass pass** landed in **T-20.2**
 ([ADR 0182](adr/0182-glass-material-pass.md)) as a second custom
 texture program (`GLASS_SHADER`) used on the final compose of each panel's

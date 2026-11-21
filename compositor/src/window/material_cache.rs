@@ -240,9 +240,16 @@ impl<T> SceneTextureCache<T> {
 
     /// Drop the retained damage tracker so the next render repaints the whole
     /// region. Used when the element set changes without a region reallocation.
+    ///
+    /// A reset is a content discontinuity, not just a repaint hint: a panel
+    /// blur keyed by the previous generation could still reuse pixels from the
+    /// element that left the region. Advance the generation with the reset so
+    /// every consumer rebuilds instead of keeping a departed window/shadow
+    /// ghost in the Dock plate.
     pub(crate) fn reset_tracker(&mut self) {
         self.tracker = None;
         self.last_epoch = None;
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Whether the scene texture can be reused without walking the element
@@ -803,7 +810,13 @@ mod tests {
         assert!(cache.note_region_elements(0xabc));
         assert!(!cache.note_region_elements(0xabc));
         assert!(cache.note_region_elements(0xdef));
+        let generation = cache.generation();
         cache.reset_tracker();
+        assert_ne!(
+            cache.generation(),
+            generation,
+            "a tracker reset must invalidate blur keys keyed by the generation"
+        );
         assert!(
             !cache.can_skip(key, origin, 1),
             "a departed element must force a full region repaint"
