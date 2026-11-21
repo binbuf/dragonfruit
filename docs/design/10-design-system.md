@@ -264,9 +264,15 @@ both `MenuBarMenu` and `ContextMenu`. Selection follows a stable row key
 through live reorders. If the row becomes disabled or disappears, selection
 moves to the nearest enabled row. A removed, disabled, or repurposed opener
 retires its submenu branch. The deferred reconciliation ends with the
-menu's lifetime. Menu rows still use repeaters within a bounded viewport.
-Large exported menus can therefore incur work for rows outside the viewport.
-See [ADR 0294](adr/0294-shell-popup-frame-lifecycle.md) and
+menu's lifetime. A pointer selection is already visible under the cursor, so
+hover never scrolls the menu; keyboard moves, type-ahead, reconciliation, and
+the initial open highlight still reveal their row. A hovered nested row keeps
+the child-card claim, so the opener stays selected while the pointer is in the
+submenu. Menu rows still use repeaters
+within a bounded viewport. Large exported menus can therefore incur work for
+rows outside the viewport. See
+[ADR 0294](adr/0294-shell-popup-frame-lifecycle.md),
+[ADR 0310](adr/0310-menu-pointer-selection-stability.md), and
 [performance priorities](STATUS.md#9-chrome-performance-priorities).
 
 ### Shortcut hints

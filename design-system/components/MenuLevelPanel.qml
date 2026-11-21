@@ -183,7 +183,13 @@ Item {
         return out;
     }
 
-    onHighlightIndexChanged: Qt.callLater(panel.keepHighlightVisible)
+    onHighlightIndexChanged: {
+        // Pointer selections are already on screen under the cursor; only
+        // keyboard/identity changes may need to scroll a row into view.
+        if (panel.levels && panel.levels.highlightFromPointer)
+            return;
+        Qt.callLater(panel.keepHighlightVisible);
+    }
 
     HoverHandler {
         enabled: panel.open

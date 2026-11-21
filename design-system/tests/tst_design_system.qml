@@ -907,6 +907,149 @@ TestCase {
                     "the pointer left the menu");
         }
 
+        function test_context_menu_hover_follows_the_scene_pointer() {
+            var cm = make(contextMenuComponent, {
+                model: [ { label: "One" }, { label: "Two" },
+                         { label: "Three" }, { label: "Four" } ]
+            });
+            cm.open = true;
+            waitForRendering(stage);
+            var row = findChild(cm, "menuRow2");
+            var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(cm.highlightedIndex, 2);
+        }
+
+        function test_context_menu_hover_follows_a_scroll_under_the_pointer() {
+            var model = [];
+            for (var i = 0; i < 20; ++i)
+                model.push({ label: "Row " + i });
+            var cm = make(contextMenuComponent, {
+                model: model,
+                availableRect: { x: 0, y: 0, w: 300, h: 200 }
+            });
+            cm.open = true;
+            waitForRendering(stage);
+            var row = findChild(cm, "menuRow2");
+            var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(cm.highlightedIndex, 2);
+            var scroll = findChild(cm, "contextMenuScroll");
+            verify(scroll !== null);
+            // Scrolling moves the content under a stationary pointer. The
+            // selection must follow the row now under it, not the old row.
+            scroll.flickable.contentY += Theme.controls.contextMenu.rowHeight;
+            wait(60);
+            compare(cm.highlightedIndex, 3);
+        }
+
+        function test_context_menu_hover_does_not_scroll_the_menu() {
+            var model = [];
+            for (var i = 0; i < 20; ++i)
+                model.push({ label: "Row " + i });
+            var cm = make(contextMenuComponent, {
+                model: model,
+                availableRect: { x: 0, y: 0, w: 300, h: 200 }
+            });
+            cm.open = true;
+            waitForRendering(stage);
+            var scroll = findChild(cm, "contextMenuScroll");
+            verify(scroll !== null);
+            // Row 7 is only partly visible at the bottom of the viewport.
+            // Hovering it must select it without scrolling the list under the
+            // pointer (which would leave the highlight on a different row).
+            var row = findChild(cm, "menuRow7");
+            // The row starts at the viewport's bottom edge; its top few
+            // pixels are the part the pointer can actually reach.
+            var p = row.mapToItem(stage, row.width / 2, 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(cm.highlightedIndex, 7);
+            compare(scroll.flickable.contentY, 0,
+                    "hover must not scroll the menu under the pointer");
+            // Keyboard navigation still reveals the next row.
+            keyClick(Qt.Key_Down);
+            wait(60);
+            compare(cm.highlightedIndex, 8);
+            verify(scroll.flickable.contentY > 0,
+                   "keyboard navigation scrolls the highlighted row into view");
+        }
+
+        function test_context_menu_submenu_hover_keeps_the_opener_selected() {
+            var menu = make(contextMenuComponent, {
+                x: 10, y: 10,
+                model: [ { label: "Options", type: "submenu",
+                           submenu: [ { label: "One" }, { label: "Two" },
+                                      { label: "Three" } ] },
+                         { label: "Other" } ]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var opener = findChild(menu, "menuRow0");
+            mouseMove(opener, 20, opener.height / 2);
+            tryCompare(menu, "openSubmenuIndex", 0);
+            var sub = findChild(menu, "submenuPanel");
+            tryCompare(sub, "visible", true);
+            wait(Theme.motion.menuOpen.duration + 60);
+            var child0 = findChild(sub, "menuRow1_0");
+            verify(child0 !== null, "child row exists");
+            mouseMove(child0, child0.width / 2, child0.height / 2);
+            wait(60);
+            compare(menu.highlightedIndex, 0, "opener stays selected");
+            compare(menu.submenuHighlightedIndex, 0, "first child selected");
+            var child1 = findChild(sub, "menuRow1_1");
+            var cp = child1.mapToItem(stage, child1.width / 2, child1.height / 2);
+            mouseMove(stage, cp.x, cp.y);
+            wait(60);
+            compare(menu.highlightedIndex, 0,
+                    "opener stays selected while moving in the child");
+            compare(menu.submenuHighlightedIndex, 1,
+                    "the child row under the pointer is selected");
+        }
+
+        function test_context_menu_clamped_submenu_hover_follows_the_pointer() {
+            var menu = make(contextMenuComponent, {
+                x: 10, y: 300,
+                availableRect: { x: 0, y: 250, w: 600, h: 150 },
+                model: [ { label: "Options", type: "submenu",
+                           submenu: [ { label: "One" }, { label: "Two" },
+                                      { label: "Three" }, { label: "Four" },
+                                      { label: "Five" } ] },
+                         { label: "Other" }, { label: "Third" } ]
+            });
+            menu.open = true;
+            waitForRendering(stage);
+            var opener = findChild(menu, "menuRow0");
+            mouseMove(opener, 20, opener.height / 2);
+            tryCompare(menu, "openSubmenuIndex", 0);
+            var sub = findChild(menu, "submenuPanel");
+            tryCompare(sub, "visible", true);
+            wait(Theme.motion.menuOpen.duration + 60);
+            var child = findChild(sub, "menuRow1_3");
+            verify(child !== null, "child row exists");
+            var cp = child.mapToItem(stage, child.width / 2, child.height / 2);
+            mouseMove(stage, cp.x, cp.y);
+            wait(60);
+            compare(menu.submenuHighlightedIndex, 3);
+        }
+
+        function test_menu_bar_dropdown_hover_follows_the_scene_pointer() {
+            var m = make(menuComponent, {
+                title: "File",
+                model: [ { label: "One" }, { label: "Two" },
+                         { label: "Three" }, { label: "Four" } ]
+            });
+            m.openMenu();
+            waitForRendering(stage);
+            var row = findChild(m, "menuRow2");
+            var p = row.mapToItem(stage, row.width / 2, row.height / 2);
+            mouseMove(stage, p.x, p.y);
+            wait(60);
+            compare(m.highlightedIndex, 2);
+        }
+
         function test_context_menu_regions_keep_the_submenu_detached() {
         var cm = make(contextMenuComponent, {
             model: [ { label: "Options", type: "submenu",

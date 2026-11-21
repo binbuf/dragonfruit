@@ -269,7 +269,11 @@ Item {
         if (!root.syncingSelection && levels.highlightIndexAt(0)
                 !== root.highlightedIndex)
             levels.setHighlight(0, root.highlightedIndex);
-        root.keepRowVisible(root.highlightedIndex);
+        // A pointer selection is already visible under the cursor. Scrolling
+        // here would move a different row under it and leave the highlight on
+        // the old one.
+        if (!levels.highlightFromPointer)
+            root.keepRowVisible(root.highlightedIndex);
     }
     onOpenSubmenuIndexChanged: {
         if (!root.syncingSelection) {
@@ -280,7 +284,8 @@ Item {
                 levels.closeFrom(0);
             }
         }
-        root.keepRowVisible(root.openSubmenuIndex);
+        if (!levels.highlightFromPointer)
+            root.keepRowVisible(root.openSubmenuIndex);
         Qt.callLater(function() { submenuPanel.keepHighlightVisible(); });
     }
     onSubmenuHighlightedIndexChanged: {

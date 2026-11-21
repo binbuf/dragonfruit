@@ -32,6 +32,11 @@ QtObject {
     property var highlightIndices: []
 
     property string typeAheadBuffer: ""
+    // Whether the last highlight change came from the pointer. Owners use
+    // this to avoid scrolling the menu while a hover selects a partially
+    // visible row: scrolling would move the row out from under the pointer
+    // and leave the highlight on a different item.
+    property bool highlightFromPointer: false
     // The row that armed the submenu dwell. A row that disappears before the
     // timer fires must not open its replacement.
     property int pendingLevel: -1
@@ -222,6 +227,16 @@ QtObject {
 
     // --- Selection and open state ----------------------------------------
 
+    // Select a row because the pointer is over it. Owners must not scroll the
+    // menu for a pointer selection: the row is already visible under the
+    // cursor, and scrolling would move a different row under it.
+    function setHighlightFromPointer(level, index) {
+        var previous = root.highlightFromPointer;
+        root.highlightFromPointer = true;
+        root.setHighlight(level, index);
+        root.highlightFromPointer = previous;
+    }
+
     function setHighlight(level, index) {
         if (level < 0)
             return;
@@ -381,7 +396,11 @@ QtObject {
             hoverLeaveTimer.restart();
         root.hoverRowLevel = level;
         root.hoverRowIndex = index;
-        root.hoverChildLevel = -1;
+        // Hovering a row on a nested level means the pointer is inside that
+        // level's child card. Keep the claim on the card (its opener is
+        // level - 1) so a late leave from the opener row cannot clear the
+        // parent highlight while the pointer is still in the child.
+        root.hoverChildLevel = level > 0 ? level - 1 : -1;
         if (root.pendingLevel === level && root.pendingIndex === index
                 && dwellTimer.running)
             return;
@@ -399,9 +418,9 @@ QtObject {
             return;
         }
         if (e && e.enabled && e.type !== "separator")
-            root.setHighlight(level, index);
+            root.setHighlightFromPointer(level, index);
         else if (openIndex < 0 || openIndex === index)
-            root.setHighlight(level, -1);
+            root.setHighlightFromPointer(level, -1);
         if (e && e.type === "submenu" && e.enabled && openIndex !== index)
             dwellTimer.start();
     }
@@ -436,7 +455,7 @@ QtObject {
         root.cancelPending();
         var open = root.openIndexAt(level);
         if (open >= 0)
-            root.setHighlight(level, open);
+            root.setHighlightFromPointer(level, open);
     }
 
     // The pointer left an open child panel. Defer the opener clear one turn so
@@ -469,16 +488,22 @@ QtObject {
         }
         root.closeFrom(level);
         var e = list[at];
+        // The commit is still pointer-driven: the row and any child it opens
+        // are under the cursor, so neither may scroll the menu.
+        var previous = root.highlightFromPointer;
+        root.highlightFromPointer = true;
         if (e && e.enabled && e.type !== "separator")
             root.setHighlight(level, at);
         if (e && e.enabled && e.type === "submenu")
             root.openAt(level, at);
+        root.highlightFromPointer = previous;
     }
 
     // --- Lifecycle --------------------------------------------------------
 
     function reset() {
         root.cancelPending();
+        root.highlightFromPointer = false;
         hoverLeaveTimer.stop();
         root.hoverLeaveLevels = [];
         root.hoverRowLevel = -1;
