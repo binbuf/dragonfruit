@@ -528,6 +528,11 @@ pub(crate) struct PanelTextureSlot<T> {
     /// (T200). The sharp path samples the scene texture directly, so it must
     /// damage the element whenever that texture changed.
     last_sharp_scene_commit: Option<CommitCounter>,
+    /// The scene generation the sharp/veil element was built against. A
+    /// tracker reset or texture reallocation changes the generation without
+    /// necessarily advancing the damage commit, and the sharp edge samples
+    /// the new texture, so it must repaint then too.
+    last_sharp_scene_generation: Option<u64>,
 }
 
 impl<T> PanelTextureSlot<T> {
@@ -541,6 +546,7 @@ impl<T> PanelTextureSlot<T> {
             paint_key: None,
             last_scene_commit: None,
             last_sharp_scene_commit: None,
+            last_sharp_scene_generation: None,
         }
     }
 
@@ -570,13 +576,19 @@ impl<T> PanelTextureSlot<T> {
         }
     }
 
-    /// Record the scene-damage commit a sharp/veil element sampled (T200).
-    /// The scene cache advances its commit only when the offscreen scene
-    /// actually changed, so a settled veil stays damage-free while a moving
-    /// window under the bar repaints the veil.
-    pub(crate) fn note_sharp_scene_commit(&mut self, commit: CommitCounter) {
-        if self.last_sharp_scene_commit != Some(commit) {
+    /// Record the scene-damage commit and generation a sharp/veil element
+    /// sampled (T200). The scene cache advances its commit only when the
+    /// offscreen scene actually changed, so a settled veil stays damage-free
+    /// while a moving window under the bar repaints the veil. A generation
+    /// change (tracker reset or texture reallocation) is also a content
+    /// discontinuity: the sharp edge samples the new texture, so it must
+    /// repaint even if no damage commit was reported.
+    pub(crate) fn note_sharp_scene_state(&mut self, commit: CommitCounter, generation: u64) {
+        if self.last_sharp_scene_commit != Some(commit)
+            || self.last_sharp_scene_generation != Some(generation)
+        {
             self.last_sharp_scene_commit = Some(commit);
+            self.last_sharp_scene_generation = Some(generation);
             self.commit.increment();
         }
     }
@@ -1480,24 +1492,32 @@ mod tests {
     }
 
     #[test]
-    fn a_sharp_veil_commits_on_scene_damage_but_stays_settled_otherwise() {
+    fn a_sharp_veil_commits_on_scene_damage_or_generation_but_stays_settled_otherwise() {
         let mut slots: PanelTextureSlots<u32> = PanelTextureSlots::default();
         let key = PanelKey::new("menubar", 2, 11);
         let slot = slots.slot(&key);
         let scene = CommitCounter::default();
         // The first sample always damages (the element is new).
-        slot.note_sharp_scene_commit(scene);
+        slot.note_sharp_scene_state(scene, 0);
         let first = slot.commit();
         // The same scene commit is settled: no repeated veil damage.
-        slot.note_sharp_scene_commit(scene);
+        slot.note_sharp_scene_state(scene, 0);
         assert_eq!(slot.commit(), first);
         // Real scene damage advances the veil element's commit.
         let mut changed = scene;
         changed.increment();
-        slot.note_sharp_scene_commit(changed);
+        slot.note_sharp_scene_state(changed, 0);
         assert_ne!(slot.commit(), first);
         let damaged = slot.commit();
-        slot.note_sharp_scene_commit(changed);
+        slot.note_sharp_scene_state(changed, 0);
         assert_eq!(slot.commit(), damaged);
+        // A tracker reset/reallocation changes the generation without a new
+        // damage commit; the sharp edge samples the new texture, so it must
+        // repaint then too.
+        slot.note_sharp_scene_state(changed, 1);
+        assert_ne!(slot.commit(), damaged);
+        let regenerated = slot.commit();
+        slot.note_sharp_scene_state(changed, 1);
+        assert_eq!(slot.commit(), regenerated);
     }
 }

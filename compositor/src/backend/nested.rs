@@ -1689,7 +1689,7 @@ fn build_blur_elements(
             // The scene commit advances only on real scene damage, so a moving
             // window under the bar damages the veil while a settled scene does
             // not (T200).
-            slot.note_sharp_scene_commit(scene.cache.commit());
+            slot.note_sharp_scene_state(scene.cache.commit(), scene.cache.generation());
             let commit = slot.commit();
             let element = crate::window::BackdropBlurElement::new(
                 scene.texture.clone(),
@@ -1800,7 +1800,7 @@ fn build_blur_elements(
         // bevel must be pushed *before* the body to sit on top of it.
         let bevel = if panel.spec.is_measured() {
             programs.bevel.map(|bevel_program| {
-                slot.note_sharp_scene_commit(scene.cache.commit());
+                slot.note_sharp_scene_state(scene.cache.commit(), scene.cache.generation());
                 crate::window::BackdropBlurElement::new(
                     scene.texture.clone(),
                     panel.panel,

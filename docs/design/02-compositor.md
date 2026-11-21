@@ -546,8 +546,12 @@ the tracker and advances the scene generation, so every `PanelBlurKey` that
 includes the generation rebuilds instead of reusing the departed pixels. The
 same reset is a content discontinuity even when no blur key has been read yet,
 so `reset_tracker` advances the generation directly rather than relying on the
-next tracker install. This is the guard against a dark window/shadow ghost
-behind the Dock that only a compositor restart used to clear.
+next tracker install. The sharp/veil element tracks the generation as well as
+the damage commit (`note_sharp_scene_state`), so the rim-adjacent bevel — the
+Dock plate's inner edge — repaints when a reset or reallocation replaces the
+scene texture, even if no new damage commit was reported. This is the guard
+against a persistent wrong-colour window/shadow ghost on the Dock's inner edge
+that only a compositor restart used to clear.
 
 The reference **Glass pass** landed in **T-20.2**
 ([ADR 0182](adr/0182-glass-material-pass.md)) as a second custom

@@ -1885,7 +1885,7 @@ fn render_surface(
                     // T200: the sharp veil samples the live scene texture
                     // directly, so its element commit follows real scene
                     // damage.
-                    slot.note_sharp_scene_commit(scene_cache.commit());
+                    slot.note_sharp_scene_state(scene_cache.commit(), scene_cache.generation());
                     let commit = slot.commit();
                     let element = BackdropBlurElement::new(
                         (*scene_texture).clone(),
@@ -2001,7 +2001,7 @@ fn render_surface(
                 // must precede the blurred body to draw over it.
                 if panel.spec.is_measured() {
                     if let Some(bevel_program) = programs.bevel.as_ref() {
-                        slot.note_sharp_scene_commit(scene_cache.commit());
+                        slot.note_sharp_scene_state(scene_cache.commit(), scene_cache.generation());
                         let bevel = BackdropBlurElement::new(
                             (*scene_texture).clone(),
                             panel.panel,
