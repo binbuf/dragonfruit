@@ -1582,6 +1582,11 @@ private:
     Qt::MouseButtons m_dockButtons = Qt::NoButton;
     // Last pointer location in Dock coordinates, independent of render padding.
     std::optional<QPointF> m_dockPointerPosition;
+    // The root item's origin when the last pointer event was injected. The Dock
+    // renders the strip and a content-sized popup view from the same item at
+    // different origins, so a render target must rebase the stored pointer to
+    // keep Qt's frame-synchronous hover on the same item-local point.
+    std::optional<QPointF> m_dockPointerItemOrigin;
     // The Dock popover (context menu / window chooser) in Dock-scene
     // coordinates, plus the offset the scene is placed at inside the offscreen
     // window so a popover can render above (bottom Dock) or beside (vertical
@@ -1631,6 +1636,11 @@ private:
     // True while a dropdown is open; the overlay popup surface is mapped then.
     bool m_menuOpen = false;
     Qt::MouseButtons m_buttons = Qt::NoButton;
+    // Last pointer location in menu-bar window coordinates. The content-sized
+    // popup view translates the bar item to its own origin, so the pointer is
+    // rebased around that render or Qt's frame-synchronous hover re-evaluates
+    // it against the translated tree and selects a neighbouring row.
+    std::optional<QPointF> m_menuBarPointerPosition;
     QString m_appId;
     QString m_appTitle;
     // T230: the focused window's compositor id (0 = desktop). Focus is the

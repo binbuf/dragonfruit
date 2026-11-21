@@ -88,3 +88,23 @@ diagonal pass that reaches the child is unchanged.
 hover, and a sibling-body hover that must select the sibling while the child
 stays open; `tst_menubar` adds row-hover selection and a bounded dropdown
 that must not scroll on hover.
+
+## Amendment (2026-11-21, render-target origins)
+
+Content-sized popup targets render the same root item from a different origin.
+The menu bar translates its item to the dropdown origin for the
+`menubar-popup` view, and the Dock translates its item to the strip origin, the
+popover origin, and then back to the input scene origin. Qt flushes a
+frame-synchronous hover at the last injected pointer position during polish
+(`QQuickDeliveryAgentPrivate::flushFrameSynchronousEvents`), so a pointer left
+at the previous window position was resolved against the translated tree. The
+popup origin was effectively counted twice: hovering a row selected a row
+several rows below it, and the Dock's strip and popup views could disagree by
+the popover headroom.
+
+Both owners now rebase the injected pointer whenever the render origin changes,
+and restore it with the item. The pointer is always the same item-local point
+(`window = item-local + item-origin`), so the strip render, the content-sized
+popup view, and the restored input scene all see the row under the cursor.
+`tst_chromepointerui` reproduces the translated-item hover jump and verifies
+that rebasing the injected pointer keeps the selected row stable.

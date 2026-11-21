@@ -7700,6 +7700,7 @@ void ShellController::onPointerMoved(qreal x, qreal y)
 {
     if (!m_window)
         return;
+    m_menuBarPointerPosition = QPointF(x, y);
     sendChromePointer(m_window, QEvent::MouseMove, QPointF(x, y), Qt::NoButton, m_buttons);
     // The QML scene owns the response: a hover/title/row change raises
     // `sceneChanged`, which the chrome pacer coalesces. Requesting a frame for
@@ -7711,6 +7712,7 @@ void ShellController::onPointerButton(qreal x, qreal y, quint32 button, bool pre
 {
     if (!m_window)
         return;
+    m_menuBarPointerPosition = QPointF(x, y);
     const Qt::MouseButton qtButton = button == 0x110 ? Qt::LeftButton : Qt::NoButton;
     if (pressed)
         m_buttons |= qtButton;
@@ -7725,6 +7727,7 @@ void ShellController::onPointerLeft()
 {
     if (!m_window)
         return;
+    m_menuBarPointerPosition.reset();
     // Move the pointer off-screen so hover states clear when the compositor
     // takes the pointer away (e.g. it moved onto a window). A hover change
     // raises `sceneChanged`; a pointer that was not over the bar requests no
@@ -9923,6 +9926,7 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
     if (!m_dockWindow)
         return;
     m_dockPointerPosition = QPointF(x, y);
+    m_dockPointerItemOrigin = QPointF(m_dockItemOffsetX, m_dockItemOffsetY);
     // The compositor delivers Dock-surface coordinates in scene space; the
     // scene is offset inside the offscreen window when a popover needs
     // headroom (above a bottom Dock) or a side gutter (beside a vertical
@@ -9936,6 +9940,7 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
     if (!m_dockWindow)
         return;
     m_dockPointerPosition = QPointF(x, y);
+    m_dockPointerItemOrigin = QPointF(m_dockItemOffsetX, m_dockItemOffsetY);
     Qt::MouseButton qtButton = Qt::NoButton;
     if (button == 0x110)
         qtButton = Qt::LeftButton;
@@ -9953,6 +9958,7 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
 void ShellController::onDockPointerLeft()
 {
     m_dockPointerPosition.reset();
+    m_dockPointerItemOrigin.reset();
     if (!m_dockWindow)
         return;
     sendChromePointer(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
@@ -12487,8 +12493,6 @@ void ShellController::renderDock()
     const int inputTop = inputMargins.top;
     const int renderLeft = independentPopup ? 0 : renderMargins.left;
     const int renderTop = independentPopup ? 0 : renderMargins.top;
-    const bool originChanged = inputLeft != m_dockItemOffsetX
-        || inputTop != m_dockItemOffsetY;
     m_dockItemOffsetX = inputLeft;
     m_dockItemOffsetY = inputTop;
     const QSize stripSceneSize = independentPopup
@@ -12524,15 +12528,24 @@ void ShellController::renderDock()
                                                    m_chromeScale);
     m_dockItem->setX(itemOrigin.x());
     m_dockItem->setY(itemOrigin.y());
-    // Qt remembers the last injected pointer in window coordinates. When
-    // the overlay changes the scene origin, rebase that position before
-    // Qt reevaluates hover during polish. Otherwise opening a label makes
-    // the pointer appear to leave its tile and closes the label again.
-    if (originChanged && m_dockPointerPosition && m_dockButtons == Qt::NoButton) {
-        const QPointF pointer = *m_dockPointerPosition + QPointF(inputLeft, inputTop);
-        sendChromePointer(m_dockWindow, QEvent::MouseMove, pointer,
+    // Qt remembers the last injected pointer in window coordinates and flushes
+    // a frame-synchronous hover during polish. The strip and a content-sized
+    // popup view render the same item from different origins, so rebase the
+    // pointer whenever the render origin changes: a pointer left at the strip
+    // origin would map onto a different menu row when the item moves for the
+    // popup view (and vice versa), which is what made hovering select the row
+    // above or below the pointer. `origin` is logical, like the pointer.
+    const auto rebasePointer = [this](const QPointF &origin) {
+        if (!m_dockPointerPosition || m_dockButtons != Qt::NoButton)
+            return;
+        if (m_dockPointerItemOrigin && *m_dockPointerItemOrigin == origin)
+            return;
+        sendChromePointer(m_dockWindow, QEvent::MouseMove,
+                          *m_dockPointerPosition + origin,
                           Qt::NoButton, Qt::NoButton);
-    }
+        m_dockPointerItemOrigin = origin;
+    };
+    rebasePointer(QPointF(renderLeft, renderTop));
 
     // The input region is the visible bar plus the currently magnified or
     // bouncing icon rectangles; the transparent magnified band and the hidden
@@ -12666,10 +12679,13 @@ void ShellController::renderDock()
     if (independentPopup && hasPopover && gpuProducer) {
         // Render the popup into its own content-sized view. The root item is
         // translated so the popup origin is the view origin; the strip is
-        // outside this view. Input mapping is unchanged because the item
-        // position is restored before the frame returns.
-        m_dockItem->setX(-px);
-        m_dockItem->setY(-py);
+        // outside this view. The pointer is rebased with the item so the
+        // popup's own frame-synchronous hover stays on the row under it, and
+        // then restored with the item before the frame returns.
+        const QPointF popupOrigin(-px, -py);
+        m_dockItem->setX(popupOrigin.x());
+        m_dockItem->setY(popupOrigin.y());
+        rebasePointer(popupOrigin);
         gpuProducer->resize(
             ChromeScale::bufferSize(popupTargetSize, m_chromeScale));
         const int contentWidth = qMin(pw, popupTargetSize.width());
@@ -12693,6 +12709,7 @@ void ShellController::renderDock()
         const QPointF inputOrigin(inputLeft, inputTop);
         m_dockItem->setX(inputOrigin.x());
         m_dockItem->setY(inputOrigin.y());
+        rebasePointer(inputOrigin);
         gpuProducer->resize(
             ChromeScale::bufferSize(inputSceneSize, m_chromeScale));
         if (m_dockPopoverTraceId != 0) {
@@ -12837,8 +12854,21 @@ void ShellController::render()
     bool deferred = false;
     const bool committed = commitChromeScene(m_window, targets, &deferred);
     if (independentPopup && popupShown && gpuProducer) {
-        m_item->setX(-m_popupX);
-        m_item->setY(-m_popupY);
+        const QPointF popupOrigin(m_popupX, m_popupY);
+        m_item->setX(-popupOrigin.x());
+        m_item->setY(-popupOrigin.y());
+        // The popup view is rendered with the bar translated so the dropdown
+        // lands at the view origin. Qt flushes a frame-synchronous hover at the
+        // last injected pointer position during polish, so keep that pointer at
+        // the same item-local point for the duration of the render. Otherwise
+        // the translated tree moves under the stationary pointer, hover lands
+        // on a neighbouring row, and the highlight jumps off the pointed row.
+        const bool rebasePointer = m_menuBarPointerPosition.has_value()
+            && m_buttons == Qt::NoButton;
+        if (rebasePointer)
+            sendChromePointer(m_window, QEvent::MouseMove,
+                              *m_menuBarPointerPosition - popupOrigin,
+                              Qt::NoButton, Qt::NoButton);
         gpuProducer->resize(
             ChromeScale::bufferSize(popupTargetSize, m_chromeScale));
         const int contentWidth = qMin(m_popupWidth, popupTargetSize.width());
@@ -12857,6 +12887,11 @@ void ShellController::render()
                           GpuChromeFrameProducer::PopupView);
         m_item->setX(0);
         m_item->setY(0);
+        // Restore the pointer to the untranslated tree before the window is
+        // resized back, so the next frame-synchronous hover sees the same row.
+        if (rebasePointer)
+            sendChromePointer(m_window, QEvent::MouseMove,
+                              *m_menuBarPointerPosition, Qt::NoButton, Qt::NoButton);
         gpuProducer->resize(
             ChromeScale::bufferSize(QSize(m_width, inputWindowHeight),
                                     m_chromeScale));

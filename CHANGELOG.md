@@ -32,6 +32,9 @@ All notable user-visible changes are recorded here. The format follows
   update cannot move rows under the pointer on the first frame. The popup
   rectangle now includes the bar's reveal transform, so a menu opened while
   the bar is sliding is placed where it is drawn rather than a strip away.
+  Content-sized popup targets also rebase the injected pointer when the render
+  origin changes, so the menu-bar dropdown and Dock context menus keep the row
+  under the cursor instead of selecting a row above or below it.
 - **File dialogs.** The portal file chooser now serves all four kinds
   correctly. Open File honors multi-selection; Open Folder returns the chosen
   folder; Save File prefills the caller's name, accepts an absolute path, and

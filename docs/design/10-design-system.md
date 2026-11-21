@@ -275,7 +275,11 @@ the narrow strip beside the open child keeps the opener selected for the
 diagonal corridor, and the child itself stays open until the 150 ms dwell
 commits. The menu-bar viewport height is derived from the entry list,
 not the still-unpolished row column, so a live model update cannot resize the
-scroll area under the pointer. Menu rows still use repeaters
+scroll area under the pointer. Content-sized popup render targets translate
+the root item to the popup origin; the shell rebases the injected pointer with
+that translation, because Qt flushes a frame-synchronous hover during polish
+and would otherwise resolve it against the translated tree and select a
+neighbouring row. Menu rows still use repeaters
 within a bounded viewport. Large exported menus can therefore incur work for
 rows outside the viewport. See
 [ADR 0294](adr/0294-shell-popup-frame-lifecycle.md),

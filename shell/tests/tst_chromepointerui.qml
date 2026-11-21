@@ -11,6 +11,7 @@ Item {
     id: stage
     width: 320
     height: 240
+    property int highlightedRow: -1
 
     Rectangle {
         id: control
@@ -26,6 +27,39 @@ Item {
         DragHandler {
             id: drag
             onActiveChanged: if (active) control.drags++
+        }
+    }
+
+    // The shell renders a content-sized popup by translating the root item so
+    // the popup origin becomes the view origin. Qt flushes a frame-synchronous
+    // hover at the last injected pointer position during polish, so the shell
+    // must rebase that pointer with the item. These rows model the menu rows
+    // that used to jump to a neighbour when the render target changed.
+    Item {
+        id: translatedHost
+        objectName: "translatedHost"
+        x: 200
+        y: 20
+        width: 100
+        height: 5 * 30
+
+        Column {
+            id: translatedColumn
+            Repeater {
+                id: translatedRepeater
+                model: 5
+                Rectangle {
+                    required property int index
+                    width: translatedHost.width
+                    height: 30
+                    color: stage.highlightedRow === index ? "#4c8bf5" : "#c8c8c8"
+
+                    HoverHandler {
+                        onHoveredChanged: if (hovered)
+                                              stage.highlightedRow = index
+                    }
+                }
+            }
         }
     }
 
@@ -64,6 +98,33 @@ Item {
             waitForRendering(stage);
             compare(control.taps, 0);
             verify(control.drags > 0);
+        }
+
+        // A frame-synchronous hover is evaluated against the translated tree.
+        // Without rebasing the injected pointer, moving the host two rows makes
+        // the row under the old pointer win, not the row the user is over.
+        function test_translated_host_rebases_the_injected_pointer() {
+            var win = stage.Window.window;
+            var row = translatedRepeater.itemAt(2);
+            verify(row !== null, "the third row exists");
+            var p = row.mapToItem(null, row.width / 2, row.height / 2);
+            ChromeInject.reset();
+            ChromeInject.move(win, p.x, p.y);
+            waitForRendering(stage);
+            compare(stage.highlightedRow, 2, "the pointed row starts selected");
+
+            var shift = 2 * row.height;
+            translatedHost.y -= shift;
+            ChromeInject.move(win, p.x, p.y - shift);
+            waitForRendering(stage);
+            compare(stage.highlightedRow, 2,
+                    "the rebased pointer keeps the same row selected");
+
+            translatedHost.y += shift;
+            ChromeInject.move(win, p.x, p.y);
+            waitForRendering(stage);
+            compare(stage.highlightedRow, 2,
+                    "restoring the host keeps the same row selected");
         }
     }
 }
