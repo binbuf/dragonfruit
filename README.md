@@ -4,6 +4,10 @@ A modern Wayland desktop powered by **Rust, Smithay, and Qt Quick**, inspired by
 
 [![CI](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml/badge.svg)](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md) [![Status: Early development](https://img.shields.io/badge/Status-Early%20development-orange.svg)](docs/design/STATUS.md)
 
+<p align="center">
+  <img src="docs/images/desktop.jpg" alt="Dragonfruit desktop screenshot" width="100%">
+</p>
+
 ## Overview
 
 Dragonfruit is a Linux desktop environment, not a theme for another DE, and not a distro.
