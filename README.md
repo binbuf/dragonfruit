@@ -1,6 +1,6 @@
 # Dragonfruit
 
-A modern Wayland desktop powered by **Rust, Smithay, and Qt Quick**, inspired by macOS.
+A modern beautiful Linux desktop powered by **Rust, Smithay, and Qt Quick**, inspired by macOS.
 
 [![CI](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml/badge.svg)](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md) [![Status: Early development](https://img.shields.io/badge/Status-Early%20development-orange.svg)](docs/design/STATUS.md)
 
@@ -58,23 +58,24 @@ make native-recover # Switch DE back to your distro default
 
 Explore the [design goals](docs/design/22-total-experience.md), [architecture and design docs](docs/design/), [status and roadmap](docs/design/STATUS.md), and [packaging guide](packaging/README.md).
 
-Contributions and feedback are welcome through [issues](https://github.com/binbuf/dragonfruit/issues) and [pull requests](https://github.com/binbuf/dragonfruit/pulls).
+## Contributing
 
-## Built on Open Source
-
-No need to re-invent the wheel if there's a high quality open source, license permissible assets or projects available for a given feature, we review if we can use that instead of building something custom.
-
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for more information
 
 ## Credit
 
-| Project | How Dragonfruit uses it |
+### Built on Open Source
+
+If there's a high quality open source, license permissible asset or project available for a given feature, no need to re-invent the wheel. We'll review if we can use that instead of building something custom.
+
+| Project | Dragonfruit Implementation |
 |---|---|
 | **Inter** (SIL OFL 1.1) | Typography |
 | **Tabler Icons** (MIT) | Interface line icons |
 | **Phosphor Icons** (MIT) | Filled interface and Settings glyphs |
-| **WhiteSur icon theme** (GPL-3.0-only) | Colored folder, Trash, place, Files, and Applications-launcher artwork |
+| **WhiteSur icon theme** (GPL-3.0-only) | Folder, Trash, place, Files, and App launcher artwork |
 | **Capitaine Cursors** (LGPL) | Cursor theme |
-| **Wikimedia Commons** (asset-specific licenses) | Optional online wallpaper discovery |
+| **Wikimedia Commons** (asset-specific licenses) | Wallpaper discovery |
 
 
 ## License

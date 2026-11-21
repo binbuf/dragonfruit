@@ -27,7 +27,11 @@ Item {
     // stretches to the resolved panel width.
     property real constrainedWidth: -1
 
-    signal rowHovered(int index)
+    // `localX` is the pointer's x within the row. The menu owner uses it to
+    // keep the safe corridor toward an open child card: a pointer near the
+    // child side keeps the opener selected, while a pointer over the row's
+    // body selects the row immediately.
+    signal rowHovered(int index, real localX)
     signal rowLeft(int index)
     signal rowActivated(int index)
 
