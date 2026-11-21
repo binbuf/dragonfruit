@@ -12535,14 +12535,16 @@ void ShellController::renderDock()
     // origin would map onto a different menu row when the item moves for the
     // popup view (and vice versa), which is what made hovering select the row
     // above or below the pointer. `origin` is logical, like the pointer.
+    // The rebase is a hover event, not a mouse move: a move would be delivered
+    // to the row's TapHandler and cancel the press that scheduled this render.
     const auto rebasePointer = [this](const QPointF &origin) {
         if (!m_dockPointerPosition)
             return;
         if (m_dockPointerItemOrigin && *m_dockPointerItemOrigin == origin)
             return;
-        sendChromePointer(m_dockWindow, QEvent::MouseMove,
+        sendChromePointer(m_dockWindow, QEvent::HoverMove,
                           *m_dockPointerPosition + origin,
-                          Qt::NoButton, m_dockButtons);
+                          Qt::NoButton, Qt::NoButton);
         m_dockPointerItemOrigin = origin;
     };
     rebasePointer(QPointF(renderLeft, renderTop));
@@ -12863,11 +12865,13 @@ void ShellController::render()
         // the same item-local point for the duration of the render. Otherwise
         // the translated tree moves under the stationary pointer, hover lands
         // on a neighbouring row, and the highlight jumps off the pointed row.
+        // A hover event (rather than a mouse move) rebases the position without
+        // cancelling a press/tap that is driving this render.
         const bool rebasePointer = m_menuBarPointerPosition.has_value();
         if (rebasePointer)
-            sendChromePointer(m_window, QEvent::MouseMove,
+            sendChromePointer(m_window, QEvent::HoverMove,
                               *m_menuBarPointerPosition - popupOrigin,
-                              Qt::NoButton, m_buttons);
+                              Qt::NoButton, Qt::NoButton);
         gpuProducer->resize(
             ChromeScale::bufferSize(popupTargetSize, m_chromeScale));
         const int contentWidth = qMin(m_popupWidth, popupTargetSize.width());
@@ -12889,8 +12893,8 @@ void ShellController::render()
         // Restore the pointer to the untranslated tree before the window is
         // resized back, so the next frame-synchronous hover sees the same row.
         if (rebasePointer)
-            sendChromePointer(m_window, QEvent::MouseMove,
-                              *m_menuBarPointerPosition, Qt::NoButton, m_buttons);
+            sendChromePointer(m_window, QEvent::HoverMove,
+                              *m_menuBarPointerPosition, Qt::NoButton, Qt::NoButton);
         gpuProducer->resize(
             ChromeScale::bufferSize(QSize(m_width, inputWindowHeight),
                                     m_chromeScale));

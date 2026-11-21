@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QHoverEvent>
 #include <QMouseEvent>
 #include <QWindow>
 
@@ -31,6 +32,17 @@ void send(QWindow *window, QEvent::Type type, const QPointF &pos, Qt::MouseButto
 {
     if (!window)
         return;
+    if (type == QEvent::HoverEnter || type == QEvent::HoverMove
+            || type == QEvent::HoverLeave) {
+        // A hover event updates the delivery agent's hover position without
+        // delivering a pointer move to a grabber, so it can rebase the pointer
+        // around a translated render without cancelling a press/tap gesture.
+        const QPointF global = window->mapToGlobal(pos.toPoint());
+        QHoverEvent event(type, pos, global, pos, modifiers);
+        event.setTimestamp(timestamp());
+        QCoreApplication::sendEvent(window, &event);
+        return;
+    }
     QMouseEvent event(type, pos, pos, button, buttons, modifiers);
     event.setTimestamp(timestamp());
     QCoreApplication::sendEvent(window, &event);

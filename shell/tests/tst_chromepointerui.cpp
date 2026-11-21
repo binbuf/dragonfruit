@@ -32,6 +32,12 @@ public:
                             m_buttons);
     }
 
+    Q_INVOKABLE void hover(QObject *window, qreal x, qreal y)
+    {
+        ChromePointer::send(windowFor(window), QEvent::HoverMove, QPointF(x, y), Qt::NoButton,
+                            m_buttons);
+    }
+
     Q_INVOKABLE void button(QObject *window, qreal x, qreal y, int button, bool pressed)
     {
         const Qt::MouseButton qtButton = static_cast<Qt::MouseButton>(button);

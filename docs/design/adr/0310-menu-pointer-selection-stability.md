@@ -108,8 +108,9 @@ and restore it with the item. The pointer is always the same item-local point
 popup view, and the restored input scene all see the row under the cursor.
 Rebasing is not limited to a button-up pointer: a press schedules a render too,
 and skipping the rebase while a button was held left the pressed row's
-highlight on a neighbour. The injected move carries the live button state, so
-the press and drag sequence is unchanged.
+highlight on a neighbour. The rebase is injected as a hover event rather than
+a mouse move, so it updates the hover position without delivering a pointer
+move to the row's tap handler and cancelling the press.
 `tst_chromepointerui` reproduces the translated-item hover jump and verifies
 that rebasing the injected pointer keeps the selected row stable, with and
-without a held button.
+without a held button, and that the press still taps.

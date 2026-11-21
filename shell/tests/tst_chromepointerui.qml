@@ -12,6 +12,7 @@ Item {
     width: 320
     height: 240
     property int highlightedRow: -1
+    property int taps: 0
 
     Rectangle {
         id: control
@@ -58,7 +59,7 @@ Item {
                         onHoveredChanged: if (hovered)
                                               stage.highlightedRow = index
                     }
-                    TapHandler {}
+                    TapHandler { onTapped: stage.taps++ }
                 }
             }
         }
@@ -116,13 +117,13 @@ Item {
 
             var shift = 2 * row.height;
             translatedHost.y -= shift;
-            ChromeInject.move(win, p.x, p.y - shift);
+            ChromeInject.hover(win, p.x, p.y - shift);
             waitForRendering(stage);
             compare(stage.highlightedRow, 2,
                     "the rebased pointer keeps the same row selected");
 
             translatedHost.y += shift;
-            ChromeInject.move(win, p.x, p.y);
+            ChromeInject.hover(win, p.x, p.y);
             waitForRendering(stage);
             compare(stage.highlightedRow, 2,
                     "restoring the host keeps the same row selected");
@@ -135,6 +136,7 @@ Item {
             var row = translatedRepeater.itemAt(2);
             verify(row !== null, "the third row exists");
             var p = row.mapToItem(null, row.width / 2, row.height / 2);
+            stage.taps = 0;
             ChromeInject.reset();
             ChromeInject.move(win, p.x, p.y);
             waitForRendering(stage);
@@ -143,17 +145,19 @@ Item {
             ChromeInject.button(win, p.x, p.y, Qt.LeftButton, true);
             var shift = 2 * row.height;
             translatedHost.y -= shift;
-            ChromeInject.move(win, p.x, p.y - shift);
+            ChromeInject.hover(win, p.x, p.y - shift);
             waitForRendering(stage);
             compare(stage.highlightedRow, 2,
                     "the pressed row stays selected while the host is translated");
 
             translatedHost.y += shift;
-            ChromeInject.move(win, p.x, p.y);
+            ChromeInject.hover(win, p.x, p.y);
             waitForRendering(stage);
             compare(stage.highlightedRow, 2,
                     "the pressed row stays selected after the host is restored");
             ChromeInject.button(win, p.x, p.y, Qt.LeftButton, false);
+            waitForRendering(stage);
+            compare(stage.taps, 1, "the rebased press still taps its row");
         }
     }
 }
