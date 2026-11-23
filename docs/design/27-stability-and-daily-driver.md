@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -109,6 +109,18 @@ There is one keyboard focus owner. A surface that is not visible, is
 minimized, is closing, has been destroyed, or belongs to a disconnected
 client must not hold focus. Clearing focus must clear `active_window`, tell
 the shell (`Unfocused`), and update the menu-bar/shortcut state in one place.
+
+That one place is `DfState::clear_keyboard_focus(reason)` (T307,
+[ADR 0318](adr/0318-focus-clearing-is-one-helper.md)). It unsets the seat
+focus, clears the cached `active_window`, broadcasts `Unfocused` only when a
+window was active, dismisses that window's popups, clears the shortcut
+engine's focused app, clears `menu_bar_keyboard_focused`, re-applies the
+menu-bar reveal rule, marks the scene dirty, and refreshes the following
+magnifier. Close uses it, `after_workspace_change` uses it when the active
+window is no longer on the active Space, and `minimize_window` uses it when
+the active window is in the minimized transient tree. Minimize does not
+implicitly focus a different window: focus becomes `None` and the user's next
+click chooses the new owner.
 
 `activate_window` must compare the keyboard’s actual current focus with the
 target surface, not a cached `active_window`. Otherwise clicking the same

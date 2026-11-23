@@ -22,8 +22,8 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::xdg::decoration::zv1::client::{
@@ -83,6 +83,9 @@ struct TestClient {
         Option<org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// Key codes delivered to the focused client (T307 typing proof).
+    keys: Vec<u32>,
     /// Serial of each pointer button press delivered to the client.
     pointer_button_serials: Vec<u32>,
     toplevel_configures: Vec<ToplevelConfigure>,
@@ -223,13 +226,31 @@ impl Dispatch<wl_seat::WlSeat, ()> for TestClient {
         qh: &QueueHandle<Self>,
     ) {
         if let wl_seat::Event::Capabilities { capabilities } = event {
-            let has_pointer = capabilities
-                .into_result()
-                .map(|caps| caps.contains(wl_seat::Capability::Pointer))
-                .unwrap_or(false);
+            let Ok(caps) = capabilities.into_result() else {
+                return;
+            };
+            let has_pointer = caps.contains(wl_seat::Capability::Pointer);
             if has_pointer && state.pointer.is_none() {
                 state.pointer = Some(seat.get_pointer(qh, ()));
             }
+            if caps.contains(wl_seat::Capability::Keyboard) && state.keyboard.is_none() {
+                state.keyboard = Some(seat.get_keyboard(qh, ()));
+            }
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_keyboard::Event::Key { key, .. } = event {
+            state.keys.push(key);
         }
     }
 }
@@ -1887,6 +1908,80 @@ fn runtime_decoration_tier_change_reflows_a_zoomed_window() {
     );
 }
 
+/// The active window id from a `query focus` report (T307), or `None` when
+/// no client window owns the keyboard.
+fn parse_focus(report: &str) -> Option<u64> {
+    report.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        if parts.next()? != "focus" {
+            return None;
+        }
+        let value = parts.next()?;
+        if value == "none" {
+            None
+        } else {
+            value.parse().ok()
+        }
+    })
+}
+
+/// Poll `query focus` until the active window matches `expected`.
+#[track_caller]
+fn wait_for_focus(input: &SyntheticInput, expected: Option<u64>) -> String {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let report = input.query("query focus");
+        if parse_focus(&report) == expected {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for focus {expected:?}; last={report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Poll `query spaces` until the active Space index differs from `previous`.
+#[track_caller]
+fn wait_for_space_change(input: &SyntheticInput, previous: usize) -> Vec<SpaceReport> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let spaces = parse_spaces(&input.query("query spaces"));
+        if spaces
+            .iter()
+            .any(|space| space.active && space.index != previous)
+        {
+            return spaces;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for the active Space to leave {previous}: {spaces:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Poll `query spaces` until `index` is active again.
+#[track_caller]
+fn wait_for_space(input: &SyntheticInput, index: usize) -> Vec<SpaceReport> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let spaces = parse_spaces(&input.query("query spaces"));
+        if spaces
+            .iter()
+            .any(|space| space.active && space.index == index)
+        {
+            return spaces;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for Space {index}: {spaces:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// Query `query decorations`, retrying while the scene catches up.
 fn wait_for_report(
     state: &mut TestClient,
@@ -2059,6 +2154,203 @@ fn traffic_lights_drive_zoom_minimize_and_close() {
     );
 }
 
+/// T307 acceptance: a Space round-trip clears the keyboard, and clicking the
+/// same window on return must focus it again (the stale `active_window` cache
+/// used to make that click a no-op). Typing is proven with real `wl_keyboard`
+/// key events, not only the focus report.
+#[test]
+fn space_round_trip_click_refocuses_the_same_window_and_typing_works() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-focus-space-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-focus-space",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let report = *wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    })
+    .iter()
+    .find(|report| report.server_side)
+    .expect("a mapped SSD toplevel");
+    let window = report.window;
+
+    // Focus the window by clicking it, then prove a key reaches the client.
+    click_window_content(&input, &report);
+    wait_for_focus(&input, Some(window));
+    key_tap(&input, KEY_A);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&KEY_A),
+    );
+    state.keys.clear();
+
+    // --- Space away: the window is hidden and the keyboard is released ----
+    let spaces = parse_spaces(&input.query("query spaces"));
+    let origin = spaces
+        .iter()
+        .find(|space| space.active)
+        .expect("an active Space")
+        .index;
+    switch_space(&input, true);
+    wait_for_space_change(&input, origin);
+    wait_for_focus(&input, None);
+    key_tap(&input, KEY_B);
+    std::thread::sleep(Duration::from_millis(100));
+    queue.roundtrip(&mut state).expect("roundtrip after key");
+    assert!(
+        !state.keys.contains(&KEY_B),
+        "a hidden window received a key: {:?}",
+        state.keys
+    );
+
+    // --- Space back: focus stays clear until the user clicks --------------
+    switch_space(&input, false);
+    wait_for_space(&input, origin);
+    wait_for_focus(&input, None);
+    key_tap(&input, KEY_C);
+    std::thread::sleep(Duration::from_millis(100));
+    queue.roundtrip(&mut state).expect("roundtrip after key");
+    assert!(
+        !state.keys.contains(&KEY_C),
+        "returning to a Space must not silently refocus the window: {:?}",
+        state.keys
+    );
+
+    // Clicking the same window is a real focus change, not a no-op against
+    // the stale `active_window` cache.
+    let report = *wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == window && report.state == WindowStateReport::Floating)
+    })
+    .iter()
+    .find(|report| report.window == window)
+    .expect("the window is back on the active Space");
+    click_window_content(&input, &report);
+    wait_for_focus(&input, Some(window));
+    key_tap(&input, KEY_D);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&KEY_D),
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T307 acceptance: minimizing the focused window clears focus (no keys are
+/// delivered), restore does not implicitly focus anything, and clicking the
+/// restored window focuses it so typing works again.
+#[test]
+fn minimize_releases_focus_and_restore_click_refocuses() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-focus-min-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-focus-min",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let report = *wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    })
+    .iter()
+    .find(|report| report.server_side)
+    .expect("a mapped SSD toplevel");
+    let window = report.window;
+
+    click_window_content(&input, &report);
+    wait_for_focus(&input, Some(window));
+    key_tap(&input, KEY_A);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&KEY_A),
+    );
+    state.keys.clear();
+
+    // --- minimize: focus is cleared, no key reaches the hidden surface ----
+    input.send(&format!("minimize {window}"));
+    wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Minimized
+    });
+    wait_for_focus(&input, None);
+    key_tap(&input, KEY_B);
+    std::thread::sleep(Duration::from_millis(100));
+    queue.roundtrip(&mut state).expect("roundtrip after key");
+    assert!(
+        !state.keys.contains(&KEY_B),
+        "a minimized window received a key: {:?}",
+        state.keys
+    );
+
+    // --- restore: no implicit focus; typing still reaches no client --------
+    input.send(&format!("restore {window}"));
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating && report.server_side
+    });
+    wait_for_focus(&input, None);
+    key_tap(&input, KEY_C);
+    std::thread::sleep(Duration::from_millis(100));
+    queue.roundtrip(&mut state).expect("roundtrip after key");
+    assert!(
+        !state.keys.contains(&KEY_C),
+        "restore must not focus the window implicitly: {:?}",
+        state.keys
+    );
+
+    // --- click the restored window: focus and typing return ---------------
+    click_window_content(&input, &report);
+    wait_for_focus(&input, Some(window));
+    key_tap(&input, KEY_D);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&KEY_D),
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// Move the synthetic pointer to a global-space point (normalized like
 /// libinput's absolute coordinates).
 fn motion_to(input: &SyntheticInput, x: i32, y: i32) {
@@ -2201,9 +2493,41 @@ const KEY_ESC: u32 = 1;
 const KEY_ENTER: u32 = 28;
 const KEY_DOWN: u32 = 108;
 
+/// Keys used by the focus round-trip proof (T307).
+const KEY_LEFTCTRL: u32 = 29;
+const KEY_A: u32 = 30;
+const KEY_B: u32 = 31;
+const KEY_C: u32 = 32;
+const KEY_D: u32 = 33;
+const KEY_LEFT: u32 = 105;
+const KEY_RIGHT: u32 = 106;
+
 fn key_tap(input: &SyntheticInput, code: u32) {
     input.send(&format!("key {code} down"));
     input.send(&format!("key {code} up"));
+}
+
+/// Ctrl+Right / Ctrl+Left switch the active Space through the one shortcut
+/// engine (the default bindings).
+fn switch_space(input: &SyntheticInput, forward: bool) {
+    let arrow = if forward { KEY_RIGHT } else { KEY_LEFT };
+    input.send(&format!(
+        "key {KEY_LEFTCTRL} down\nkey {arrow} down\nkey {arrow} up\nkey {KEY_LEFTCTRL} up"
+    ));
+}
+
+/// The centre of a window's client content.
+fn content_center(report: &DecorationReport) -> (i32, i32) {
+    let (cx, cy, cw, ch) = report.content;
+    (cx + cw / 2, cy + ch / 2)
+}
+
+/// Click a window's content to make it the active window. Content is used
+/// instead of the titlebar so a repeat click cannot register a double-click.
+fn click_window_content(input: &SyntheticInput, report: &DecorationReport) {
+    let (cx, cy) = content_center(report);
+    motion_to(input, cx, cy);
+    click(input);
 }
 
 /// T-01.4 acceptance: a right-click on the SSD titlebar opens the window menu;

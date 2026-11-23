@@ -102,9 +102,7 @@ use crate::gpu_timer::{GpuPass, GpuSample, GpuStats};
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::GestureRecognizer;
-use crate::input::hot_corners::{
-    parse_hot_corner_modifier, HotCornerAction, HotCornerDetector,
-};
+use crate::input::hot_corners::{parse_hot_corner_modifier, HotCornerAction, HotCornerDetector};
 use crate::input::keymap::parse_binding;
 use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, Shortcut, ShortcutEngine};
@@ -2507,16 +2505,48 @@ impl DfState {
         }
     }
 
+    /// Clear the keyboard focus and mirror it in the model (T307).
+    ///
+    /// `active_window` is a cache; the seat's keyboard handle is the
+    /// authority. A surface that is hidden, minimized, closing, or destroyed
+    /// must not keep the keyboard, so every caller that drops a live window's
+    /// focus uses this one helper: Smithay does not invoke `focus_changed`
+    /// when focus is *unset*, so the model, the shell, the menu bar, and the
+    /// shortcut engine would otherwise drift.
+    ///
+    /// `reason` labels the one-line trace emitted when a window loses focus.
+    /// A call with no `active_window` is still allowed (it clears any stale
+    /// seat focus) but broadcasts no `Unfocused` event.
+    pub fn clear_keyboard_focus(&mut self, reason: &str) {
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            if keyboard.current_focus().is_some() {
+                keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
+            }
+        }
+        self.menu_bar_keyboard_focused = false;
+        let Some(old) = self.active_window.take() else {
+            self.sync_menu_bar_reveal();
+            return;
+        };
+        // The window is no longer the focus owner: dismiss its popups (FR-11)
+        // and tell the shell through the same event focus_changed would send.
+        self.dismiss_popups_for(&old);
+        self.broadcast_window(&old, WindowEventKind::Unfocused);
+        self.shortcuts.set_focused_app(None);
+        self.sync_menu_bar_reveal();
+        // Focus changes the titlebar/traffic-light colors and the shadow
+        // treatment, and a following magnifier pans to the new owner.
+        self.mark_scene_dirty();
+        self.refresh_magnifier_follow();
+        println!("dragonfruit-compositor: cleared keyboard focus ({reason})");
+    }
+
     /// React to a workspace change: drop focus from a now-hidden window and
     /// re-apply the scene layout (FR-8: state and scene change together).
     pub fn after_workspace_change(&mut self) {
         if let Some(active) = self.active_window.clone() {
             if !self.window_on_active_space(&active) {
-                if let Some(keyboard) = self.seat.get_keyboard() {
-                    keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
-                }
-                self.menu_bar_keyboard_focused = false;
-                self.sync_menu_bar_reveal();
+                self.clear_keyboard_focus("workspace change");
             }
         }
         self.apply_workspace_layout();
@@ -3523,14 +3553,16 @@ impl DfState {
                 }
             }
         }
-        if self.active_window.as_ref() == Some(window) {
-            return;
-        }
         let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) else {
             return;
         };
         if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(self, Some(surface), serial);
+            // Compare against the keyboard's actual focus, not the cached
+            // `active_window`: after a Space round-trip the cache can name this
+            // window while the seat has already released the keyboard (T307).
+            if keyboard.current_focus().as_ref() != Some(&surface) {
+                keyboard.set_focus(self, Some(surface), serial);
+            }
         }
     }
 
@@ -3742,20 +3774,12 @@ impl DfState {
         let geometry = self.windows.geometry(window).unwrap_or_default();
         self.space.unmap_elem(window);
         // A ghost must never stay the keyboard focus target (T-02.4b): clear
-        // the seat focus and mirror it in the model. Smithay does not invoke
-        // `focus_changed` when the focus is *unset*, so the active window and
-        // the `Unfocused` broadcast must be updated here by hand.
+        // the seat focus and mirror it in the model through the one helper
+        // (T307). Smithay does not invoke `focus_changed` when the focus is
+        // *unset*, so the active window and the `Unfocused` broadcast must be
+        // updated by hand.
         if self.active_window.as_ref() == Some(window) {
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
-            }
-            self.menu_bar_keyboard_focused = false;
-            self.sync_menu_bar_reveal();
-            if let Some(old) = self.active_window.take() {
-                self.dismiss_popups_for(&old);
-                self.broadcast_window(&old, WindowEventKind::Unfocused);
-                self.shortcuts.set_focused_app(None);
-            }
+            self.clear_keyboard_focus("close");
         }
         self.begin_window_motion(window, WindowMotionKind::Close, geometry);
         // Ask the client to close. If it destroys the surface before the
@@ -4035,20 +4059,33 @@ impl DfState {
     /// broadcast) and its surface is held as a ghost that shrinks and fades
     /// into the app's Dock tile on the shared clock (T-02.2).
     pub fn minimize_window(&mut self, window: &Window) {
-        for target in self.windows.transient_tree(window) {
+        let targets = self.windows.transient_tree(window);
+        // MVP rule (T307): minimizing the focused window clears focus; it does
+        // not implicitly focus another window. The user's next click chooses
+        // the new focus owner.
+        let active_in_tree = self
+            .active_window
+            .as_ref()
+            .is_some_and(|active| targets.contains(active));
+        let mut minimized = false;
+        for target in &targets {
             let Some(transition) =
                 self.windows
-                    .apply(&target, WindowEvent::Minimize, Rectangle::default())
+                    .apply(target, WindowEvent::Minimize, Rectangle::default())
             else {
                 continue;
             };
             if !transition.changed {
                 continue;
             }
-            let geometry = self.windows.geometry(&target).unwrap_or_default();
-            self.space.unmap_elem(&target);
-            self.begin_window_motion(&target, WindowMotionKind::Minimize, geometry);
-            self.broadcast_state(&target);
+            minimized = true;
+            let geometry = self.windows.geometry(target).unwrap_or_default();
+            self.space.unmap_elem(target);
+            self.begin_window_motion(target, WindowMotionKind::Minimize, geometry);
+            self.broadcast_state(target);
+        }
+        if active_in_tree && minimized {
+            self.clear_keyboard_focus("minimize");
         }
         self.mark_scene_dirty();
     }
