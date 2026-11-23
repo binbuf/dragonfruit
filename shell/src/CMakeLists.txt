@@ -143,6 +143,7 @@ add_library(dragonfruit-shell-dockcore STATIC
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC
     Qt6::Core Qt6::Gui Qt6::DBus Qt6::Network
     dragonfruit-chromepointer
+    dragonfruit-launch-env
     dragonfruit-settings-client
     dragonfruit-files-core
 )

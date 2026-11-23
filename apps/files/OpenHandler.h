@@ -24,14 +24,20 @@
 #include <QStringList>
 #include <QUrl>
 
+#include "launch_env.h"
+
 // The environment for a Files browser or default handler the offscreen
 // desktop launches. The desktop's forced `QT_QPA_PLATFORM=offscreen` must not
 // leak into the child: a browser would paint an invisible offscreen window,
 // and the handler would inherit the same missing `QPlatformServices`.
+// The Xwayland `DISPLAY` is read from the compositor's hand-off file at launch
+// time, and a stale inherited value is removed when there is no Xwayland
+// (T309). The Wayland socket stays inherited: the desktop connected to it.
 inline QProcessEnvironment filesDesktopChildEnvironment()
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.remove(QStringLiteral("QT_QPA_PLATFORM"));
+    Dragonfruit::applyX11DisplayHandoff(environment);
     return environment;
 }
 

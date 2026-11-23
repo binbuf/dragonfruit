@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -210,9 +210,17 @@ The launch environment contains the display the app should use:
 
 - `WAYLAND_DISPLAY` from the compositor socket;
 - `DISPLAY` from `$XDG_RUNTIME_DIR/<socket>.x11-display` when present, and
-  removed when absent;
+  removed when absent or empty;
 - `QT_QPA_PLATFORM=wayland` for Qt apps when the shell forced offscreen;
 - no `QT_QPA_PLATFORM=offscreen` leak.
+
+Xwayland starts after the session environment is exported, so `DISPLAY` is
+not a startup value. The compositor writes the hand-off file when Xwayland is
+ready; the shell, Files, and Settings read it at each launch, never once at
+startup, so a late Xwayland start still reaches the next child. The shared
+`Dragonfruit::applyX11DisplayHandoff` helper trims the file, sets `DISPLAY`,
+and removes an inherited value when the file is missing or empty. The decision
+is frozen in [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md).
 
 A `Terminal=true` entry resolves `$TERMINAL`, `xdg-terminal-exec`,
 `x-terminal-emulator`, then a common terminal list; if none exists it reports

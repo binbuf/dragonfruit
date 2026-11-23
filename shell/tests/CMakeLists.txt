@@ -232,6 +232,28 @@ set_tests_properties(tst_dockcore PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Launch-environment tests (T309): the shell reads the compositor's Xwayland
+# DISPLAY hand-off at launch time, trims it, and removes a stale inherited
+# DISPLAY when the file is absent or empty. The last case starts a real
+# headless child and reads the DISPLAY it received. No Wayland, QML, or
+# compositor.
+qt_add_executable(tst_shell_launch_env
+    tst_shell_launch_env.cpp
+)
+target_link_libraries(tst_shell_launch_env PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_shell_launch_env
+    COMMAND tst_shell_launch_env
+)
+set_tests_properties(tst_shell_launch_env PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # System-status model tests (T-07.5a): the bridge host's JSON views decode to
 # the Wi-Fi/volume menu models and each gesture raises its request signal. No
 # Wayland, QML, or D-Bus.

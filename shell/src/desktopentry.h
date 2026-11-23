@@ -78,8 +78,10 @@ private:
 // non-empty it is exported as `WAYLAND_DISPLAY` so a launched client finds the
 // display even when the shell was started with `--socket-name` and the
 // variable was never in the environment. `XDG_RUNTIME_DIR` is inherited (the
-// shell needed it to reach the socket); the helper only strips the offscreen
-// QPA. Pure and unit-tested (T-14.7g).
+// shell needed it to reach the socket). The Xwayland `DISPLAY` is read from
+// `$XDG_RUNTIME_DIR/<socket>.x11-display` at launch time (T309): the helper
+// sets it when the file is present and removes an inherited value when it is
+// absent. Pure and unit-tested (T-14.7g, T309).
 QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base,
                                          const QString &waylandDisplay = QString());
 

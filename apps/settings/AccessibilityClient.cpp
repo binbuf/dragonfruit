@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "AccessibilityClient.h"
 
+#include "launch_env.h"
+
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
@@ -11,6 +13,7 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 
 namespace {
@@ -68,7 +71,16 @@ bool AccessibilityClient::launchDelegate(const QString &id, const QString &progr
         emit delegateLaunched(id, false);
         return false;
     }
-    const bool ok = QProcess::startDetached(program, arguments);
+    // The delegate is a normal external app (often X11-only), so it needs the
+    // same launch-time Xwayland DISPLAY hand-off as the shell's Dock and
+    // Files. Settings itself may have been started before Xwayland existed.
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    Dragonfruit::applyX11DisplayHandoff(environment);
+    QProcess process;
+    process.setProcessEnvironment(environment);
+    process.setProgram(program);
+    process.setArguments(arguments);
+    const bool ok = process.startDetached();
     if (ok)
         m_lastDelegate = id;
     emit delegateLaunched(id, ok);

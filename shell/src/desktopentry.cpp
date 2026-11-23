@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "desktopentry.h"
 
+#include "launch_env.h"
 
 #include <QDir>
 #include <QStandardPaths>
@@ -267,5 +268,10 @@ QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base,
         // (T-14.7g).
         environment.insert(QStringLiteral("WAYLAND_DISPLAY"), waylandDisplay);
     }
+    // Xwayland starts after the shell, so read its hand-off file now rather
+    // than caching it. The helper also removes an inherited DISPLAY when the
+    // file is absent or empty, so a Wayland-only launch cannot fall back to a
+    // stale X server from the shell's parent environment (T309).
+    Dragonfruit::applyX11DisplayHandoff(environment, waylandDisplay);
     return environment;
 }

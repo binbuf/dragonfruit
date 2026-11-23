@@ -37,6 +37,7 @@ target_link_libraries(dragonfruit-files-ui PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-design-systemplugin
     dragonfruit-files-core
+    dragonfruit-launch-env
     dragonfruit-settings-client
 )
 
@@ -47,6 +48,7 @@ target_link_libraries(dragonfruit-files PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus
     dragonfruit-system-font
     dragonfruit-i18n
+    dragonfruit-launch-env
     dragonfruit-files-uiplugin
 )
 qt_import_qml_plugins(dragonfruit-files)

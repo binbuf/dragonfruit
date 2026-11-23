@@ -126,6 +126,7 @@ qt_add_qml_module(dragonfruit-settings-ui
 target_link_libraries(dragonfruit-settings-ui PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-design-systemplugin
+    dragonfruit-launch-env
     dragonfruit-settings-client
     # T277: the Quick Settings pane consumes the shell's one
     # `ControlCenterRegistry`; it never keeps a second module list.

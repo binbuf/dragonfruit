@@ -31,7 +31,10 @@ qt_add_executable(tst_files_arguments
     tst_files_arguments.cpp
 )
 target_include_directories(tst_files_arguments PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(tst_files_arguments PRIVATE Qt6::Core Qt6::Test)
+target_link_libraries(tst_files_arguments PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-launch-env
+)
 
 add_test(
     NAME tst_files_arguments

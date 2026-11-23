@@ -243,15 +243,27 @@ dragonfruit-session.target (started directly by dragonfruit-session-entry)
   semantics); no crash path unlocks a locked session.
 - **Session environment** exported at startup: `XDG_CURRENT_DESKTOP=dragonfruit`,
   `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY` pointing at the session
-  socket, `DISPLAY` when Xwayland is up, and the role-scoped private-protocol
-  tokens — `DRAGONFRUIT_LAUNCH_TOKEN` for the shell and
+  socket, and the role-scoped private-protocol tokens —
+  `DRAGONFRUIT_LAUNCH_TOKEN` for the shell and
   `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` for the Files desktop; the compositor
-  issues both. The desktop name is what toolkits, `portals.conf`, and
-  `XDG_CURRENT_DESKTOP`-sensitive libraries use to find DE-specific behavior
-  and our portal backend — it is a public contract, chosen once (see
+  issues both. `DISPLAY` is not a startup value: Xwayland starts after the
+  compositor, so the launch-time hand-off below supplies it. The desktop name
+  is what toolkits, `portals.conf`, and `XDG_CURRENT_DESKTOP`-sensitive
+  libraries use to find DE-specific behavior and our portal backend — it is a
+  public contract, chosen once (see
   [12-packaging.md](12-packaging.md)). The variable names and the token
   ownership are frozen in
   [ADR 0065](adr/0065-session-environment-and-units.md).
+
+Xwayland's `DISPLAY` travels through a runtime hand-off file, not the imported
+startup environment. The compositor writes
+`$XDG_RUNTIME_DIR/<socket>.x11-display` when Xwayland is ready and removes it
+at teardown. The shell's app launcher, the Files desktop child environment,
+and the Settings accessibility delegates read it at launch time through the
+shared `Dragonfruit::applyX11DisplayHandoff` helper, which sets `DISPLAY` from
+the trimmed file and removes a stale inherited value when the file is absent
+or empty (T309,
+[ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md)).
 
 The composition above is **data, not prose**: `services/session`'s
 `SessionPlan`/`ServiceSpec` encode the stages, the per-service restart policy,
