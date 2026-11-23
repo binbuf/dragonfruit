@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -395,15 +395,19 @@ A `Terminal=true` entry resolves `$TERMINAL`, `xdg-terminal-exec`,
 a visible failure. The app index honors `OnlyShowIn`, `NotShowIn`, and
 `TryExec`.
 
-X11 launch is also a data path: a file dragged from an X11 application can be
-dropped on a Wayland surface. The compositor's XDnD bridge owns a dedicated X11
-connection, publishes an `XdndAware` bridge window as Xwayland's root
-`XdndProxy`, and reads the `text/uri-list` selection (direct and `INCR`). The
-drop is delivered as a compositor-owned `text/uri-list` data offer to the
-surface under the pointer; only Copy is accepted, so a client that declines
-cannot lose the source. An XdndAware X11 window under the pointer still
-receives its own drag, and the Wayland→X11 direction is T328b. The decision is
-frozen in [ADR 0334](adr/0334-xdnd-bridge-as-target.md).
+X11 launch is also a data path in both directions. The compositor's XDnD
+bridge owns a dedicated X11 connection, publishes an `XdndAware` bridge window
+as Xwayland's root `XdndProxy`, and reads the `text/uri-list` selection (direct
+and `INCR`) when an X11 drag lands on a Wayland surface. The drop is delivered
+as a compositor-owned `text/uri-list` data offer to the surface under the
+pointer; only Copy is accepted, so a client that declines cannot lose the
+source. The reverse direction reuses the same connection, atom table, and
+bridge window: a Wayland drag source is driven through
+`XdndEnter`/`Position`/`Drop`/`Leave`, waits for `XdndStatus` before dropping,
+and serves `text/uri-list` to the X11 target from the Wayland client's data
+source. An XdndAware X11 window under the pointer still receives its own drag.
+The decisions are frozen in [ADR 0334](adr/0334-xdnd-bridge-as-target.md) and
+[ADR 0335](adr/0335-xdnd-bridge-as-source.md).
 
 ### 3.8 Idle and power are real
 
@@ -553,7 +557,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-14 | The titlebar window menu is unlabeled | T329 |
 | S-15 | Files lacks copy/move/paste, undo, watcher, tabs, New Window, Open With | T330–T334 |
 | S-16 | Screen sharing is stills-only | T335a, T335b |
-| S-17 | X11 `_NET_FRAME_EXTENTS` is missing (closed by T327); XDnD is a model only (X11→Wayland closed by T328a; Wayland→X11 remains T328b) | T327, T328a, T328b |
+| S-17 | X11 `_NET_FRAME_EXTENTS` is missing (closed by T327); XDnD is live in both directions (target role T328a, source role T328b) | T327, T328a, T328b |
 | S-18 | Pointer constraints are refused for games/remote desktop; refusals grow unbounded (closed by T322) | T322 |
 | S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output (closed by T323) | T323 |
 | S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output | T324 |

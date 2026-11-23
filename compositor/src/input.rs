@@ -604,6 +604,8 @@ where
                 },
             );
             pointer.frame(state);
+            // T328b: follow a live Wayland drag across X11 windows.
+            state.update_xdnd_source(location);
             // T322: a constraint created while this surface was unfocused
             // takes effect as soon as the pointer enters it.
             activate_constraint_on_enter(state, &pointer);
@@ -646,6 +648,8 @@ where
                 },
             );
             pointer.frame(state);
+            // T328b: follow a live Wayland drag across X11 windows.
+            state.update_xdnd_source(location);
             // T322: activate a constraint registered before the pointer
             // entered this surface.
             activate_constraint_on_enter(state, &pointer);

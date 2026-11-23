@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 //! The runtime half of the XDnD bridge: a dedicated X11 connection, the atom
-//! table, and the bridge window that acts as the X11 **target** (T328a).
+//! table, and the bridge window that acts as the X11 **target** (T328a) and
+//! the X11 **source** (T328b).
 //!
-//! [`crate::xdnd`] owns the wire codec and the pure [`XdndTarget`] state
-//! machine. This module owns the X connection those decisions are carried on.
-//! It is deliberately independent of `DfState`/Smithay so the conformance test
-//! can drive it against a real Xwayland server with a fake X11 drag source.
+//! [`crate::xdnd`] owns the wire codec and the pure [`XdndTarget`] /
+//! [`XdndSource`] state machines. This module owns the X connection those
+//! decisions are carried on. It is deliberately independent of
+//! `DfState`/Smithay so the conformance test can drive it against a real
+//! Xwayland server with a fake X11 peer.
 //!
-//! ## How an X11 drag reaches the bridge
+//! ## How an X11 drag reaches the bridge (target role)
 //!
 //! XDnD sources resolve the window under the pointer and send their client
 //! messages there. A Wayland surface has no X11 window, so over one the source
@@ -22,7 +24,16 @@
 //! pointer (even when a Wayland surface is drawn above it) still receives its
 //! own drag; that boundary is recorded in the hand-off and ADR 0334.
 //!
-//! ## Flow
+//! ## How a Wayland drag reaches an X11 target (source role)
+//!
+//! The same connection and bridge window act as the source: the bridge owns
+//! `XdndSelection` and sends `XdndEnter`/`Position`/`Drop`/`Leave` to the X11
+//! window under the pointer. It waits for an accepting `XdndStatus` before
+//! dropping, serves `text/uri-list` from the Wayland client's payload, and
+//! releases the selection on `XdndFinished`/cancel/timeout. No second X11
+//! connection or window exists; see ADR 0335.
+//!
+//! ## Target flow
 //!
 //! - `XdndEnter` → the [`XdndTarget`] state machine starts a drag.
 //! - `XdndPosition` → the bridge answers `XdndStatus` (a `text/uri-list` drag
@@ -45,15 +56,16 @@ use std::time::{Duration, Instant};
 use smithay::reexports::x11rb::connection::Connection;
 use smithay::reexports::x11rb::protocol::xproto::{
     Atom, AtomEnum, ChangeWindowAttributesAux, ClientMessageEvent, ConnectionExt as _,
-    CreateWindowAux, EventMask, PropMode, SelectionNotifyEvent, Window, WindowClass,
+    CreateWindowAux, EventMask, PropMode, SelectionNotifyEvent, SelectionRequestEvent, Window,
+    WindowClass,
 };
 use smithay::reexports::x11rb::protocol::Event;
 use smithay::reexports::x11rb::rust_connection::RustConnection;
 use smithay::reexports::x11rb::wrapper::ConnectionExt as _;
 
 use crate::xdnd::{
-    parse_uri_list, uris_to_paths, XdndAction, XdndAtoms, XdndMessage, XdndStatus, XdndTarget,
-    URI_LIST_MIME, XDND_VERSION,
+    parse_uri_list, uris_to_paths, XdndAction, XdndAtoms, XdndMessage, XdndSource, XdndStatus,
+    XdndTarget, URI_LIST_MIME, XDND_VERSION,
 };
 
 /// How long a `ConvertSelection`/INCR transfer may take before the bridge
@@ -99,6 +111,26 @@ pub enum BridgeEvent {
     },
     /// A drop was refused or its transfer failed. The source has been told.
     Failed { source: u32, reason: String },
+    /// The X11 target answered an `XdndPosition` from the source role.
+    SourceStatus {
+        target: u32,
+        accept: bool,
+        action: XdndAction,
+    },
+    /// The X11 target finished the source-role drag.
+    SourceFinished {
+        target: u32,
+        success: bool,
+        action: XdndAction,
+    },
+    /// The target requested `text/uri-list` before the bridge had the
+    /// Wayland payload. The host fetches it and calls
+    /// [`XdndBridge::set_source_payload`].
+    SourceSelectionNeeded { target: u32 },
+    /// The bridge answered a selection request from the cached payload.
+    SourceSelectionServed { target: u32 },
+    /// The target never sent `XdndFinished` before the deadline.
+    SourceTimedOut { target: u32 },
 }
 
 #[derive(Debug)]
@@ -112,7 +144,26 @@ struct PendingTransfer {
     incr: bool,
 }
 
-/// The dedicated X11 connection and bridge window for the target role.
+/// The live Wayland→X11 source drag. The source window is the bridge window
+/// (T328a's connection and window are reused; no second connection exists).
+#[derive(Debug)]
+struct ActiveSource {
+    /// The action the source proposes (already resolved from `None`).
+    action: XdndAction,
+    /// The X11 target the pointer is over, once entered.
+    target: Option<Window>,
+    /// The pure state machine, created on enter.
+    state: Option<XdndSource>,
+    /// The `text/uri-list` payload fetched from the Wayland source, if any.
+    payload: Option<Vec<u8>>,
+    /// A selection request waiting for the payload fetch.
+    pending: Option<SelectionRequestEvent>,
+    /// Set after `XdndDrop`; the target must answer `XdndFinished` by then.
+    deadline: Option<Instant>,
+}
+
+/// The dedicated X11 connection and bridge window for the target and source
+/// roles.
 pub struct XdndBridge {
     conn: RustConnection,
     root: Window,
@@ -121,8 +172,10 @@ pub struct XdndBridge {
     uri_list: Atom,
     property: Atom,
     incr: Atom,
+    targets: Atom,
     target: XdndTarget,
     pending: Option<PendingTransfer>,
+    source: Option<ActiveSource>,
 }
 
 impl std::fmt::Debug for XdndBridge {
@@ -132,6 +185,7 @@ impl std::fmt::Debug for XdndBridge {
             .field("window", &self.window)
             .field("atoms", &self.atoms)
             .field("pending", &self.pending)
+            .field("source", &self.source)
             .finish_non_exhaustive()
     }
 }
@@ -156,6 +210,7 @@ impl XdndBridge {
         let uri_list = intern(&conn, URI_LIST_MIME)?;
         let property = intern(&conn, SELECTION_PROPERTY)?;
         let incr = intern(&conn, "INCR")?;
+        let targets = intern(&conn, "TARGETS")?;
 
         let window = conn
             .generate_id()
@@ -213,8 +268,10 @@ impl XdndBridge {
             uri_list,
             property,
             incr,
+            targets,
             target: XdndTarget::new(),
             pending: None,
+            source: None,
         })
     }
 
@@ -243,6 +300,201 @@ impl XdndBridge {
         self.pending.is_some()
     }
 
+    /// Whether a Wayland→X11 source drag is live.
+    pub fn has_source(&self) -> bool {
+        self.source.is_some()
+    }
+
+    /// The X11 target the source role is currently over, if any.
+    pub fn source_target(&self) -> Option<Window> {
+        self.source.as_ref().and_then(|source| source.target)
+    }
+
+    /// Whether the current X11 target accepted the source drag.
+    pub fn source_is_accepted(&self) -> bool {
+        self.source
+            .as_ref()
+            .and_then(|source| source.state.as_ref())
+            .is_some_and(XdndSource::is_accepted)
+    }
+
+    /// The action the X11 target accepted, if any.
+    pub fn source_accepted_action(&self) -> Option<XdndAction> {
+        self.source
+            .as_ref()
+            .and_then(|source| source.state.as_ref())
+            .and_then(XdndSource::accepted_action)
+    }
+
+    /// Start the source role for a Wayland drag. The bridge window becomes
+    /// the owner of `XdndSelection`; the payload is supplied later by
+    /// [`Self::set_source_payload`] when a target asks for it.
+    pub fn begin_source(&mut self, action: XdndAction) -> Result<(), String> {
+        self.end_source()?;
+        self.conn
+            .set_selection_owner(
+                self.window,
+                self.atoms.selection,
+                smithay::reexports::x11rb::CURRENT_TIME,
+            )
+            .map_err(|err| format!("own XdndSelection: {err}"))?;
+        self.source = Some(ActiveSource {
+            action: action.resolved(),
+            target: None,
+            state: None,
+            payload: None,
+            pending: None,
+            deadline: None,
+        });
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush selection ownership: {err}"))
+    }
+
+    /// Enter an X11 target: send `XdndEnter` followed by the opening
+    /// `XdndPosition`.
+    pub fn source_enter(
+        &mut self,
+        target: Window,
+        position: (i16, i16),
+        time: u32,
+    ) -> Result<(), String> {
+        let Some(source) = self.source.as_mut() else {
+            return Err("no active XDnD source".to_string());
+        };
+        let state = XdndSource::new(
+            self.window,
+            target,
+            XDND_VERSION,
+            vec![self.uri_list],
+            source.action,
+        );
+        let enter = state.enter();
+        let opening = state.position(position, time);
+        source.target = Some(target);
+        source.state = Some(state);
+        self.send_client_message(target, self.atoms.enter, &enter)?;
+        self.send_client_message(target, self.atoms.position, &opening)?;
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush XdndEnter: {err}"))
+    }
+
+    /// Send an `XdndPosition` to the current target. A no-op when the source
+    /// has not entered a target.
+    pub fn source_position(&mut self, position: (i16, i16), time: u32) -> Result<(), String> {
+        let Some(source) = self.source.as_mut() else {
+            return Ok(());
+        };
+        let Some(state) = source.state.as_ref() else {
+            return Ok(());
+        };
+        let Some(target) = source.target else {
+            return Ok(());
+        };
+        let message = state.position(position, time);
+        self.send_client_message(target, self.atoms.position, &message)?;
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush XdndPosition: {err}"))
+    }
+
+    /// Send `XdndDrop` if the target accepted the drag. Returns `true` when
+    /// the drop was sent; `false` when the target has not accepted (the
+    /// caller must leave instead of dropping).
+    pub fn source_drop(&mut self, time: u32) -> Result<bool, String> {
+        let Some(source) = self.source.as_mut() else {
+            return Ok(false);
+        };
+        let Some(state) = source.state.as_ref() else {
+            return Ok(false);
+        };
+        if !state.is_accepted() {
+            return Ok(false);
+        }
+        let Some(target) = source.target else {
+            return Ok(false);
+        };
+        let message = state.drop(time);
+        self.send_client_message(target, self.atoms.drop, &message)?;
+        if let Some(source) = self.source.as_mut() {
+            source.deadline = Some(Instant::now() + TRANSFER_TIMEOUT);
+        }
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush XdndDrop: {err}"))?;
+        Ok(true)
+    }
+
+    /// Send `XdndLeave` to the current target and forget it, keeping the
+    /// source session (and its selection ownership) alive for a later enter.
+    pub fn source_leave(&mut self) -> Result<(), String> {
+        let (message, target) = match self.source.as_ref() {
+            Some(source) => match (source.state.as_ref(), source.target) {
+                (Some(state), Some(target)) => (Some(state.leave()), Some(target)),
+                _ => (None, None),
+            },
+            None => (None, None),
+        };
+        if let (Some(message), Some(target)) = (message, target) {
+            self.send_client_message(target, self.atoms.leave, &message)?;
+        }
+        if let Some(source) = self.source.as_mut() {
+            source.state = None;
+            source.target = None;
+            source.deadline = None;
+        }
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush XdndLeave: {err}"))
+    }
+
+    /// Supply the `text/uri-list` payload fetched from the Wayland source.
+    /// Answers a selection request that arrived first.
+    pub fn set_source_payload(&mut self, payload: Vec<u8>) -> Result<(), String> {
+        let Some(source) = self.source.as_mut() else {
+            return Ok(());
+        };
+        source.payload = Some(payload);
+        let pending = source.pending.take();
+        let Some(request) = pending else {
+            return Ok(());
+        };
+        let payload = self
+            .source
+            .as_ref()
+            .and_then(|source| source.payload.clone())
+            .unwrap_or_default();
+        self.write_selection_property(&request, &payload)?;
+        self.send_selection_notify(&request, request.property)?;
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush source selection: {err}"))
+    }
+
+    /// End the source role: leave the target (when one is live), release
+    /// `XdndSelection`, and forget the payload. Safe to call when idle.
+    pub fn end_source(&mut self) -> Result<(), String> {
+        let had_target = self
+            .source
+            .as_ref()
+            .is_some_and(|source| source.target.is_some());
+        if had_target {
+            let _ = self.source_leave();
+        }
+        self.source = None;
+        self.conn
+            .set_selection_owner(
+                smithay::reexports::x11rb::NONE,
+                self.atoms.selection,
+                smithay::reexports::x11rb::CURRENT_TIME,
+            )
+            .map_err(|err| format!("release XdndSelection: {err}"))?;
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush selection release: {err}"))
+    }
+
     /// A duplicate of the X connection fd, for a calloop readiness source.
     /// The bridge keeps ownership of the connection; the duplicate is only
     /// polled for readability and never read.
@@ -265,6 +517,7 @@ impl XdndBridge {
             }
         }
         self.expire_transfer(&mut events)?;
+        self.expire_source(&mut events)?;
         self.conn
             .flush()
             .map_err(|err| format!("flush X events: {err}"))?;
@@ -283,6 +536,7 @@ impl XdndBridge {
                 self.handle_client_message(name, message.data.as_data32(), events)
             }
             Event::SelectionNotify(notify) => self.handle_selection_notify(notify, events),
+            Event::SelectionRequest(request) => self.handle_selection_request(request, events),
             Event::PropertyNotify(notify) => {
                 if notify.window == self.window
                     && notify.atom == self.property
@@ -375,8 +629,72 @@ impl XdndBridge {
                 });
                 Ok(())
             }
-            // We are the target; status/finished belong to the source role
-            // (T328b). Ignore them here.
+            "XdndStatus" => {
+                let Some(XdndMessage::Status {
+                    target,
+                    accept,
+                    action,
+                    ..
+                }) = XdndMessage::decode(name, data, &self.atoms)
+                else {
+                    return Ok(());
+                };
+                let accepted = self
+                    .source
+                    .as_mut()
+                    .and_then(|source| source.state.as_mut())
+                    .is_some_and(|state| {
+                        state.absorb_status(&XdndMessage::Status {
+                            target,
+                            accept,
+                            want_position: false,
+                            action,
+                        })
+                    });
+                events.push(BridgeEvent::SourceStatus {
+                    target,
+                    accept: accepted,
+                    action,
+                });
+                Ok(())
+            }
+            "XdndFinished" => {
+                let Some(XdndMessage::Finished {
+                    target,
+                    success,
+                    action,
+                }) = XdndMessage::decode(name, data, &self.atoms)
+                else {
+                    return Ok(());
+                };
+                let success = self
+                    .source
+                    .as_mut()
+                    .and_then(|source| source.state.as_mut())
+                    .and_then(|state| {
+                        state.absorb_finished(&XdndMessage::Finished {
+                            target,
+                            success,
+                            action,
+                        })
+                    })
+                    .unwrap_or(success);
+                // `XdndFinished` is the target's final word; no `XdndLeave`
+                // follows it.
+                if let Some(source) = self.source.as_mut() {
+                    source.target = None;
+                    source.state = None;
+                    source.deadline = None;
+                }
+                self.end_source()?;
+                events.push(BridgeEvent::SourceFinished {
+                    target,
+                    success,
+                    action,
+                });
+                Ok(())
+            }
+            // We are the target; status/finished belong to the source role.
             _ => Ok(()),
         }
     }
@@ -427,6 +745,98 @@ impl XdndBridge {
             return Ok(());
         }
         self.read_property(events)
+    }
+
+    /// Serve a `SelectionRequest` from the source role. `text/uri-list` is
+    /// written from the cached payload; `TARGETS` advertises the one flavor
+    /// this bridge translates. A request before the payload has arrived is
+    /// parked and answered by [`Self::set_source_payload`].
+    fn handle_selection_request(
+        &mut self,
+        request: SelectionRequestEvent,
+        events: &mut Vec<BridgeEvent>,
+    ) -> Result<(), String> {
+        if self.source.is_none() || request.selection != self.atoms.selection {
+            return Ok(());
+        }
+        if request.property == 0 {
+            // An obsolete request: answer with no property.
+            return self.send_selection_notify(&request, 0);
+        }
+        if request.target == self.targets {
+            self.conn
+                .change_property32(
+                    PropMode::REPLACE,
+                    request.requestor,
+                    request.property,
+                    AtomEnum::ATOM,
+                    &[self.uri_list],
+                )
+                .map_err(|err| format!("write TARGETS: {err}"))?;
+            return self.send_selection_notify(&request, request.property);
+        }
+        if request.target != self.uri_list {
+            // Only file drags are translated (T346 records other flavors).
+            return self.send_selection_notify(&request, 0);
+        }
+        let payload = self
+            .source
+            .as_ref()
+            .and_then(|source| source.payload.clone());
+        if let Some(payload) = payload {
+            self.write_selection_property(&request, &payload)?;
+            self.send_selection_notify(&request, request.property)?;
+            events.push(BridgeEvent::SourceSelectionServed {
+                target: request.requestor,
+            });
+            return Ok(());
+        }
+        if let Some(source) = self.source.as_mut() {
+            source.pending = Some(request);
+        }
+        events.push(BridgeEvent::SourceSelectionNeeded {
+            target: request.requestor,
+        });
+        Ok(())
+    }
+
+    fn write_selection_property(
+        &self,
+        request: &SelectionRequestEvent,
+        payload: &[u8],
+    ) -> Result<(), String> {
+        self.conn
+            .change_property8(
+                PropMode::REPLACE,
+                request.requestor,
+                request.property,
+                self.uri_list,
+                payload,
+            )
+            .map_err(|err| format!("write text/uri-list property: {err}"))?;
+        Ok(())
+    }
+
+    fn send_selection_notify(
+        &self,
+        request: &SelectionRequestEvent,
+        property: Atom,
+    ) -> Result<(), String> {
+        let notify = SelectionNotifyEvent {
+            response_type: smithay::reexports::x11rb::protocol::xproto::SELECTION_NOTIFY_EVENT,
+            sequence: 0,
+            time: request.time,
+            requestor: request.requestor,
+            selection: request.selection,
+            target: request.target,
+            property,
+        };
+        self.conn
+            .send_event(false, request.requestor, EventMask::NO_EVENT, notify)
+            .map_err(|err| format!("send source SelectionNotify: {err}"))?;
+        self.conn
+            .flush()
+            .map_err(|err| format!("flush source SelectionNotify: {err}"))
     }
 
     fn read_property(&mut self, events: &mut Vec<BridgeEvent>) -> Result<(), String> {
@@ -569,6 +979,22 @@ impl XdndBridge {
         }
         let source = pending.source;
         self.fail_transfer(source, "the selection transfer timed out", events)
+    }
+
+    /// A source-role drag whose target never sent `XdndFinished` is bounded:
+    /// send `XdndLeave`, release the selection, and report the timeout.
+    fn expire_source(&mut self, events: &mut Vec<BridgeEvent>) -> Result<(), String> {
+        let Some(deadline) = self.source.as_ref().and_then(|source| source.deadline) else {
+            return Ok(());
+        };
+        if Instant::now() < deadline {
+            return Ok(());
+        }
+        let target = self.source_target().unwrap_or(0);
+        let _ = self.source_leave();
+        self.end_source()?;
+        events.push(BridgeEvent::SourceTimedOut { target });
+        Ok(())
     }
 
     fn read_type_list(&mut self, source: Window) -> Result<Vec<u32>, String> {

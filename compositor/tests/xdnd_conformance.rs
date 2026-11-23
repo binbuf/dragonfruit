@@ -729,9 +729,303 @@ fn compositor_publishes_the_root_xdnd_proxy() {
     std::mem::drop(conn);
 }
 
-///
-/// T328a: the bridge-as-target connection half against a fake X11 source.
-///
+/// Drain the bridge until `done` returns true, or `timeout` passes. Returns
+/// every event the bridge produced.
+fn pump_bridge_events(
+    bridge: &mut XdndBridge,
+    timeout: Duration,
+    mut done: impl FnMut(&[BridgeEvent]) -> bool,
+) -> Vec<BridgeEvent> {
+    let deadline = Instant::now() + timeout;
+    let mut events = Vec::new();
+    loop {
+        events.extend(bridge.poll().expect("bridge poll"));
+        if done(&events) || Instant::now() >= deadline {
+            return events;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Wait for a `SelectionNotify` addressed to `requestor`.
+fn wait_for_selection_notify(
+    conn: &RustConnection,
+    requestor: X11Window,
+    selection: Atom,
+    what: &str,
+) -> x11rb::protocol::xproto::SelectionNotifyEvent {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        match conn.poll_for_event() {
+            Ok(Some(Event::SelectionNotify(notify)))
+                if notify.requestor == requestor && notify.selection == selection =>
+            {
+                return notify;
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+            Err(err) => panic!("poll_for_event: {err}"),
+        }
+    }
+    panic!("timed out waiting for {what}");
+}
+
+/// T328b: the bridge drives the XDnD **source** role against a fake X11
+/// target. It enters with a `text/uri-list` offer, waits for `XdndStatus`
+/// before dropping, serves the selection from the Wayland payload, and
+/// releases ownership on `XdndFinished`. The same connection, atom table, and
+/// bridge window as T328a are reused.
+#[test]
+fn xdnd_source_bridge_drives_a_fake_x11_target() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-xdnd-source-{}", std::process::id());
+    let proc = CompositorProcess::start(&socket_name);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let screen = conn.setup().roots[screen_num].clone();
+    let mut bridge = XdndBridge::connect(&display).expect("start the XDnD bridge");
+    let source_window = bridge.window();
+    let atoms = *bridge.atoms();
+    let uri_list = bridge.uri_list_atom();
+    let selection = intern(&conn, "XdndSelection");
+
+    // A fake X11 target advertises XDnD 5.
+    let target = make_window(&conn, &screen);
+    conn.change_property32(
+        PropMode::REPLACE,
+        target,
+        atoms.aware,
+        AtomEnum::ATOM,
+        &[u32::from(XDND_VERSION)],
+    )
+    .expect("set XdndAware");
+    conn.flush().expect("flush target setup");
+
+    // The source role owns XdndSelection. `None` resolves to the Copy default.
+    bridge
+        .begin_source(XdndAction::None)
+        .expect("begin the XDnD source");
+    assert_eq!(bridge.source_target(), None);
+    // `set_selection_owner` and this query are on different X connections, so
+    // wait for the server to process the ownership request.
+    let owner_deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let owner = conn
+            .get_selection_owner(selection)
+            .expect("get selection owner")
+            .reply()
+            .expect("selection owner reply")
+            .owner;
+        if owner == source_window {
+            break;
+        }
+        assert!(
+            Instant::now() < owner_deadline,
+            "the bridge window owns XdndSelection (owner was {owner:#x})"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // Enter the target: Enter then the opening Position, with Copy proposed.
+    bridge
+        .source_enter(target, (12, 34), 7)
+        .expect("enter the X11 target");
+    let enter = wait_for_message(&conn, target, atoms.enter, "XdndEnter");
+    match XdndMessage::decode("XdndEnter", enter, &atoms).expect("decode Enter") {
+        XdndMessage::Enter {
+            source,
+            version,
+            more_types,
+            types,
+        } => {
+            assert_eq!(source, source_window, "the bridge window is the source");
+            assert_eq!(version, XDND_VERSION);
+            assert!(!more_types);
+            assert_eq!(types, vec![uri_list], "the only flavor is text/uri-list");
+        }
+        other => panic!("expected XdndEnter, got {other:?}"),
+    }
+    let position = wait_for_message(&conn, target, atoms.position, "XdndPosition");
+    match XdndMessage::decode("XdndPosition", position, &atoms).expect("decode Position") {
+        XdndMessage::Position {
+            source,
+            position,
+            action,
+            ..
+        } => {
+            assert_eq!(source, source_window);
+            assert_eq!(position, (12, 34));
+            assert_eq!(action, XdndAction::Copy, "None resolved to Copy");
+        }
+        other => panic!("expected XdndPosition, got {other:?}"),
+    }
+
+    // The source must not drop before the target answers `XdndStatus`.
+    assert!(
+        !bridge.source_drop(0).expect("refused drop"),
+        "a drop before XdndStatus is not sent"
+    );
+
+    // The target accepts with Move (not the proposed default).
+    let status = XdndMessage::Status {
+        target,
+        accept: true,
+        want_position: true,
+        action: XdndAction::Move,
+    };
+    send_message(
+        &conn,
+        source_window,
+        atoms.status,
+        status.encode(&atoms).expect("encode Status"),
+    );
+    let events = pump_bridge_events(&mut bridge, Duration::from_secs(5), |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, BridgeEvent::SourceStatus { .. }))
+    });
+    let status_event = events
+        .iter()
+        .find_map(|event| match event {
+            BridgeEvent::SourceStatus {
+                target: event_target,
+                accept,
+                action,
+            } => Some((*event_target, *accept, *action)),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("the bridge absorbed XdndStatus: {events:?}"));
+    assert_eq!(status_event, (target, true, XdndAction::Move));
+    assert!(bridge.source_is_accepted());
+    assert_eq!(bridge.source_accepted_action(), Some(XdndAction::Move));
+
+    // Drop now that the target accepted.
+    assert!(
+        bridge.source_drop(0).expect("send XdndDrop"),
+        "the accepted drag drops"
+    );
+    let drop = wait_for_message(&conn, target, atoms.drop, "XdndDrop");
+    match XdndMessage::decode("XdndDrop", drop, &atoms).expect("decode Drop") {
+        XdndMessage::Drop { source, .. } => assert_eq!(source, source_window),
+        other => panic!("expected XdndDrop, got {other:?}"),
+    }
+
+    // The target asks for text/uri-list before the payload was fetched. The
+    // bridge parks the request and reports the need; the payload then serves
+    // it. This is the production lazy path, not a preloaded shortcut.
+    let property = intern(&conn, "DF_TEST_SOURCE_SELECTION");
+    conn.convert_selection(target, selection, uri_list, property, x11rb::CURRENT_TIME)
+        .expect("request text/uri-list")
+        .check()
+        .expect("convert selection");
+    conn.flush().expect("flush selection request");
+    let events = pump_bridge_events(&mut bridge, Duration::from_secs(5), |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, BridgeEvent::SourceSelectionNeeded { .. }))
+    });
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, BridgeEvent::SourceSelectionNeeded { .. })),
+        "the bridge asked the host for the payload: {events:?}"
+    );
+
+    let payload = b"file:///home/u/one.txt\r\nfile:///home/u/two%20words.txt\r\n";
+    bridge
+        .set_source_payload(payload.to_vec())
+        .expect("serve the fetched payload");
+    let notify = wait_for_selection_notify(&conn, target, selection, "SelectionNotify");
+    assert_eq!(
+        notify.property, property,
+        "the payload property was written"
+    );
+    let value = conn
+        .get_property(true, target, property, AtomEnum::ANY, 0, 4096)
+        .expect("get selection payload")
+        .reply()
+        .expect("selection payload reply");
+    assert_eq!(value.value, payload, "text/uri-list round-trips intact");
+
+    // The target confirms the drop; the source releases the selection.
+    let finished = XdndMessage::Finished {
+        target,
+        success: true,
+        action: XdndAction::Move,
+    };
+    send_message(
+        &conn,
+        source_window,
+        atoms.finished,
+        finished.encode(&atoms).expect("encode Finished"),
+    );
+    let events = pump_bridge_events(&mut bridge, Duration::from_secs(5), |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, BridgeEvent::SourceFinished { .. }))
+    });
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, BridgeEvent::SourceFinished { success: true, .. })),
+        "the bridge absorbed XdndFinished: {events:?}"
+    );
+    assert!(!bridge.has_source(), "finished ends the source role");
+    let owner = conn
+        .get_selection_owner(selection)
+        .expect("get selection owner after finish")
+        .reply()
+        .expect("selection owner reply")
+        .owner;
+    assert_eq!(owner, 0, "XdndSelection is released");
+
+    // A second drag that leaves the target sends `XdndLeave` and keeps the
+    // connection alive for the next one.
+    let other = make_window(&conn, &screen);
+    conn.change_property32(
+        PropMode::REPLACE,
+        other,
+        atoms.aware,
+        AtomEnum::ATOM,
+        &[u32::from(XDND_VERSION)],
+    )
+    .expect("set second XdndAware");
+    conn.sync().expect("sync second target");
+    bridge
+        .begin_source(XdndAction::Link)
+        .expect("begin a second source");
+    bridge
+        .source_enter(other, (1, 2), 3)
+        .expect("enter the second target");
+    assert_eq!(bridge.source_target(), Some(other));
+    let _ = wait_for_message(&conn, other, atoms.enter, "second XdndEnter");
+    let position = wait_for_message(&conn, other, atoms.position, "second XdndPosition");
+    match XdndMessage::decode("XdndPosition", position, &atoms).expect("decode Position") {
+        XdndMessage::Position { action, .. } => {
+            assert_eq!(action, XdndAction::Link, "each of the five actions is sent")
+        }
+        other => panic!("expected XdndPosition, got {other:?}"),
+    }
+    bridge.source_leave().expect("leave the second target");
+    let leave = wait_for_message(&conn, other, atoms.leave, "XdndLeave");
+    match XdndMessage::decode("XdndLeave", leave, &atoms).expect("decode Leave") {
+        XdndMessage::Leave { source } => assert_eq!(source, source_window),
+        other => panic!("expected XdndLeave, got {other:?}"),
+    }
+    bridge.end_source().expect("end the second source");
+
+    std::mem::drop(bridge);
+    std::mem::drop(conn);
+}
+
 /// The bridge interns its atoms, creates the bridge window, advertises
 /// `XdndAware`, and publishes the root `XdndProxy`. A fake X11 drag source then
 /// sends real `XdndEnter`/`Position`/`Drop` client messages to the bridge

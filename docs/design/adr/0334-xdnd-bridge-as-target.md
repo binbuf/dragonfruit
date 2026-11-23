@@ -3,8 +3,9 @@
 ## Status
 
 accepted — implements the X11→Wayland half of the XDnD gap (G-07) for T328a.
-The Wayland→X11 source role remains T328b and reuses this connection, atom
-table, and bridge window. Partially supersedes
+The Wayland→X11 source role landed in T328b on this same connection, atom
+table, and bridge window; see
+[ADR 0335](0335-xdnd-bridge-as-source.md). Partially supersedes
 [ADR 0099](0099-xdnd-bridge-model-and-documented-gap.md), whose codec and
 state machines are unchanged.
 

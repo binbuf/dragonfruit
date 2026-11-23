@@ -13,9 +13,9 @@
 //! The module is deliberately free of `x11rb`/Smithay types so the wire format
 //! and the state transitions are unit-testable without a display. The X11
 //! connection half (interning atoms, creating the bridge window, reading
-//! `SelectionRequest`) is not wired into the compositor yet; see
-//! `docs/design/adr/0099-xdnd-bridge-model-and-documented-gap.md` for the
-//! exact remaining work and the T-17 gate note.
+//! `SelectionRequest`, and driving the source exchange) lives in
+//! `compositor/src/xdnd_bridge.rs`; ADR 0334 and ADR 0335 record the runtime
+//! decisions.
 //!
 //! Atom ids are resolved by the caller (an X11 connection); the codec takes
 //! the [`XdndAtoms`] table and the separate `text/uri-list` atom id wherever
@@ -174,6 +174,10 @@ pub enum XdndAction {
 }
 
 impl XdndAction {
+    /// The action a source proposes when it has no preference. The XDnD
+    /// specification's default is Copy.
+    pub const DEFAULT: XdndAction = XdndAction::Copy;
+
     /// The atom name for the action, or `None` for [`XdndAction::None`].
     pub fn atom_name(self) -> Option<&'static str> {
         match self {
@@ -184,6 +188,20 @@ impl XdndAction {
             XdndAction::Ask => Some("XdndActionAsk"),
             XdndAction::Private => Some("XdndActionPrivate"),
         }
+    }
+
+    /// Resolve [`XdndAction::None`] to the default action; every other action
+    /// (including the four non-default ones) is returned unchanged.
+    pub fn resolved(self) -> Self {
+        match self {
+            XdndAction::None => Self::DEFAULT,
+            other => other,
+        }
+    }
+
+    /// Whether this is one of the five concrete actions (not `None`).
+    pub fn is_concrete(self) -> bool {
+        !matches!(self, XdndAction::None)
     }
 }
 
@@ -534,6 +552,7 @@ pub struct XdndSource {
     type_atoms: Vec<u32>,
     action: XdndAction,
     accepted: Option<XdndAction>,
+    finished: bool,
 }
 
 impl XdndSource {
@@ -549,8 +568,12 @@ impl XdndSource {
             target,
             version,
             type_atoms,
-            action,
+            // A source that has no preference proposes the XDnD default
+            // (Copy); the target may still answer with any of the five
+            // concrete actions.
+            action: action.resolved(),
             accepted: None,
+            finished: false,
         }
     }
 
@@ -564,7 +587,7 @@ impl XdndSource {
         self.target
     }
 
-    /// The action the source proposes.
+    /// The action the source proposes (never `None`).
     pub fn action(&self) -> XdndAction {
         self.action
     }
@@ -572,6 +595,11 @@ impl XdndSource {
     /// The action the target last accepted, if any.
     pub fn accepted_action(&self) -> Option<XdndAction> {
         self.accepted
+    }
+
+    /// Whether the target has answered a successful `XdndFinished`.
+    pub fn is_finished(&self) -> bool {
+        self.finished
     }
 
     /// The opening `XdndEnter`.
@@ -610,13 +638,51 @@ impl XdndSource {
     }
 
     /// Absorb an `XdndStatus` from the target. Returns `true` when the target
-    /// accepted the drag.
+    /// accepted the drag. A status naming another target is ignored.
     pub fn absorb_status(&mut self, status: &XdndMessage) -> bool {
-        if let XdndMessage::Status { accept, action, .. } = status {
-            self.accepted = if *accept { Some(*action) } else { None };
+        if let XdndMessage::Status {
+            target,
+            accept,
+            action,
+            ..
+        } = status
+        {
+            if *target != self.target {
+                return false;
+            }
+            self.accepted = if *accept {
+                Some(action.resolved())
+            } else {
+                None
+            };
             *accept
         } else {
             false
+        }
+    }
+
+    /// Absorb an `XdndFinished` from the target. Returns the success flag, or
+    /// `None` when the message names another target or is not a finished
+    /// message. The source records the action the target reports.
+    pub fn absorb_finished(&mut self, message: &XdndMessage) -> Option<bool> {
+        if let XdndMessage::Finished {
+            target,
+            success,
+            action,
+        } = message
+        {
+            if *target != self.target {
+                return None;
+            }
+            self.finished = true;
+            self.accepted = if *success {
+                Some(action.resolved())
+            } else {
+                None
+            };
+            Some(*success)
+        } else {
+            None
         }
     }
 
@@ -927,6 +993,71 @@ mod tests {
 
         assert_eq!(source.drop(9).name(), "XdndDrop");
         assert_eq!(source.leave().name(), "XdndLeave");
+
+        // A status for another target is ignored.
+        let foreign = XdndMessage::Status {
+            target: 45,
+            accept: true,
+            want_position: false,
+            action: XdndAction::Move,
+        };
+        assert!(!source.absorb_status(&foreign));
+        assert_eq!(source.accepted_action(), Some(XdndAction::Copy));
+
+        // The target's Finished closes the drag.
+        let finished = XdndMessage::Finished {
+            target: 44,
+            success: true,
+            action: XdndAction::Move,
+        };
+        assert_eq!(source.absorb_finished(&finished), Some(true));
+        assert!(source.is_finished());
+        assert_eq!(source.accepted_action(), Some(XdndAction::Move));
+    }
+
+    #[test]
+    fn source_supports_the_five_actions_and_the_default() {
+        // `None` resolves to Copy; every concrete action survives.
+        assert_eq!(XdndAction::None.resolved(), XdndAction::Copy);
+        assert!(!XdndAction::None.is_concrete());
+        for action in [
+            XdndAction::Copy,
+            XdndAction::Move,
+            XdndAction::Link,
+            XdndAction::Ask,
+            XdndAction::Private,
+        ] {
+            assert_eq!(action.resolved(), action);
+            assert!(action.is_concrete());
+        }
+
+        // A source constructed with no preference proposes Copy in its
+        // Position message, and a target may still answer with each of the
+        // five actions.
+        let atoms = atoms();
+        for action in [
+            XdndAction::Copy,
+            XdndAction::Move,
+            XdndAction::Link,
+            XdndAction::Ask,
+            XdndAction::Private,
+        ] {
+            let mut source = XdndSource::new(1, 2, 5, vec![URI_LIST_ATOM], XdndAction::None);
+            assert_eq!(source.action(), XdndAction::Copy);
+            let status = XdndMessage::Status {
+                target: 2,
+                accept: true,
+                want_position: false,
+                action,
+            };
+            assert!(source.absorb_status(&status));
+            assert_eq!(source.accepted_action(), Some(action));
+            assert_eq!(
+                atoms.action_from_atom(atoms.action_atom(action)),
+                action,
+                "{action:?} round-trips through its atom"
+            );
+        }
     }
 
     #[test]

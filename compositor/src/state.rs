@@ -7645,7 +7645,27 @@ impl DataDeviceHandler for DfState {
     }
 }
 
-impl ClientDndGrabHandler for DfState {}
+impl ClientDndGrabHandler for DfState {
+    fn started(
+        &mut self,
+        source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
+        _icon: Option<WlSurface>,
+        _seat: smithay::input::Seat<DfState>,
+    ) {
+        // The Wayland client owns the data offer; the bridge only translates
+        // it to XDnD when the pointer reaches an X11 window (T328b).
+        self.begin_xdnd_source(source);
+    }
+
+    fn dropped(
+        &mut self,
+        _target: Option<WlSurface>,
+        _validated: bool,
+        _seat: smithay::input::Seat<DfState>,
+    ) {
+        self.finish_xdnd_source_drop();
+    }
+}
 impl ServerDndGrabHandler for DfState {
     fn accept(&mut self, mime_type: Option<String>, _seat: smithay::input::Seat<DfState>) {
         // Only the synthetic X11→Wayland drop participates here; the

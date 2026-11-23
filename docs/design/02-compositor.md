@@ -1411,7 +1411,26 @@ so a later client refusal cannot lose the source. Hover negotiation is not
 mirrored: the offer appears at drop time. An XdndAware X11 window that is
 geometrically under the pointer still receives its own drag (an X protocol
 limit). The decision is frozen in
-[ADR 0334](adr/0334-xdnd-bridge-as-target.md); the source role is T328b.
+[ADR 0334](adr/0334-xdnd-bridge-as-target.md).
+
+### Implementation note (T328b)
+
+The Wayland→X11 half reuses the same `compositor/src/xdnd_bridge.rs`
+connection, atom table, and bridge window. The bridge window becomes the
+`XdndSelection` owner and the source id: `begin_source` takes ownership,
+`source_enter` sends `XdndEnter` plus the opening `XdndPosition`, motion sends
+positions, and `source_drop` sends `XdndDrop` only after an accepting
+`XdndStatus`. `XdndStatus`/`XdndFinished` are decoded on the bridge connection;
+a target that never finishes is bounded by the 2 s deadline. The bridge
+translates `text/uri-list` only and proposes Copy by default, recording
+whichever of the five concrete actions the target accepts. When the X11
+target asks for the selection, the compositor parks the request, asks the
+Wayland `WlDataSource` for the payload into a pipe, and reads it from a
+calloop source, so the event loop never blocks on the client. The target is
+the topmost X11 window under the pointer, reusing `surface_under` so chrome
+and titlebars are excluded. Root coordinates are the logical point scaled by
+the session's integer Xwayland scale. The decision is frozen in
+[ADR 0335](adr/0335-xdnd-bridge-as-source.md).
 
 ### Implementation note (T-14.6a)
 
@@ -1454,8 +1473,8 @@ first buffer) and fails if the callback is not answered.
 
 Remaining zoo outcomes are known and unchanged: the Steam row is an X11
 `WM_CLASS` stand-in (Steam is not installable here), every row falls back to
-the fixed application menu, and cross-boundary XDnD is still the documented
-T-14.5 gap.
+the fixed application menu, and cross-boundary XDnD is live in both directions
+(T328a/T328b).
 
 ## Out of scope
 

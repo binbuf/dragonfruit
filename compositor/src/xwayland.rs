@@ -24,12 +24,16 @@
 //! `xdnd_bridge` module covers the X11→Wayland target role (T328a); the
 //! Wayland→X11 source role remains T328b.
 
+use std::os::fd::AsFd;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-use dragonfruit_compositor::xdnd::URI_LIST_MIME;
-use dragonfruit_compositor::xdnd_bridge::{BridgeEvent, XdndBridge, TRANSFER_TIMEOUT};
+use dragonfruit_compositor::xdnd::{XdndAction, URI_LIST_MIME};
+use dragonfruit_compositor::xdnd_bridge::{
+    BridgeEvent, XdndBridge, MAX_PAYLOAD_BYTES, TRANSFER_TIMEOUT,
+};
 use smithay::backend::input::ButtonState;
 use smithay::desktop::Window;
 use smithay::input::pointer::Focus as PointerFocus;
@@ -38,6 +42,7 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{Interest, Mode, PostAction, RegistrationToken};
 use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction;
+use smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::x11rb::connection::Connection as _;
 use smithay::reexports::x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, PropMode};
@@ -47,7 +52,8 @@ use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus as _;
 use smithay::wayland::selection::data_device::{
     clear_data_device_selection, current_data_device_selection_userdata,
-    request_data_device_client_selection, set_data_device_selection, start_dnd, SourceMetadata,
+    request_data_device_client_selection, set_data_device_selection, start_dnd,
+    with_source_metadata, SourceMetadata,
 };
 use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
@@ -115,6 +121,14 @@ pub struct XwaylandState {
     pub dnd_drop_armed: bool,
     /// The bounded fallback timer for a client that never accepts.
     pub dnd_drop_timer: Option<RegistrationToken>,
+    /// The Wayland client's data source while a Wayland→X11 drag is live
+    /// (T328b). `None` when the drag cannot cross (no `text/uri-list`).
+    pub dnd_source: Option<WlDataSource>,
+    /// The calloop source reading the `text/uri-list` payload the Wayland
+    /// source writes after the X11 target asks for it.
+    pub dnd_source_reader: Option<RegistrationToken>,
+    /// Accumulated payload bytes from [`Self::dnd_source_reader`].
+    pub dnd_source_buffer: Vec<u8>,
 }
 
 impl Default for XwaylandState {
@@ -139,6 +153,9 @@ impl Default for XwaylandState {
             dnd_offer_action: false,
             dnd_drop_armed: false,
             dnd_drop_timer: None,
+            dnd_source: None,
+            dnd_source_reader: None,
+            dnd_source_buffer: Vec::new(),
         }
     }
 }
@@ -190,6 +207,21 @@ fn x11_string(value: &str) -> String {
     value.replace('\0', "")
 }
 
+/// Map the Wayland DnD action set to the one action the bridge proposes to
+/// X11. Copy is the default and the safe choice for a file drag; Move is used
+/// only when the client offers nothing else, and Ask is last.
+fn xdnd_action_for(actions: DndAction) -> XdndAction {
+    if actions.contains(DndAction::Copy) {
+        XdndAction::Copy
+    } else if actions.contains(DndAction::Move) {
+        XdndAction::Move
+    } else if actions.contains(DndAction::Ask) {
+        XdndAction::Ask
+    } else {
+        XdndAction::Copy
+    }
+}
+
 /// Start the XDnD bridge-as-target on its own X11 connection (T328a).
 ///
 /// The bridge publishes the root `XdndProxy` and creates the bridge window;
@@ -237,6 +269,7 @@ fn start_xdnd_bridge(state: &mut DfState) {
 
 /// Tear down the XDnD bridge (server restart or connection error).
 fn stop_xdnd_bridge(state: &mut DfState) {
+    state.end_xdnd_source();
     if let Some(token) = state.xwayland.dnd_source_token.take() {
         state.loop_handle.remove(token);
     }
@@ -621,6 +654,12 @@ impl DfState {
                         });
             }
             BridgeEvent::Enter { .. } | BridgeEvent::Position { .. } => {}
+            BridgeEvent::SourceStatus { .. } => {}
+            BridgeEvent::SourceSelectionNeeded { .. } => self.request_xdnd_source_payload(),
+            BridgeEvent::SourceSelectionServed { .. } => {}
+            BridgeEvent::SourceFinished { .. } | BridgeEvent::SourceTimedOut { .. } => {
+                self.end_xdnd_source();
+            }
         }
     }
 
@@ -768,6 +807,198 @@ impl DfState {
         if let Some(token) = self.xwayland.dnd_drop_timer.take() {
             self.loop_handle.remove(token);
         }
+    }
+
+    /// Begin the Wayland→X11 half of the bridge (T328b). The bridge window
+    /// takes `XdndSelection` ownership; the payload is fetched lazily when an
+    /// X11 target asks for it. A drag without `text/uri-list` never crosses.
+    pub(crate) fn begin_xdnd_source(&mut self, source: Option<WlDataSource>) {
+        self.end_xdnd_source();
+        let Some(source) = source else {
+            return;
+        };
+        let metadata = with_source_metadata(&source, |metadata| {
+            (metadata.mime_types.clone(), metadata.dnd_action)
+        });
+        let Ok((mime_types, actions)) = metadata else {
+            return;
+        };
+        if !mime_types.iter().any(|mime| mime == URI_LIST_MIME) {
+            return;
+        }
+        let Some(bridge) = self.xwayland.dnd.as_mut() else {
+            return;
+        };
+        if let Err(err) = bridge.begin_source(xdnd_action_for(actions)) {
+            eprintln!("dragonfruit-compositor: XDnD source unavailable: {err}");
+            return;
+        }
+        self.xwayland.dnd_source = Some(source);
+        // A drag can start while the pointer already rests over an X11 window.
+        if let Some(pointer) = self.seat.get_pointer() {
+            let location = pointer.current_location();
+            self.update_xdnd_source(location);
+        }
+    }
+
+    /// End the Wayland→X11 drag: leave any X11 target and release
+    /// `XdndSelection`.
+    pub(crate) fn end_xdnd_source(&mut self) {
+        if let Some(bridge) = self.xwayland.dnd.as_mut() {
+            if let Err(err) = bridge.end_source() {
+                eprintln!("dragonfruit-compositor: XDnD source teardown: {err}");
+            }
+        }
+        self.xwayland.dnd_source = None;
+        if let Some(token) = self.xwayland.dnd_source_reader.take() {
+            self.loop_handle.remove(token);
+        }
+        self.xwayland.dnd_source_buffer.clear();
+    }
+
+    /// Follow the live Wayland drag across X11 windows. Called after every
+    /// pointer motion; a no-op when no client drag is active.
+    pub(crate) fn update_xdnd_source(&mut self, location: Point<f64, Logical>) {
+        if self.xwayland.dnd_source.is_none() {
+            return;
+        }
+        let target = self.x11_window_under(location);
+        let position = self.xdnd_root_position(location);
+        let Some(bridge) = self.xwayland.dnd.as_mut() else {
+            return;
+        };
+        let current = bridge.source_target();
+        if target == current {
+            if target.is_some() {
+                let _ = bridge.source_position(position, 0);
+            }
+            return;
+        }
+        if current.is_some() {
+            let _ = bridge.source_leave();
+        }
+        if let Some(target) = target {
+            if let Err(err) = bridge.source_enter(target, position, 0) {
+                eprintln!("dragonfruit-compositor: XdndEnter failed: {err}");
+            }
+        }
+    }
+
+    /// The client released the drag. Drop only when the X11 target answered
+    /// `XdndStatus` with an accept; otherwise leave and release.
+    pub(crate) fn finish_xdnd_source_drop(&mut self) {
+        let result = self
+            .xwayland
+            .dnd
+            .as_mut()
+            .map(|bridge| (bridge.source_target(), bridge.source_drop(0)));
+        match result {
+            Some((_, Ok(true))) => {
+                // The bridge's deadline bounds a target that never finishes;
+                // arm a wakeup because a silent target sends no X event.
+                let wake = TRANSFER_TIMEOUT + Duration::from_millis(200);
+                let _ =
+                    self.loop_handle
+                        .insert_source(Timer::from_duration(wake), |_, _, state| {
+                            state.poll_xdnd_bridge();
+                            TimeoutAction::Drop
+                        });
+            }
+            Some((_, Ok(false))) | None => self.end_xdnd_source(),
+            Some((_, Err(err))) => {
+                eprintln!("dragonfruit-compositor: XdndDrop failed: {err}");
+                self.end_xdnd_source();
+            }
+        }
+    }
+
+    /// The X11 target asked for the payload before it was fetched. Ask the
+    /// Wayland source to write `text/uri-list` into a pipe and read it from a
+    /// calloop source, so the event loop never blocks on the client.
+    fn request_xdnd_source_payload(&mut self) {
+        if self.xwayland.dnd_source_reader.is_some() {
+            return;
+        }
+        let Some(source) = self.xwayland.dnd_source.clone() else {
+            return;
+        };
+        let Ok((reader, writer)) = UnixStream::pair() else {
+            return;
+        };
+        if reader.set_nonblocking(true).is_err() {
+            return;
+        }
+        source.send(URI_LIST_MIME.to_string(), writer.as_fd());
+        self.xwayland.dnd_source_buffer.clear();
+        let token = self
+            .loop_handle
+            .insert_source(
+                Generic::new(reader, Interest::READ, Mode::Level),
+                |_readiness, stream, state| {
+                    use std::io::Read as _;
+                    let mut reader = stream.as_ref();
+                    let mut buf = [0u8; 8192];
+                    loop {
+                        match reader.read(&mut buf) {
+                            Ok(0) => {
+                                state.finish_xdnd_source_payload();
+                                return Ok(PostAction::Remove);
+                            }
+                            Ok(read) => {
+                                if state.xwayland.dnd_source_buffer.len() + read > MAX_PAYLOAD_BYTES
+                                {
+                                    state.finish_xdnd_source_payload();
+                                    return Ok(PostAction::Remove);
+                                }
+                                state
+                                    .xwayland
+                                    .dnd_source_buffer
+                                    .extend_from_slice(&buf[..read]);
+                            }
+                            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                                return Ok(PostAction::Continue);
+                            }
+                            Err(_) => {
+                                state.finish_xdnd_source_payload();
+                                return Ok(PostAction::Remove);
+                            }
+                        }
+                    }
+                },
+            )
+            .ok();
+        self.xwayland.dnd_source_reader = token;
+    }
+
+    fn finish_xdnd_source_payload(&mut self) {
+        self.xwayland.dnd_source_reader = None;
+        let payload = std::mem::take(&mut self.xwayland.dnd_source_buffer);
+        if let Some(bridge) = self.xwayland.dnd.as_mut() {
+            if let Err(err) = bridge.set_source_payload(payload) {
+                eprintln!("dragonfruit-compositor: XDnD source payload failed: {err}");
+            }
+        }
+    }
+
+    /// The topmost X11 window whose surface is under `location`, if any.
+    fn x11_window_under(&self, location: Point<f64, Logical>) -> Option<X11Window> {
+        let (surface, _) = crate::input::surface_under(self, location)?;
+        let window = self.window_for_surface(&surface)?;
+        window
+            .x11_surface()
+            .map(smithay::xwayland::X11Surface::window_id)
+    }
+
+    /// Convert a logical scene point to Xwayland root coordinates. Xwayland
+    /// renders at the session's integer scale; the root is the primary
+    /// output's space (multi-monitor is recorded as a follow-up).
+    fn xdnd_root_position(&self, location: Point<f64, Logical>) -> (i16, i16) {
+        let scale = f64::from(self.xwayland.integer_scale.max(1));
+        let clamp = |value: f64| value.clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16;
+        (
+            clamp((location.x * scale).round()),
+            clamp((location.y * scale).round()),
+        )
     }
 
     /// Drop every X11 window when the X server goes away (T326).

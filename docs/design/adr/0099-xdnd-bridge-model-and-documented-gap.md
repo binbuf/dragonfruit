@@ -7,10 +7,10 @@ accepted — implements (partially) the XDnD item of
 and closes the "known gap" recorded by legacy T-06 into an explicit,
 test-covered boundary for T-17.
 
-Partially superseded by [ADR 0334](0334-xdnd-bridge-as-target.md): the
-target-role connection half (X11 drag → Wayland) landed in T328a; the source
-role (Wayland drag → X11) remains T328b. The codec and state machines in this
-decision are unchanged.
+Partially superseded by [ADR 0334](0334-xdnd-bridge-as-target.md) and
+[ADR 0335](0335-xdnd-bridge-as-source.md): the runtime halves (X11 drag →
+Wayland in T328a, Wayland drag → X11 in T328b) now exist. The codec and state
+machines in this decision are unchanged.
 
 ## Context
 
