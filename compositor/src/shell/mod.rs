@@ -93,6 +93,12 @@ struct ClientSession {
 struct LayerEntry {
     resource: df_layer_surface::DfLayerSurface,
     surface: WlSurface,
+    /// The trusted client that created this layer.
+    ///
+    /// Stored at creation because a resource's `client()` can no longer
+    /// resolve once the client is disconnecting (T308). `forget_client` and
+    /// the keyboard restore both need reliable ownership.
+    client: ClientId,
     state: LayerSurfaceState,
     pending_panel_rect: Option<Rectangle<i32, Logical>>,
     /// Accumulated `set_panel_region` metadata for the next commit. `None`
@@ -282,8 +288,7 @@ impl ShellProtocolState {
             .remove(client)
             .and_then(|session| session.role);
         // Chrome surfaces owned by the client no longer reserve zones.
-        self.layers
-            .retain(|entry| entry.resource.client().map(|c| c.id()) != Some(client.clone()));
+        self.layers.retain(|entry| entry.client != *client);
         role
     }
 }
@@ -1085,6 +1090,27 @@ impl DfState {
         };
         keyboard.set_focus(self, Some(surface.clone()), SERIAL_COUNTER.next_serial());
         true
+    }
+
+    /// Whether a chrome layer surface owned by `client` currently holds the
+    /// keyboard.
+    ///
+    /// Captured before `forget_client` drops the client's layer entries, so a
+    /// client teardown can restore window focus even when the `df_core`
+    /// disconnect callback runs before the layer's own `destroyed` callback
+    /// (T308).
+    fn client_layer_holds_keyboard(&self, client: &ClientId) -> bool {
+        let Some(focused) = self
+            .seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus())
+        else {
+            return false;
+        };
+        self.shell
+            .layers
+            .iter()
+            .any(|entry| entry.surface == focused && entry.client == *client)
     }
 
     /// Return keyboard focus to the active window after chrome closes or
@@ -2094,23 +2120,37 @@ impl Dispatch<df_core::DfCore, CoreUserData> for DfState {
         _resource: &df_core::DfCore,
         _data: &CoreUserData,
     ) {
-        if let Some(role) = state.shell.forget_client(&client) {
+        // Capture chrome focus before `forget_client` removes this client's
+        // layer entries: the `df_core` disconnect can arrive before the
+        // layer's own `destroyed` callback, and that callback can then no
+        // longer see which surface held the keyboard (T308).
+        let layer_held_focus = state.client_layer_holds_keyboard(&client);
+        let role = state.shell.forget_client(&client);
+        if role == Some(TrustedRole::Shell) && state.lock.is_locked() {
             // The trusted shell is also the lock UI. If it disappears while
             // the session is locked there is no lock surface and no input
             // target left, and Smithay's `locked_outputs` prevents a
             // restarted shell from creating a fresh lock (ADR 0312). End the
             // session cleanly instead of leaving a frozen, inputless lock.
             // Never unlock here: that would make a crash an unlock primitive.
-            if role == TrustedRole::Shell && state.lock.is_locked() {
-                println!(
-                    "dragonfruit-compositor: trusted shell disconnected while locked \
-                     (lock locked=1); ending the session"
-                );
-                state.running = false;
-                return;
-            }
+            println!(
+                "dragonfruit-compositor: trusted shell disconnected while locked \
+                 (lock locked=1); ending the session"
+            );
+            state.running = false;
+            return;
+        }
+        if let Some(role) = role {
             reissue_token(state, role);
         }
+        if layer_held_focus {
+            // The chrome surface that held the keyboard is gone; hand the
+            // keyboard back to the window that owned it before the chrome
+            // took focus. A dead surface must never keep the keyboard.
+            state.restore_window_keyboard_focus();
+        }
+        state.refresh_reserved_zones();
+        state.needs_redraw = true;
     }
 }
 
@@ -2196,6 +2236,7 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                 let entry = LayerEntry {
                     resource: resource.clone(),
                     surface,
+                    client: client.id(),
                     pending_panel_rect: None,
                     pending_panel_regions: None,
                     state: LayerSurfaceState {

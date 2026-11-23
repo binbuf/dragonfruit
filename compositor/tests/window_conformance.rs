@@ -2351,6 +2351,112 @@ fn minimize_releases_focus_and_restore_click_refocuses() {
     );
 }
 
+/// T308 acceptance: hard-killing the focused client must clear the keyboard
+/// (not leave it on the destroyed surface). The surviving window at the same
+/// location then takes focus on a click and receives keys again.
+#[test]
+fn killing_a_focused_client_clears_focus_and_a_click_refocuses_the_survivor() {
+    use std::os::fd::AsRawFd;
+
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-focus-kill-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-focus-kill",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // App A maps and takes the keyboard.
+    let (conn_a, mut queue_a, mut state_a) = connect(&proc.socket_path);
+    let (surface_a, xdg_a, toplevel_a, file_a) = map_toplevel(&mut state_a, &mut queue_a);
+    let reports = wait_for_report(&mut state_a, &mut queue_a, &input, |reports| {
+        reports.len() == 1
+    });
+    let report_a = reports[0];
+    let window_a = report_a.window;
+
+    click_window_content(&input, &report_a);
+    wait_for_focus(&input, Some(window_a));
+    key_tap(&input, KEY_A);
+    wait_for(
+        &conn_a,
+        &mut queue_a,
+        &mut state_a,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&KEY_A),
+    );
+
+    // App B maps a second window at the same centre. Mapping must not steal
+    // focus: A is still the focused client when it dies.
+    let (conn_b, mut queue_b, mut state_b) = connect(&proc.socket_path);
+    let (surface_b, xdg_b, toplevel_b, file_b) = map_toplevel(&mut state_b, &mut queue_b);
+    let reports = wait_for_report(&mut state_a, &mut queue_a, &input, |reports| {
+        reports.len() == 2
+    });
+    let window_b = reports
+        .iter()
+        .map(|report| report.window)
+        .find(|window| *window != window_a)
+        .expect("app B's window has a distinct id");
+    wait_for_focus(&input, Some(window_a));
+
+    // Hard-close A's connection: SIGKILL semantics, no clean destroy.
+    let kill_fd = conn_a.as_fd().as_raw_fd();
+    unsafe {
+        libc::shutdown(kill_fd, libc::SHUT_RDWR);
+    }
+    let remaining = wait_for_report(&mut state_b, &mut queue_b, &input, |reports| {
+        reports.len() == 1 && reports[0].window == window_b
+    });
+    // The active window cache and the keyboard handle are both cleared; no
+    // key may reach the survivor without a new click.
+    let report = wait_for_focus(&input, None);
+    assert!(
+        report.contains("keyboard none"),
+        "teardown left the keyboard on a dead surface: {report:?}"
+    );
+    key_tap(&input, KEY_B);
+    std::thread::sleep(Duration::from_millis(100));
+    queue_b
+        .roundtrip(&mut state_b)
+        .expect("roundtrip after key");
+    assert!(
+        !state_b.keys.contains(&KEY_B),
+        "a killed client's teardown must not leave focus on the survivor: {:?}",
+        state_b.keys
+    );
+
+    // Clicking the same location (now the survivor) focuses it and typing
+    // works again.
+    click_window_content(&input, &remaining[0]);
+    wait_for_focus(&input, Some(window_b));
+    key_tap(&input, KEY_C);
+    wait_for(
+        &conn_b,
+        &mut queue_b,
+        &mut state_b,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&KEY_C),
+    );
+
+    surface_a.destroy();
+    toplevel_a.destroy();
+    xdg_a.destroy();
+    drop(file_a);
+    surface_b.destroy();
+    toplevel_b.destroy();
+    xdg_b.destroy();
+    drop(file_b);
+    drop(conn_a);
+    drop(conn_b);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// Move the synthetic pointer to a global-space point (normalized like
 /// libinput's absolute coordinates).
 fn motion_to(input: &SyntheticInput, x: i32, y: i32) {

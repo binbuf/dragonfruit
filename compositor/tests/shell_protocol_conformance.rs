@@ -1162,6 +1162,40 @@ fn wait_for_menubar(
     }
 }
 
+/// The active window id from a `query focus` report (T308), or `None` when
+/// no client window owns the keyboard.
+fn parse_focus(report: &str) -> Option<u64> {
+    report.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        if parts.next()? != "focus" {
+            return None;
+        }
+        let value = parts.next()?;
+        if value == "none" {
+            None
+        } else {
+            value.parse().ok()
+        }
+    })
+}
+
+/// Poll `query focus` until the active window matches `expected`.
+#[track_caller]
+fn wait_for_focus(input: &SyntheticInput, expected: Option<u64>) -> String {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let report = input.query("query focus");
+        if parse_focus(&report) == expected {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for focus {expected:?}; last={report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 fn bind_core(
     state: &mut TestClient,
     queue: &EventQueue<TestClient>,
@@ -5153,18 +5187,7 @@ fn overview_policy_resizes_the_workspace_list() {
         |state| state.workspaces.len() >= 5,
     );
 
-    manager.set_overview_policy(
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        2,
-        1,
-    );
+    manager.set_overview_policy(None, None, None, None, None, None, None, None, 2, 1);
     let _ = conn.flush();
     wait_for(
         &conn,
@@ -6806,6 +6829,237 @@ fn shell_restart_reanchors_chrome_and_preserves_windows() {
     let _ = app_conn.flush();
     let _ = obs_conn.flush();
     proc.shutdown();
+}
+
+/// T308 acceptance: killing the shell while its chrome holds the keyboard
+/// must hand focus back to the active window (no dead surface, no extra
+/// click), a restart must bring the chrome back without stranding focus, and
+/// the window keeps receiving keys throughout.
+#[test]
+fn shell_death_restores_window_focus_and_a_restart_returns_the_chrome() {
+    use std::os::fd::AsRawFd;
+
+    let tokens = ["a1".repeat(32), "b2".repeat(32)];
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-shell-focus-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-shell-focus",
+        &tokens,
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // --- an ordinary app window takes the keyboard on a click -------------
+    let (app_conn, mut app_queue, mut app) = connect(&proc.socket_path);
+    let (_app_surface, _app_xdg, _app_toplevel, _app_file) = map_toplevel(
+        &mut app,
+        &mut app_queue,
+        "Focus Survivor",
+        "org.dragonfruit.FocusSurvivor",
+    );
+    wait_for(
+        &app_conn,
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let _ = app_queue.roundtrip(&mut app);
+
+    input.send("motion-abs 0.5 0.5");
+    input.send("button 272 down\nbutton 272 up");
+    let window = {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let report = input.query("query focus");
+            if let Some(id) = parse_focus(&report) {
+                break id;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the clicked window never became active: {report:?}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    wait_for(
+        &app_conn,
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        |state| state.keyboard_enters > 0,
+    );
+
+    // --- a trusted shell takes the keyboard by clicking its menu bar ------
+    let (s1_conn, mut s1_queue, mut s1) = connect(&proc.socket_path);
+    let (s1_core, s1_shell, s1_surface, s1_layer) =
+        open_trusted_bar(&s1_conn, &mut s1_queue, &mut s1, &tokens[0], 28, 28);
+    let qh = s1_queue.handle();
+    let (s1_buffer, _s1_file) = shm_buffer(&s1, &qh, OUTPUT_W, 28);
+    s1_surface.attach(Some(&s1_buffer), 0, 0);
+    s1_surface.commit();
+    wait_for(
+        &s1_conn,
+        &mut s1_queue,
+        &mut s1,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 28)
+        },
+    );
+    wait_for(
+        &s1_conn,
+        &mut s1_queue,
+        &mut s1,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let _ = s1_queue.roundtrip(&mut s1);
+
+    input.send("motion-abs 0.5 0.01");
+    wait_for(
+        &s1_conn,
+        &mut s1_queue,
+        &mut s1,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    s1.keyboard_enters = 0;
+    input.send("button 272 down\nbutton 272 up");
+    wait_for(
+        &s1_conn,
+        &mut s1_queue,
+        &mut s1,
+        Duration::from_secs(5),
+        |state| state.keyboard_enters > 0,
+    );
+    // Chrome focus preserves the active window cache; the keyboard itself is
+    // the shell's now.
+    wait_for(
+        &app_conn,
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        |state| state.keyboard_leaves > 0,
+    );
+    let report = wait_for_focus(&input, Some(window));
+    assert_eq!(
+        parse_focus(&report),
+        Some(window),
+        "chrome focus must not clear the active window: {report:?}"
+    );
+    assert!(
+        report.contains("keyboard chrome"),
+        "the chrome surface must hold the seat keyboard: {report:?}"
+    );
+
+    // --- kill the shell: focus returns without another click --------------
+    let app_enters_before_kill = app.keyboard_enters;
+    let kill_fd = s1_conn.as_fd().as_raw_fd();
+    unsafe {
+        libc::shutdown(kill_fd, libc::SHUT_RDWR);
+    }
+    wait_for(
+        &app_conn,
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        |state| state.keyboard_enters > app_enters_before_kill,
+    );
+    app.keys.clear();
+    input.send("key 30 down\nkey 30 up");
+    wait_for(
+        &app_conn,
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&30),
+    );
+    let report = wait_for_focus(&input, Some(window));
+    assert_eq!(
+        parse_focus(&report),
+        Some(window),
+        "the active window is still the focus owner after the shell dies: {report:?}"
+    );
+    assert!(
+        report.contains(&format!("keyboard window {window}")),
+        "focus must return to the window's surface, not a dead chrome surface: {report:?}"
+    );
+
+    // Clicking the already-active window keeps focus on it; no stuck chrome
+    // focus and no dead-surface owner.
+    input.send("motion-abs 0.5 0.5\nbutton 272 down\nbutton 272 up");
+    let report = wait_for_focus(&input, Some(window));
+    assert_eq!(
+        parse_focus(&report),
+        Some(window),
+        "clicking the active window after a shell death keeps its focus: {report:?}"
+    );
+    assert!(
+        report.contains(&format!("keyboard window {window}")),
+        "the click must leave the seat keyboard on the window: {report:?}"
+    );
+
+    // --- restart the shell with a fresh token -----------------------------
+    let (s2_conn, mut s2_queue, mut s2) = connect(&proc.socket_path);
+    let (s2_core, s2_shell, s2_surface, s2_layer) =
+        open_trusted_bar(&s2_conn, &mut s2_queue, &mut s2, &tokens[1], 28, 28);
+    let qh = s2_queue.handle();
+    let (s2_buffer, _s2_file) = shm_buffer(&s2, &qh, OUTPUT_W, 28);
+    s2_surface.attach(Some(&s2_buffer), 0, 0);
+    s2_surface.commit();
+    wait_for(
+        &s2_conn,
+        &mut s2_queue,
+        &mut s2,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 28)
+        },
+    );
+    let report = wait_for_focus(&input, Some(window));
+    assert_eq!(
+        parse_focus(&report),
+        Some(window),
+        "a restarted shell must not leave focus stuck on chrome: {report:?}"
+    );
+    assert!(
+        report.contains(&format!("keyboard window {window}")),
+        "the restarted chrome must not steal the window's keyboard: {report:?}"
+    );
+    app.keys.clear();
+    input.send("key 31 down\nkey 31 up");
+    wait_for(
+        &app_conn,
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&31),
+    );
+
+    drop(s2_layer);
+    drop(s2_surface);
+    drop(s2_shell);
+    drop(s2_core);
+    drop(s1_layer);
+    drop(s1_surface);
+    drop(s1_shell);
+    drop(s1_core);
+    let _ = app_conn.flush();
+    let _ = s1_conn.flush();
+    let _ = s2_conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
 }
 
 /// T-09 FR-1: the menu bar follows output hotplug. The shell creates its

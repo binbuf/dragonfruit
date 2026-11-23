@@ -130,6 +130,7 @@ use smithay::backend::input::{
 };
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode, PostAction};
+use smithay::utils::IsAlive;
 
 use crate::backend::present::PresentFault;
 use crate::magnifier::MagnifierMode;
@@ -2126,20 +2127,56 @@ fn identity_report(state: &DfState) -> String {
 /// `focus <id> <app_id|-> <title>` followed by `end`, or `focus none` when the
 /// desktop or a chrome surface holds keyboard focus. This is the same active
 /// window the shell's `df_toplevel_manager.focused` event names.
+///
+/// A second `keyboard` line (T308) reports the seat's actual focus target, not
+/// the cache: `keyboard none`, `keyboard window <id>`, `keyboard chrome`,
+/// `keyboard other`, or `keyboard dead` when the keyboard still names a
+/// surface whose `wl_surface` has been destroyed. `keyboard dead` must never
+/// appear; it is the teardown invariant's observable.
 fn focus_report(state: &DfState) -> String {
-    let Some(window) = state.active_window.as_ref() else {
-        return "focus none\nend\n".to_owned();
+    let mut out = String::new();
+    match state
+        .active_window
+        .as_ref()
+        .and_then(|window| state.windows.id(window).map(|id| (id, window)))
+    {
+        Some((id, window)) => {
+            let app_id = state.windows.app_id(window).unwrap_or("-");
+            let title = state
+                .windows
+                .title(window)
+                .map(|title| title.replace('\n', " "))
+                .unwrap_or_default();
+            out.push_str(&format!("focus {} {} {}\n", id.0, app_id, title));
+        }
+        None => out.push_str("focus none\n"),
+    }
+    out.push_str(&keyboard_focus_line(state));
+    out.push_str("end\n");
+    out
+}
+
+/// The seat keyboard focus target for `query focus` (T308).
+fn keyboard_focus_line(state: &DfState) -> String {
+    let Some(focused) = state
+        .seat
+        .get_keyboard()
+        .and_then(|keyboard| keyboard.current_focus())
+    else {
+        return "keyboard none\n".to_owned();
     };
-    let Some(id) = state.windows.id(window) else {
-        return "focus none\nend\n".to_owned();
-    };
-    let app_id = state.windows.app_id(window).unwrap_or("-");
-    let title = state
-        .windows
-        .title(window)
-        .map(|title| title.replace('\n', " "))
-        .unwrap_or_default();
-    format!("focus {} {} {}\nend\n", id.0, app_id, title)
+    if !focused.alive() {
+        return "keyboard dead\n".to_owned();
+    }
+    if let Some(window) = state.window_for_surface(&focused) {
+        if let Some(id) = state.windows.id(&window) {
+            return format!("keyboard window {}\n", id.0);
+        }
+    }
+    if state.is_chrome_surface(&focused) {
+        return "keyboard chrome\n".to_owned();
+    }
+    "keyboard other\n".to_owned()
 }
 
 /// The `query window-menu` report (T-01.4).

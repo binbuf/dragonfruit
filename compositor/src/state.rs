@@ -4488,8 +4488,20 @@ impl DfState {
             return;
         };
         self.dismiss_popups_for(window);
-        if self.active_window.as_ref() == Some(window) {
-            self.active_window = None;
+        // A destroyed window must not keep the keyboard (T308). `active_window`
+        // is the normal signal, but compare the seat's actual focus too so a
+        // stale cache can never leave the keyboard on a dead surface.
+        let held_keyboard = self
+            .seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus())
+            .is_some_and(|focused| {
+                window
+                    .wl_surface()
+                    .is_some_and(|surface| surface.as_ref() == &focused)
+            });
+        if self.active_window.as_ref() == Some(window) || held_keyboard {
+            self.clear_keyboard_focus("window removed");
         }
         if self.hovered_titlebar == Some(id) {
             self.hovered_titlebar = None;

@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -126,9 +126,23 @@ click chooses the new owner.
 target surface, not a cached `active_window`. Otherwise clicking the same
 window after a Space round-trip is a no-op.
 
-The shell is a trusted chrome client. If it disconnects while holding focus,
-the compositor must restore focus to the active window after removing the
-chrome layers, not before.
+The shell is a trusted chrome client, not a window. If it disconnects while
+holding focus, the compositor must restore focus to the active window after
+removing the chrome layers, not before. A layer entry records its owning
+client at creation, because `resource.client()` no longer resolves while a
+client is disconnecting. `df_core::destroyed` captures whether the dying
+client's layer held the keyboard before `forget_client`, removes the layers,
+then restores window focus and recomputes the reserved zones (T308,
+[ADR 0319](adr/0319-teardown-focus-restore.md)). A live client destroying a
+single layer still restores from `DfLayerSurface::destroyed`.
+
+Window teardown follows the same rule. `remove_window` calls
+`clear_keyboard_focus("window removed")` when the removed window was active or
+the seat still names its surface, so a client crash and a completed close
+ghost both leave the keyboard `None` rather than on a destroyed `wl_surface`.
+The synthetic `query focus` report carries a `keyboard
+none|window <id>|chrome|other|dead` line beside the cached `focus` line;
+`keyboard dead` is the invariant violation the conformance suites reject.
 
 ### 3.3 Settings are truthful
 

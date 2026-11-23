@@ -1277,7 +1277,10 @@ the toplevel snapshot, and the **current focused toplevel**. The focus replay
 is what lets a shell that starts after the first app window was already
 activated resolve the correct application menu instead of the empty desktop
 (T230). The synthetic `query focus` command exposes the same active window for
-headless tests: `focus <id> <app_id|-> <title>` or `focus none`.
+headless tests: `focus <id> <app_id|-> <title>` or `focus none`, plus a
+`keyboard none|window <id>|chrome|other|dead` line that reports the seat's
+actual keyboard target (T308). `keyboard dead` means the keyboard still names
+a destroyed `wl_surface` and is a teardown failure.
 
 Chrome composites **above** the window space in both backends, and the
 above-window band is ordered `top` below `overlay`: the Applications drawer,
