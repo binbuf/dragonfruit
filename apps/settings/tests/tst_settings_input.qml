@@ -260,16 +260,19 @@ Item {
             pane.scrollMethodSelect.activateIndex(1); // Edge Scrolling
             compare(Settings.values["input.mouse.scrollMethod"], "edge");
 
+            // T320: these three have no per-device libinput setter, so both
+            // pointer panes write the shared policy.
             pane.secondaryClickSelect.activateIndex(1); // Left
-            compare(Settings.values["input.mouse.secondaryClick"], "left");
+            compare(Settings.values["input.secondaryClick"], "left");
+            compare(Settings.values["input.mouse.secondaryClick"], "right");
 
             pane.scrollSpeedSlider.setValue(-0.3);
             pane.scrollSpeedSlider.commit();
-            verify(Math.abs(Settings.values["input.mouse.scrollSpeed"] - (-0.3)) < 0.001);
+            verify(Math.abs(Settings.values["input.scrollSpeed"] - (-0.3)) < 0.001);
 
             pane.doubleClickSlider.setValue(1.0);
             pane.doubleClickSlider.commit();
-            compare(Settings.values["input.mouse.doubleClickSpeed"], 900);
+            compare(Settings.values["input.doubleClickSpeed"], 900);
 
             pane.mouseSmartZoomToggle.toggle();
             compare(Settings.values["input.mouse.smartZoom"], false);
@@ -336,7 +339,7 @@ Item {
             compare(Settings.values["gestures.missionControl"], false);
 
             pane.trackpadSecondarySelect.activateIndex(1);
-            compare(Settings.values["input.trackpad.secondaryClick"], "left");
+            compare(Settings.values["input.secondaryClick"], "left");
             pane.lookUpSelect.activateIndex(2); // Off
             compare(Settings.values["input.lookUp"], "off");
             pane.hapticsToggle.toggle();

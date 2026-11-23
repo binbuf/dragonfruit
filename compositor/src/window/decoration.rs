@@ -460,9 +460,27 @@ impl DoubleClickTracker {
         location: Point<i32, Logical>,
         now_msec: u64,
     ) -> bool {
+        self.register_with_interval(
+            window,
+            location,
+            now_msec,
+            TITLEBAR_DOUBLE_CLICK_MS,
+        )
+    }
+
+    /// Register a press with the session's configured double-click interval
+    /// (T320: `input.doubleClickSpeed`; libinput has no double-click setter,
+    /// so the compositor's own titlebar detector consumes it).
+    pub fn register_with_interval(
+        &mut self,
+        window: WindowId,
+        location: Point<i32, Logical>,
+        now_msec: u64,
+        double_click_ms: u64,
+    ) -> bool {
         let double = self.last.is_some_and(|last| {
             last.window == window
-                && now_msec.saturating_sub(last.time_msec) <= TITLEBAR_DOUBLE_CLICK_MS
+                && now_msec.saturating_sub(last.time_msec) <= double_click_ms
                 && (last.location.x - location.x).abs() <= TITLEBAR_DOUBLE_CLICK_SLOP
                 && (last.location.y - location.y).abs() <= TITLEBAR_DOUBLE_CLICK_SLOP
         });

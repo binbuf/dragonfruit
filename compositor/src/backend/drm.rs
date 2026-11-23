@@ -57,6 +57,11 @@ use smithay::input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStat
 use smithay::output::{Mode as WlMode, Output};
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{PostAction, RegistrationToken};
+use smithay::reexports::input as libinput;
+
+use crate::pointer_policy::{
+    PointerApplier, PointerConfig, PointerConfigFailure, PointerKind,
+};
 use smithay::reexports::drm::control::{connector, crtc, Device as _, ModeTypeFlags};
 use smithay::reexports::input::Libinput;
 use smithay::reexports::rustix::fs::OFlags;
@@ -125,6 +130,102 @@ impl<'a> crate::window::TextureRenderer for UdevRenderer<'a> {
                 uniforms,
             )
             .map_err(smithay::backend::renderer::multigpu::Error::Render)
+    }
+}
+
+/// T320: the libinput half of the pointer-settings seam.
+///
+/// The input router is backend-generic, so it stores a device's libinput
+/// *name* and capability kind, while this applier owns the actual libinput
+/// handles. The DRM event source inserts a handle before forwarding
+/// `DeviceAdded`; a policy change then reaches the device through
+/// [`PointerApplier::apply`].
+struct LibinputPointerApplier {
+    devices: Rc<RefCell<HashMap<String, libinput::Device>>>,
+}
+
+impl LibinputPointerApplier {
+    fn record(
+        failures: &mut Vec<PointerConfigFailure>,
+        device: &str,
+        call: &'static str,
+        result: Result<(), libinput::DeviceConfigError>,
+    ) {
+        if let Err(error) = result {
+            failures.push(PointerConfigFailure {
+                device: device.to_string(),
+                call,
+                message: format!("{error:?}"),
+            });
+        }
+    }
+}
+
+impl PointerApplier for LibinputPointerApplier {
+    fn apply(
+        &mut self,
+        device: &str,
+        _kind: PointerKind,
+        config: &PointerConfig,
+    ) -> Vec<PointerConfigFailure> {
+        let mut devices = self.devices.borrow_mut();
+        let Some(handle) = devices.get_mut(device) else {
+            return Vec::new();
+        };
+        let mut failures = Vec::new();
+        // Each call is independent: a device that does not support tapping
+        // still gets natural scrolling, handedness, and acceleration. The
+        // controller logs each rejected call once.
+        Self::record(
+            &mut failures,
+            device,
+            "config_tap_set_enabled",
+            handle.config_tap_set_enabled(config.tap_to_click),
+        );
+        Self::record(
+            &mut failures,
+            device,
+            "config_scroll_set_natural_scroll_enabled",
+            handle.config_scroll_set_natural_scroll_enabled(config.natural_scroll),
+        );
+        Self::record(
+            &mut failures,
+            device,
+            "config_accel_set_speed",
+            handle.config_accel_set_speed(config.accel_speed),
+        );
+        let profile = match config.accel_profile {
+            crate::pointer_policy::AccelProfile::Adaptive => libinput::AccelProfile::Adaptive,
+            crate::pointer_policy::AccelProfile::Flat => libinput::AccelProfile::Flat,
+        };
+        Self::record(
+            &mut failures,
+            device,
+            "config_accel_set_profile",
+            handle.config_accel_set_profile(profile),
+        );
+        Self::record(
+            &mut failures,
+            device,
+            "config_left_handed_set",
+            handle.config_left_handed_set(config.left_handed),
+        );
+        let method = match config.scroll_method {
+            crate::pointer_policy::ScrollMethod::TwoFinger => libinput::ScrollMethod::TwoFinger,
+            crate::pointer_policy::ScrollMethod::Edge => libinput::ScrollMethod::Edge,
+            crate::pointer_policy::ScrollMethod::Button => libinput::ScrollMethod::OnButtonDown,
+        };
+        Self::record(
+            &mut failures,
+            device,
+            "config_scroll_set_method",
+            handle.config_scroll_set_method(method),
+        );
+        failures
+    }
+
+    fn remove(&mut self, device: &str) {
+        self.devices.borrow_mut().remove(device);
     }
 }
 
@@ -774,12 +875,23 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
     // libinput events → shared input router (same code as nested; FR-1).
     {
         let shared = shared.clone();
+        // T320: the applier owns the live handles; the router owns the
+        // name/kind registry. Insert the handle before `DeviceAdded` reaches
+        // the router so the first apply finds it.
+        let pointer_devices: Rc<RefCell<HashMap<String, libinput::Device>>> =
+            Rc::new(RefCell::new(HashMap::new()));
+        state
+            .pointer_controller
+            .set_applier(Box::new(LibinputPointerApplier {
+                devices: pointer_devices.clone(),
+            }));
         state
             .loop_handle
             .insert_source(libinput_backend, move |event, _, state| {
                 if let InputEvent::DeviceAdded { device } = &event {
-                    let _ = device
-                        .has_capability(smithay::reexports::input::DeviceCapability::Keyboard);
+                    pointer_devices
+                        .borrow_mut()
+                        .insert(device.name().to_string(), device.clone());
                 }
                 let _ = &shared;
                 input::process_input_event(state, event);

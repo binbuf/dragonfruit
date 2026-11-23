@@ -71,12 +71,14 @@ Item {
         Settings.values["input.trackpad.naturalScroll"] !== undefined
             ? Settings.values["input.trackpad.naturalScroll"] === true
             : Settings.values["input.naturalScroll"] === true
+    // T320: secondary click, scroll speed, and double-click have no
+    // per-device libinput setter (the compositor's button/axis path cannot
+    // attribute an event to a device), so both pointer panes write the shared
+    // `input.*` policy. The per-family keys remain stored-only.
     readonly property string mouseSecondaryClick:
-        Settings.values["input.mouse.secondaryClick"]
-            || Settings.values["input.secondaryClick"] || "right"
+        Settings.values["input.secondaryClick"] || "right"
     readonly property string trackpadSecondaryClick:
-        Settings.values["input.trackpad.secondaryClick"]
-            || Settings.values["input.secondaryClick"] || "right"
+        Settings.values["input.secondaryClick"] || "right"
     readonly property bool mouseSmartZoom:
         Settings.values["input.mouse.smartZoom"] !== false
     readonly property bool mousePointerAcceleration:
@@ -86,15 +88,15 @@ Item {
             ? Settings.values["input.mouse.leftHanded"] === true
             : Settings.values["input.leftHanded"] === true
     readonly property real mouseScrollSpeed:
-        Settings.values["input.mouse.scrollSpeed"] !== undefined
-            ? Number(Settings.values["input.mouse.scrollSpeed"])
+        Settings.values["input.scrollSpeed"] !== undefined
+            ? Number(Settings.values["input.scrollSpeed"])
             : root.scrollSpeed
     readonly property string mouseScrollMethod:
         Settings.values["input.mouse.scrollMethod"]
             || Settings.values["input.scrollMethod"] || "button"
     readonly property int mouseDoubleClickSpeed:
-        Settings.values["input.mouse.doubleClickSpeed"] !== undefined
-            ? Number(Settings.values["input.mouse.doubleClickSpeed"])
+        Settings.values["input.doubleClickSpeed"] !== undefined
+            ? Number(Settings.values["input.doubleClickSpeed"])
             : root.doubleClickSpeed
     readonly property string trackpadLookUp:
         Settings.values["input.lookUp"] || "force-click"
@@ -629,6 +631,20 @@ Item {
                 topPadding: Theme.primitive.spacing.xs
             }
 
+            Text {
+                objectName: "inputBacklightStoredOnly"
+                width: parent.width
+                text: qsTr("Stored-only: the compositor keyboard-backlight "
+                           + "bridge is deferred (T346); these three "
+                           + "preferences are kept for the next keyboard.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                topPadding: Theme.primitive.spacing.xs
+            }
+
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Adjust keyboard brightness in low light")
@@ -695,6 +711,8 @@ Item {
                 settingsId: "backlightOff"
                 owner: "settingsd"
                 settingsKey: "input.backlightOffAfter"
+                description: qsTr("Stored-only: the compositor keyboard-backlight "
+                                  + "bridge is deferred (T346).")
                 controlData: Select {
                     id: backlightOffSelect
                     enabled: root.backlightAvailable
@@ -1006,13 +1024,13 @@ Item {
                 label: qsTr("Secondary click")
                 settingsId: "mouseSecondaryClick"
                 owner: "settingsd"
-                settingsKey: "input.mouse.secondaryClick"
+                settingsKey: "input.secondaryClick"
                 controlData: Select {
                     id: secondaryClickSelect
                     accessibleName: qsTr("Mouse secondary click")
                     model: root.secondaryClickOptions
                     onActivated: (index) => Settings.set(
-                                    "input.mouse.secondaryClick",
+                                    "input.secondaryClick",
                                     root.secondaryClickOptions[index].value)
                 }
             }
@@ -1046,7 +1064,7 @@ Item {
                         minLabel: qsTr("Slow")
                         maxLabel: qsTr("Fast")
                         onCommitted: (value) =>
-                            Settings.set("input.mouse.scrollSpeed", value)
+                            Settings.set("input.scrollSpeed", value)
                     }
                 }
             }
@@ -1080,7 +1098,7 @@ Item {
                         minLabel: qsTr("Fast")
                         maxLabel: qsTr("Slow")
                         onCommitted: (value) => Settings.set(
-                                        "input.mouse.doubleClickSpeed",
+                                        "input.doubleClickSpeed",
                                         Math.round(100 + value * 800))
                     }
                 }
@@ -1356,13 +1374,13 @@ Item {
                 label: qsTr("Secondary click")
                 settingsId: "trackpadSecondaryClick"
                 owner: "settingsd"
-                settingsKey: "input.trackpad.secondaryClick"
+                settingsKey: "input.secondaryClick"
                 controlData: Select {
                     id: trackpadSecondarySelect
                     accessibleName: qsTr("Trackpad secondary click")
                     model: root.secondaryClickOptions
                     onActivated: (index) => Settings.set(
-                                    "input.trackpad.secondaryClick",
+                                    "input.secondaryClick",
                                     root.secondaryClickOptions[index].value)
                 }
             }
@@ -1393,8 +1411,10 @@ Item {
                 owner: "settingsd"
                 settingsKey: "input.haptics"
                 description: root.hasTouchpad
-                    ? qsTr("Where the trackpad supports it.")
-                    : qsTr("No trackpad is present; the preference is kept for the next one.")
+                    ? qsTr("Stored-only: no haptic control is exposed by the "
+                           + "compositor's libinput stack in this build.")
+                    : qsTr("Stored-only: no trackpad is present; the preference "
+                           + "is kept for the next one.")
                 showSeparator: false
                 controlData: Toggle {
                     id: hapticsToggle

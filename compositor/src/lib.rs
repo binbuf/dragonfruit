@@ -22,6 +22,7 @@ pub mod idle;
 pub mod input_validation;
 pub mod material_preset;
 pub mod multi_gpu;
+pub mod pointer_policy;
 pub mod presentation;
 pub mod refresh;
 pub mod xdnd;

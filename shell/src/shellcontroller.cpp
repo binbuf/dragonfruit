@@ -8795,6 +8795,17 @@ void ShellController::applyCompositorPolicy()
                                  policy.tapToClick, policy.leftHanded,
                                  policy.scrollMethod, policy.secondaryClick,
                                  policy.scrollSpeed, policy.doubleClickMs, policy.haptics);
+    // T320: the Mouse and Trackpad panes carry separate libinput snapshots.
+    m_protocol->setPointerFamilyPolicy(
+        QStringLiteral("mouse"), policy.mousePointer.pointerSpeed,
+        policy.mousePointer.naturalScroll, policy.mousePointer.tapToClick,
+        policy.mousePointer.leftHanded, policy.mousePointer.scrollMethod,
+        policy.mousePointer.accelProfile);
+    m_protocol->setPointerFamilyPolicy(
+        QStringLiteral("trackpad"), policy.trackpadPointer.pointerSpeed,
+        policy.trackpadPointer.naturalScroll, policy.trackpadPointer.tapToClick,
+        policy.trackpadPointer.leftHanded, policy.trackpadPointer.scrollMethod,
+        policy.trackpadPointer.accelProfile);
     m_protocol->setKeyboardLayout(policy.keyboardLayout, policy.keyboardVariant);
     // T275: the magnifier and the recorded accessibility shortcut.
     m_protocol->setAccessibilityPolicy(policy.magnifierEnabled, policy.magnifierZoom,

@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="14">
+  <interface name="df_toplevel_manager" version="15">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -468,6 +468,35 @@
       <arg name="blank" type="uint" summary="seconds before blank; 0 disables"/>
       <arg name="lock" type="uint" summary="seconds before lock; 0 disables"/>
       <arg name="suspend" type="uint" summary="seconds before suspend; 0 disables"/>
+    </request>
+
+    <!-- T320: one pointer family's snapshot from the Settings Mouse or
+         Trackpad pane (`input.mouse.*` / `input.trackpad.*`). Appended after
+         the v14 messages so every pre-existing opcode stays put
+         (append-only). Additive in v15.
+
+         The shell sends one request per family on startup and on change. The
+         compositor applies it only to devices of that capability kind, so a
+         mouse and a trackpad can carry different speeds, natural scrolling,
+         handedness, scroll methods, and acceleration profiles. The remaining
+         pointer fields (secondary click, scroll speed, double-click, haptics)
+         stay on the shared `set_pointer_policy` snapshot because the
+         compositor's button/axis path cannot attribute an event to a device. -->
+    <request name="set_pointer_family_policy" since="15">
+      <description summary="set one pointer family's libinput snapshot">
+        `family` is `mouse` or `trackpad`; an unknown id is ignored. Speeds are
+        millionths (-1000000..1000000, 0 neutral) and are clamped. `tap_to_click`
+        only has an effect on a device that supports tapping. `scroll_method`
+        and `accel_profile` use stable ids (`two-finger`/`edge`/`button`,
+        `adaptive`/`flat`); an unknown or null id keeps the current value.
+      </description>
+      <arg name="family" type="string" allow-null="true"/>
+      <arg name="pointer_speed_millionths" type="int"/>
+      <arg name="natural_scroll" type="uint"/>
+      <arg name="tap_to_click" type="uint"/>
+      <arg name="left_handed" type="uint"/>
+      <arg name="scroll_method" type="string" allow-null="true"/>
+      <arg name="accel_profile" type="string" allow-null="true"/>
     </request>
 
     <enum name="hot_corner">

@@ -57,8 +57,9 @@ const INTERFACE_VERSION: u32 = 1;
 /// bumps in tandem with its child interface.
 const SHELL_INTERFACE_VERSION: u32 = 4;
 
-/// `df_toplevel_manager` is version 14 since the T315 `set_idle_policy`
-/// request was added; version 13 added the T276 Overview/hot-corner policy;
+/// `df_toplevel_manager` is version 15 since the T320
+/// `set_pointer_family_policy` request was added; version 14 added the T315
+/// idle policy; version 13 added the T276 Overview/hot-corner policy;
 /// version 12 added the T275 accessibility accommodations; version 11 added
 /// `set_minimize_target` (T237); `set_appearance_policy` was the v9 addition
 /// (T196); `activation_result` was the v8 addition (T-14.7g),
@@ -68,7 +69,7 @@ const SHELL_INTERFACE_VERSION: u32 = 4;
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 14;
+const MANAGER_INTERFACE_VERSION: u32 = 15;
 
 /// `df_output` is version 5 since `set_dpms` and the `dpms` state/fallback
 /// event were added (T316); v4 added the role-keyed `material_role_state`
@@ -2765,6 +2766,26 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     scroll_speed_millionths,
                     double_click_ms,
                     haptics != 0,
+                );
+            }
+            df_toplevel_manager::Request::SetPointerFamilyPolicy {
+                family,
+                pointer_speed_millionths,
+                natural_scroll,
+                tap_to_click,
+                left_handed,
+                scroll_method,
+                accel_profile,
+            } => {
+                // T320: one pointer family's live libinput snapshot.
+                state.set_pointer_family_policy(
+                    family.as_deref(),
+                    pointer_speed_millionths,
+                    natural_scroll != 0,
+                    tap_to_click != 0,
+                    left_handed != 0,
+                    scroll_method.as_deref(),
+                    accel_profile.as_deref(),
                 );
             }
             df_toplevel_manager::Request::SetKeyboardLayout { layout, variant } => {

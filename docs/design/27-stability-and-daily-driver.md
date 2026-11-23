@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -161,21 +161,37 @@ none|window <id>|chrome|other|dead` line beside the cached `focus` line;
 
 The schema and the Settings map are a contract. A key marked
 `stored_only: false` is a promise that the user’s change has an observable
-effect. The 2026-11-22 review found live-marked keys with no consumer:
+effect. The 2026-11-22 review found live-marked keys with no consumer; the
+stability set has since closed them:
 
 - `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend`, `power.preventSleep`
-  (no production idle service);
-- `display.brightness` (stored, never written to the panel; closed by T319);
+  — the compositor-owned idle chain and the shell's logind path (T315/T317).
+- `display.brightness` — the logind panel write (T319).
 - `input.pointerSpeed`, `input.naturalScroll`, `input.tapToClick`,
   `input.leftHanded`, `input.scrollMethod`, `input.secondaryClick`,
-  `input.scrollSpeed`, `input.doubleClickSpeed`, `input.haptics` (stored in
-  `PointerSettings`, never applied to libinput);
+  `input.scrollSpeed`, `input.doubleClickSpeed` — applied live by T320
+  ([adr/0330](adr/0330-pointer-settings-libinput-application.md)). The
+  libinput half runs on hotplug and on every policy change; scroll speed,
+  secondary click, and double-click are compositor-side because libinput has
+  no setter for them.
+- `input.haptics` — `stored_only: true`; this device stack exposes no haptic
+  control, and the pane says so.
 - `input.keyboardBrightness`, `input.adjustBrightnessLowLight`,
-  `input.backlightOffAfter` (no hardware bridge).
+  `input.backlightOffAfter` — `stored_only: true` with the deferred-hardware
+  note; the keyboard-backlight bridge is T346's deferred register.
 
 The fix is either a consumer or `stored_only: true` plus a visible note. There
 is no third option. The `stability` set adds a consumer-conformance test that
 fails when a live key has no entry in the verified-consumer table.
+
+The Mouse and Trackpad panes carry separate `input.mouse.*` /
+`input.trackpad.*` snapshots over the v15
+`df_toplevel_manager.set_pointer_family_policy` request. The compositor
+classifies a pointer by capability (touch/gesture support means touchpad) and
+applies each snapshot only to that kind, with a per-device name override first
+and the shared `input.*` policy as the fallback. The non-per-device rows
+(secondary click, scroll speed, double-click) write the shared keys because
+the button/axis path cannot attribute an event to a device.
 
 The behavioral half of the map gate is `scripts/settings-consumers.json`,
 checked by `make check-settings-consumers` (part of `make verify-stability`).

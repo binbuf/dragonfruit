@@ -108,6 +108,7 @@ use crate::input::gestures::GestureRecognizer;
 use crate::input::hot_corners::{parse_hot_corner_modifier, HotCornerAction, HotCornerDetector};
 use crate::input::keymap::parse_binding;
 use crate::input::settings::InputSettings;
+use crate::pointer_policy::{PointerConfig, PointerController, PointerKind};
 use crate::input::shortcuts::{GrabArbiter, GrabKind, Shortcut, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::{GestureBudgetTrace, LatencyInstrument};
@@ -1737,6 +1738,9 @@ pub struct DfState {
     pub switch_to_app_space: bool,
     /// The live input settings model (FR-7).
     pub input_settings: InputSettings,
+    /// The live pointer devices and the libinput applier seam (T320). The DRM
+    /// backend installs the applier; headless/nested keep the registry only.
+    pub pointer_controller: PointerController,
     /// The outbox/audit log every trigger writes to (shell protocol T-07).
     pub input_dispatch: InputDispatch,
     /// Gate for every client grab request (FR-5).
@@ -2069,6 +2073,7 @@ impl DfState {
             hot_corners,
             switch_to_app_space: true,
             input_settings,
+            pointer_controller: PointerController::new(),
             input_dispatch: InputDispatch::new(),
             grab_arbiter: GrabArbiter::new(),
             hot_corner_timer: None,
@@ -3612,7 +3617,9 @@ impl DfState {
         };
         let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
         let now = self.now_msec();
-        self.titlebar_clicks.register(id, point, now)
+        let interval = self.input_settings.default_pointer.double_click_ms.max(0) as u64;
+        self.titlebar_clicks
+            .register_with_interval(id, point, now, interval)
     }
 
     /// Apply the configured double-click action (T-01.3): toggle Zoom,
@@ -6437,6 +6444,74 @@ impl DfState {
         self.apply_input_settings();
     }
 
+    /// Apply one pointer family's snapshot forwarded by the shell over
+    /// `df_toplevel_manager.set_pointer_family_policy` (T320).
+    ///
+    /// `family` is `mouse` or `trackpad`; the six libinput-appliable fields
+    /// arrive per family so the two Settings panes can differ. The remaining
+    /// [`PointerSettings`] fields (scroll speed, secondary click, the
+    /// double-click interval, haptics) stay on the shared policy because the
+    /// compositor's button/axis path cannot attribute an event to a device.
+    /// Unknown ids leave the current value untouched; speeds are clamped.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_pointer_family_policy(
+        &mut self,
+        family: Option<&str>,
+        pointer_speed_millionths: i32,
+        natural_scroll: bool,
+        tap_to_click: bool,
+        left_handed: bool,
+        scroll_method: Option<&str>,
+        accel_profile: Option<&str>,
+    ) {
+        let Some(kind) = family.and_then(PointerKind::parse) else {
+            return;
+        };
+        let mut pointer = self
+            .input_settings
+            .family(kind)
+            .unwrap_or(self.input_settings.default_pointer);
+        pointer.accel_speed =
+            f64::from(pointer_speed_millionths.clamp(-1_000_000, 1_000_000)) / 1_000_000.0;
+        pointer.natural_scroll = natural_scroll;
+        pointer.tap_to_click = tap_to_click;
+        pointer.left_handed = left_handed;
+        if let Some(method) = scroll_method.and_then(crate::input::settings::ScrollMethod::parse) {
+            pointer.scroll_method = method;
+        }
+        if let Some(profile) = accel_profile {
+            match profile {
+                "flat" => pointer.accel_profile = crate::input::settings::AccelProfile::Flat,
+                "adaptive" => pointer.accel_profile = crate::input::settings::AccelProfile::Adaptive,
+                _ => {}
+            }
+        }
+        self.input_settings.set_family(kind, pointer);
+        self.apply_input_settings();
+    }
+
+    /// Record a libinput pointer device and apply its effective settings
+    /// (T320). Called from the one `DeviceAdded` path for every backend; the
+    /// applier is absent headless, so the registry still tracks the device.
+    pub fn pointer_device_added(&mut self, name: &str, kind: PointerKind) {
+        let config = PointerConfig::from(&self.input_settings.effective_pointer(name, kind));
+        self.pointer_controller.add_device(name, kind, config);
+    }
+
+    /// Forget a removed pointer device (T320).
+    pub fn pointer_device_removed(&mut self, name: &str) {
+        self.pointer_controller.remove_device(name);
+    }
+
+    /// The shared secondary-click preference applied to a raw button code
+    /// (T320). `left` swaps the primary and secondary buttons.
+    pub fn swap_pointer_button(&self, button: u32) -> u32 {
+        crate::pointer_policy::secondary_click_button(
+            self.input_settings.default_pointer.secondary_click,
+            button,
+        )
+    }
+
     /// Apply the active keyboard layout forwarded by the shell over
     /// `df_toplevel_manager.set_keyboard_layout` (T229). A null layout keeps
     /// the host `XKB_DEFAULT_*` configuration; an invalid layout is ignored by
@@ -6956,6 +7031,13 @@ impl DfState {
         self.gestures.set_config(self.input_settings.gestures);
         self.overview.set_config(self.input_settings.progress);
         self.hot_corners.set_config(self.input_settings.hot_corners);
+        // T320: pointer preferences reach the live libinput devices here. The
+        // controller keeps the devices and calls the backend applier; a
+        // headless session has no applier and only tracks the registry.
+        let settings = &self.input_settings;
+        self.pointer_controller.apply_all(|device, kind| {
+            PointerConfig::from(&settings.effective_pointer(device, kind))
+        });
         self.needs_redraw = true;
     }
 }

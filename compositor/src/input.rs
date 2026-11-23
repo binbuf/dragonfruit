@@ -46,6 +46,11 @@ pub use hot_corners::{HotCornerAction, HotCornerConfig, HotCornerDetector, HotCo
 #[allow(unused_imports)]
 pub use keymap::{role_held, ModifierRole, RoleMods};
 #[allow(unused_imports)]
+pub use crate::pointer_policy::{
+    secondary_click_button, scroll_scale, PointerApplier, PointerConfig, PointerConfigFailure,
+    PointerController, PointerKind,
+};
+#[allow(unused_imports)]
 pub use settings::{AccelProfile, InputSettings, KeyboardSettings, PointerSettings, ScrollMethod};
 #[allow(unused_imports)]
 pub use shortcuts::{
@@ -389,12 +394,23 @@ where
                 // the device so clients can enumerate it.
                 let _ = ensure_tablet(state, &TabletDescriptor::from(&device));
             }
+            // T320: a pointer device is stored by its libinput name and gets
+            // the effective PointerSettings immediately, on hotplug. The
+            // family comes from capabilities, never from the device name.
+            if let Some(kind) = crate::pointer_policy::PointerKind::classify(
+                device.has_capability(backend_input::DeviceCapability::Pointer),
+                device.has_capability(backend_input::DeviceCapability::Touch),
+                device.has_capability(backend_input::DeviceCapability::Gesture),
+            ) {
+                state.pointer_device_added(&device.name(), kind);
+            }
         }
         InputEvent::DeviceRemoved { device } => {
             if device.has_capability(backend_input::DeviceCapability::TabletTool) {
                 let tablet_seat = state.seat.tablet_seat();
                 tablet_seat.remove_tablet(&TabletDescriptor::from(&device));
             }
+            state.pointer_device_removed(&device.name());
         }
         InputEvent::Keyboard { event } => {
             let Some(keyboard) = state.seat.get_keyboard() else {
@@ -646,7 +662,9 @@ where
             let button_event = ButtonEvent {
                 serial,
                 time: event.time_msec(),
-                button: event.button_code(),
+                // T320: the shared secondary-click preference swaps the
+                // primary and secondary button codes at this one path.
+                button: state.swap_pointer_button(event.button_code()),
                 state: event.state(),
             };
 
@@ -824,14 +842,22 @@ where
         }
         InputEvent::PointerAxis { event } => {
             let pointer = state.seat.get_pointer().unwrap();
-            let horizontal = event.amount(backend_input::Axis::Horizontal);
-            let vertical = event.amount(backend_input::Axis::Vertical);
+            // T320: libinput has no scroll-speed setter, so the shared
+            // `input.scrollSpeed` preference scales the one axis path.
+            let scale = crate::pointer_policy::scroll_scale(
+                state.input_settings.default_pointer.scroll_speed,
+            );
+            let horizontal = event.amount(backend_input::Axis::Horizontal).map(|a| a * scale);
+            let vertical = event.amount(backend_input::Axis::Vertical).map(|a| a * scale);
             let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
             if let Some(amount) = horizontal {
                 frame = frame.value(backend_input::Axis::Horizontal, amount);
                 let discrete = event.amount_v120(backend_input::Axis::Horizontal);
                 if let Some(discrete) = discrete {
-                    frame = frame.v120(backend_input::Axis::Horizontal, discrete as i32);
+                    frame = frame.v120(
+                        backend_input::Axis::Horizontal,
+                        (discrete * scale).round() as i32,
+                    );
                 }
             } else {
                 frame = frame.stop(backend_input::Axis::Horizontal);
@@ -840,7 +866,10 @@ where
                 frame = frame.value(backend_input::Axis::Vertical, amount);
                 let discrete = event.amount_v120(backend_input::Axis::Vertical);
                 if let Some(discrete) = discrete {
-                    frame = frame.v120(backend_input::Axis::Vertical, discrete as i32);
+                    frame = frame.v120(
+                        backend_input::Axis::Vertical,
+                        (discrete * scale).round() as i32,
+                    );
                 }
             } else {
                 frame = frame.stop(backend_input::Axis::Vertical);

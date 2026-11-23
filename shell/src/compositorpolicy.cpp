@@ -97,6 +97,47 @@ CompositorPolicy compositorPolicyFromValues(const QVariantMap &values, bool host
         readValue(values, QStringLiteral("input.doubleClickSpeed"), policy.doubleClickMs).toInt();
     policy.haptics =
         readValue(values, QStringLiteral("input.haptics"), policy.haptics).toBool();
+    // T320: the per-family pointer snapshots. A pane row writes the family key;
+    // the legacy `input.*` pointer key is the fallback an upgraded store still
+    // carries. The two families differ in their schema defaults (a mouse's
+    // scroll method is `button`, a trackpad's is `two-finger`).
+    policy.mousePointer.pointerSpeed =
+        readValue(values, QStringLiteral("input.mouse.pointerSpeed"),
+                  policy.mousePointer.pointerSpeed)
+            .toDouble();
+    policy.mousePointer.naturalScroll =
+        readValue(values, QStringLiteral("input.mouse.naturalScroll"),
+                  policy.naturalScroll)
+            .toBool();
+    policy.mousePointer.tapToClick = policy.tapToClick;
+    policy.mousePointer.leftHanded =
+        readValue(values, QStringLiteral("input.mouse.leftHanded"),
+                  policy.leftHanded)
+            .toBool();
+    policy.mousePointer.scrollMethod =
+        readValue(values, QStringLiteral("input.mouse.scrollMethod"),
+                  QStringLiteral("button"))
+            .toString();
+    policy.mousePointer.accelProfile =
+        readValue(values, QStringLiteral("input.mouse.pointerAcceleration"), true).toBool()
+            ? QStringLiteral("adaptive")
+            : QStringLiteral("flat");
+
+    policy.trackpadPointer.pointerSpeed =
+        readValue(values, QStringLiteral("input.trackpad.pointerSpeed"),
+                  policy.trackpadPointer.pointerSpeed)
+            .toDouble();
+    policy.trackpadPointer.naturalScroll =
+        readValue(values, QStringLiteral("input.trackpad.naturalScroll"),
+                  policy.naturalScroll)
+            .toBool();
+    policy.trackpadPointer.tapToClick = policy.tapToClick;
+    policy.trackpadPointer.leftHanded = policy.leftHanded;
+    policy.trackpadPointer.scrollMethod =
+        readValue(values, QStringLiteral("input.scrollMethod"),
+                  policy.trackpadPointer.scrollMethod)
+            .toString();
+    policy.trackpadPointer.accelProfile = QStringLiteral("adaptive");
     // T275: the accessibility accommodations.
     policy.magnifierEnabled =
         readValue(values, QStringLiteral("accessibility.magnifier"),

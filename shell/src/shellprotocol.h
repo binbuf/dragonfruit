@@ -666,6 +666,11 @@ public:
                           bool leftHanded, const QString &scrollMethod,
                           const QString &secondaryClick, double scrollSpeed,
                           int doubleClickMs, bool haptics);
+    // T320: one pointer family's libinput snapshot (`mouse` or `trackpad`).
+    void setPointerFamilyPolicy(const QString &family, double pointerSpeed,
+                                bool naturalScroll, bool tapToClick,
+                                bool leftHanded, const QString &scrollMethod,
+                                const QString &accelProfile);
 
     // Mirror the accessibility accommodations into the compositor (T275,
     // `df_toplevel_manager.set_accessibility_policy`, additive in v12): the

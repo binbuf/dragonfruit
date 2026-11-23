@@ -8,6 +8,22 @@
 #include <QString>
 #include <QVariantMap>
 
+// T320: one pointer family's libinput snapshot. The Settings Mouse and
+// Trackpad panes write separate `input.mouse.*` / `input.trackpad.*` keys; the
+// compositor applies each snapshot only to devices of that capability kind.
+// The fields without a libinput setter (secondary click, scroll speed,
+// double-click, haptics) stay on the shared pointer policy and are not here.
+struct PointerFamilyPolicy {
+    double pointerSpeed = 0.0;
+    bool naturalScroll = true;
+    bool tapToClick = true;
+    bool leftHanded = false;
+    QString scrollMethod = QStringLiteral("two-finger");
+    QString accelProfile = QStringLiteral("adaptive");
+
+    bool operator==(const PointerFamilyPolicy &) const = default;
+};
+
 // The typed compositor policy. The defaults mirror the settings schema (the
 // same values the SettingsClient seeds when settingsd is absent), so a shell
 // with no daemon still applies a coherent policy.
@@ -39,6 +55,11 @@ struct CompositorPolicy {
     double scrollSpeed = 0.0;
     int doubleClickMs = 400;
     bool haptics = true;
+    // T320: the per-family snapshots forwarded over
+    // `df_toplevel_manager.set_pointer_family_policy` (v15). Their defaults
+    // follow the schema, including a mouse's `button` scroll method.
+    PointerFamilyPolicy mousePointer;
+    PointerFamilyPolicy trackpadPointer;
     QString keyboardLayout;
     QString keyboardVariant;
     // T275: the compositor-owned accessibility accommodations. The shell

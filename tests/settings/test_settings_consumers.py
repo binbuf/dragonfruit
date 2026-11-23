@@ -75,8 +75,10 @@ class SettingsConsumerGateTests(unittest.TestCase):
             ROOT / "docs/tasks/stability/plan/ROADMAP.md",
         )
         live = [row for row in specs if not row["stored_only"]]
-        self.assertEqual(len(live), 171)
-        self.assertEqual(len(gaps), 12)
+        # T320 closed the last pointer/backlight known gaps and made the
+        # libinput-appliable pointer family keys live.
+        self.assertEqual(len(live), 174)
+        self.assertEqual(len(gaps), 0)
 
     def test_live_key_without_entry_fails(self) -> None:
         self.write_table({})

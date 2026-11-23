@@ -226,51 +226,33 @@
       "task": "T304"
     },
     "input.pointerSpeed": {
-      "consumer": "compositor/input pointer acceleration",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input pointer acceleration (shared fallback)",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.naturalScroll": {
-      "consumer": "compositor/input pointer scrolling",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input pointer scrolling (shared fallback)",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.tapToClick": {
-      "consumer": "compositor/input pointer tapping",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input pointer tapping (shared fallback)",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.leftHanded": {
-      "consumer": "compositor/input pointer handedness",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input pointer handedness (shared fallback)",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.scrollMethod": {
-      "consumer": "compositor/input pointer scrolling",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
-      "task": "T320"
-    },
-    "input.keyboardBrightness": {
-      "consumer": "compositor/keyboard backlight (hardware bridge deferred)",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
-      "task": "T320"
-    },
-    "input.adjustBrightnessLowLight": {
-      "consumer": "compositor/keyboard backlight (hardware bridge deferred)",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
-      "task": "T320"
-    },
-    "input.backlightOffAfter": {
-      "consumer": "compositor/keyboard backlight (hardware bridge deferred)",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input pointer scroll method (shared fallback)",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.keyboardNavigation": {
@@ -286,27 +268,21 @@
       "task": "T304"
     },
     "input.secondaryClick": {
-      "consumer": "compositor/input pointer buttons",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input pointer secondary-button swap",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.scrollSpeed": {
-      "consumer": "compositor/input pointer scrolling",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input pointer axis scaling",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.doubleClickSpeed": {
-      "consumer": "compositor/input pointer double-click interval",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
-      "task": "T320"
-    },
-    "input.haptics": {
-      "consumer": "compositor/input trackpad haptics (hardware bridge deferred)",
-      "test": "compositor/tests/shell_protocol_conformance.rs",
-      "state": "known-gap",
+      "consumer": "compositor/input titlebar double-click interval",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
       "task": "T320"
     },
     "input.lookUp": {
@@ -1028,6 +1004,48 @@
       "test": "apps/settings/tests/tst_settings_privacy.qml",
       "state": "verified",
       "task": "T304"
+    },
+    "input.mouse.pointerSpeed": {
+      "consumer": "compositor/input mouse pointer acceleration",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
+      "task": "T320"
+    },
+    "input.mouse.naturalScroll": {
+      "consumer": "compositor/input mouse scrolling",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
+      "task": "T320"
+    },
+    "input.mouse.pointerAcceleration": {
+      "consumer": "compositor/input mouse acceleration profile",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
+      "task": "T320"
+    },
+    "input.mouse.leftHanded": {
+      "consumer": "compositor/input mouse handedness",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
+      "task": "T320"
+    },
+    "input.mouse.scrollMethod": {
+      "consumer": "compositor/input mouse scroll method",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
+      "task": "T320"
+    },
+    "input.trackpad.pointerSpeed": {
+      "consumer": "compositor/input trackpad pointer acceleration",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
+      "task": "T320"
+    },
+    "input.trackpad.naturalScroll": {
+      "consumer": "compositor/input trackpad scrolling",
+      "test": "compositor/tests/input_settings.rs",
+      "state": "verified",
+      "task": "T320"
     }
   }
 }

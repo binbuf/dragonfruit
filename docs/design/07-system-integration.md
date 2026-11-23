@@ -631,10 +631,21 @@ Every preference row is a settingsd key, additive in schema revision 12:
 `input.keyboardNavigation`, and `input.emojiKeyAction`. `Key repeat rate` and
 `Delay until repeat` reuse the revision-1 `input.repeatRate`/`input.repeatDelay`.
 The pointer keys map to `PointerSettings` in
-`compositor/src/input/settings.rs` and are the compositor's to apply; the
-keyboard-backlight and emoji-panel bridges are follow-ups, so those rows
-persist their preference today (the same split T-15.3b used for the Sound
-Effects keys). The Quick Settings tile is a compact read-only summary of the
+`compositor/src/pointer_policy.rs` and are the compositor's to apply. T320
+wires the application: the input router records each pointer device by
+libinput name and capability kind on `DeviceAdded`, and a `PointerController`
+calls the DRM backend's `PointerApplier` on hotplug and on every policy change
+(`config_tap_set_enabled`, `config_scroll_set_natural_scroll_enabled`,
+`config_accel_set_speed`, `config_accel_set_profile`, `config_left_handed_set`,
+`config_scroll_set_method`). A rejected call is logged once and the rest of
+the snapshot still applies ([adr/0330](adr/0330-pointer-settings-libinput-application.md)).
+Scroll speed scales the compositor's axis path, secondary click swaps the
+primary/secondary button codes at the button path, and the double-click
+interval feeds the titlebar detector. Haptics is `stored_only` because this
+device stack exposes no haptic control, and the keyboard-backlight and
+emoji-panel bridges remain follow-ups (the keyboard-backlight rows are
+stored-only with the T346 note); those rows persist their preference today
+(the same split T-15.3b used for the Sound Effects keys). The Quick Settings tile is a compact read-only summary of the
 inventory plus a `Keyboard Settings…` entry point (the launch itself is T-16).
 
 Absence follows the adapter's two hide rules (ADR 0124). libinput gone, or a
@@ -1611,10 +1622,15 @@ view and `TestController(path)` on the `Input` interface.
 The pointer and keyboard-layout preferences do not go through the bridge
 host. The shell mirrors the settingsd keys over
 `df_toplevel_manager.set_pointer_policy` and `set_keyboard_layout` (v10); the
-compositor clamps the speeds, stores the pointer snapshot in
+compositor clamps the speeds, stores the shared pointer snapshot in
 `PointerSettings`, and recompiles the seat keymap for the first
-`input.sources` entry. Older compositors ignore both requests and keep the
-settingsd-only state.
+`input.sources` entry. T320 adds
+`df_toplevel_manager.set_pointer_family_policy` (v15), one request per
+`mouse`/`trackpad` family carrying the libinput-appliable fields; the
+compositor applies it only to devices of that capability kind, with the
+shared v10 snapshot as the fallback. Older compositors ignore the family
+request and keep the shared policy; older shells send no family request and
+the compositor keeps the shared policy for both families.
 
 The audio adapter grows one playback action (`PlayTestSound`); the printer
 adapter grows discovery/add/options; the account adapter grows the

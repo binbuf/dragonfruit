@@ -26,6 +26,7 @@ mod lock;
 mod magnifier;
 mod material_preset;
 mod overview;
+mod pointer_policy;
 mod render;
 mod session;
 mod shell;

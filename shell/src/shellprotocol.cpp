@@ -3548,6 +3548,30 @@ void ShellProtocol::setPointerPolicy(double pointerSpeed, bool naturalScroll, bo
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setPointerFamilyPolicy(const QString &family, double pointerSpeed,
+                                           bool naturalScroll, bool tapToClick,
+                                           bool leftHanded, const QString &scrollMethod,
+                                           const QString &accelProfile)
+{
+    // T320: one pointer family's libinput snapshot. Additive in v15; older
+    // compositors keep the shared pointer policy for both families.
+    if (m_manager && m_managerVersion >= 15) {
+        const auto millionths = [](double value) {
+            return static_cast<int32_t>(qRound(qBound(-1.0, value, 1.0) * 1000000.0));
+        };
+        const QByteArray familyBytes = family.toUtf8();
+        const QByteArray scroll = scrollMethod.toUtf8();
+        const QByteArray profile = accelProfile.toUtf8();
+        df_toplevel_manager_set_pointer_family_policy(
+            m_manager, familyBytes.constData(), millionths(pointerSpeed),
+            naturalScroll ? 1u : 0u, tapToClick ? 1u : 0u, leftHanded ? 1u : 0u,
+            scrollMethod.isEmpty() ? nullptr : scroll.constData(),
+            accelProfile.isEmpty() ? nullptr : profile.constData());
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::setKeyboardLayout(const QString &layout, const QString &variant)
 {
     // T229: the active input source. Additive in v10; a null layout follows

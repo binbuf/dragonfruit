@@ -20,6 +20,7 @@ private slots:
     void unknownSchemeFollowsTheHost();
     void transparencyIsBoundedAndSafe();
     void liveFlipChangesThePolicy();
+    void pointerFamiliesMapIndependently();
 };
 
 void TestCompositorPolicy::defaultsMatchTheSchema()
@@ -46,6 +47,19 @@ void TestCompositorPolicy::defaultsMatchTheSchema()
     QCOMPARE(policy.scrollSpeed, 0.0);
     QCOMPARE(policy.doubleClickMs, 400);
     QCOMPARE(policy.haptics, true);
+    // T320: the two pointer families carry their own schema defaults.
+    QCOMPARE(policy.mousePointer.pointerSpeed, 0.0);
+    QCOMPARE(policy.mousePointer.naturalScroll, true);
+    QCOMPARE(policy.mousePointer.tapToClick, true);
+    QCOMPARE(policy.mousePointer.leftHanded, false);
+    QCOMPARE(policy.mousePointer.scrollMethod, QStringLiteral("button"));
+    QCOMPARE(policy.mousePointer.accelProfile, QStringLiteral("adaptive"));
+    QCOMPARE(policy.trackpadPointer.pointerSpeed, 0.0);
+    QCOMPARE(policy.trackpadPointer.naturalScroll, true);
+    QCOMPARE(policy.trackpadPointer.tapToClick, true);
+    QCOMPARE(policy.trackpadPointer.leftHanded, false);
+    QCOMPARE(policy.trackpadPointer.scrollMethod, QStringLiteral("two-finger"));
+    QCOMPARE(policy.trackpadPointer.accelProfile, QStringLiteral("adaptive"));
     QVERIFY(policy.keyboardLayout.isEmpty());
     QVERIFY(policy.keyboardVariant.isEmpty());
     QCOMPARE(policy.magnifierEnabled, false);
@@ -88,6 +102,13 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     values.insert(QStringLiteral("input.scrollSpeed"), 0.25);
     values.insert(QStringLiteral("input.doubleClickSpeed"), 300);
     values.insert(QStringLiteral("input.haptics"), false);
+    values.insert(QStringLiteral("input.mouse.pointerSpeed"), 0.6);
+    values.insert(QStringLiteral("input.mouse.naturalScroll"), false);
+    values.insert(QStringLiteral("input.mouse.leftHanded"), true);
+    values.insert(QStringLiteral("input.mouse.scrollMethod"), QStringLiteral("edge"));
+    values.insert(QStringLiteral("input.mouse.pointerAcceleration"), false);
+    values.insert(QStringLiteral("input.trackpad.pointerSpeed"), -0.3);
+    values.insert(QStringLiteral("input.trackpad.naturalScroll"), true);
     values.insert(QStringLiteral("input.sources"),
                   QStringList{QStringLiteral("de:nodeadkeys")});
     values.insert(QStringLiteral("accessibility.magnifier"), true);
@@ -137,6 +158,14 @@ void TestCompositorPolicy::everyKeyMapsThrough()
     QCOMPARE(policy.scrollSpeed, 0.25);
     QCOMPARE(policy.doubleClickMs, 300);
     QCOMPARE(policy.haptics, false);
+    QCOMPARE(policy.mousePointer.pointerSpeed, 0.6);
+    QCOMPARE(policy.mousePointer.naturalScroll, false);
+    QCOMPARE(policy.mousePointer.leftHanded, true);
+    QCOMPARE(policy.mousePointer.scrollMethod, QStringLiteral("edge"));
+    QCOMPARE(policy.mousePointer.accelProfile, QStringLiteral("flat"));
+    QCOMPARE(policy.trackpadPointer.pointerSpeed, -0.3);
+    QCOMPARE(policy.trackpadPointer.naturalScroll, true);
+    QCOMPARE(policy.trackpadPointer.scrollMethod, QStringLiteral("edge"));
     QCOMPARE(policy.keyboardLayout, QStringLiteral("de"));
     QCOMPARE(policy.keyboardVariant, QStringLiteral("nodeadkeys"));
     QCOMPARE(policy.magnifierEnabled, true);
@@ -209,6 +238,29 @@ void TestCompositorPolicy::liveFlipChangesThePolicy()
     // Re-deriving an unchanged map is a no-op (`operator==`), so the shell
     // does not re-send the protocol request.
     QVERIFY(after == compositorPolicyFromValues(values, false));
+}
+
+void TestCompositorPolicy::pointerFamiliesMapIndependently()
+{
+    // T320: a Mouse row must not move the Trackpad snapshot and vice versa.
+    QVariantMap values;
+    values.insert(QStringLiteral("input.mouse.pointerSpeed"), 0.25);
+    values.insert(QStringLiteral("input.trackpad.pointerSpeed"), -0.75);
+    values.insert(QStringLiteral("input.mouse.naturalScroll"), false);
+    values.insert(QStringLiteral("input.trackpad.naturalScroll"), true);
+    values.insert(QStringLiteral("input.mouse.scrollMethod"), QStringLiteral("button"));
+    values.insert(QStringLiteral("input.scrollMethod"), QStringLiteral("edge"));
+
+    const CompositorPolicy policy = compositorPolicyFromValues(values, false);
+    QCOMPARE(policy.mousePointer.pointerSpeed, 0.25);
+    QCOMPARE(policy.trackpadPointer.pointerSpeed, -0.75);
+    QCOMPARE(policy.mousePointer.naturalScroll, false);
+    QCOMPARE(policy.trackpadPointer.naturalScroll, true);
+    QCOMPARE(policy.mousePointer.scrollMethod, QStringLiteral("button"));
+    QCOMPARE(policy.trackpadPointer.scrollMethod, QStringLiteral("edge"));
+    // The family snapshots participate in the change comparison, so a row
+    // change reaches the compositor.
+    QVERIFY(policy != compositorPolicyFromValues({}, false));
 }
 
 QTEST_MAIN(TestCompositorPolicy)

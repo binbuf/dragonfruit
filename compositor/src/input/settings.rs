@@ -15,6 +15,11 @@ use super::gestures::{GestureConfig, ProgressConfig};
 use super::hot_corners::HotCornerConfig;
 use super::keymap::ModifierRole;
 use super::shortcuts::Shortcut;
+use crate::pointer_policy::PointerKind;
+
+pub use crate::pointer_policy::{
+    AccelProfile, PointerSettings, ScrollMethod, SecondaryClick,
+};
 
 /// Keyboard repeat settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,111 +39,6 @@ impl Default for KeyboardSettings {
     }
 }
 
-/// Pointer acceleration profile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AccelProfile {
-    /// Device-dependent adaptive curve (libinput default).
-    #[default]
-    Adaptive,
-    /// No acceleration; 1:1 movement.
-    Flat,
-}
-
-/// Scroll method for pointer-like devices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ScrollMethod {
-    #[default]
-    TwoFinger,
-    Edge,
-    Button,
-}
-
-impl ScrollMethod {
-    /// The stable id the settings schema and the protocol use.
-    pub const fn id(self) -> &'static str {
-        match self {
-            ScrollMethod::TwoFinger => "two-finger",
-            ScrollMethod::Edge => "edge",
-            ScrollMethod::Button => "button",
-        }
-    }
-
-    /// Parse the schema's stable id; an unknown spelling is `None`.
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "two-finger" => Some(ScrollMethod::TwoFinger),
-            "edge" => Some(ScrollMethod::Edge),
-            "button" => Some(ScrollMethod::Button),
-            _ => None,
-        }
-    }
-}
-
-/// Which button a secondary click uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SecondaryClick {
-    #[default]
-    Right,
-    Left,
-}
-
-impl SecondaryClick {
-    /// The stable id the settings schema and the protocol use.
-    pub const fn id(self) -> &'static str {
-        match self {
-            SecondaryClick::Right => "right",
-            SecondaryClick::Left => "left",
-        }
-    }
-
-    /// Parse the schema's stable id; an unknown spelling is `None`.
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "right" => Some(SecondaryClick::Right),
-            "left" => Some(SecondaryClick::Left),
-            _ => None,
-        }
-    }
-}
-
-/// Per-device pointer/trackpad settings.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PointerSettings {
-    /// Acceleration speed, `-1.0..=1.0` (0 = neutral).
-    pub accel_speed: f64,
-    pub accel_profile: AccelProfile,
-    /// macOS-style natural (inverted) scrolling.
-    pub natural_scroll: bool,
-    pub scroll_method: ScrollMethod,
-    pub tap_to_click: bool,
-    pub left_handed: bool,
-    /// The secondary-click button (T229).
-    pub secondary_click: SecondaryClick,
-    /// Scroll speed, `-1.0..=1.0` (0 neutral) (T229).
-    pub scroll_speed: f64,
-    /// Double-click interval in milliseconds (T229).
-    pub double_click_ms: i32,
-    /// Trackpad haptic feedback, where the hardware supports it (T229).
-    pub haptics: bool,
-}
-
-impl Default for PointerSettings {
-    fn default() -> Self {
-        PointerSettings {
-            accel_speed: 0.0,
-            accel_profile: AccelProfile::Adaptive,
-            natural_scroll: true,
-            scroll_method: ScrollMethod::TwoFinger,
-            tap_to_click: true,
-            left_handed: false,
-            secondary_click: SecondaryClick::Right,
-            scroll_speed: 0.0,
-            double_click_ms: 400,
-            haptics: true,
-        }
-    }
-}
-
 /// The complete input settings surface.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InputSettings {
@@ -146,6 +46,12 @@ pub struct InputSettings {
     pub default_pointer: PointerSettings,
     /// Per-device overrides keyed by libinput device name.
     pub devices: BTreeMap<String, PointerSettings>,
+    /// The per-family snapshots the shell forwards from `input.mouse.*` and
+    /// `input.trackpad.*` (T320). `None` keeps the shared `default_pointer`
+    /// for that family, which is what an older shell that never sends the
+    /// family request gets.
+    pub mouse_pointer: Option<PointerSettings>,
+    pub trackpad_pointer: Option<PointerSettings>,
     pub gestures: GestureConfig,
     pub progress: ProgressConfig,
     pub hot_corners: HotCornerConfig,
@@ -159,6 +65,8 @@ impl Default for InputSettings {
             keyboard: KeyboardSettings::default(),
             default_pointer: PointerSettings::default(),
             devices: BTreeMap::new(),
+            mouse_pointer: None,
+            trackpad_pointer: None,
             gestures: GestureConfig::default(),
             progress: ProgressConfig::default(),
             hot_corners: HotCornerConfig::default(),
@@ -174,6 +82,42 @@ impl InputSettings {
             .get(device)
             .copied()
             .unwrap_or(self.default_pointer)
+    }
+
+    /// The effective pointer settings for a device, resolving the precedence
+    /// the compositor applies: an explicit per-device override wins, then the
+    /// device family's snapshot, then the shared default.
+    pub fn effective_pointer(&self, device: &str, kind: PointerKind) -> PointerSettings {
+        crate::pointer_policy::effective_pointer(
+            self.default_pointer,
+            self.family(kind),
+            self.devices.get(device).copied(),
+        )
+    }
+
+    /// The family snapshot, if the shell has forwarded one.
+    pub fn family(&self, kind: PointerKind) -> Option<PointerSettings> {
+        match kind {
+            PointerKind::Mouse => self.mouse_pointer,
+            PointerKind::Touchpad => self.trackpad_pointer,
+        }
+    }
+
+    /// Replace a family snapshot (the shell's `input.mouse.*` /
+    /// `input.trackpad.*` request).
+    pub fn set_family(&mut self, kind: PointerKind, settings: PointerSettings) {
+        match kind {
+            PointerKind::Mouse => self.mouse_pointer = Some(settings),
+            PointerKind::Touchpad => self.trackpad_pointer = Some(settings),
+        }
+    }
+
+    /// Drop a family snapshot so the family follows the shared default again.
+    pub fn clear_family(&mut self, kind: PointerKind) {
+        match kind {
+            PointerKind::Mouse => self.mouse_pointer = None,
+            PointerKind::Touchpad => self.trackpad_pointer = None,
+        }
     }
 
     /// Set a per-device override.
