@@ -128,6 +128,19 @@ The fix is either a consumer or `stored_only: true` plus a visible note. There
 is no third option. The `stability` set adds a consumer-conformance test that
 fails when a live key has no entry in the verified-consumer table.
 
+The behavioral half of the map gate is `scripts/settings-consumers.json`,
+checked by `make check-settings-consumers` (part of `make verify-stability`).
+The script parses every `stored_only: false` key from
+`services/settingsd/src/schema.rs` and requires a table entry with a
+`consumer`, a `test`, a `state` (`verified` or `known-gap`), and a `task`.
+`stored_only: true` keys are not in the table. A `known-gap` entry names the
+task that will remove it and fails once that task is marked landed in the
+task-set roadmap; a `verified` entry names a test that observes the effect.
+The 2026-11-22 baseline seeds the known gaps listed above. This table is the
+behavioral complement to the label-only schema-mirror and Settings-map tests:
+those prove the row and the key agree, while this gate proves a live key has a
+real consumer behind it.
+
 ### 3.4 Recovery is bounded
 
 No single component failure may require a TTY reboot:

@@ -175,12 +175,12 @@ Item {
             // synonym again.
             var dark = SettingsSearch.search("dark mode");
             verify(dark.length > 0);
-            // T293b moves on: the sub-pane's "Dark mode" row now owns the
-            // label, so this ranking case is the one open item recorded in
-            // the T293b hand-off.
+            // T293b moved a same-label "Dark mode" row under Menu Bar. The
+            // group-level pane-synonym rule keeps the Appearance pane first
+            // without demoting that row for its own menu-bar queries.
             if (dark[0].kind !== "pane")
-                fail("search ranking: T293b moved `menu-bar/darkMode` ahead of "
-                     + "the Appearance pane; see the T293b hand-off");
+                fail("search ranking: `menu-bar/darkMode` outranked the "
+                     + "Appearance pane's exact synonym");
             compare(dark[0].paneId, "appearance");
 
             // T290d: the Appearance pane now has a Theme section, so an exact

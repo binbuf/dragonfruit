@@ -859,6 +859,27 @@ QtObject {
         return false;
     }
 
+    // T293b/T304: an exact pane synonym is still a pane-level match for group
+    // ordering. "Dark mode" is the Appearance pane's synonym, but the moved
+    // Menu Bar Controls row owns the same label; without this the row's exact
+    // label bonus puts its group first. This deliberately does not affect
+    // within-group order, so "theme" still lands on the Appearance section.
+    function isPaneSynonymMatch(entry, query, queryCompact) {
+        if (entry.kind !== "pane")
+            return false;
+        for (var i = 0; i < entry.nSynonyms.length; ++i) {
+            if (entry.nSynonyms[i] === query)
+                return true;
+        }
+        if (queryCompact.length >= 3) {
+            for (var c = 0; c < entry.cSynonyms.length; ++c) {
+                if (entry.cSynonyms[c] === queryCompact)
+                    return true;
+            }
+        }
+        return false;
+    }
+
     function copyEntry(entry, score) {
         var result = {};
         for (var key in entry)
@@ -941,7 +962,8 @@ QtObject {
                     entries: [],
                     best: 0,
                     bestPrimary: false,
-                    paneNameMatch: false
+                    paneNameMatch: false,
+                    paneSynonymMatch: false
                 };
                 buckets[entry.paneId] = bucket;
                 order.push(bucket);
@@ -955,11 +977,15 @@ QtObject {
             bucket.bestPrimary = bucket.bestPrimary || scored.primary;
             if (root.isPaneNameMatch(entry, normalized, queryCompact))
                 bucket.paneNameMatch = true;
+            if (root.isPaneSynonymMatch(entry, normalized, queryCompact))
+                bucket.paneSynonymMatch = true;
         }
 
         order.sort(function(a, b) {
             if (a.paneNameMatch !== b.paneNameMatch)
                 return a.paneNameMatch ? -1 : 1;
+            if (a.paneSynonymMatch !== b.paneSynonymMatch)
+                return a.paneSynonymMatch ? -1 : 1;
             if (a.bestPrimary !== b.bestPrimary)
                 return a.bestPrimary ? -1 : 1;
             if (b.best !== a.best)

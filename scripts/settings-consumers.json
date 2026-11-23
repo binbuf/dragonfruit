@@ -1,0 +1,1033 @@
+{
+  "schema": 1,
+  "baseline": "2026-11-22",
+  "note": "Behavioral half of the Settings map gate (ADR 0316). Every stored_only:false key must appear here. known-gap entries name the task that removes them; T304 seeded the baseline.",
+  "keys": {
+    "dock.size": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.magnification": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.position": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.autohide": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.animateOpening": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.showIndicators": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.minimizeIntoTileIcon": {
+      "consumer": "shell/Dock, compositor/window motion",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.minimizedAnimation": {
+      "consumer": "compositor/window motion",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.titlebarDoubleClick": {
+      "consumer": "compositor/window decoration (SSD)",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.showRecentApps": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.pinned": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.pinnedFolders": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.chooserOnHover": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "dock.minimizeReaction": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dock.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "workspaces.count": {
+      "consumer": "compositor/workspace model, shell",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "gestures.enabled": {
+      "consumer": "compositor/input",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "gestures.spaceSwitch": {
+      "consumer": "compositor/input",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "gestures.missionControl": {
+      "consumer": "compositor/input",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.colorScheme": {
+      "consumer": "compositor/window decoration, shell/design-system Theme",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.accent": {
+      "consumer": "shell/design-system Theme",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.transparency": {
+      "consumer": "shell/design-system Glass, compositor/material",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.source": {
+      "consumer": "shell/wallpaper forwarder, compositor/workspace model",
+      "test": "shell/tests/tst_wallpaperpolicy.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.fit": {
+      "consumer": "shell/wallpaper forwarder, compositor/workspace model",
+      "test": "shell/tests/tst_wallpaperpolicy.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.showOnAllSpaces": {
+      "consumer": "shell/wallpaper forwarder, compositor/workspace model",
+      "test": "shell/tests/tst_wallpaperpolicy.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.provider": {
+      "consumer": "services/wallpaperd",
+      "test": "services/wallpaperd/tests/session_bus.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.providerAutoFetch": {
+      "consumer": "services/wallpaperd",
+      "test": "services/wallpaperd/tests/session_bus.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.providerLastFetch": {
+      "consumer": "services/wallpaperd",
+      "test": "services/wallpaperd/tests/session_bus.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.providerSource": {
+      "consumer": "shell/wallpaper forwarder",
+      "test": "services/wallpaperd/tests/session_bus.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "wallpaper.builtinDefault": {
+      "consumer": "shell/wallpaper forwarder, apps/settings",
+      "test": "services/wallpaperd/tests/session_bus.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "display.scale": {
+      "consumer": "shell/display forwarder, compositor/output",
+      "test": "shell/tests/tst_displayspolicy.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "display.rotation": {
+      "consumer": "shell/display forwarder, compositor/output",
+      "test": "shell/tests/tst_displayspolicy.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "display.brightness": {
+      "consumer": "shell/display forwarder, compositor/output",
+      "test": "shell/tests/tst_displayspolicy.cpp",
+      "state": "known-gap",
+      "task": "T319"
+    },
+    "accessibility.reduceMotion": {
+      "consumer": "shell/design-system Theme, compositor/window motion",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.reduceTransparency": {
+      "consumer": "shell/design-system Glass, compositor/material",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.increaseContrast": {
+      "consumer": "shell/design-system Glass, compositor/material",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "input.repeatDelay": {
+      "consumer": "compositor/input keyboard repeat",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "input.repeatRate": {
+      "consumer": "compositor/input keyboard repeat",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "input.pointerSpeed": {
+      "consumer": "compositor/input pointer acceleration",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.naturalScroll": {
+      "consumer": "compositor/input pointer scrolling",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.tapToClick": {
+      "consumer": "compositor/input pointer tapping",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.leftHanded": {
+      "consumer": "compositor/input pointer handedness",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.scrollMethod": {
+      "consumer": "compositor/input pointer scrolling",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.keyboardBrightness": {
+      "consumer": "compositor/keyboard backlight (hardware bridge deferred)",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.adjustBrightnessLowLight": {
+      "consumer": "compositor/keyboard backlight (hardware bridge deferred)",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.backlightOffAfter": {
+      "consumer": "compositor/keyboard backlight (hardware bridge deferred)",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.keyboardNavigation": {
+      "consumer": "compositor/input keyboard navigation",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "input.emojiKeyAction": {
+      "consumer": "compositor/input (emoji panel bridge deferred)",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "input.secondaryClick": {
+      "consumer": "compositor/input pointer buttons",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.scrollSpeed": {
+      "consumer": "compositor/input pointer scrolling",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.doubleClickSpeed": {
+      "consumer": "compositor/input pointer double-click interval",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.haptics": {
+      "consumer": "compositor/input trackpad haptics (hardware bridge deferred)",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "known-gap",
+      "task": "T320"
+    },
+    "input.lookUp": {
+      "consumer": "compositor/input gesture mapping",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "input.sources": {
+      "consumer": "shell/compositor keymap",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "power.showPercentage": {
+      "consumer": "shell/MenuBar battery item",
+      "test": "apps/settings/tests/tst_settings_battery.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "power.historyRange": {
+      "consumer": "apps/settings Energy pane",
+      "test": "apps/settings/tests/tst_settings_battery.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "power.dimOnBattery": {
+      "consumer": "shell/display forwarder",
+      "test": "apps/settings/tests/tst_settings_battery.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "power.preventSleep": {
+      "consumer": "session/idle engine",
+      "test": "apps/settings/tests/tst_settings_battery.qml",
+      "state": "known-gap",
+      "task": "T317"
+    },
+    "idle.dim": {
+      "consumer": "session/idle engine",
+      "test": "services/session/tests/session_policy.rs",
+      "state": "known-gap",
+      "task": "T317"
+    },
+    "idle.blank": {
+      "consumer": "session/idle engine",
+      "test": "services/session/tests/session_policy.rs",
+      "state": "known-gap",
+      "task": "T316"
+    },
+    "idle.lock": {
+      "consumer": "session/idle engine",
+      "test": "services/session/tests/session_policy.rs",
+      "state": "known-gap",
+      "task": "T317"
+    },
+    "idle.suspend": {
+      "consumer": "session/idle engine, session/suspend",
+      "test": "services/session/tests/session_policy.rs",
+      "state": "known-gap",
+      "task": "T317"
+    },
+    "menu.global": {
+      "consumer": "shell/MenuBar, services/menu-broker",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "sound.alertSound": {
+      "consumer": "apps/settings (alert playback engine deferred)",
+      "test": "apps/settings/tests/tst_settings_sound.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "sound.playEffectsThrough": {
+      "consumer": "apps/settings (alert playback engine deferred)",
+      "test": "apps/settings/tests/tst_settings_sound.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "sound.alertVolume": {
+      "consumer": "apps/settings (alert playback engine deferred)",
+      "test": "apps/settings/tests/tst_settings_sound.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "sound.playOnStartup": {
+      "consumer": "apps/settings (startup chime engine deferred)",
+      "test": "apps/settings/tests/tst_settings_sound.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "sound.uiEffects": {
+      "consumer": "apps/settings (UI sound engine deferred)",
+      "test": "apps/settings/tests/tst_settings_sound.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "sound.volumeFeedback": {
+      "consumer": "shell/control-center, apps/settings (UI sound engine deferred)",
+      "test": "apps/settings/tests/tst_settings_sound.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "sound.balance": {
+      "consumer": "apps/settings (balance write deferred)",
+      "test": "apps/settings/tests/tst_settings_sound.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerTopLeft": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerTopRight": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerBottomLeft": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerBottomRight": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerTopLeftModifier": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerTopRightModifier": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerBottomLeftModifier": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.hotCornerBottomRightModifier": {
+      "consumer": "compositor/input hot corners",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "overview.switchToAppSpace": {
+      "consumer": "compositor/workspace activation",
+      "test": "compositor/tests/shell_protocol_conformance.rs",
+      "state": "verified",
+      "task": "T304"
+    },
+    "notifications.showPreviews": {
+      "consumer": "apps/settings (stored policy)",
+      "test": "apps/settings/tests/tst_settings_notifications.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "notifications.showWhenSleeping": {
+      "consumer": "apps/settings (stored policy)",
+      "test": "apps/settings/tests/tst_settings_notifications.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "notifications.showWhenLocked": {
+      "consumer": "apps/settings (stored policy)",
+      "test": "apps/settings/tests/tst_settings_notifications.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "notifications.showWhenMirroring": {
+      "consumer": "apps/settings (stored policy)",
+      "test": "apps/settings/tests/tst_settings_notifications.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "notifications.appOptions": {
+      "consumer": "apps/settings (stored policy)",
+      "test": "apps/settings/tests/tst_settings_notifications.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "focus.schedule.enabled": {
+      "consumer": "shell/FocusSchedule",
+      "test": "shell/tests/tst_focusschedule.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "focus.schedule.start": {
+      "consumer": "shell/FocusSchedule",
+      "test": "shell/tests/tst_focusschedule.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "focus.schedule.end": {
+      "consumer": "shell/FocusSchedule",
+      "test": "shell/tests/tst_focusschedule.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "focus.schedule.days": {
+      "consumer": "shell/FocusSchedule",
+      "test": "shell/tests/tst_focusschedule.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "focus.customProfiles": {
+      "consumer": "apps/settings Focus pane",
+      "test": "shell/tests/tst_focusschedule.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "focus.customProfile": {
+      "consumer": "apps/settings Focus pane",
+      "test": "shell/tests/tst_focusschedule.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "lock.showUserNameAndPhoto": {
+      "consumer": "shell/LockScreen (stored policy)",
+      "test": "apps/settings/tests/tst_settings_lock_screen.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "lock.showPasswordHints": {
+      "consumer": "shell/LockScreen (stored policy)",
+      "test": "apps/settings/tests/tst_settings_lock_screen.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "lock.showMessageWhenLocked": {
+      "consumer": "shell/LockScreen (stored policy)",
+      "test": "apps/settings/tests/tst_settings_lock_screen.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "lock.message": {
+      "consumer": "shell/LockScreen (stored policy)",
+      "test": "apps/settings/tests/tst_settings_lock_screen.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "lock.showPowerButtons": {
+      "consumer": "shell/LockScreen (stored policy)",
+      "test": "apps/settings/tests/tst_settings_lock_screen.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "lock.passwordHint": {
+      "consumer": "shell/LockScreen",
+      "test": "apps/settings/tests/tst_settings_lock_screen.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "lock.requirePasswordAfter": {
+      "consumer": "apps/settings Lock Screen pane (derives idle.lock)",
+      "test": "apps/settings/tests/tst_settings_lock_screen.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.autoHide": {
+      "consumer": "shell/MenuBar, compositor/menu-bar visibility",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.showBackground": {
+      "consumer": "shell/MenuBar, compositor/menu-bar veil",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.recentItems": {
+      "consumer": "apps/settings, shell/MenuBar system menu",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.osGlyph": {
+      "consumer": "shell/MenuBar system menu",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.clock.showDate": {
+      "consumer": "shell/MenuBar clock",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.clock.showSeconds": {
+      "consumer": "shell/MenuBar clock",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.wifi": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.bluetooth": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.battery": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.volume": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.focus": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.accessibility": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.clock": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.notifications": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.controlCenter": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.focusAlways": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.volumeWhenActive": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.workspaces": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.overflow": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.tray.hidden": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "printers.defaultPaperSize": {
+      "consumer": "apps/settings (stored preference)",
+      "test": "apps/settings/tests/tst_settings_printers.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "clock.use24Hour": {
+      "consumer": "shell/MenuBar clock",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "updates.auto": {
+      "consumer": "dragonfruit-system-status update provider",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "updates.autoInstall": {
+      "consumer": "dragonfruit-system-status update provider",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "defaults.passwordManager": {
+      "consumer": "apps/settings Autofill & Passwords provider selection",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "defaults.browser": {
+      "consumer": "apps/settings default-apps delegate (xdg-settings; settings portal T258)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "locale.calendar": {
+      "consumer": "apps/settings (date preview)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "locale.temperature": {
+      "consumer": "apps/settings (weather and date previews)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "locale.measurement": {
+      "consumer": "apps/settings (measurement previews)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "locale.dateFormat": {
+      "consumer": "apps/settings (date preview)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "locale.numberFormat": {
+      "consumer": "apps/settings (number preview)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "locale.firstDay": {
+      "consumer": "apps/settings (calendar preview)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "locale.languages": {
+      "consumer": "apps/settings (preferred-language order and preview)",
+      "test": "apps/settings/tests/tst_settings_general.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "settings.lastPane": {
+      "consumer": "apps/settings shell (last pane)",
+      "test": "apps/settings/tests/tst_settings_shell.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "settings.window.width": {
+      "consumer": "apps/settings window",
+      "test": "apps/settings/tests/tst_settings_shell.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "settings.window.height": {
+      "consumer": "apps/settings window",
+      "test": "apps/settings/tests/tst_settings_shell.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "settings.window.x": {
+      "consumer": "apps/settings window",
+      "test": "apps/settings/tests/tst_settings_shell.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "settings.window.y": {
+      "consumer": "apps/settings window",
+      "test": "apps/settings/tests/tst_settings_shell.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "settings.window.positioned": {
+      "consumer": "apps/settings window",
+      "test": "apps/settings/tests/tst_settings_shell.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.highlight": {
+      "consumer": "shell/design-system Theme, apps/settings Theme",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.sidebarIconSize": {
+      "consumer": "apps/settings Sidebar",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.wallpaperTint": {
+      "consumer": "shell/design-system Glass, apps/settings Glass",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.scrollBars": {
+      "consumer": "shell/design-system ScrollView, apps/settings ScrollView",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.scrollBarClick": {
+      "consumer": "shell/design-system ScrollView, apps/settings ScrollView",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.folderColor": {
+      "consumer": "shell/design-system Theme, apps/files Theme",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.iconStyle": {
+      "consumer": "apps/settings icon-theme provider",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.iconTheme": {
+      "consumer": "apps/settings icon-theme provider, shell/app-index icon lookup",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.cursorTheme": {
+      "consumer": "compositor/cursor theme (next session)",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.cursorSize": {
+      "consumer": "compositor/cursor theme (next session)",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.windowControls": {
+      "consumer": "compositor/window decoration, session GTK button-layout",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.material": {
+      "consumer": "shell/design-system Glass (degrade budget owns the effective tier)",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "appearance.accentFromWallpaper": {
+      "consumer": "shell/design-system Theme (wallpaper color sampler)",
+      "test": "apps/settings/tests/tst_settings_appearance.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.modules": {
+      "consumer": "shell/control-center",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.menuBarOnly": {
+      "consumer": "shell/control-center, shell/MenuBar",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.page2": {
+      "consumer": "shell/control-center",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.page3": {
+      "consumer": "shell/control-center",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.pageCount": {
+      "consumer": "shell/control-center",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.activePage": {
+      "consumer": "shell/control-center",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.perDisplay": {
+      "consumer": "shell/control-center",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.spans": {
+      "consumer": "shell/control-center",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "quickSettings.pageNames": {
+      "consumer": "apps/settings Quick Settings pane",
+      "test": "shell/tests/tst_controlcenter.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "menu.control.search": {
+      "consumer": "shell/MenuBar status row",
+      "test": "apps/settings/tests/tst_settings_menu_bar.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "screenSaver.style": {
+      "consumer": "shell/LockScreen",
+      "test": "apps/settings/tests/tst_settings_screen_saver.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "screenSaver.clock": {
+      "consumer": "shell/LockScreen",
+      "test": "apps/settings/tests/tst_settings_screen_saver.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "screenSaver.showDate": {
+      "consumer": "shell/LockScreen",
+      "test": "apps/settings/tests/tst_settings_screen_saver.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "screenSaver.showSeconds": {
+      "consumer": "shell/LockScreen",
+      "test": "apps/settings/tests/tst_settings_screen_saver.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "desktop.showItems": {
+      "consumer": "apps/files desktop process",
+      "test": "apps/files/tests/tst_files_desktop.cpp",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.textSize": {
+      "consumer": "shell/design-system Theme",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.differentiateWithoutColor": {
+      "consumer": "shell/design-system Theme/Toggle",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.dimFlashingLights": {
+      "consumer": "shell/Dock attention bounce",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.magnifier": {
+      "consumer": "shell/compositor policy, compositor/magnifier",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.magnifierZoom": {
+      "consumer": "compositor/magnifier",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.magnifierMode": {
+      "consumer": "compositor/magnifier",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "accessibility.shortcut": {
+      "consumer": "shell/compositor shortcut engine",
+      "test": "apps/settings/tests/tst_settings_accessibility.qml",
+      "state": "verified",
+      "task": "T304"
+    },
+    "privacy.locationServices": {
+      "consumer": "apps/settings Privacy pane (gates per-app location writes)",
+      "test": "apps/settings/tests/tst_settings_privacy.qml",
+      "state": "verified",
+      "task": "T304"
+    }
+  }
+}
