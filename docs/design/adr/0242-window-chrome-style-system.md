@@ -56,4 +56,4 @@ without per-app constants.
   bars do not change chrome height.
 - Changing a style at runtime reflows a zoomed client through the existing
   inset/configure path.
-- `_NET_FRAME_EXTENTS` remains a separate X11 gap (G-16).
+- `_NET_FRAME_EXTENTS` is published by T327 ([ADR 0333](0333-net-frame-extents.md)).

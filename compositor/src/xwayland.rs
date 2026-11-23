@@ -30,6 +30,10 @@ use smithay::desktop::Window;
 use smithay::input::pointer::Focus as PointerFocus;
 use smithay::reexports::calloop::RegistrationToken;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::x11rb::connection::Connection as _;
+use smithay::reexports::x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, PropMode};
+use smithay::reexports::x11rb::rust_connection::RustConnection;
+use smithay::reexports::x11rb::wrapper::ConnectionExt as _;
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus as _;
 use smithay::wayland::selection::data_device::{
@@ -47,7 +51,8 @@ use crate::state::DfState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::{
     cascaded_geometry, centered_on, user_positioned_geometry, DecorationTier, ResizeEdge,
-    WindowEvent, WindowEventKind, WindowState, CASCADE_STEP,
+    WindowChrome, WindowEvent, WindowEventKind, WindowInsets, WindowState, CASCADE_STEP,
+    DEFAULT_WINDOW_STYLE,
 };
 
 /// The Xwayland server, X11 window manager, and `DISPLAY` hand-off state.
@@ -76,6 +81,14 @@ pub struct XwaylandState {
     /// Smithay advertises as the output's `wl_output.scale`, so X11 clients
     /// always render into an integer coordinate space.
     pub integer_scale: i32,
+    /// A private X11 connection for WM-owned window properties (T327).
+    /// Smithay's `X11Wm` keeps its own connection private, so the compositor
+    /// opens one of its own to publish `_NET_FRAME_EXTENTS` on managed
+    /// windows. `None` until the first property write; reset when the server
+    /// goes away.
+    pub property_conn: Option<RustConnection>,
+    /// The cached `_NET_FRAME_EXTENTS` atom on [`Self::property_conn`].
+    pub frame_extents_atom: Option<Atom>,
 }
 
 impl Default for XwaylandState {
@@ -91,6 +104,8 @@ impl Default for XwaylandState {
             override_windows: Vec::new(),
             // Clamped to at least 1 even before the session's first output.
             integer_scale: 1,
+            property_conn: None,
+            frame_extents_atom: None,
         }
     }
 }
@@ -267,6 +282,9 @@ pub fn maybe_restart(state: &mut DfState) {
     state.xwayland.wm = None;
     state.xwayland.running = false;
     state.xwayland.pending_restart = false;
+    // The property connection belongs to the dead server (T327).
+    state.xwayland.property_conn = None;
+    state.xwayland.frame_extents_atom = None;
     if let Some(number) = state.xwayland.display_number {
         cleanup_x11_files(number);
     }
@@ -289,7 +307,160 @@ pub fn maybe_restart(state: &mut DfState) {
 
 // --- X11 window management --------------------------------------------------
 
+/// Convert compositor window insets into the four `_NET_FRAME_EXTENTS` values
+/// (left, right, top, bottom) in X11 client pixels (T327).
+///
+/// Xwayland's root window is the output's **logical** size (ADR 0152) and
+/// Smithay sends X11 geometry unscaled (`client_scale` is 1), so one X11 pixel
+/// is one compositor logical point at every integer scale. The SSD titlebar
+/// height is therefore the top extent as-is. `integer_scale` is deliberately
+/// not a multiplier: at scale 2 that would tell a client its frame is twice as
+/// tall as the strip the compositor actually reserves. The parameter is
+/// threaded through so the scale contract is explicit at the call site and a
+/// future per-surface X11 scale has one place to change.
+fn frame_extents(insets: WindowInsets, integer_scale: i32) -> [u32; 4] {
+    debug_assert!(
+        integer_scale >= 1,
+        "the Xwayland integer scale is clamped to at least 1"
+    );
+    [
+        insets.left.max(0) as u32,
+        insets.right.max(0) as u32,
+        insets.top.max(0) as u32,
+        insets.bottom.max(0) as u32,
+    ]
+}
+
 impl DfState {
+    /// Open the private property connection and intern `_NET_FRAME_EXTENTS`.
+    ///
+    /// Smithay 0.7's `X11Wm` does not expose its X11 connection, so a second
+    /// connection owned by the compositor publishes WM properties such as
+    /// `_NET_FRAME_EXTENTS` (T327). It is opened lazily on the first write and
+    /// dropped when the server goes away.
+    fn ensure_x11_property_conn(&mut self) -> Option<Atom> {
+        if let (Some(_), Some(atom)) = (
+            &self.xwayland.property_conn,
+            self.xwayland.frame_extents_atom,
+        ) {
+            return Some(atom);
+        }
+        self.xwayland.property_conn = None;
+        self.xwayland.frame_extents_atom = None;
+        let display = self.xwayland.display.clone()?;
+        let (conn, _screen) = match RustConnection::connect(Some(&display)) {
+            Ok(pair) => pair,
+            Err(err) => {
+                eprintln!(
+                    "dragonfruit-compositor: failed to open the X11 property connection: {err}"
+                );
+                return None;
+            }
+        };
+        let atom = conn
+            .intern_atom(false, b"_NET_FRAME_EXTENTS")
+            .map_err(|err| err.to_string())
+            .and_then(|cookie| cookie.reply().map_err(|err| err.to_string()));
+        match atom {
+            Ok(reply) => {
+                self.xwayland.frame_extents_atom = Some(reply.atom);
+                self.xwayland.property_conn = Some(conn);
+                Some(reply.atom)
+            }
+            Err(err) => {
+                eprintln!("dragonfruit-compositor: failed to intern _NET_FRAME_EXTENTS: {err}");
+                None
+            }
+        }
+    }
+
+    /// Write `_NET_FRAME_EXTENTS` on one X11 window.
+    ///
+    /// `sync` forces a server round-trip so a client that reads the property
+    /// from its first `MapNotify` sees the value; ordinary updates only flush.
+    fn write_x11_frame_extents(&mut self, window_id: X11Window, extents: [u32; 4], sync: bool) {
+        let Some(atom) = self.ensure_x11_property_conn() else {
+            return;
+        };
+        let Some(conn) = self.xwayland.property_conn.as_ref() else {
+            return;
+        };
+        let mut ok = true;
+        if let Err(err) = conn.change_property32(
+            PropMode::REPLACE,
+            window_id,
+            atom,
+            AtomEnum::CARDINAL,
+            &extents,
+        ) {
+            eprintln!(
+                "dragonfruit-compositor: failed to set _NET_FRAME_EXTENTS on {window_id:#x}: {err}"
+            );
+            ok = false;
+        }
+        if ok {
+            let flushed = if sync {
+                conn.sync().map_err(|err| err.to_string())
+            } else {
+                conn.flush().map_err(|err| err.to_string())
+            };
+            if let Err(err) = flushed {
+                eprintln!(
+                    "dragonfruit-compositor: failed to flush _NET_FRAME_EXTENTS on {window_id:#x}: {err}"
+                );
+                ok = false;
+            }
+        }
+        if !ok {
+            // A dead connection would otherwise fail every later window.
+            self.xwayland.property_conn = None;
+            self.xwayland.frame_extents_atom = None;
+        }
+    }
+
+    /// Publish the current frame extents for a managed X11 window (T327).
+    ///
+    /// Called after a map and after any change that can move the SSD titlebar
+    /// strip: a decoration-tier flip, a chrome-style change, or a window state
+    /// transition (fullscreen hides the strip; zoom/minimize keep it). CSD X11
+    /// windows reserve no inset, so they publish zero extents.
+    pub(crate) fn publish_x11_frame_extents(&mut self, window: &Window) {
+        let Some(surface) = window.x11_surface() else {
+            return;
+        };
+        if surface.is_override_redirect() {
+            return;
+        }
+        let extents = frame_extents(self.insets_for(window), self.xwayland.integer_scale);
+        self.write_x11_frame_extents(surface.window_id(), extents, false);
+    }
+
+    /// Publish extents for an X11 surface that is not (yet) in the model.
+    ///
+    /// Used at `CreateNotify` to seed the property before the client can map,
+    /// and again just before the frame is mapped. The tier comes straight from
+    /// `_MOTIF_WM_HINTS`; a new window uses the default chrome style (a later
+    /// style change republishes through [`Self::publish_x11_frame_extents`]).
+    ///
+    /// `sync` is implicit: both call sites need the value processed before the
+    /// WM sends the reparent/map requests on the other connection, so a client
+    /// reading on `MapNotify` sees it.
+    fn publish_x11_frame_extents_for_surface(&mut self, surface: &X11Surface) {
+        if surface.is_override_redirect() {
+            return;
+        }
+        let tier = Self::x11_decoration_tier(surface);
+        let chrome = self
+            .x11_window_for(surface)
+            .map(|window| self.windows.window_chrome(&window))
+            .unwrap_or_else(|| WindowChrome::new(DEFAULT_WINDOW_STYLE));
+        let extents = frame_extents(
+            WindowInsets::for_tier_with_chrome(tier, chrome),
+            self.xwayland.integer_scale,
+        );
+        self.write_x11_frame_extents(surface.window_id(), extents, true);
+    }
+
     /// The registered window for an X11 surface (identity is the X11 window
     /// id; `X11Surface` itself is not `PartialEq`).
     pub(crate) fn x11_window_for(&self, surface: &X11Surface) -> Option<Window> {
@@ -556,16 +727,30 @@ impl XwmHandler for DfState {
             .expect("X11 WM callback without a live X11Wm")
     }
 
-    fn new_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
+    fn new_window(&mut self, _xwm: XwmId, surface: X11Surface) {
+        // T327: seed `_NET_FRAME_EXTENTS` at CreateNotify. Smithay maps the
+        // client window during reparenting before `map_window_request` runs,
+        // so this is the earliest point that precedes the client's first
+        // `MapNotify`; the map path republishes the final tier/style/state.
+        self.publish_x11_frame_extents_for_surface(&surface);
+    }
 
     fn new_override_redirect_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
 
     fn map_window_request(&mut self, _xwm: XwmId, surface: X11Surface) {
+        // T327: publish `_NET_FRAME_EXTENTS` before the frame is mapped so a
+        // client that reads it from its first MapNotify sees the final value.
+        // The post-map call below re-reads the model (state/style may have
+        // changed) and covers windows restored from minimize/fullscreen.
+        self.publish_x11_frame_extents_for_surface(&surface);
         if let Err(err) = surface.set_mapped(true) {
             eprintln!("dragonfruit-compositor: failed to map X11 window: {err}");
             return;
         }
         self.map_x11_window(&surface);
+        if let Some(window) = self.x11_window_for(&surface) {
+            self.publish_x11_frame_extents(&window);
+        }
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, surface: X11Surface) {
@@ -828,6 +1013,9 @@ impl XwmHandler for DfState {
         self.xwayland.wm = None;
         self.xwayland.running = false;
         self.xwayland.pending_restart = true;
+        // Drop the property connection: it belongs to the dead server (T327).
+        self.xwayland.property_conn = None;
+        self.xwayland.frame_extents_atom = None;
     }
 }
 
@@ -847,5 +1035,37 @@ impl XWaylandShellHandler for DfState {
             }
         }
         self.needs_redraw = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_extents_are_the_ssd_strip_in_x11_pixels() {
+        // SSD: the titlebar height is the top extent and nothing else.
+        assert_eq!(
+            frame_extents(WindowInsets::for_tier(DecorationTier::ServerSide), 1),
+            [0, 0, DEFAULT_WINDOW_STYLE.height() as u32, 0]
+        );
+        // CSD: the client draws its own frame, so it reserves no extents.
+        assert_eq!(
+            frame_extents(WindowInsets::for_tier(DecorationTier::ClientSide), 1),
+            [0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn frame_extents_do_not_reapply_the_integer_scale() {
+        // Xwayland's X screen is the output's logical space at every integer
+        // scale (ADR 0152), so a 32 pt titlebar is 32 X pixels at scale 2 as
+        // well. Multiplying here would make a client reserve twice the strip.
+        let insets = WindowInsets::for_tier(DecorationTier::ServerSide);
+        assert_eq!(frame_extents(insets, 1), frame_extents(insets, 2));
+        assert_eq!(
+            frame_extents(insets, 2)[2],
+            DEFAULT_WINDOW_STYLE.height() as u32
+        );
     }
 }

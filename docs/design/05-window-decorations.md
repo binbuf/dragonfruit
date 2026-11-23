@@ -329,8 +329,22 @@ T-01.5 pins down the tier policy and the X11 path:
   Tier-2 X11 window is configured one titlebar shorter than the output (its
   frame offset by the strip), verified against the real X server geometry in
   `xwayland_conformance::x11_decoration_tier_follows_motif_hints_and_configures_insets`.
-  `_NET_FRAME_EXTENTS` is not published yet; it was deferred to the T-16
-  compatibility polish, which did not land it. It remains open (G-16).
+- `_NET_FRAME_EXTENTS` is published on every managed X11 window (T327,
+  [ADR 0333](adr/0333-net-frame-extents.md)). The four CARDINAL values are
+  `(left, right, top, bottom)`; an SSD window's top extent is the resolved
+  chrome height (`WindowInsets::for_tier_with_chrome`), and left/right/bottom
+  are zero because the compositor draws no border. A CSD X11 window (an
+  explicit `_MOTIF_WM_HINTS` opt-out) publishes `0, 0, 0, 0`. The property is
+  in X11 client pixels; under the integer-scaled Xwayland policy (ADR 0152)
+  the X screen is the output's **logical** space, so the logical titlebar
+  height is the X11 pixel value at every integer scale and the output scale
+  must not be applied a second time. The value is seeded when the window is
+  created and written again before the frame is mapped (each with a server
+  round-trip, so a client reading it from its first `MapNotify` sees it) and
+  republished when the decoration tier, chrome style, or window state changes,
+  not only at map. The real X server property is asserted in
+  `xwayland_conformance::x11_frame_extents_publish_the_ssd_titlebar` and at
+  scale 2 in `xwayland_conformance::x11_fixture_at_integer_scale_two`.
 
 T-04.1a makes the decoration read as a real material: an SSD window now casts
 a soft drop shadow drawn by the compositor behind the whole decorated window
@@ -359,8 +373,9 @@ table, so their height and traffic-light geometry cannot drift. Traffic lights
 use a 16 pt AX/hit frame with a 13 pt drawn circle, 23 pt centre spacing, and
 a title-row-derived inset (8 pt in a 32 pt bar, 18 pt in a 52 pt bar).
 Settings and Files are 52 pt `unified` windows; their main toolbar is the
-titlebar row, while the Files path bar (30 pt) stays content. `_NET_FRAME_EXTENTS`
-is still not published to X11 clients ([STATUS.md](STATUS.md) G-16). The
+titlebar row, while the Files path bar (30 pt) stays content. X11 clients see
+the resolved titlebar height as `_NET_FRAME_EXTENTS` (T327,
+[ADR 0333](adr/0333-net-frame-extents.md)); CSD windows publish zero. The
 label-less window menu is the main decoration gap (G-06). The GTK steering bridge now runs from
 the session entry (`dragonfruit-session --sync-toolkit`), the session exports
 `GTK_CSD=0` for X11 GTK 3, and the compositor advertises KDE's legacy

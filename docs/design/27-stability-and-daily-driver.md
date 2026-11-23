@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -290,6 +290,13 @@ No single component failure may require a TTY reboot:
   map gone, a reused X11 window id maps as a new `Window` and takes focus
   normally (T326). [ADR 0332](adr/0332-xwayland-disconnect-teardown.md) records
   the ordering decision.
+- a managed X11 window must tell clients where the compositor's titlebar is.
+  `_NET_FRAME_EXTENTS` publishes `(0, 0, titlebar_height, 0)` for an SSD
+  window and zero for a CSD window, is written before the frame map, and is
+  republished on decoration-tier, chrome-style, and window-state changes. X11
+  pixels are logical points at every integer scale, so the output scale is
+  not applied twice (T327,
+  [ADR 0333](adr/0333-net-frame-extents.md)).
 
 Clipboard serving is the bounded write in that list. The writer holds the
 payload's implicit share for the life of the transfer, so no per-write copy is
@@ -536,7 +543,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-14 | The titlebar window menu is unlabeled | T329 |
 | S-15 | Files lacks copy/move/paste, undo, watcher, tabs, New Window, Open With | T330–T334 |
 | S-16 | Screen sharing is stills-only | T335a, T335b |
-| S-17 | X11 `_NET_FRAME_EXTENTS` is missing; XDnD is a model only | T327, T328a, T328b |
+| S-17 | X11 `_NET_FRAME_EXTENTS` is missing (closed by T327); XDnD is a model only | T327, T328a, T328b |
 | S-18 | Pointer constraints are refused for games/remote desktop; refusals grow unbounded (closed by T322) | T322 |
 | S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output (closed by T323) | T323 |
 | S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output | T324 |

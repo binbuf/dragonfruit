@@ -4403,6 +4403,9 @@ impl DfState {
         } else {
             self.space.unmap_elem(window);
         }
+        // T327: fullscreen hides the SSD strip and a restore brings it back;
+        // keep X11 clients' `_NET_FRAME_EXTENTS` in step with the transition.
+        self.publish_x11_frame_extents(window);
         self.broadcast_state(window);
         self.mark_scene_dirty();
     }
@@ -4446,6 +4449,9 @@ impl DfState {
             return;
         }
         self.reapply_insets(window);
+        // T327: a CSD X11 window publishes zero extents; flipping back to SSD
+        // republishes the titlebar strip without a remap.
+        self.publish_x11_frame_extents(window);
         self.mark_scene_dirty();
     }
 
@@ -4460,6 +4466,9 @@ impl DfState {
             return false;
         }
         self.reapply_insets(&window);
+        // T327: a style change moves the SSD titlebar height, so X11 clients
+        // must see the new top extent.
+        self.publish_x11_frame_extents(&window);
         self.mark_scene_dirty();
         true
     }

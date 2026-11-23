@@ -207,6 +207,30 @@ fn client_list(conn: &RustConnection, root: X11Window) -> Vec<X11Window> {
     reply.value32().map(|it| it.collect()).unwrap_or_default()
 }
 
+/// Intern `_NET_FRAME_EXTENTS` once (T327).
+fn frame_extents_atom(conn: &RustConnection) -> u32 {
+    conn.intern_atom(false, b"_NET_FRAME_EXTENTS")
+        .expect("intern _NET_FRAME_EXTENTS")
+        .reply()
+        .expect("intern reply")
+        .atom
+}
+
+/// Read `_NET_FRAME_EXTENTS` as `(left, right, top, bottom)`, or `None` while
+/// the property is absent or not a four-cardinal list (T327).
+fn frame_extents(conn: &RustConnection, window: X11Window, atom: u32) -> Option<[u32; 4]> {
+    let reply = conn
+        .get_property(false, window, atom, AtomEnum::CARDINAL, 0, 4)
+        .ok()?
+        .reply()
+        .ok()?;
+    if reply.format != 32 {
+        return None;
+    }
+    let values: Vec<u32> = reply.value32()?.collect();
+    (values.len() == 4).then(|| [values[0], values[1], values[2], values[3]])
+}
+
 /// Poll `predicate` until it is true or the deadline passes.
 fn wait_until(mut predicate: impl FnMut() -> bool, timeout: Duration, what: &str) {
     let deadline = Instant::now() + timeout;
@@ -544,6 +568,125 @@ fn x11_window_carries_the_ssd_titlebar() {
     );
 }
 
+/// T327 acceptance: a managed X11 window publishes `_NET_FRAME_EXTENTS`.
+/// An SSD window's top extent is the compositor's drawn titlebar strip; a
+/// client that draws its own frame (CSD) publishes zero extents, and a
+/// runtime `_MOTIF_WM_HINTS` flip republishes without a remap.
+#[test]
+fn x11_frame_extents_publish_the_ssd_titlebar() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-x11-extents-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-x11-extents-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(&socket_name, Some(&synthetic_path));
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+    let extents_atom = frame_extents_atom(&conn);
+    let motif = conn
+        .intern_atom(false, b"_MOTIF_WM_HINTS")
+        .expect("intern _MOTIF_WM_HINTS")
+        .reply()
+        .expect("intern reply")
+        .atom;
+
+    let window = conn.generate_id().expect("generate window id");
+    let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+    conn.create_window(
+        screen.root_depth,
+        window,
+        root,
+        40,
+        40,
+        200,
+        120,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &aux,
+    )
+    .expect("create_window");
+    conn.map_window(window).expect("map_window");
+    conn.flush().expect("flush");
+
+    wait_until(
+        || client_list(&conn, root).contains(&window),
+        Duration::from_secs(5),
+        "X11 window to be managed",
+    );
+
+    // The SSD titlebar strip is the top extent; every other edge is zero.
+    let ssd_extents = [0, 0, TITLEBAR_HEIGHT as u32, 0];
+    wait_until(
+        || frame_extents(&conn, window, extents_atom) == Some(ssd_extents),
+        Duration::from_secs(5),
+        "the SSD X11 window to publish _NET_FRAME_EXTENTS",
+    );
+
+    // The property agrees with the titlebar the compositor actually draws.
+    let reports = wait_for_report(&input, |reports| {
+        reports.iter().any(|report| report.server_side)
+    });
+    let report = *reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("the X11 window must carry an SSD titlebar");
+    let extents = frame_extents(&conn, window, extents_atom).expect("frame extents");
+    assert_eq!(
+        extents[2], report.titlebar.3 as u32,
+        "the top extent must equal the drawn titlebar strip: {extents:?} {report:?}"
+    );
+    assert_eq!((extents[0], extents[1], extents[3]), (0, 0, 0));
+
+    // CSD: the client says it draws its own frame -> zero extents.
+    conn.change_property32(PropMode::REPLACE, window, motif, motif, &[2, 0, 0, 0, 0])
+        .expect("set motif hints");
+    conn.flush().expect("flush");
+    wait_until(
+        || frame_extents(&conn, window, extents_atom) == Some([0, 0, 0, 0]),
+        Duration::from_secs(5),
+        "the CSD X11 window to publish zero frame extents",
+    );
+    wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|candidate| candidate.window == report.window && !candidate.server_side)
+    });
+
+    // Back to SSD: the titlebar strip returns without a remap.
+    conn.change_property32(PropMode::REPLACE, window, motif, motif, &[2, 0, 2, 0, 0])
+        .expect("set motif hints");
+    conn.flush().expect("flush");
+    wait_until(
+        || frame_extents(&conn, window, extents_atom) == Some(ssd_extents),
+        Duration::from_secs(5),
+        "the SSD X11 window to republish its frame extents",
+    );
+
+    conn.destroy_window(window).expect("destroy_window");
+    conn.flush().expect("flush");
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 /// T-16.3a acceptance: integer-scaled Xwayland.
 ///
 /// The headless fixture boots its primary output at scale 2. The compositor
@@ -615,6 +758,16 @@ fn x11_fixture_at_integer_scale_two() {
         || client_list(&conn, root).contains(&window),
         Duration::from_secs(5),
         "X11 window to be managed",
+    );
+
+    // T327: `_NET_FRAME_EXTENTS` is in X11 client pixels. At integer scale 2
+    // the X screen is the logical space (ADR 0152), so the 32 pt titlebar is
+    // 32 X pixels, not 64: the property must not re-apply the output scale.
+    let extents_atom = frame_extents_atom(&conn);
+    wait_until(
+        || frame_extents(&conn, window, extents_atom) == Some([0, 0, TITLEBAR_HEIGHT as u32, 0]),
+        Duration::from_secs(5),
+        "the integer-scaled X11 window to publish logical frame extents",
     );
 
     let reports = wait_for_report(&input, |reports| {
