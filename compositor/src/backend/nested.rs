@@ -187,7 +187,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                         .as_deref(),
                     1.0,
                 );
-                add_output(
+                // Nested/headless: one `wl_output` global for the session's
+                // single output, created at startup.
+                let _ = add_output(
                     state,
                     "NESTED-1",
                     PhysicalProperties {

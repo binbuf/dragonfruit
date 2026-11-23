@@ -38,9 +38,12 @@ setup, not visual polish.
    `create_global` in `connector_connected` is deleted. Nested and headless
    create their one global at startup.
 2. **Connector init is transactional.** On any failure after `add_output`
-   (planes, output init, VRR probe), call `on_output_removed`,
-   `space.unmap_output`, remove the global, and clear the workspace before
-   returning. No output survives without `SurfaceData`.
+   that prevents the output from becoming usable (planes, DRM output init),
+   call `on_output_removed`, `space.unmap_output`, remove the global, and
+   clear the workspace before returning. No output survives without
+   `SurfaceData`. The VRR probe is not such a failure: an unsupported,
+   modeset-required, or refused VRR property keeps the fixed presentation
+   period and the working output.
 3. **Popups are constrained to the parent output.** Resolve the output from
    the parent window’s geometry (fall back to the focused output, then the
    primary) and pass that geometry to `constrained_popup_geometry`.

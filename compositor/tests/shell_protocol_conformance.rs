@@ -215,6 +215,9 @@ struct TestClient {
     /// Bound `wl_output` globals, so a test can pin a chrome surface to one
     /// display (`df_shell.get_layer_surface` takes a `wl_output`).
     wl_outputs: Vec<wl_output::WlOutput>,
+    /// The live `wl_output` global names, tracked across `Global` and
+    /// `GlobalRemove` so T323 can assert one global per output.
+    wl_output_globals: Vec<u32>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
@@ -227,13 +230,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
         _qh: &QueueHandle<Self>,
     ) {
         state.registry = Some(registry.clone());
-        if let wl_registry::Event::Global {
-            name,
-            interface,
-            version,
-        } = event
-        {
-            match interface.as_str() {
+        match event {
+            wl_registry::Event::Global {
+                name,
+                interface,
+                version,
+            } => match interface.as_str() {
                 "wl_compositor" => {
                     state.compositor = Some(registry.bind(name, version, _qh, ()));
                 }
@@ -241,6 +243,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                     state.shm = Some(registry.bind(name, version, _qh, ()));
                 }
                 "wl_output" => {
+                    state.wl_output_globals.push(name);
                     state
                         .wl_outputs
                         .push(registry.bind(name, version.min(4), _qh, ()));
@@ -264,7 +267,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 "df_shell" => state.shell_global = Some((name, version)),
                 "df_toplevel_manager" => state.manager_global = Some((name, version)),
                 _ => {}
+            },
+            wl_registry::Event::GlobalRemove { name } => {
+                state.wl_output_globals.retain(|global| *global != name);
             }
+            _ => {}
         }
     }
 }
@@ -7211,6 +7218,11 @@ fn shell_output_hotplug_reanchors_chrome() {
         3,
         "the one static headless output starts with three Spaces"
     );
+    assert_eq!(
+        state.wl_output_globals.len(),
+        1,
+        "the static headless output advertises exactly one wl_output global"
+    );
     assert!(
         state.output_names.iter().any(|name| name == "HEADLESS-1"),
         "the static output is announced: {:?}",
@@ -7237,6 +7249,21 @@ fn shell_output_hotplug_reanchors_chrome() {
         Duration::from_secs(5),
         |state| state.workspaces.len() >= 6,
     );
+    // T323: the hotplug advertises exactly one new wl_output global, never a
+    // duplicate from a second `create_global`.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.wl_output_globals.len() == 2,
+    );
+    // The test client binds every wl_output it sees. Flush that bind and let
+    // the compositor process it before detaching: a bind request that reaches
+    // the server after the global is gone is a protocol error.
+    queue
+        .roundtrip(&mut state)
+        .expect("flush the hotplugged wl_output bind");
     assert!(
         state.output_geometries.contains(&(1280, 0, 1920, 1080)),
         "the hotplugged output's geometry is announced: {:?}",
@@ -7270,6 +7297,15 @@ fn shell_output_hotplug_reanchors_chrome() {
         &mut state,
         Duration::from_secs(5),
         |state| state.workspace_removed >= 3,
+    );
+    // T323: the detached output's exact global is gone; only the static
+    // output's global remains.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.wl_output_globals.len() == 1,
     );
 
     drop(manager);

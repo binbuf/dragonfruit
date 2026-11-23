@@ -9,14 +9,29 @@ pub mod present;
 pub mod synthetic_output;
 
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
+use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::utils::Transform;
 
 use crate::state::DfState;
 
-/// Create a `wl_output` global for `output` and map it into the scene at
+/// A mapped output and the one `wl_output` global that advertises it.
+///
+/// The backend owns both: the `GlobalId` is the exact handle
+/// [`remove_output`] removes, so a backend must store it rather than create a
+/// second global for the same `Output` (ADR 0315).
+pub struct AddedOutput {
+    pub output: Output,
+    pub global: GlobalId,
+}
+
+/// Create one `wl_output` global for `output` and map it into the scene at
 /// `position` with the given mode/scale/transform. Shared by every backend
 /// so output state changes behave identically (T-16 displays pane builds
 /// on this).
+///
+/// `Output::create_global` never deduplicates: calling this twice for one
+/// output advertises it twice. The caller stores the returned `global` and
+/// hands it back to [`remove_output`].
 pub fn add_output(
     state: &mut DfState,
     name: &str,
@@ -24,7 +39,7 @@ pub fn add_output(
     mode: Mode,
     position: (i32, i32),
     scale: f64,
-) -> Output {
+) -> AddedOutput {
     let output = Output::new(name.to_string(), physical);
     output.set_preferred(mode);
     output.change_current_state(
@@ -33,11 +48,29 @@ pub fn add_output(
         Some(smithay::output::Scale::Fractional(scale)),
         Some(position.into()),
     );
-    let _global = output.create_global::<DfState>(&state.display_handle);
+    let global = output.create_global::<DfState>(&state.display_handle);
     state.space.map_output(&output, position);
     // A fresh output gets a fresh Space list (T-05 FR-7).
     state.on_output_added(&output);
-    output
+    AddedOutput { output, global }
+}
+
+/// Undo [`add_output`] for an output that never became usable.
+///
+/// Migrates and re-homes its windows, clears its Spaces from the workspace,
+/// unmaps it from the scene, and removes its one `wl_output` global, leaving
+/// the client-visible globals and the workspace exactly as they were before
+/// the connector appeared (ADR 0315 point 2). Backends call this from every
+/// failure path after `add_output`, and from hotplug detach when they own the
+/// output directly rather than through a `SurfaceData` whose `Drop` removes
+/// the global.
+pub fn remove_output(state: &mut DfState, output: &Output, global: GlobalId) {
+    // Ordering mirrors the DRM hotplug path: migrate off the output while it
+    // is still mapped so its geometry resolves, then unmap and drop the
+    // global.
+    state.on_output_removed(output);
+    state.space.unmap_output(output);
+    state.display_handle.remove_global::<DfState>(global);
 }
 
 /// Create the seat's input capabilities once, for every backend (FR-1:

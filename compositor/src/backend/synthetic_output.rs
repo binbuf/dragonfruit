@@ -29,11 +29,11 @@ use std::collections::HashMap;
 use std::os::unix::net::UnixDatagram;
 use std::path::Path;
 
-use smithay::output::{Mode, Output};
+use smithay::output::Mode;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode as CalloopMode, PostAction};
 
-use crate::backend::{add_output, headless_physical_properties};
+use crate::backend::{add_output, headless_physical_properties, remove_output, AddedOutput};
 use crate::state::DfState;
 
 /// The environment variable naming the synthetic-output socket. Unset in a
@@ -109,12 +109,12 @@ pub fn parse_command(line: &str) -> Result<SyntheticOutputCommand, String> {
 
 /// Apply one command against the live session.
 ///
-/// `live` owns the `Output` objects the harness created, because removing an
-/// output needs the exact instance that was mapped. Returns whether the
-/// session changed.
+/// `live` owns the `Output` objects and their one `wl_output` global that the
+/// harness created, because removing an output needs the exact instance that
+/// was mapped. Returns whether the session changed.
 pub fn apply_command(
     state: &mut DfState,
-    live: &mut HashMap<String, Output>,
+    live: &mut HashMap<String, AddedOutput>,
     command: SyntheticOutputCommand,
 ) -> bool {
     match command {
@@ -157,11 +157,10 @@ pub fn apply_command(
                 eprintln!("dragonfruit-compositor: no synthetic output {name:?} to remove");
                 return false;
             };
-            // Same ordering as the DRM hotplug path: migrate this output's
+            // Same teardown as the DRM hotplug path: migrate this output's
             // windows to the remaining primary before its Spaces vanish,
-            // then unmap it from the scene.
-            state.on_output_removed(&output);
-            state.space.unmap_output(&output);
+            // unmap it from the scene, and remove its one `wl_output` global.
+            remove_output(state, &output.output, output.global);
             true
         }
     }
@@ -173,7 +172,7 @@ pub fn apply_command(
 /// skipped, never fatal.
 pub fn apply_datagram(
     state: &mut DfState,
-    live: &mut HashMap<String, Output>,
+    live: &mut HashMap<String, AddedOutput>,
     payload: &[u8],
 ) -> usize {
     let text = String::from_utf8_lossy(payload);
@@ -213,7 +212,7 @@ pub fn install(state: &mut DfState, path: &Path) -> Result<(), String> {
     socket
         .set_nonblocking(true)
         .map_err(|e| format!("failed to set synthetic-output socket nonblocking: {e}"))?;
-    let mut live: HashMap<String, Output> = HashMap::new();
+    let mut live: HashMap<String, AddedOutput> = HashMap::new();
     let _ = state
         .loop_handle
         .insert_source(
@@ -244,6 +243,147 @@ pub fn install(state: &mut DfState, path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    use smithay::reexports::wayland_server::{Display, DisplayHandle};
+    use wayland_client::protocol::wl_registry;
+    use wayland_client::{Connection, Dispatch, EventQueue};
+
+    use crate::state::{DfClientState, DfState};
+
+    /// A registry-only client: it counts the live `wl_output` globals, which is
+    /// the client-visible contract of ADR 0315.
+    #[derive(Default)]
+    struct RegistryClient {
+        outputs: Vec<u32>,
+    }
+
+    impl Dispatch<wl_registry::WlRegistry, ()> for RegistryClient {
+        fn event(
+            state: &mut RegistryClient,
+            _registry: &wl_registry::WlRegistry,
+            event: wl_registry::Event,
+            _: &(),
+            _: &Connection,
+            _: &wayland_client::QueueHandle<Self>,
+        ) {
+            match event {
+                wl_registry::Event::Global {
+                    name, interface, ..
+                } if interface == "wl_output" => state.outputs.push(name),
+                wl_registry::Event::GlobalRemove { name } => {
+                    state.outputs.retain(|global| *global != name);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Pump the in-process server and client once. The compositor normally
+    /// runs this through calloop; the test drives the same `Display` by hand.
+    fn pump(
+        display: &mut Display<DfState>,
+        state: &mut DfState,
+        conn: &Connection,
+        queue: &mut EventQueue<RegistryClient>,
+        client: &mut RegistryClient,
+    ) {
+        conn.flush().expect("flush the test client");
+        display.dispatch_clients(state).expect("dispatch server");
+        display.flush_clients().expect("flush server");
+        // `dispatch_pending` does not read the socket; poll it without
+        // blocking so the test never hangs on an empty queue.
+        if let Some(guard) = conn.prepare_read() {
+            use std::os::fd::AsRawFd;
+            let mut pollfd = libc::pollfd {
+                fd: guard.connection_fd().as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            if unsafe { libc::poll(&mut pollfd, 1, 0) } > 0 {
+                let _ = guard.read();
+            }
+        }
+        queue.dispatch_pending(client).expect("dispatch client");
+    }
+
+    #[track_caller]
+    fn wait_for_output_count(
+        display: &mut Display<DfState>,
+        state: &mut DfState,
+        conn: &Connection,
+        queue: &mut EventQueue<RegistryClient>,
+        client: &mut RegistryClient,
+        expected: usize,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            pump(display, state, conn, queue, client);
+            if client.outputs.len() == expected {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "expected {expected} wl_output globals, saw {:?}",
+                client.outputs
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    /// T323 acceptance: the synthetic harness advertises exactly one
+    /// `wl_output` global per added output and removes that global when the
+    /// output is detached. The client is a real Wayland registry, so this is
+    /// the same view an app has.
+    #[test]
+    fn add_and_remove_track_exactly_one_wl_output_global() {
+        let event_loop: calloop::EventLoop<'static, DfState> =
+            calloop::EventLoop::try_new().expect("event loop");
+        let mut display: Display<DfState> = Display::new().expect("display");
+        let mut dh: DisplayHandle = display.handle();
+        let mut state = DfState::new(&dh, event_loop.handle(), event_loop.get_signal());
+
+        let (server, client_stream) = std::os::unix::net::UnixStream::pair().expect("socket pair");
+        dh.insert_client(server, Arc::new(DfClientState::default()))
+            .expect("insert client");
+        let conn = Connection::from_socket(client_stream).expect("client connection");
+        let mut queue = conn.new_event_queue();
+        let _registry = conn.display().get_registry(&queue.handle(), ());
+        let mut client = RegistryClient::default();
+        let mut live = HashMap::new();
+
+        wait_for_output_count(&mut display, &mut state, &conn, &mut queue, &mut client, 0);
+
+        assert!(apply_command(
+            &mut state,
+            &mut live,
+            parse_command("add HDMI-A-1 1920 1080 1280 0").unwrap()
+        ));
+        wait_for_output_count(&mut display, &mut state, &conn, &mut queue, &mut client, 1);
+
+        assert!(apply_command(
+            &mut state,
+            &mut live,
+            parse_command("add DP-2 1280 720 3200 0").unwrap()
+        ));
+        wait_for_output_count(&mut display, &mut state, &conn, &mut queue, &mut client, 2);
+
+        assert!(apply_command(
+            &mut state,
+            &mut live,
+            parse_command("remove HDMI-A-1").unwrap()
+        ));
+        wait_for_output_count(&mut display, &mut state, &conn, &mut queue, &mut client, 1);
+
+        assert!(apply_command(
+            &mut state,
+            &mut live,
+            parse_command("remove DP-2").unwrap()
+        ));
+        wait_for_output_count(&mut display, &mut state, &conn, &mut queue, &mut client, 0);
+        assert!(live.is_empty());
+    }
 
     #[test]
     fn parses_both_command_shapes() {

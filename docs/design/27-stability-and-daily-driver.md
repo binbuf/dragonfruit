@@ -305,11 +305,25 @@ and the Dock's asynchronous owner share this path; ADR
 
 ### 3.6 Multi-monitor is per-output
 
-Each output has exactly one `wl_output` global, removed on unplug. A failed
-connector init cleans up the output, its Spaces, and its global. Popups are
-constrained to the parent window’s output. Absolute pointer, touch, and
-tablet events are mapped to the output under the device/pointer. The lock
-surface on a secondary output receives that output’s input.
+Each output has exactly one `wl_output` global, removed on unplug.
+`backend::add_output` creates that global and returns the `GlobalId`; the DRM
+backend stores the exact handle in `SurfaceData` and removes it when the output
+disconnects. There is no second `create_global` on the connector path, and
+nested/headless create their one global at startup. A failed connector init is
+transactional: after `add_output`, a plane-query or DRM-output-init failure
+calls `backend::remove_output`, which migrates and re-homes the output's
+windows, clears its Spaces from the workspace, unmaps it from the scene, and
+removes the global. The client-visible globals and the workspace are then
+exactly as they were before the connector appeared. The VRR probe is
+deliberately non-fatal (an unsupported/refused property keeps the fixed
+period), so it does not discard a working output. The synthetic-output harness
+drives the same add/remove path in the headless tests; the real hotplug proof
+stays on the hardware rail.
+
+Popups are constrained to the parent window’s output. Absolute pointer, touch,
+and tablet events are mapped to the output under the device/pointer. The lock
+surface on a secondary output receives that output’s input. The decision is
+frozen in [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md).
 
 ### 3.7 Launch is complete
 
@@ -484,7 +498,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-16 | Screen sharing is stills-only | T335a, T335b |
 | S-17 | X11 `_NET_FRAME_EXTENTS` is missing; XDnD is a model only | T327, T328a, T328b |
 | S-18 | Pointer constraints are refused for games/remote desktop; refusals grow unbounded (closed by T322) | T322 |
-| S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output | T323 |
+| S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output (closed by T323) | T323 |
 | S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output | T324 |
 | S-21 | `df_output.set_mode` accepts a zero/negative refresh and panics the compositor | T325 |
 | S-22 | Xwayland restart leaves ghost windows and can lose new X11 windows | T326 |

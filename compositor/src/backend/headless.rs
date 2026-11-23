@@ -42,7 +42,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         socket_name,
         BackendHooks {
             init: Box::new(move |state| {
-                add_output(
+                // Nested/headless create their one `wl_output` global here at
+                // startup; there is no hotplug path to remove it.
+                let _ = add_output(
                     state,
                     "HEADLESS-1",
                     headless_physical_properties(),

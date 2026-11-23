@@ -489,6 +489,9 @@ impl DrmMaterialCache {
 struct SurfaceData {
     dh: smithay::reexports::wayland_server::DisplayHandle,
     output: Output,
+    /// The one `wl_output` global `backend::add_output` created for this
+    /// output. `Drop` removes exactly this handle on disconnect/device removal
+    /// (ADR 0315).
     global: GlobalId,
     drm_output:
         DrmOutput<GbmAllocatorDrm, GbmExporterDrm, Option<OutputPresentationFeedback>, DrmDeviceFd>,
@@ -1227,7 +1230,7 @@ fn connector_connected(
         0,
     );
 
-    let output = crate::backend::add_output(
+    let added = crate::backend::add_output(
         state,
         &output_name,
         smithay::output::PhysicalProperties {
@@ -1240,11 +1243,17 @@ fn connector_connected(
         position,
         1.0,
     );
+    let output = added.output;
+    // The one global `add_output` created. It is stored in `SurfaceData` so
+    // disconnect removes exactly this global, and every failure below hands
+    // it back to `remove_output` so no phantom output survives (ADR 0315).
+    let global = added.global;
 
     let planes = match drm_device.planes(&crtc) {
         Ok(planes) => planes,
         Err(err) => {
             eprintln!("dragonfruit-compositor: failed to query crtc planes: {err:?}");
+            crate::backend::remove_output(state, &output, global);
             return;
         }
     };
@@ -1263,6 +1272,7 @@ fn connector_connected(
         Ok(drm_output) => drm_output,
         Err(err) => {
             eprintln!("dragonfruit-compositor: failed to init drm output {output_name}: {err:?}");
+            crate::backend::remove_output(state, &output, global);
             return;
         }
     };
@@ -1302,8 +1312,6 @@ fn connector_connected(
             }
         }
     });
-
-    let global = output.create_global::<crate::state::DfState>(&state.display_handle);
 
     device.surfaces.insert(
         crtc,
@@ -1346,6 +1354,8 @@ fn connector_disconnected(
         // current Space before its Spaces are destroyed (T-05 FR-7).
         state.on_output_removed(&surface.output);
         state.space.unmap_output(&surface.output);
+        // Dropping `surface` removes the one `wl_output` global stored at
+        // creation, so unplug leaves no stale global (ADR 0315).
     }
 }
 
