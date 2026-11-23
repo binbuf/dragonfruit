@@ -59,7 +59,7 @@ report already uses that distinction; this file applies it consistently.
 
 | Track | State | What is actually in the tree | Open items |
 |---|---|---|---|
-| T-01 Loop v0 — window controls | Implemented | SSD titlebar, traffic lights, drag/double-click, window menu, tier policy, demo harness, captures | window menu is still label-less (G-06) |
+| T-01 Loop v0 — window controls | Implemented | SSD titlebar, traffic lights, drag/double-click, readable window menu, tier policy, demo harness, captures | — (G-06 closed by T329) |
 | T-02 Loop v1 — lifecycle motion | Implemented | one animation clock, appear/minimize/restore/zoom/fullscreen/close, interruptibility, reduced motion | — |
 | T-03 Real session — bring-up/perf | Partial / hardware-open | DRM backend, bring-up classification, input matrix, soak/runbook, presentation instrumentation | real DRM bring-up, real-device input, DRM soak, multi-GPU import run are OPEN (T159–T161) |
 | T-04 Loop v2 — materials | Implemented | shadows, rounded corners, feather backdrop, scene transform, degrade tiers, light/dark | superseded in part by T-20's sampled material; F3 waiver narrowed |
@@ -87,8 +87,8 @@ report already uses that distinction; this file applies it consistently.
 | Area | State | Evidence | Notable limits |
 |---|---|---|---|
 | Compositor core | Implemented | `compositor/src/`, conformance suites, nested/headless/DRM backends | DRM hardware half still OPEN |
-| Stability / daily-driver gate | **Open** | [design 27](27-stability-and-daily-driver.md), ADRs [0311](adr/0311-stability-daily-driver-gate.md)–[0335](adr/0335-xdnd-bridge-as-source.md), `docs/tasks/stability` (local) | P0: focus ownership, idle/DPMS/lock-on-suspend, X11 `DISPLAY`, pointer consumers, Log Out, clipboard blocking, portal liveness, cross-filesystem moves (lock grab teardown, lock-loss recovery, the shell watchdog/restart chord, and brightness through logind landed); P1: Files copy/undo/watcher/tabs, live screencast, window-menu labels, output globals/input scoping, native bring-up (media keys landed in T321, X11 frame extents in T327, XDnD landed in T328a/T328b). The task set is the release gate; see design 27 §4. |
-| Window model / motion | Implemented | `window/`, `window_conformance`, captures | window menu has no text (G-06) |
+| Stability / daily-driver gate | **Open** | [design 27](27-stability-and-daily-driver.md), ADRs [0311](adr/0311-stability-daily-driver-gate.md)–[0336](adr/0336-window-menu-shell-render.md), `docs/tasks/stability` (local) | P0: focus ownership, idle/DPMS/lock-on-suspend, X11 `DISPLAY`, pointer consumers, Log Out, clipboard blocking, portal liveness, cross-filesystem moves (lock grab teardown, lock-loss recovery, the shell watchdog/restart chord, and brightness through logind landed); P1: Files copy/undo/watcher/tabs, live screencast, output globals/input scoping, native bring-up (media keys landed in T321, X11 frame extents in T327, XDnD landed in T328a/T328b). The task set is the release gate; see design 27 §4. |
+| Window model / motion | Implemented | `window/`, `window_conformance`, captures | — (window menu is readable since T329) |
 | Spaces / Overview | Implemented | `workspace/`, `overview/`, T-05 captures | paging, neighbour reveal (G-15) |
 | Chrome material | Implemented (nested + single-GPU DRM) | `window/blur.rs`, `backend/{nested,drm}.rs`, `material_state`, T-20 captures, `captures/t21-native-material.txt`, `captures/t21-native-*.png`, `captures/t208-native-acceptance.md`, ADR 0234 replacement default | multi-GPU/rotated outputs fall back (G-08); cursor/overlay-plane evidence and direct scanout remain open (G-03); native replacement evidence remains OPEN (T208) while `DRAGONFRUIT_GLASS_ROLLOUT=legacy` is the rollback |
 | Shell chrome | Implemented / hardware-open | Render-control producers, physical-scale buffers, paced commits, popup generations and input retirement. [Shell design](04-shell.md#chrome-transport) | One GUI thread; the T314 GUI-thread watchdog and `Ctrl+Alt+Esc` restart a blocked shell. Output-specific shell scenes, native timing and disruption coverage remain open (G-01–G-03). |
@@ -124,7 +124,7 @@ Severity is about **product/architecture risk**, not implementation effort.
 |---|---|---|---|---|
 | G-04 | **Files is a browser subset, not the documented Files MVP.** No tabs, no New Window (menu row is disabled), no copy/move/paste, no undo, no per-item progress/conflicts, no Open With, no Files menu publication. The Rust ops exist but the UI does not expose them. | `apps/files/FilesShell.qml` `nodeMenu`/`backgroundMenu`; no tab model; `FilesDirectoryModel`; `services/files-core/src/ops.rs` | The Files design promises Files semantics that are not there. A user will find the first missing operation immediately. | Cut a Files-completeness track: tabs/windows first, then copy/move/paste and undo, then progress/conflicts, then Open With and menu publication. |
 | G-05 | **Implemented.** The shell resolves native and bridged menus asynchronously, dispatches menu actions asynchronously, and routes application visibility commands through compositor window operations. | [Global menu](06-global-menu.md), [app index client](../../shell/src/appindexclient.cpp) | Exporter loss or delay must not stall local menus. | Exercise slow exporters, replacement owners and rapid focus changes in the native gate. |
-| G-06 | **The compositor window menu is label-less.** It draws token-colored rows with no text or icons; `window/menu.rs` says the visual pass is intentionally flat and label-less. T-04 never added the labels the design promised. | `compositor/src/window/menu.rs` header, `render_elements` | Right-clicking a titlebar opens an unlabeled menu. This is a first-day usability defect, not polish. | Add a text renderer or move the menu to a trusted shell surface; do not leave a menu that cannot be read. |
+| G-06 | **Resolved (T329).** The titlebar menu is readable: the compositor still owns the model, hit-testing, keyboard navigation, Escape, click-away, and the Space submenu, while the trusted shell renders a `windowmenu` overlay from `df_toplevel_manager` v16 with design-system labels, Tabler icons, the highlight, and a detached submenu card. The compositor keeps a flat no-shell fallback. | `compositor/src/window/menu.rs`, `compositor/src/window_menu.rs`, `shell/windowmenu/WindowMenu.qml`, [ADR 0336](adr/0336-window-menu-shell-render.md), `window_conformance::window_menu_row_model_carries_readable_labels_and_icons`, `tst_windowmenu` | Right-clicking a titlebar now opens a readable menu on each output; light/dark at 1×/2× is captured by `make t329-window-menu-capture`. | None. |
 | G-07 | **XDnD is live in both directions.** T328a landed the target role: a dedicated X11 connection, the bridge window, the root `XdndProxy`, `XdndStatus`/`XdndFinished`, and the `text/uri-list` transfer (direct and INCR) feeding a compositor-owned Wayland data offer. T328b landed the source role on the same connection, atom table, and bridge window: `XdndEnter`/`Position`/`Drop`/`Leave`, `XdndStatus` before dropping, `XdndFinished`, the five actions with Copy as the default, and a lazy `text/uri-list` transfer from the Wayland client. | `compositor/src/xdnd_bridge.rs`, `compositor/tests/xdnd_conformance.rs`, [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md) | A file dragged from an X11 app to a Wayland app, and from a Wayland app to an X11 app, now crosses the boundary. | Non-file flavours are T346; the live nested Wayland→X11 check and multi-monitor root coordinates are recorded in the task hand-off. |
 | G-08 | **Sampled material is single-GPU, normal-transform only.** A multi-GPU seat disables the sampled path; a rotated output falls back to feather; the `route=copy` plan is not executed. The native single-GPU/normal-transform DP-1 4K/144 path is now confirmed active by T191a (`path=gpu`, `blur_draws=2243`, `backdrop_skipped=0`); the hybrid/rotated cases remain the gap. | `compositor/src/backend/drm.rs` device-count guard and transform guard; `multi_gpu::plan_scene_routes`; `docs/captures/t21-native-material.txt` | Hybrid laptops and rotated displays lose the signature material. | Keep the local route; add an explicit cross-GPU copy or a reported fallback, then transform-aware sampling. Never sample across GPUs. |
 | G-09 | **Resolved.** The session plan and systemd units provision the Files desktop: `dragonfruit-session --print-env` mints the role-scoped desktop token, the entry imports it, the compositor writes `<socket>.desktop-launch-token`, and `dragonfruit-files-desktop.service` starts `dragonfruit-files --desktop` after the socket/settings gate. | `services/session/src/{env,plan}.rs`, `services/session/units/dragonfruit-files-desktop.service`, `services/session/tests/{units,environment,kill_matrix}.rs` | Desktop icons now survive a real login, not only `make dev`/`make demo`. | None. The desktop restarts in place like the shell; its token is reissued after a crash. |
@@ -217,10 +217,11 @@ watching:
 
 ### Remaining architecture constraints
 
-- The compositor owns titlebar menu input and window actions. That menu
-  still needs readable labels (G-06). The shell popup fixes apply to the
-  Dock and Menu Bar, and shared menu-state fixes apply to shell and
-  application context menus. See [window decorations](05-window-decorations.md).
+- The compositor owns titlebar menu input and window actions; since T329 the
+  trusted shell renders its readable projection (G-06 closed). The shell popup
+  fixes apply to the Dock and Menu Bar, and shared menu-state fixes apply to
+  shell and application context menus. See
+  [window decorations](05-window-decorations.md).
 - The compositor preserves windows and lock state through shell restarts
   while unlocked; a shell crash while locked ends the session (ADR 0312).
   Independent strip rendering narrows buffer coupling. A GUI-thread stall
@@ -244,7 +245,7 @@ watching:
 The [total-experience design](22-total-experience.md) and
 [v0.2.0 roadmap](../v0.2.0/ROADMAP.md) cover the broader desktop work. The gap
 register above retains the component owners for Files completeness (G-04,
-G-14), window-menu labels and X11 compatibility (G-06, G-07),
+G-14), X11 compatibility (G-07),
 session recovery and power transitions (G-10), packaged hardware coverage
 (G-11), and desktop accessibility and input methods (G-19, G-20).
 

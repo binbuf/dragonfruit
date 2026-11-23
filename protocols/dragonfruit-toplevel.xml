@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="15">
+  <interface name="df_toplevel_manager" version="16">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -498,6 +498,77 @@
       <arg name="scroll_method" type="string" allow-null="true"/>
       <arg name="accel_profile" type="string" allow-null="true"/>
     </request>
+
+    <!-- T329: the titlebar window menu's presentation and activation.
+         Appended after the v15 messages so every pre-existing opcode stays
+         put (append-only). Additive in v16.
+
+         The compositor still owns the menu state, hit-testing, keyboard
+         navigation, Escape, click-away, and the Space submenu; the trusted
+         shell renders this projection in one transient `windowmenu` overlay
+         surface (ADR 0336). `window_menu` is followed by one `window_menu_row`
+         per top-level row and one `window_menu_space` per Space, then the
+         batch `done`; a highlight or submenu change re-sends the same batch.
+         The activation requests resolve through the same `WindowMenu` model
+         and `WindowMenuCommand` path a pointer or key press uses. -->
+    <request name="window_menu_activate" since="16">
+      <description summary="activate one top-level window-menu row"/>
+      <arg name="index" type="uint" summary="0 = Move to Space, 1 = Minimize, 2 = Zoom, 3 = Close"/>
+    </request>
+
+    <request name="window_menu_activate_space" since="16">
+      <description summary="activate one Move to Space submenu row"/>
+      <arg name="index" type="uint"/>
+    </request>
+
+    <request name="window_menu_dismiss" since="16">
+      <description summary="dismiss the open window menu"/>
+    </request>
+
+    <event name="window_menu" since="16">
+      <description summary="the live window menu projection">
+        The surface rect is the union of the panel and the open submenu, in
+        the named output's logical coordinates; `panel_*` and `submenu_*` are
+        offsets inside that surface. `highlighted`/`submenu_highlighted` are
+        -1 when nothing is selected. `scheme` is 0 = light, 1 = dark.
+      </description>
+      <arg name="window" type="uint" summary="compositor window id the menu acts on"/>
+      <arg name="output" type="string"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="panel_x" type="int"/>
+      <arg name="panel_y" type="int"/>
+      <arg name="panel_width" type="int"/>
+      <arg name="panel_height" type="int"/>
+      <arg name="submenu_x" type="int"/>
+      <arg name="submenu_y" type="int"/>
+      <arg name="submenu_width" type="int"/>
+      <arg name="submenu_height" type="int"/>
+      <arg name="scheme" type="uint"/>
+      <arg name="highlighted" type="int"/>
+      <arg name="submenu_open" type="uint"/>
+      <arg name="submenu_highlighted" type="int"/>
+    </event>
+
+    <event name="window_menu_row" since="16">
+      <description summary="one top-level window-menu row"/>
+      <arg name="index" type="uint"/>
+      <arg name="label" type="string"/>
+      <arg name="icon" type="string" summary="Tabler glyph name"/>
+    </event>
+
+    <event name="window_menu_space" since="16">
+      <description summary="one Move to Space submenu row"/>
+      <arg name="index" type="uint"/>
+      <arg name="label" type="string"/>
+      <arg name="icon" type="string" summary="Tabler glyph name"/>
+    </event>
+
+    <event name="window_menu_closed" since="16">
+      <description summary="the window menu is no longer open"/>
+    </event>
 
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>

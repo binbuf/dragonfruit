@@ -1126,3 +1126,25 @@ set_tests_properties(tst_powerdialog PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# T329: the SSD titlebar window menu is readable. The compositor owns the
+# model and input; this view test pins the labels, Tabler icons, highlight,
+# the Move to Space submenu, and the two detached material regions.
+qt_add_executable(tst_windowmenu
+    tst_windowmenu.cpp
+)
+target_link_libraries(tst_windowmenu PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-windowmenuplugin
+)
+qt_import_qml_plugins(tst_windowmenu)
+
+add_test(
+    NAME tst_windowmenu
+    COMMAND tst_windowmenu -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_windowmenu.qml
+)
+set_tests_properties(tst_windowmenu PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

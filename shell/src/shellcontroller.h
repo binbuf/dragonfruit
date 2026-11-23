@@ -247,6 +247,9 @@ private slots:
     void onPowerDialogConfirmed();
     void onPowerDialogCancelled();
     void onPowerDialogExpired();
+    // The compositor-owned window menu's presentation (T329).
+    void onWindowMenuChanged(const QVariantMap &menu);
+    void onWindowMenuClosed();
     // Session lock (T-12.3a): the compositor confirmed the lock, one lock
     // surface was configured to a full-output size, and the lock object
     // finished.
@@ -896,6 +899,7 @@ private:
     void hidePowerDialog();
     void applyPowerDialogData();
     void renderPowerDialog();
+    void renderWindowMenu();
     void schedulePowerDialogRender();
     // Run the real-session harness's return (T-12.6b): the system menu's
     // "Quit to <previous desktop>" row. It restores the host desktop and logs
@@ -1327,6 +1331,14 @@ private:
     bool m_powerDialogRenderPending = false;
     Qt::MouseButtons m_powerDialogButtons = Qt::NoButton;
     QString m_powerDialogAction;
+    // The window-menu popup (T329): a pure QML view of the compositor's menu
+    // projection. It is mapped only while the menu is open; the compositor
+    // still owns input and routing.
+    QQuickWindow *m_windowMenuWindow = nullptr;
+    QQuickItem *m_windowMenuItem = nullptr;
+    int m_windowMenuWidth = 0;
+    int m_windowMenuHeight = 0;
+    bool m_windowMenuMapped = false;
     // T313: the one log-out path. Logind (or the systemctl fallback) ends the
     // session; the session entry returns the greeter when the anchor exits.
     SessionActions *m_sessionActions = nullptr;

@@ -2203,6 +2203,33 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::powerDialogKeyEvent, this,
             &ShellController::onPowerDialogKeyEvent);
 
+    // Window menu (T329): the compositor owns the titlebar menu state and
+    // input; this scene renders its readable rows/icons into a transient
+    // `windowmenu` overlay surface. It never takes focus or input.
+    m_windowMenuWindow = createChromeProducer()->window();
+    m_windowMenuWindow->setColor(Qt::transparent);
+    QQmlComponent windowMenuComponent(m_engine);
+    windowMenuComponent.loadFromModule(QStringLiteral("Dragonfruit.WindowMenu"),
+                                       QStringLiteral("WindowMenu"));
+    if (windowMenuComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: WindowMenu QML error: %s\n",
+                qPrintable(windowMenuComponent.errorString()));
+        return false;
+    }
+    QObject *windowMenuObject = windowMenuComponent.create();
+    m_windowMenuItem = qobject_cast<QQuickItem *>(windowMenuObject);
+    if (!m_windowMenuItem) {
+        fprintf(stderr, "dragonfruit-shell: WindowMenu QML did not produce an item\n");
+        return false;
+    }
+    m_windowMenuItem->setParentItem(m_windowMenuWindow->contentItem());
+    bindChromePacing(m_producers.value(m_windowMenuWindow), QStringLiteral("window-menu"),
+                     [this]() { renderWindowMenu(); });
+    connect(m_protocol, &ShellProtocol::windowMenuChanged, this,
+            &ShellController::onWindowMenuChanged);
+    connect(m_protocol, &ShellProtocol::windowMenuClosed, this,
+            &ShellController::onWindowMenuClosed);
+
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
     // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
@@ -6861,6 +6888,85 @@ void ShellController::schedulePowerDialogRender()
         m_powerDialogRenderPending = false;
         renderPowerDialog();
     });
+}
+
+void ShellController::onWindowMenuChanged(const QVariantMap &menu)
+{
+    if (!m_windowMenuItem)
+        return;
+    const int width = menu.value(QStringLiteral("width")).toInt();
+    const int height = menu.value(QStringLiteral("height")).toInt();
+    if (width <= 0 || height <= 0)
+        return;
+    m_windowMenuWidth = width;
+    m_windowMenuHeight = height;
+    m_windowMenuItem->setProperty("rows", menu.value(QStringLiteral("rows")));
+    m_windowMenuItem->setProperty("spaces", menu.value(QStringLiteral("spaces")));
+    m_windowMenuItem->setProperty("panelX", menu.value(QStringLiteral("panelX")));
+    m_windowMenuItem->setProperty("panelY", menu.value(QStringLiteral("panelY")));
+    m_windowMenuItem->setProperty("panelWidth", menu.value(QStringLiteral("panelWidth")));
+    m_windowMenuItem->setProperty("panelHeight", menu.value(QStringLiteral("panelHeight")));
+    m_windowMenuItem->setProperty("submenuX", menu.value(QStringLiteral("submenuX")));
+    m_windowMenuItem->setProperty("submenuY", menu.value(QStringLiteral("submenuY")));
+    m_windowMenuItem->setProperty("submenuWidth", menu.value(QStringLiteral("submenuWidth")));
+    m_windowMenuItem->setProperty("submenuHeight", menu.value(QStringLiteral("submenuHeight")));
+    m_windowMenuItem->setProperty("submenuOpen", menu.value(QStringLiteral("submenuOpen")));
+    m_windowMenuItem->setProperty("highlightedIndex",
+                                  menu.value(QStringLiteral("highlighted")).toInt());
+    m_windowMenuItem->setProperty("submenuHighlightedIndex",
+                                  menu.value(QStringLiteral("submenuHighlighted")).toInt());
+    m_windowMenuItem->setProperty("scheme", menu.value(QStringLiteral("scheme")).toInt());
+
+    if (!m_windowMenuMapped) {
+        if (!m_protocol
+            || !m_protocol->createWindowMenuSurface(
+                menu.value(QStringLiteral("output")).toString())) {
+            return;
+        }
+        m_windowMenuMapped = true;
+    }
+    m_protocol->setWindowMenuGeometry(menu.value(QStringLiteral("x")).toInt(),
+                                      menu.value(QStringLiteral("y")).toInt(), width, height);
+    renderWindowMenu();
+}
+
+void ShellController::onWindowMenuClosed()
+{
+    if (m_protocol)
+        m_protocol->hideWindowMenu();
+    m_windowMenuMapped = false;
+    m_windowMenuWidth = 0;
+    m_windowMenuHeight = 0;
+    if (m_windowMenuItem) {
+        m_windowMenuItem->setProperty("rows", QVariantList());
+        m_windowMenuItem->setProperty("spaces", QVariantList());
+        m_windowMenuItem->setProperty("submenuOpen", false);
+        m_windowMenuItem->setProperty("highlightedIndex", -1);
+        m_windowMenuItem->setProperty("submenuHighlightedIndex", -1);
+    }
+}
+
+void ShellController::renderWindowMenu()
+{
+    if (!m_windowMenuMapped || !m_windowMenuWindow || !m_windowMenuItem)
+        return;
+    if (m_windowMenuWidth <= 0 || m_windowMenuHeight <= 0)
+        return;
+    prepareChromeScene(m_windowMenuWindow, m_windowMenuItem,
+                       QSize(m_windowMenuWidth, m_windowMenuHeight),
+                       QSize(m_windowMenuWidth, m_windowMenuHeight), m_chromeScale);
+    if (m_protocol) {
+        // Commit-latched with the image below: the panel and the detached
+        // submenu card are separate material regions, never their union.
+        m_protocol->setWindowMenuPanelRegions(
+            m_windowMenuItem->property("regions").toList());
+    }
+    const QSize logical(m_windowMenuWidth, m_windowMenuHeight);
+    commitChromeScene(m_windowMenuWindow,
+                      {{QStringLiteral("window-menu"), logical, QRect(),
+                        [this, logical](const QImage &image) {
+                            return m_protocol->commitWindowMenuImage(image, logical);
+                        }}});
 }
 
 void ShellController::onPowerDialogConfigured(int width, int height, quint32)

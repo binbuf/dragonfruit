@@ -39,6 +39,10 @@ Item {
     readonly property bool hasSubmenu: root.entry.type === "submenu"
     readonly property bool disabled: root.entry.enabled === false
     readonly property string disabledReason: root.entry.disabledReason || ""
+    // T329: an optional leading glyph (the window menu's command icons). It
+    // shares the check gutter, so a menu with icons keeps the same label
+    // alignment as one with checks; a checked row keeps the check.
+    readonly property string iconName: root.entry.icon || ""
 
     // The row contributes its natural width to the Column first, then
     // stretches to the resolved menu width so every highlight bar spans the
@@ -78,8 +82,21 @@ Item {
     }
 
     TablerIcon {
+        id: iconGlyph
+        objectName: "menuRowIcon"
+        visible: !root.isSeparator && root.iconName.length > 0
+                 && root.entry.checked !== true
+        name: root.iconName
+        size: root.checkSize
+        color: root.highlighted ? Theme.color.accentContent : Theme.color.textSecondary
+        x: root.padding
+        anchors.verticalCenter: parent.verticalCenter
+    }
+
+    TablerIcon {
         id: checkGlyph
         visible: !root.isSeparator
+                 && (root.iconName.length === 0 || root.entry.checked === true)
         name: "check"
         size: root.checkSize
         color: root.highlighted ? Theme.color.accentContent : Theme.color.accent

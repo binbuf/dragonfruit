@@ -311,6 +311,10 @@ void ShellProtocol::bindTrustedGlobals()
             onManagerScreenshotSaved,
             onManagerScreenshotFailed,
             onManagerActivationResult,
+            onManagerWindowMenu,
+            onManagerWindowMenuRow,
+            onManagerWindowMenuSpace,
+            onManagerWindowMenuClosed,
         };
         df_toplevel_manager_add_listener(m_manager, &managerListener, this);
     }
@@ -1584,6 +1588,109 @@ bool ShellProtocol::hidePowerDialog()
     wl_surface_commit(m_powerDialogSurface);
     resetSurfaceScale(m_powerDialogSurface);
     m_powerDialogMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+// --- window-menu popup (T329) -----------------------------------------------
+
+bool ShellProtocol::createWindowMenuSurface(const QString &outputName)
+{
+    if (m_windowMenuSurface || m_windowMenuLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    wl_output *output = m_outputByName.value(outputName, nullptr);
+    m_windowMenuSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_windowMenuSurface);
+    m_windowMenuLayer = df_shell_get_layer_surface(m_shell, m_windowMenuSurface, output,
+                                                   DF_SHELL_LAYER_OVERLAY, "windowmenu");
+    if (!m_windowMenuLayer)
+        return fail(QStringLiteral("compositor refused the windowmenu layer surface"));
+    static const df_layer_surface_listener listener = {onWindowMenuConfigure,
+                                                       onWindowMenuLayerClosed};
+    df_layer_surface_add_listener(m_windowMenuLayer, &listener, this);
+
+    // Top-left anchor + margins place the popup at the compositor's
+    // output-local menu rect. It is an overlay: no reserved zone, no keyboard
+    // focus, and an empty input region (the compositor still owns the menu's
+    // pointer/keyboard handling and routing).
+    df_layer_surface_set_anchor(m_windowMenuLayer, kAnchorTop | kAnchorLeft);
+    df_layer_surface_set_size(m_windowMenuLayer, 1, 1);
+    df_layer_surface_set_margin(m_windowMenuLayer, 0, 0, 0, 0);
+    df_layer_surface_set_exclusive_zone(m_windowMenuLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_windowMenuLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_windowMenuSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_windowMenuSurface, nullptr, 0, 0);
+    wl_surface_commit(m_windowMenuSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the windowmenu surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setWindowMenuGeometry(int x, int y, int width, int height)
+{
+    if (!m_windowMenuLayer || !m_windowMenuSurface)
+        return false;
+    if (width <= 0 || height <= 0)
+        return false;
+    m_windowMenuWidth = width;
+    m_windowMenuHeight = height;
+    df_layer_surface_set_size(m_windowMenuLayer, width, height);
+    df_layer_surface_set_margin(m_windowMenuLayer, y, 0, 0, x);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::setWindowMenuPanelRegions(const QVariantList &regions)
+{
+    if (!m_windowMenuLayer)
+        return false;
+    applyPanelRegions(m_windowMenuLayer, regions);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::commitWindowMenuImage(const QImage &image, const QSize &logicalSize)
+{
+    if (!m_windowMenuSurface)
+        return false;
+    if (!commitTo(m_windowMenuSurface, image, logicalSize))
+        return false;
+    m_windowMenuMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideWindowMenu()
+{
+    if (!m_windowMenuSurface && !m_windowMenuLayer)
+        return true;
+    if (m_windowMenuSurface && m_windowMenuMapped) {
+        cancelPendingFrame(QStringLiteral("window-menu"));
+        wl_surface_attach(m_windowMenuSurface, nullptr, 0, 0);
+        wl_surface_commit(m_windowMenuSurface);
+        resetSurfaceScale(m_windowMenuSurface);
+    }
+    if (m_windowMenuLayer) {
+        df_layer_surface_destroy(m_windowMenuLayer);
+        m_windowMenuLayer = nullptr;
+    }
+    if (m_windowMenuSurface) {
+        wl_surface_destroy(m_windowMenuSurface);
+        m_windowMenuSurface = nullptr;
+    }
+    m_windowMenuMapped = false;
+    m_windowMenuWidth = 0;
+    m_windowMenuHeight = 0;
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -3999,6 +4106,10 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
         auto *output = static_cast<wl_output *>(
             wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4u)));
         if (output) {
+            static const wl_output_listener outputListener = {
+                onWlOutputGeometry, onWlOutputMode, onWlOutputDone,
+                onWlOutputScale, onWlOutputName, onWlOutputDescription};
+            wl_output_add_listener(output, &outputListener, self);
             self->m_lockOutputs.append(output);
             // A lock requested before the output was announced still covers
             // it (T-12.3a).
@@ -4231,6 +4342,30 @@ void ShellProtocol::onPowerDialogConfigure(void *data, df_layer_surface *, uint3
     emit self->powerDialogConfigured(width, height, serial);
 }
 
+void ShellProtocol::onWindowMenuConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                          int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_windowMenuLayer)
+        df_layer_surface_ack_configure(self->m_windowMenuLayer, serial);
+    // The compositor may clamp the requested size; the scene is rendered at
+    // the requested union rect, which the menu geometry already keeps inside
+    // the output, so there is no extra layout step here.
+    self->m_windowMenuWidth = width;
+    self->m_windowMenuHeight = height;
+}
+
+void ShellProtocol::onWindowMenuLayerClosed(void *data, df_layer_surface *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_windowMenuLayer = nullptr;
+    self->m_windowMenuSurface = nullptr;
+    self->m_windowMenuMapped = false;
+    self->m_windowMenuWidth = 0;
+    self->m_windowMenuHeight = 0;
+    emit self->windowMenuClosed();
+}
+
 void ShellProtocol::onAppsDrawerConfigure(void *data, df_layer_surface *, uint32_t serial,
                                           int32_t width, int32_t height)
 {
@@ -4299,6 +4434,37 @@ void ShellProtocol::onSeatCapabilities(void *data, wl_seat *seat, uint32_t capab
 }
 
 void ShellProtocol::onSeatName(void *, wl_seat *, const char *)
+{
+}
+
+// --- wl_output name tracking (T329) ----------------------------------------
+
+void ShellProtocol::onWlOutputGeometry(void *, wl_output *, int32_t, int32_t, int32_t,
+                                       int32_t, int32_t, const char *, const char *, int32_t)
+{
+}
+
+void ShellProtocol::onWlOutputMode(void *, wl_output *, uint32_t, int32_t, int32_t, int32_t)
+{
+}
+
+void ShellProtocol::onWlOutputDone(void *, wl_output *)
+{
+}
+
+void ShellProtocol::onWlOutputScale(void *, wl_output *, int32_t)
+{
+}
+
+void ShellProtocol::onWlOutputName(void *data, wl_output *output, const char *name)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (!self || !output || !name)
+        return;
+    self->m_outputByName.insert(QString::fromUtf8(name), output);
+}
+
+void ShellProtocol::onWlOutputDescription(void *, wl_output *, const char *)
 {
 }
 
@@ -5667,6 +5833,69 @@ void ShellProtocol::onManagerActivationResult(void *data, df_toplevel_manager *,
     emit self->activationResult(QString::fromUtf8(appId ? appId : ""), found != 0);
 }
 
+void ShellProtocol::onManagerWindowMenu(
+    void *data, df_toplevel_manager *, uint32_t window, const char *output, int32_t x, int32_t y,
+    int32_t width, int32_t height, int32_t panelX, int32_t panelY, int32_t panelWidth,
+    int32_t panelHeight, int32_t submenuX, int32_t submenuY, int32_t submenuWidth,
+    int32_t submenuHeight, uint32_t scheme, int32_t highlighted, uint32_t submenuOpen,
+    int32_t submenuHighlighted)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_windowMenuRowsPending.clear();
+    self->m_windowMenuSpacesPending.clear();
+    self->m_windowMenuPending = {
+        {QStringLiteral("window"), QVariant::fromValue(window)},
+        {QStringLiteral("output"), QString::fromUtf8(output ? output : "")},
+        {QStringLiteral("x"), x},
+        {QStringLiteral("y"), y},
+        {QStringLiteral("width"), width},
+        {QStringLiteral("height"), height},
+        {QStringLiteral("panelX"), panelX},
+        {QStringLiteral("panelY"), panelY},
+        {QStringLiteral("panelWidth"), panelWidth},
+        {QStringLiteral("panelHeight"), panelHeight},
+        {QStringLiteral("submenuX"), submenuX},
+        {QStringLiteral("submenuY"), submenuY},
+        {QStringLiteral("submenuWidth"), submenuWidth},
+        {QStringLiteral("submenuHeight"), submenuHeight},
+        {QStringLiteral("scheme"), QVariant::fromValue(scheme)},
+        {QStringLiteral("highlighted"), highlighted},
+        {QStringLiteral("submenuOpen"), submenuOpen != 0},
+        {QStringLiteral("submenuHighlighted"), submenuHighlighted},
+    };
+    self->m_windowMenuPendingBatch = true;
+    self->m_windowMenuClosedPending = false;
+}
+
+void ShellProtocol::onManagerWindowMenuRow(void *data, df_toplevel_manager *, uint32_t index,
+                                           const char *label, const char *icon)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_windowMenuRowsPending.append(QVariantMap{
+        {QStringLiteral("index"), QVariant::fromValue(index)},
+        {QStringLiteral("label"), QString::fromUtf8(label ? label : "")},
+        {QStringLiteral("icon"), QString::fromUtf8(icon ? icon : "")},
+    });
+}
+
+void ShellProtocol::onManagerWindowMenuSpace(void *data, df_toplevel_manager *, uint32_t index,
+                                             const char *label, const char *icon)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_windowMenuSpacesPending.append(QVariantMap{
+        {QStringLiteral("index"), QVariant::fromValue(index)},
+        {QStringLiteral("label"), QString::fromUtf8(label ? label : "")},
+        {QStringLiteral("icon"), QString::fromUtf8(icon ? icon : "")},
+    });
+}
+
+void ShellProtocol::onManagerWindowMenuClosed(void *data, df_toplevel_manager *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_windowMenuPendingBatch = false;
+    self->m_windowMenuClosedPending = true;
+}
+
 void ShellProtocol::onManagerDone(void *data, df_toplevel_manager *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
@@ -5675,6 +5904,19 @@ void ShellProtocol::onManagerDone(void *data, df_toplevel_manager *)
     // list is known too, so a display selection can be applied (T-09.5).
     self->applyWallpaper();
     self->applyDisplayPolicy();
+    // T329: flush one window-menu batch. The compositor sends the projection,
+    // one row/space per entry, then `done`; a close is its own batch.
+    if (self->m_windowMenuClosedPending) {
+        self->m_windowMenuClosedPending = false;
+        emit self->windowMenuClosed();
+    } else if (self->m_windowMenuPendingBatch) {
+        self->m_windowMenuPendingBatch = false;
+        self->m_windowMenuPending.insert(QStringLiteral("rows"),
+                                         self->m_windowMenuRowsPending);
+        self->m_windowMenuPending.insert(QStringLiteral("spaces"),
+                                         self->m_windowMenuSpacesPending);
+        emit self->windowMenuChanged(self->m_windowMenuPending);
+    }
     if (!self->m_switcherPending)
         return;
     self->m_switcherPending = false;

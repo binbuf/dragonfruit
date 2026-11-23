@@ -250,8 +250,8 @@ T-04), drag-to-move and double-click zoom on the titlebar (T-01.3), the window
 menu's real labels/icons (T-01.4 landed the geometry and command routing as
 flat token fills, the same placeholder stage as the T-01.1 glyphs), and the
 live color scheme (settings, T-08). The shadow/rounding half of the material
-deferral landed in T-04; the menu labels did not (see the current status at the
-end of this document).
+deferral landed in T-04; the readable labels/icons landed in T329 on the
+trusted shell popup (see the current status at the end of this document).
 
 T-01.2 adds the traffic-light interaction on top of the element: the
 compositor tracks which button cluster the pointer is over (glyph reveal),
@@ -300,12 +300,34 @@ closes an open submenu and then the menu, Up/Down/Home/End move the
 highlight, Right/Left open/close the submenu, Enter/Space activates, and
 click-away or focus loss dismisses. While open the menu is modal to keyboard
 and pointer input. The four commands are proven for a Wayland and an X11
-window in `window_conformance` / `xwayland_conformance`. The visual pass is
-still flat and label-less: the compositor has no text/icon renderer, so the
-menu draws token-colored rows without labels. T-04 did not add the promised
-labels, and T-14 reused the menu model rather than solving text rendering.
-This is a first-day usability gap, tracked in [STATUS.md](STATUS.md) G-06; do
-not describe the window menu as shipped until it is readable.
+window in `window_conformance` / `xwayland_conformance`.
+
+T329 closes the readable-visual gap. The compositor still owns the menu model
+and every input path, but the trusted shell now renders the projection in a
+transient `windowmenu` overlay surface ([ADR 0336](adr/0336-window-menu-shell-render.md)):
+
+- `df_toplevel_manager` v16 carries `window_menu` (window id, output,
+  surface/panel/submenu rects, scheme, highlight/submenu state), one
+  `window_menu_row`/`window_menu_space` per entry, and `window_menu_closed`.
+- `Dragonfruit.WindowMenu` draws the rows with the design-system `MenuRow`
+  anatomy, readable labels, Tabler glyphs (`layout-grid`, `minus`, `maximize`,
+  `x`), the highlight, and the detached Move to Space submenu. `MenuRow`
+  gained an optional leading glyph; menus without one are unchanged.
+- The popup is input-transparent (`keyboard_interaction=none`, empty input
+  region). The compositor still handles hover, Up/Down/Home/End, Right/Left,
+  Enter/Space, Escape, click-away, and focus-loss dismissal, so the shell
+  cannot duplicate or drift the state machine.
+- The menu is output-scoped (T324): the layer surface is created on the named
+  output and the panel flips/clamps inside that output.
+- The compositor keeps a flat fallback draw when no `windowmenu` surface is
+  live, so headless conformance and a shell restart still have the menu.
+  `window_menu_activate`/`window_menu_activate_space`/`window_menu_dismiss`
+  are the programmatic path and route through the same `WindowMenuCommand`.
+
+Evidence: `window_conformance::window_menu_row_model_carries_readable_labels_and_icons`,
+`shell_protocol_conformance::window_menu_protocol_activation_routes_through_the_window_state_machine`,
+`tst_windowmenu` (QML labels/icons/highlight/submenu/regions), and
+`make t329-window-menu-capture` (light/dark at 1×/2×, top-level and submenu).
 
 T-01.5 pins down the tier policy and the X11 path:
 
@@ -376,7 +398,8 @@ Settings and Files are 52 pt `unified` windows; their main toolbar is the
 titlebar row, while the Files path bar (30 pt) stays content. X11 clients see
 the resolved titlebar height as `_NET_FRAME_EXTENTS` (T327,
 [ADR 0333](adr/0333-net-frame-extents.md)); CSD windows publish zero. The
-label-less window menu is the main decoration gap (G-06). The GTK steering bridge now runs from
+window menu is readable: T329 moved its rendering to the trusted shell popup
+while the compositor keeps the model and input (G-06 closed). The GTK steering bridge now runs from
 the session entry (`dragonfruit-session --sync-toolkit`), the session exports
 `GTK_CSD=0` for X11 GTK 3, and the compositor advertises KDE's legacy
 server-decoration manager with default mode `Server` for Wayland GTK 3. The

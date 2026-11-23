@@ -706,6 +706,10 @@ pub enum SyntheticCommand {
     QueryFocus,
     /// Read-only window-menu introspection (T-01.4).
     QueryWindowMenu,
+    /// Read-only window-menu row model (T329): one `window-menu-row` line per
+    /// top-level row and one `window-menu-space` line per Space, then `end`.
+    /// The same labels/icons the trusted shell receives over the protocol.
+    QueryWindowMenuRows,
     /// Read-only lifecycle-motion introspection (T-02.1b/T-02.2). One line
     /// per window that has a motion record, followed by `end`.
     QueryMotion,
@@ -1020,6 +1024,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("identity") => SyntheticCommand::QueryIdentity,
             Some("focus") => SyntheticCommand::QueryFocus,
             Some("window-menu") => SyntheticCommand::QueryWindowMenu,
+            Some("window-menu-rows") => SyntheticCommand::QueryWindowMenuRows,
             // `motion` is the T-02.2 name; `appear` is kept as an alias so
             // the T-02.1b tests and scripts keep working.
             Some("motion") | Some("appear") => SyntheticCommand::QueryMotion,
@@ -1361,6 +1366,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryWindowMenu => {
                 unreachable!("query window-menu is handled by apply_datagram")
             }
+            SyntheticCommand::QueryWindowMenuRows => {
+                unreachable!("query window-menu-rows is handled by apply_datagram")
+            }
             SyntheticCommand::QueryMotion => {
                 unreachable!("query motion is handled by apply_datagram")
             }
@@ -1577,6 +1585,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryWindowMenu) => {
                 if let Some((socket, peer)) = &reply {
                     let report = window_menu_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryWindowMenuRows) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = window_menu_rows_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -2208,6 +2225,34 @@ fn window_menu_report(state: &DfState) -> String {
         None => "window-menu 0 0 0 0 0 0 -1 0 -1 0 0 0 0".to_string(),
     };
     format!("{line}\nend\n")
+}
+
+/// The `query window-menu-rows` report (T329).
+///
+/// `window-menu-row <index> <icon> <label>` per top-level row and
+/// `window-menu-space <index> <icon> <label>` per Space of the open menu,
+/// followed by `end`. The label is the remainder of the line (it contains
+/// spaces); the icon is one Tabler token. The rows are the same model the
+/// trusted shell receives, so a conformance test can prove the readable menu
+/// without a display.
+fn window_menu_rows_report(state: &DfState) -> String {
+    let mut out = String::new();
+    for (index, row) in crate::window_menu::ROWS.iter().enumerate() {
+        out.push_str(&format!(
+            "window-menu-row {} {} {}\n",
+            index, row.icon, row.label
+        ));
+    }
+    if let Some(menu) = state.window_menu.as_ref() {
+        for (index, row) in menu.submenu.iter().enumerate() {
+            out.push_str(&format!(
+                "window-menu-space {} {} {}\n",
+                index, row.icon, row.label
+            ));
+        }
+    }
+    out.push_str("end\n");
+    out
 }
 
 /// The `query motion` report (T-02.1b/T-02.2/T-02.3).

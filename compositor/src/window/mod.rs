@@ -131,7 +131,7 @@ pub use material_region::{
     ENV_DRM_PADDED_BLUR, ENV_MATERIAL_FULL_OUTPUT, ENV_MATERIAL_OFF, ENV_MATERIAL_REGION_GROUPS,
     ENV_SCENE_CACHE_SKIP,
 };
-pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
+pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu, WindowMenuPresentation};
 #[allow(unused_imports)]
 pub use menubar_veil::{
     veil_uniform_names, VeilSpec, VEIL_EXTENT, VEIL_FILTER, VEIL_LUT_DEPTHS, VEIL_STRIP_HEIGHT,

@@ -1127,6 +1127,13 @@ pub fn window_menu_render_elements(
     let Some(menu) = state.window_menu.as_ref() else {
         return Vec::new();
     };
+    // T329: when the trusted shell has its `windowmenu` popup surface live,
+    // the shell draws the readable rows/icons and this flat compositor pass is
+    // the no-shell fallback only. The shell destroys the surface on close, so
+    // a headless conformance run keeps the fallback.
+    if state.chrome_surface_by_namespace("windowmenu").is_some() {
+        return Vec::new();
+    }
     let Some(output_geometry) = state.space.output_geometry(output) else {
         return Vec::new();
     };

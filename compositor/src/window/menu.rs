@@ -35,6 +35,7 @@ use crate::design_tokens::component::{context_menu, window as window_tokens};
 use crate::material_preset::{self, Backend, Preset, ResolveInput, Rollout};
 use crate::window::decoration::{color_from_rgba, ColorScheme};
 use crate::window::{WindowId, WindowMenuCommand};
+use crate::window_menu;
 
 /// The logical height of one menu row (`component.contextMenu.rowHeight`).
 pub const MENU_ROW_HEIGHT: i32 = context_menu::ROW_HEIGHT as i32;
@@ -61,14 +62,25 @@ pub enum WindowMenuRow {
 }
 
 impl WindowMenuRow {
-    /// The design-system label (drawn by T-04; used by tests and docs).
+    /// The design-system label (rendered by the trusted shell popup, T329).
     pub const fn label(self) -> &'static str {
         match self {
-            WindowMenuRow::MoveToSpace => "Move to Space",
-            WindowMenuRow::Command(WindowMenuCommand::Minimize) => "Minimize",
-            WindowMenuRow::Command(WindowMenuCommand::Zoom) => "Zoom",
-            WindowMenuRow::Command(WindowMenuCommand::Close) => "Close",
-            WindowMenuRow::Command(WindowMenuCommand::MoveToSpace(_)) => "Move to Space",
+            WindowMenuRow::MoveToSpace => window_menu::ROWS[0].label,
+            WindowMenuRow::Command(WindowMenuCommand::Minimize) => window_menu::ROWS[1].label,
+            WindowMenuRow::Command(WindowMenuCommand::Zoom) => window_menu::ROWS[2].label,
+            WindowMenuRow::Command(WindowMenuCommand::Close) => window_menu::ROWS[3].label,
+            WindowMenuRow::Command(WindowMenuCommand::MoveToSpace(_)) => window_menu::ROWS[0].label,
+        }
+    }
+
+    /// The Tabler glyph the shell renders in the row's icon gutter.
+    pub const fn icon(self) -> &'static str {
+        match self {
+            WindowMenuRow::MoveToSpace => window_menu::ROWS[0].icon,
+            WindowMenuRow::Command(WindowMenuCommand::Minimize) => window_menu::ROWS[1].icon,
+            WindowMenuRow::Command(WindowMenuCommand::Zoom) => window_menu::ROWS[2].icon,
+            WindowMenuRow::Command(WindowMenuCommand::Close) => window_menu::ROWS[3].icon,
+            WindowMenuRow::Command(WindowMenuCommand::MoveToSpace(_)) => window_menu::SPACE_ICON,
         }
     }
 
@@ -87,7 +99,40 @@ impl WindowMenuRow {
 pub struct MenuRow {
     pub row: WindowMenuRow,
     pub label: String,
+    /// The Tabler glyph name the trusted shell renders in the icon gutter.
+    pub icon: String,
     pub rect: Rectangle<i32, Logical>,
+}
+
+/// One row as the trusted shell receives it (T329). The compositor keeps the
+/// live [`WindowMenu`]; this is presentation only, never a second state
+/// machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowMenuPresentationRow {
+    pub label: String,
+    pub icon: String,
+}
+
+/// The presentation snapshot the trusted shell renders (T329).
+///
+/// Rectangles are output-local logical coordinates: the shell creates one
+/// popup layer surface for `surface` on `output`, draws `panel` at
+/// `panel.loc - surface.loc`, and the open `submenu` at
+/// `submenu.loc - surface.loc`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowMenuPresentation {
+    pub window: WindowId,
+    pub output: String,
+    /// The union of the panel and the open submenu.
+    pub surface: Rectangle<i32, Logical>,
+    pub panel: Rectangle<i32, Logical>,
+    pub submenu: Rectangle<i32, Logical>,
+    pub submenu_open: bool,
+    pub highlighted: Option<usize>,
+    pub submenu_highlighted: Option<usize>,
+    pub scheme: ColorScheme,
+    pub rows: Vec<WindowMenuPresentationRow>,
+    pub spaces: Vec<WindowMenuPresentationRow>,
 }
 
 /// A fully laid-out window menu for one window.
@@ -95,6 +140,8 @@ pub struct MenuRow {
 pub struct WindowMenu {
     /// The window the menu acts on.
     pub window: WindowId,
+    /// The output that owns the window and draws the menu (T324).
+    pub output: String,
     /// The global-space point the menu was opened at (the titlebar press).
     pub anchor: Point<i32, Logical>,
     /// The top-level panel rect in global space.
@@ -202,6 +249,7 @@ impl WindowMenu {
     /// stay inside.
     pub fn open(
         window: WindowId,
+        output: &str,
         anchor: Point<i32, Logical>,
         spaces: &[(usize, String)],
         bounds: Rectangle<i32, Logical>,
@@ -223,6 +271,7 @@ impl WindowMenu {
         .map(|(index, row)| MenuRow {
             row,
             label: row.label().to_string(),
+            icon: row.icon().to_string(),
             rect: row_rect(rect, index as i32),
         })
         .collect();
@@ -248,12 +297,14 @@ impl WindowMenu {
             .map(|(index, (space, name))| MenuRow {
                 row: WindowMenuRow::Command(WindowMenuCommand::MoveToSpace(*space)),
                 label: name.clone(),
+                icon: window_menu::SPACE_ICON.to_string(),
                 rect: row_rect(submenu_rect, index as i32),
             })
             .collect();
 
         let mut menu = WindowMenu {
             window,
+            output: output.to_string(),
             anchor,
             rect,
             rows,
@@ -269,6 +320,56 @@ impl WindowMenu {
         // keeps the design-system default of the first row.
         menu.highlighted = menu.initial_highlight(anchor);
         menu
+    }
+
+    /// The shell-facing snapshot for this menu, in output-local logical
+    /// coordinates. The compositor keeps the live state; the shell only draws
+    /// this projection (T329, ADR 0336).
+    pub fn presentation(&self, output_origin: Point<i32, Logical>) -> WindowMenuPresentation {
+        let local = |rect: Rectangle<i32, Logical>| {
+            Rectangle::new(
+                (rect.loc.x - output_origin.x, rect.loc.y - output_origin.y).into(),
+                rect.size,
+            )
+        };
+        let panel = local(self.rect);
+        let submenu = local(self.submenu_rect);
+        let surface = if self.open_submenu {
+            let left = panel.loc.x.min(submenu.loc.x);
+            let top = panel.loc.y.min(submenu.loc.y);
+            let right = (panel.loc.x + panel.size.w).max(submenu.loc.x + submenu.size.w);
+            let bottom = (panel.loc.y + panel.size.h).max(submenu.loc.y + submenu.size.h);
+            Rectangle::new((left, top).into(), (right - left, bottom - top).into())
+        } else {
+            panel
+        };
+        WindowMenuPresentation {
+            window: self.window,
+            output: self.output.clone(),
+            surface,
+            panel,
+            submenu,
+            submenu_open: self.open_submenu,
+            highlighted: self.highlighted,
+            submenu_highlighted: self.submenu_highlighted,
+            scheme: self.scheme,
+            rows: self
+                .rows
+                .iter()
+                .map(|row| WindowMenuPresentationRow {
+                    label: row.label.clone(),
+                    icon: row.icon.clone(),
+                })
+                .collect(),
+            spaces: self
+                .submenu
+                .iter()
+                .map(|row| WindowMenuPresentationRow {
+                    label: row.label.clone(),
+                    icon: row.icon.clone(),
+                })
+                .collect(),
+        }
     }
 
     /// The top-level row under the pointer that opened the menu.
@@ -657,6 +758,7 @@ mod tests {
     fn menu_at(anchor: (i32, i32)) -> WindowMenu {
         WindowMenu::open(
             WindowId(1),
+            "HEADLESS-1",
             anchor.into(),
             &spaces(),
             bounds(),
@@ -673,6 +775,10 @@ mod tests {
         let menu = menu_at((100, 100));
         let labels: Vec<_> = menu.rows.iter().map(|row| row.label.as_str()).collect();
         assert_eq!(labels, vec!["Move to Space", "Minimize", "Zoom", "Close"]);
+        let icons: Vec<_> = menu.rows.iter().map(|row| row.icon.as_str()).collect();
+        assert_eq!(icons, vec!["layout-grid", "minus", "maximize", "x"]);
+        assert_eq!(menu.rows[0].icon, "layout-grid");
+        assert_eq!(menu.submenu[0].icon, "layout-grid");
         assert_eq!(
             menu.rows[0].row,
             WindowMenuRow::MoveToSpace,
@@ -701,6 +807,37 @@ mod tests {
             MENU_ROW_HEIGHT
         );
         assert_eq!(menu.rows[0].rect.size.w, MENU_MIN_WIDTH - 2 * MENU_PADDING);
+    }
+
+    #[test]
+    fn presentation_is_output_local_and_carries_labels_and_icons() {
+        let mut menu = menu_at((100, 100));
+        menu.open_submenu = true;
+        let view = menu.presentation(Point::from((0, 0)));
+        assert_eq!(view.window, WindowId(1));
+        assert_eq!(view.output, "HEADLESS-1");
+        assert_eq!(view.rows.len(), 4);
+        assert_eq!(view.rows[0].label, "Move to Space");
+        assert_eq!(view.rows[3].label, "Close");
+        assert_eq!(view.spaces.len(), 2);
+        assert_eq!(view.spaces[1].label, "Space 2");
+        assert_eq!(view.spaces[1].icon, "layout-grid");
+        assert_eq!(view.scheme, ColorScheme::Dark);
+        assert!(view.submenu_open);
+        assert_eq!(view.panel.loc, menu.rect.loc);
+        assert_eq!(
+            view.surface.loc,
+            Point::from((
+                menu.rect.loc.x.min(menu.submenu_rect.loc.x),
+                menu.rect.loc.y.min(menu.submenu_rect.loc.y),
+            ))
+        );
+        assert!(view.surface.size.w > view.panel.size.w);
+
+        // A menu on a second output subtracts that output's origin.
+        let offset = menu.presentation(Point::from((1280, 0)));
+        assert_eq!(offset.panel.loc.x, menu.rect.loc.x - 1280);
+        assert_eq!(offset.output, "HEADLESS-1");
     }
 
     #[test]

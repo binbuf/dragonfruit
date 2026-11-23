@@ -39,7 +39,8 @@ use crate::shell_protocol::toplevel_protocol::{
 };
 use crate::state::DfState;
 use crate::window::{
-    EffectiveMaterial, MaterialRole, ReservedZones, WindowEventKind, WindowId, WindowState,
+    EffectiveMaterial, MaterialRole, ReservedZones, WindowEventKind, WindowId,
+    WindowMenuPresentation, WindowState,
 };
 use crate::workspace::{SpaceId, Wallpaper, WallpaperFit};
 
@@ -57,8 +58,9 @@ const INTERFACE_VERSION: u32 = 1;
 /// bumps in tandem with its child interface.
 const SHELL_INTERFACE_VERSION: u32 = 4;
 
-/// `df_toplevel_manager` is version 15 since the T320
-/// `set_pointer_family_policy` request was added; version 14 added the T315
+/// `df_toplevel_manager` is version 16 since the T329 window-menu
+/// presentation and activation messages were added; version 15 added the T320
+/// `set_pointer_family_policy` request; version 14 added the T315
 /// idle policy; version 13 added the T276 Overview/hot-corner policy;
 /// version 12 added the T275 accessibility accommodations; version 11 added
 /// `set_minimize_target` (T237); `set_appearance_policy` was the v9 addition
@@ -69,7 +71,7 @@ const SHELL_INTERFACE_VERSION: u32 = 4;
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 15;
+const MANAGER_INTERFACE_VERSION: u32 = 16;
 
 /// `df_output` is version 5 since `set_dpms` and the `dpms` state/fallback
 /// event were added (T316); v4 added the role-keyed `material_role_state`
@@ -90,6 +92,8 @@ struct ClientSession {
     toplevels: HashMap<WindowId, df_toplevel::DfToplevel>,
     workspaces: HashMap<SpaceId, df_workspace::DfWorkspace>,
     outputs: HashMap<String, df_output::DfOutput>,
+    /// The last `window_menu_serial` this session received (T329).
+    last_window_menu_serial: u64,
 }
 
 /// A chrome surface and its live state.
@@ -1179,6 +1183,50 @@ impl DfState {
             .collect()
     }
 
+    /// Send one complete `window_menu` batch: the geometry/state event, one
+    /// row per top-level entry, one space per submenu entry, then the caller's
+    /// batch `done` (T329).
+    fn send_window_menu_snapshot(
+        manager: &df_toplevel_manager::DfToplevelManager,
+        view: &WindowMenuPresentation,
+    ) {
+        let scheme = match view.scheme {
+            crate::window::ColorScheme::Light => 0u32,
+            crate::window::ColorScheme::Dark => 1u32,
+        };
+        let highlighted = view.highlighted.map(|index| index as i32).unwrap_or(-1);
+        let submenu_highlighted = view
+            .submenu_highlighted
+            .map(|index| index as i32)
+            .unwrap_or(-1);
+        manager.window_menu(
+            view.window.0 as u32,
+            view.output.clone(),
+            view.surface.loc.x,
+            view.surface.loc.y,
+            view.surface.size.w,
+            view.surface.size.h,
+            view.panel.loc.x - view.surface.loc.x,
+            view.panel.loc.y - view.surface.loc.y,
+            view.panel.size.w,
+            view.panel.size.h,
+            view.submenu.loc.x - view.surface.loc.x,
+            view.submenu.loc.y - view.surface.loc.y,
+            view.submenu.size.w,
+            view.submenu.size.h,
+            scheme,
+            highlighted,
+            view.submenu_open as u32,
+            submenu_highlighted,
+        );
+        for (index, row) in view.rows.iter().enumerate() {
+            manager.window_menu_row(index as u32, row.label.clone(), row.icon.clone());
+        }
+        for (index, space) in view.spaces.iter().enumerate() {
+            manager.window_menu_space(index as u32, space.label.clone(), space.icon.clone());
+        }
+    }
+
     /// Every announced `df_output` resource, keyed by output name, for
     /// per-output property broadcasts (P1 material state).
     fn output_sessions(&self) -> Vec<(String, df_output::DfOutput)> {
@@ -1541,6 +1589,38 @@ impl DfState {
         self.broadcast_input_events();
         self.broadcast_attention();
         self.broadcast_material_state();
+        self.broadcast_window_menu();
+    }
+
+    /// Push the compositor-owned window menu to the trusted shell (T329).
+    ///
+    /// The compositor remains the state machine; this is a presentation
+    /// snapshot only. A per-session serial keeps the batch to one send per
+    /// change and still replays the live menu to a shell that binds (or
+    /// restarts) while it is open.
+    fn broadcast_window_menu(&mut self) {
+        let serial = self.window_menu_serial;
+        let view = self.window_menu_presentation();
+        let sessions = self.manager_sessions();
+        for (client, manager) in sessions {
+            let last = self
+                .shell
+                .sessions
+                .get(&client)
+                .map(|session| session.last_window_menu_serial)
+                .unwrap_or(0);
+            if last == serial {
+                continue;
+            }
+            match &view {
+                Some(view) => Self::send_window_menu_snapshot(&manager, view),
+                None => manager.window_menu_closed(),
+            }
+            manager.done();
+            if let Some(session) = self.shell.sessions.get_mut(&client) {
+                session.last_window_menu_serial = serial;
+            }
+        }
     }
 
     /// Push the effective material state to every announced output when it
@@ -2537,6 +2617,12 @@ impl GlobalDispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
         state.announce_outputs(client, &manager);
         state.announce_workspaces(client, &manager);
         state.announce_toplevels(client, &manager);
+        if let Some(view) = state.window_menu_presentation() {
+            Self::send_window_menu_snapshot(&manager, &view);
+        }
+        if let Some(session) = state.shell.sessions.get_mut(&client.id()) {
+            session.last_window_menu_serial = state.window_menu_serial;
+        }
         manager.done();
     }
 }
@@ -2833,6 +2919,22 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 // T-13.3b: the trusted shell asks the compositor to render the
                 // frame itself (portal-presenter-only capture) and write a PNG.
                 state.request_capture(x, y, width, height, &mode, path);
+            }
+            df_toplevel_manager::Request::WindowMenuActivate { index } => {
+                // T329: the trusted shell may activate a row programmatically.
+                // The index resolves through the same menu model a pointer
+                // press uses; the shell never invents a command.
+                if state.window_menu_activate(index as usize) {
+                    state.needs_redraw = true;
+                }
+            }
+            df_toplevel_manager::Request::WindowMenuActivateSpace { index } => {
+                if state.window_menu_activate_space(index as usize) {
+                    state.needs_redraw = true;
+                }
+            }
+            df_toplevel_manager::Request::WindowMenuDismiss => {
+                state.close_window_menu();
             }
             df_toplevel_manager::Request::Destroy => {}
         }

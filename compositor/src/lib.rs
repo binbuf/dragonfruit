@@ -28,5 +28,6 @@ pub mod output_input;
 pub mod pointer_policy;
 pub mod presentation;
 pub mod refresh;
+pub mod window_menu;
 pub mod xdnd;
 pub mod xdnd_bridge;

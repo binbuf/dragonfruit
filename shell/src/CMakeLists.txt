@@ -316,6 +316,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-shell-control-centerplugin
     dragonfruit-shell-osdplugin
     dragonfruit-shell-powerplugin
+    dragonfruit-shell-windowmenuplugin
     dragonfruit-shell-lockplugin
     dragonfruit-shell-screenshotplugin
 )

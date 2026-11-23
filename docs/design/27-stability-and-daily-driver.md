@@ -554,7 +554,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | ID | Defect | Task |
 |---|---|---|
 | S-13 | Media keys do nothing (closed by T321) | T321 |
-| S-14 | The titlebar window menu is unlabeled | T329 |
+| S-14 | The titlebar window menu is unlabeled (closed by T329; the trusted shell renders the compositor-owned model) | T329 |
 | S-15 | Files lacks copy/move/paste, undo, watcher, tabs, New Window, Open With | T330–T334 |
 | S-16 | Screen sharing is stills-only | T335a, T335b |
 | S-17 | X11 `_NET_FRAME_EXTENTS` is missing (closed by T327); XDnD is live in both directions (target role T328a, source role T328b) | T327, T328a, T328b |

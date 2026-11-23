@@ -142,8 +142,9 @@ the request (the Dock has its own auto-hide).
   closed notification surface leaves no stale material.
 
 Layers match `wlr-layer-shell`'s ordering: `background`, `bottom`, `top`,
-`overlay`. The menu bar and Dock are `top`; menus, the OSD and the Notification
-Center (`notification-center`) are `overlay`. The Center is a per-output
+`overlay`. The menu bar and Dock are `top`; menus, the window menu
+(`windowmenu`, T329), the OSD and the Notification Center
+(`notification-center`) are `overlay`. The Center is a per-output
 transient surface with its own input region and an OnDemand keyboard policy; it
 reserves no zone and never creates a second hidden layer.
 
@@ -184,6 +185,16 @@ is acked with `done` after the scene applies it (FR-3).
   leaves the previous state live ([ADR 0326](adr/0326-per-output-dpms.md)).
   The idle chain applies `idle-blank`/`idle-awake` on the same model, so the
   event also arrives without a shell request.
+- **The window menu** (v16, T329) is a presentation projection, not a second
+  state machine. `window_menu` carries the window id, output, the union
+  surface rect, the panel/submenu offsets, the scheme, and the highlight state;
+  `window_menu_row`/`window_menu_space` carry each entry's label and Tabler
+  glyph before the batch `done`; `window_menu_closed` ends it. The trusted
+  shell renders it in a transient `windowmenu` overlay. Requests
+  `window_menu_activate`, `window_menu_activate_space`, and
+  `window_menu_dismiss` are the programmatic activation path and resolve
+  through the compositor's one `WindowMenuCommand`
+  ([ADR 0336](adr/0336-window-menu-shell-render.md)).
 - **Manager requests** include the cross-cutting controls: workspace
   create/remove/reorder/activate, `enter`/`exit_mission_control`,
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,

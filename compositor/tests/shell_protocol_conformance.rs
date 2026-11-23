@@ -28,6 +28,9 @@ use wayland_protocols::wp::pointer_constraints::zv1::client::{
     zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
 };
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
+use wayland_protocols::xdg::decoration::zv1::client::{
+    zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
+};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel as xdg_tl, xdg_wm_base};
 
 mod common;
@@ -78,12 +81,36 @@ use toplevel_client::{df_output, df_toplevel, df_toplevel_manager, df_workspace}
 
 const OUTPUT_W: i32 = 1280;
 
+/// One `df_toplevel_manager.window_menu` projection (T329).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WindowMenuEvent {
+    window: u32,
+    output: String,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    panel_x: i32,
+    panel_y: i32,
+    panel_width: i32,
+    panel_height: i32,
+    submenu_x: i32,
+    submenu_y: i32,
+    submenu_width: i32,
+    submenu_height: i32,
+    scheme: u32,
+    highlighted: i32,
+    submenu_open: bool,
+    submenu_highlighted: i32,
+}
+
 #[derive(Default)]
 struct TestClient {
     registry: Option<wl_registry::WlRegistry>,
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     xdg_wm_base: Option<xdg_wm_base::XdgWmBase>,
+    decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -160,6 +187,11 @@ struct TestClient {
     app_switchers: Vec<(u32, Option<String>, i32)>,
     /// The recency cards the shell overlay draws (T-06.2a): `(index, app_id)`.
     app_switcher_entries: Vec<(u32, String)>,
+    /// The live window-menu projection (T329) and its row/space batch.
+    window_menu: Option<WindowMenuEvent>,
+    window_menu_rows: Vec<(u32, String, String)>,
+    window_menu_spaces: Vec<(u32, String, String)>,
+    window_menu_closed: usize,
     input_actions: Vec<(String, String, u32)>,
     progress_events: usize,
     app_accelerators: Vec<(String, String, String, u32)>,
@@ -252,6 +284,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "xdg_wm_base" => {
                     state.xdg_wm_base = Some(registry.bind(name, version.min(6), _qh, ()));
+                }
+                "zxdg_decoration_manager_v1" => {
+                    state.decoration_manager = Some(registry.bind(name, version.min(1), _qh, ()));
                 }
                 "wl_seat" => {
                     state.seat = Some(registry.bind(name, version.min(9), _qh, ()));
@@ -387,6 +422,57 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
             }
             df_toplevel_manager::Event::ActivationResult { app_id, found } => {
                 state.activation_results.push((app_id, found != 0))
+            }
+            df_toplevel_manager::Event::WindowMenu {
+                window,
+                output,
+                x,
+                y,
+                width,
+                height,
+                panel_x,
+                panel_y,
+                panel_width,
+                panel_height,
+                submenu_x,
+                submenu_y,
+                submenu_width,
+                submenu_height,
+                scheme,
+                highlighted,
+                submenu_open,
+                submenu_highlighted,
+            } => {
+                state.window_menu = Some(WindowMenuEvent {
+                    window,
+                    output,
+                    x,
+                    y,
+                    width,
+                    height,
+                    panel_x,
+                    panel_y,
+                    panel_width,
+                    panel_height,
+                    submenu_x,
+                    submenu_y,
+                    submenu_width,
+                    submenu_height,
+                    scheme,
+                    highlighted,
+                    submenu_open: submenu_open != 0,
+                    submenu_highlighted,
+                });
+            }
+            df_toplevel_manager::Event::WindowMenuRow { index, label, icon } => {
+                state.window_menu_rows.push((index, label, icon))
+            }
+            df_toplevel_manager::Event::WindowMenuSpace { index, label, icon } => {
+                state.window_menu_spaces.push((index, label, icon))
+            }
+            df_toplevel_manager::Event::WindowMenuClosed => {
+                state.window_menu = None;
+                state.window_menu_closed += 1;
             }
             df_toplevel_manager::Event::Done => state.done_count += 1,
         }
@@ -3674,6 +3760,246 @@ fn map_toplevel(
     (surface, xdg_surface, toplevel, file)
 }
 
+impl Dispatch<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, ()> for TestClient {
+    fn event(
+        _: &mut Self,
+        _: &zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+        _: zxdg_decoration_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for TestClient {
+    fn event(
+        _: &mut Self,
+        _: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        _: zxdg_toplevel_decoration_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+/// Map a server-side-decorated toplevel (the window menu only exists on SSD
+/// chrome; an unnegotiated client is Tier 3 by design).
+#[allow(clippy::type_complexity)]
+fn map_ssd_toplevel(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+    title: &str,
+    app_id: &str,
+) -> (
+    wl_surface::WlSurface,
+    xdg_surface::XdgSurface,
+    xdg_tl::XdgToplevel,
+    std::fs::File,
+) {
+    let qh = queue.handle();
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let decoration_manager = state
+        .decoration_manager
+        .clone()
+        .expect("zxdg_decoration_manager_v1 advertised");
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_title(title.to_string());
+    toplevel.set_app_id(app_id.to_string());
+    let decoration = decoration_manager.get_toplevel_decoration(&toplevel, &qh, ());
+    decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+    surface.commit();
+    let _ = queue.roundtrip(state);
+    let (buffer, file) = shm_buffer(state, &qh, 200, 150);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    let _ = queue.roundtrip(state);
+    (surface, xdg_surface, toplevel, file)
+}
+
+/// T329 acceptance: the trusted shell receives the window-menu projection and
+/// its activation requests resolve through the compositor's one
+/// `WindowMenuCommand` path. The compositor still owns pointer/keyboard input;
+/// these requests are the programmatic row activation the protocol exposes.
+#[test]
+fn window_menu_protocol_activation_routes_through_the_window_state_machine() {
+    const APP: &str = "org.dragonfruit.WindowMenuProtocol";
+    const TITLEBAR: i32 = 32;
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-window-menu-protocol-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-window-menu-protocol",
+        &[],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+
+    let (_surface, _xdg_surface, _toplevel, _file) =
+        map_ssd_toplevel(&mut state, &mut queue, APP, APP);
+    let open_menu = |input: &SyntheticInput| {
+        let rect = window_rect(input, APP);
+        let tx = rect.0 + rect.2 / 2;
+        let ty = rect.1 - TITLEBAR / 2;
+        input.send(&format!(
+            "motion-abs {} {}",
+            f64::from(tx) / f64::from(OUTPUT_W),
+            f64::from(ty) / 720.0
+        ));
+        input.send("button 273 down");
+        input.send("button 273 up");
+    };
+
+    // --- the projection carries the readable row model -------------------
+    open_menu(&input);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.window_menu.is_some() && state.window_menu_rows.len() == 4,
+    );
+    let menu = state.window_menu.clone().expect("window menu projection");
+    let window_id = identity_app_ids(&input.query("query identity"))
+        .iter()
+        .find_map(|(id, app)| (app == APP).then_some(*id))
+        .expect("tracked window id");
+    assert_eq!(
+        u64::from(menu.window),
+        window_id,
+        "the projection names the window it acts on"
+    );
+    assert_eq!(menu.output, "HEADLESS-1");
+    assert!(menu.panel_width > 0 && menu.panel_height > 0);
+    assert_eq!(
+        state
+            .window_menu_rows
+            .iter()
+            .map(|(_, label, icon)| (label.as_str(), icon.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Move to Space", "layout-grid"),
+            ("Minimize", "minus"),
+            ("Zoom", "maximize"),
+            ("Close", "x"),
+        ]
+    );
+    assert_eq!(state.window_menu_spaces.len(), 3);
+    assert_eq!(state.window_menu_spaces[0].1, "Space 1");
+
+    // --- activate Zoom through the private request ----------------------
+    manager.window_menu_activate(2);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.window_menu.is_none(),
+    );
+    let zoomed = window_rect(&input, APP);
+    assert_eq!((zoomed.2, zoomed.3), (OUTPUT_W, 720 - TITLEBAR));
+
+    // --- dismiss is the explicit close request ---------------------------
+    open_menu(&input);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.window_menu.is_some(),
+    );
+    let closed_before = state.window_menu_closed;
+    manager.window_menu_dismiss();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.window_menu.is_none() && state.window_menu_closed > closed_before,
+    );
+
+    // --- Move to Space: open the submenu, then activate Space 2 ---------
+    open_menu(&input);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.window_menu.is_some(),
+    );
+    let space_before = decoration_space_for(&input, APP);
+    manager.window_menu_activate(0);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .window_menu
+                .as_ref()
+                .is_some_and(|menu| menu.submenu_open)
+        },
+    );
+    manager.window_menu_activate_space(1);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.window_menu.is_none(),
+    );
+    assert_ne!(
+        decoration_space_for(&input, APP),
+        space_before,
+        "the Space request moves the window through WindowMenuCommand"
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// The Space index a tracked app's window is on, from `query decorations`.
+#[track_caller]
+fn decoration_space_for(input: &SyntheticInput, app_id: &str) -> i32 {
+    let ids = identity_app_ids(&input.query("query identity"));
+    let id = ids
+        .iter()
+        .find_map(|(id, app)| (app == app_id).then_some(*id))
+        .expect("tracked app id");
+    input
+        .query("query decorations")
+        .lines()
+        .find_map(|line| {
+            let mut parts = line.split_whitespace();
+            (parts.next()? == "decoration" && parts.next()?.parse::<u64>().ok()? == id)
+                .then(|| parts.nth(10)?.parse::<i32>().ok())
+                .flatten()
+        })
+        .expect("decoration Space field")
+}
+
 /// Request a fresh `xdg-activation` token and activate `surface` with it.
 /// The token round-trip is required by the protocol; the compositor under
 /// test does not validate token data yet.
@@ -5152,8 +5478,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 15,
-        "the manager must advertise the additive requests through v15"
+        manager_version, 16,
+        "the manager must advertise the additive requests through v16"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -5234,8 +5560,8 @@ fn motion_and_input_policy_requests_apply_live() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 15,
-        "the manager must advertise the additive requests through v15"
+        manager_version, 16,
+        "the manager must advertise the additive requests through v16"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -5376,7 +5702,7 @@ fn overview_policy_resizes_the_workspace_list() {
         |state| state.authenticated.is_some(),
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
-    assert_eq!(manager_version, 15);
+    assert_eq!(manager_version, 16);
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
         &conn,
@@ -5456,8 +5782,8 @@ fn appearance_policy_round_trips_and_invalidates_only_on_change() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 15,
-        "the manager must advertise the additive requests through v15"
+        manager_version, 16,
+        "the manager must advertise the additive requests through v16"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(

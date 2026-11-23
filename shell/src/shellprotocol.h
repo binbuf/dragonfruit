@@ -523,6 +523,30 @@ public:
     // Unmap the power-dialog surface (attach a null buffer).
     bool hidePowerDialog();
 
+    // Create the window-menu popup (T329): a transient `overlay` layer
+    // surface, namespace "windowmenu", on `outputName`, anchored top-left at
+    // the menu's output-local position. It reserves nothing
+    // (`exclusive_zone = -1`), never takes keyboard focus, and has an empty
+    // input region: the compositor still owns menu input and routing. The
+    // surface is destroyed on close so the compositor's flat no-shell
+    // fallback returns.
+    bool createWindowMenuSurface(const QString &outputName);
+
+    // Move/resize the window-menu popup to `x`,`y` (output-local) with the
+    // given logical size. The geometry is the union of the panel and the open
+    // submenu.
+    bool setWindowMenuGeometry(int x, int y, int width, int height);
+
+    // Replace the popup's material regions (panel and detached submenu) before
+    // the next image commit.
+    bool setWindowMenuPanelRegions(const QVariantList &regions);
+
+    // Attach `image` to the window-menu surface and commit.
+    bool commitWindowMenuImage(const QImage &image, const QSize &logicalSize = QSize());
+
+    // Destroy the window-menu surface (the menu closed).
+    bool hideWindowMenu();
+
     // Create the Applications drawer overlay (T-19.2): a full-output `overlay`
     // layer surface, namespace "apps-drawer", unmapped until the drawer opens.
     // It reserves nothing (`exclusive_zone = -1`) and takes the keyboard on
@@ -962,6 +986,11 @@ signals:
     void powerDialogPointerLeft();
     void powerDialogKeyboardFocused(bool focused);
     void powerDialogKeyEvent(uint32_t key, bool pressed);
+    // The live window-menu projection (T329) and its close. `menu` carries
+    // window/output, surface and panel/submenu rects, scheme, highlight state,
+    // and the `rows`/`spaces` lists of `{ label, icon }` maps.
+    void windowMenuChanged(const QVariantMap &menu);
+    void windowMenuClosed();
     // Applications drawer overlay (T-19.2): a full-output launcher surface.
     void appsDrawerConfigured(int width, int height, uint32_t serial);
     void appsDrawerPointerMoved(qreal x, qreal y);
@@ -1307,6 +1336,20 @@ private:
                                   int32_t width, int32_t height);
     static void onPowerDialogConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                        int32_t width, int32_t height);
+    static void onWindowMenuConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                      int32_t width, int32_t height);
+    static void onWindowMenuLayerClosed(void *data, df_layer_surface *layer);
+    static void onManagerWindowMenu(
+        void *data, df_toplevel_manager *manager, uint32_t window, const char *output,
+        int32_t x, int32_t y, int32_t width, int32_t height, int32_t panelX, int32_t panelY,
+        int32_t panelWidth, int32_t panelHeight, int32_t submenuX, int32_t submenuY,
+        int32_t submenuWidth, int32_t submenuHeight, uint32_t scheme, int32_t highlighted,
+        uint32_t submenuOpen, int32_t submenuHighlighted);
+    static void onManagerWindowMenuRow(void *data, df_toplevel_manager *manager, uint32_t index,
+                                       const char *label, const char *icon);
+    static void onManagerWindowMenuSpace(void *data, df_toplevel_manager *manager, uint32_t index,
+                                         const char *label, const char *icon);
+    static void onManagerWindowMenuClosed(void *data, df_toplevel_manager *manager);
     static void onAppsDrawerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                       int32_t width, int32_t height);
     // Session-lock listeners (T-12.3a).
@@ -1315,6 +1358,17 @@ private:
     static void onLockSurfaceConfigure(void *data, ext_session_lock_surface_v1 *surface,
                                        uint32_t serial, uint32_t width, uint32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
+    // wl_output name tracking for the output-scoped window-menu popup (T329).
+    static void onWlOutputGeometry(void *data, wl_output *output, int32_t x, int32_t y,
+                                   int32_t physicalWidth, int32_t physicalHeight,
+                                   int32_t subpixel, const char *make, const char *model,
+                                   int32_t transform);
+    static void onWlOutputMode(void *data, wl_output *output, uint32_t flags, int32_t width,
+                               int32_t height, int32_t refresh);
+    static void onWlOutputDone(void *data, wl_output *output);
+    static void onWlOutputScale(void *data, wl_output *output, int32_t factor);
+    static void onWlOutputName(void *data, wl_output *output, const char *name);
+    static void onWlOutputDescription(void *data, wl_output *output, const char *description);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
     static void onPointerEnter(void *data, wl_pointer *pointer, uint32_t serial,
@@ -1633,6 +1687,23 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     bool m_powerDialogMapped = false;
     bool m_pointerOnPowerDialog = false;
     bool m_keyboardOnPowerDialog = false;
+    // Window-menu popup (T329): a transient overlay mapped only while the
+    // compositor-owned titlebar menu is open. It is presentation-only; the
+    // compositor owns input. The batch below accumulates one projection
+    // between `window_menu` and the manager's `done`.
+    wl_surface *m_windowMenuSurface = nullptr;
+    df_layer_surface *m_windowMenuLayer = nullptr;
+    bool m_windowMenuMapped = false;
+    int m_windowMenuWidth = 0;
+    int m_windowMenuHeight = 0;
+    QVariantMap m_windowMenuPending;
+    QVariantList m_windowMenuRowsPending;
+    QVariantList m_windowMenuSpacesPending;
+    bool m_windowMenuPendingBatch = false;
+    bool m_windowMenuClosedPending = false;
+    // The compositor sends the menu's output name; the layer surface needs
+    // the matching wl_output resource, so the shell keeps the v4 name map.
+    QHash<QString, wl_output *> m_outputByName;
     // True while the pointer is on a lock surface, and the opaque id of that
     // surface so the controller can size its scene before forwarding.
     bool m_pointerOnLock = false;

@@ -34,8 +34,8 @@ cd "$(dirname "$0")/.."
 
 STATE="${1:-motion}"
 case "$STATE" in
-    motion|settled|menu|popover|lock|lock-exit|fullscreen|fullscreen-exit|status|dock-context|desktop-context|files-context|control-center|notification-center|settings-window|files-window) ;;
-    *) echo "usage: $0 motion|settled|menu|popover|lock|lock-exit|fullscreen|fullscreen-exit|status|dock-context|desktop-context|files-context|control-center|notification-center|settings-window|files-window" >&2; exit 2 ;;
+    motion|settled|menu|popover|lock|lock-exit|fullscreen|fullscreen-exit|status|dock-context|desktop-context|files-context|control-center|notification-center|settings-window|files-window|window-menu|window-menu-submenu) ;;
+    *) echo "usage: $0 motion|settled|menu|popover|lock|lock-exit|fullscreen|fullscreen-exit|status|dock-context|desktop-context|files-context|control-center|notification-center|settings-window|files-window|window-menu|window-menu-submenu" >&2; exit 2 ;;
 esac
 
 SETTLE="${SETTLE:-2}"
@@ -105,6 +105,15 @@ case "$STATE" in
     files-context)
         DELAY=8000
         EXTRA_ENV=(DF_STATUS_FIXTURE=1 DF_DEMO_QT_APP=build/apps/files/dragonfruit-files DF_FILES_START_MENU=background)
+        ;;
+    window-menu|window-menu-submenu)
+        # T329: an SSD window's titlebar menu. The demo's X11 xmessage window
+        # is Tier 2; the driver picks it and right-clicks its titlebar. The
+        # app-session rail also runs settingsd, so the capture can pin the
+        # light/dark scheme and the output scale.
+        DELAY=12000
+        APP_SESSION=1
+        EXTRA_ENV=()
         ;;
     settings-window)
         DELAY=10000
@@ -312,10 +321,10 @@ def send(c): s.sendto(c.encode(), synth)
 def motion(x, y): send(f"motion-abs {x / 1280:.6f} {y / 800:.6f}")
 def key(code):
     send(f"key {code} down"); send(f"key {code} up"); time.sleep(0.15)
-def first_window():
+def decoration_rows():
     send("query decorations")
     end = time.time() + 3.0
-    windows = []
+    rows = []
     while time.time() < end:
         try:
             line = s.recv(4096).decode()
@@ -323,11 +332,41 @@ def first_window():
             break
         for row in line.splitlines():
             parts = row.split()
-            if parts and parts[0] == "decoration" and len(parts) > 11:
-                windows.append((int(parts[1]), parts[11]))
-    if not windows:
+            if parts and parts[0] == "decoration" and len(parts) > 12:
+                rows.append(parts)
+    return rows
+def first_window():
+    rows = decoration_rows()
+    if not rows:
         raise SystemExit("t21-live: no window to transition")
-    return windows[0][0]
+    return int(rows[0][1])
+def first_ssd_titlebar():
+    end = time.time() + 10.0
+    while time.time() < end:
+        for parts in decoration_rows():
+            if parts[2] != "1":
+                continue
+            tbx, tby, tbw, tbh = (int(parts[3]), int(parts[4]),
+                                  int(parts[5]), int(parts[6]))
+            if tbw > 0 and tbh > 0:
+                return (tbx, tby, tbw, tbh)
+        time.sleep(0.2)
+    raise SystemExit("t21-live: no server-side-decorated window")
+def output_logical_size():
+    send("query scale")
+    end = time.time() + 3.0
+    while time.time() < end:
+        try:
+            line = s.recv(4096).decode()
+        except socket.timeout:
+            break
+        for row in line.splitlines():
+            if row.startswith("scale output "):
+                for token in row.split():
+                    if token.startswith("logical="):
+                        w, h = token.split("=", 1)[1].split("x")
+                        return int(w), int(h)
+    raise SystemExit("t21-live: no output logical size")
 if state in ("settings-window", "files-window") and os.environ.get("UNFOCUS") == "1":
     # Click the empty desktop outside the centred app window. The chrome
     # material must not change; only the controls/text focus state does.
@@ -355,6 +394,20 @@ elif state == "desktop-context":
     send("button 0x111 down")
     send("button 0x111 up")
     time.sleep(1.0)
+elif state in ("window-menu", "window-menu-submenu"):
+    # Right-click an SSD titlebar. The compositor opens the menu and the
+    # trusted shell renders the readable rows/icons in its `windowmenu`
+    # overlay; the submenu variant then presses Right on row 0.
+    tx, ty, tw, th = first_ssd_titlebar()
+    out_w, out_h = output_logical_size()
+    send(f"motion-abs {(tx + tw // 2) / out_w:.6f} {(ty + th // 2) / out_h:.6f}")
+    time.sleep(0.2)
+    send("button 273 down")
+    send("button 273 up")
+    time.sleep(1.2)
+    if state == "window-menu-submenu":
+        key(106)  # KEY_RIGHT: open Move to Space
+        time.sleep(1.2)
 elif state == "motion":
     # Keep the Dock spring moving across the capture instant. The sweep axis
     # follows the Dock position (T235a): a bottom Dock sweeps x, a vertical
@@ -437,8 +490,8 @@ sock.bind(client)
 sock.settimeout(2.0)
 chunks = []
 for command in (b"query scale", b"query material", b"query decorations",
-                    b"query lock", b"query session", b"query policy",
-                    b"query scanout"):
+                    b"query window-menu", b"query lock", b"query session",
+                    b"query policy", b"query scanout"):
     sock.sendto(command, synth)
     while True:
         try:

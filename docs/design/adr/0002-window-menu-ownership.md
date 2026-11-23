@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted
+superseded by [ADR 0336](0336-window-menu-shell-render.md) (rendering moved to
+the trusted shell; compositor ownership is unchanged)
 
 ## Context
 

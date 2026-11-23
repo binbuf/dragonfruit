@@ -36,6 +36,7 @@ mod suspend;
 mod trace;
 mod wallpaper;
 mod window;
+mod window_menu;
 mod workspace;
 mod xwayland;
 

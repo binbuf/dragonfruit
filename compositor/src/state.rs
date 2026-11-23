@@ -1717,6 +1717,10 @@ pub struct DfState {
     /// four commands resolve through [`DfState::window_menu_command`], the
     /// same primitives the traffic lights and shell protocol use.
     pub window_menu: Option<WindowMenu>,
+    /// Bumped whenever the live window menu changes (T329). The shell
+    /// broadcast compares a per-session serial so the trusted popup receives
+    /// one presentation snapshot per change, not one per event-loop turn.
+    pub window_menu_serial: u64,
 
     // --- workspace model (T-05) --------------------------------------------
     /// Per-output ordered Space lists, fullscreen Spaces, wallpaper, window
@@ -2096,6 +2100,7 @@ impl DfState {
             minimized_animation: MinimizedAnimation::default(),
             titlebar_clicks: DoubleClickTracker::new(),
             window_menu: None,
+            window_menu_serial: 0,
             workspaces: WorkspaceModel::new(),
             wallpaper_cache: WallpaperCache::new(),
             xwayland: XwaylandState::default(),
@@ -3796,32 +3801,81 @@ impl DfState {
         let Some(bounds) = self.output_bounds_for(window) else {
             return;
         };
+        let output = self.output_name_for(window).unwrap_or_default();
         let spaces: Vec<(usize, String)> = self
-            .output_name_for(window)
-            .map(|output| {
-                self.workspaces
-                    .space_names(&output)
-                    .into_iter()
-                    .enumerate()
-                    .collect()
-            })
-            .unwrap_or_default();
+            .workspaces
+            .space_names(&output)
+            .into_iter()
+            .enumerate()
+            .collect();
         let anchor = Point::from((location.x.floor() as i32, location.y.floor() as i32));
         self.window_menu = Some(WindowMenu::open(
             id,
+            &output,
             anchor,
             &spaces,
             bounds,
             self.color_scheme,
         ));
+        self.mark_window_menu_changed();
         self.mark_scene_dirty();
     }
 
     /// Close the window menu, if one is open.
     pub fn close_window_menu(&mut self) {
         if self.window_menu.take().is_some() {
+            self.mark_window_menu_changed();
             self.mark_scene_dirty();
         }
+    }
+
+    /// Record a presentation change for the trusted shell popup (T329).
+    fn mark_window_menu_changed(&mut self) {
+        self.window_menu_serial = self.window_menu_serial.wrapping_add(1);
+    }
+
+    /// The presentation snapshot for the live menu, if one is open. The
+    /// compositor keeps the state; the shell draws this projection only.
+    pub fn window_menu_presentation(&self) -> Option<crate::window::WindowMenuPresentation> {
+        let menu = self.window_menu.as_ref()?;
+        let output = self.output_geometry_named(&menu.output)?;
+        Some(menu.presentation(output.loc))
+    }
+
+    /// Activate a top-level row by index from the private protocol (T329).
+    /// The row resolves through the same [`WindowMenu::activate`] path a
+    /// pointer press uses, so the shell request can never invent a command.
+    pub fn window_menu_activate(&mut self, index: usize) -> bool {
+        let Some(row) = self
+            .window_menu
+            .as_ref()
+            .and_then(|menu| menu.rows.get(index))
+        else {
+            return false;
+        };
+        let point = Point::from((
+            (row.rect.loc.x + row.rect.size.w / 2) as f64,
+            (row.rect.loc.y + row.rect.size.h / 2) as f64,
+        ));
+        self.window_menu_click(point)
+    }
+
+    /// Activate a Move to Space submenu row by index (T329). The submenu must
+    /// already be open, matching the pointer path.
+    pub fn window_menu_activate_space(&mut self, index: usize) -> bool {
+        let Some(row) = self
+            .window_menu
+            .as_ref()
+            .filter(|menu| menu.open_submenu)
+            .and_then(|menu| menu.submenu.get(index))
+        else {
+            return false;
+        };
+        let point = Point::from((
+            (row.rect.loc.x + row.rect.size.w / 2) as f64,
+            (row.rect.loc.y + row.rect.size.h / 2) as f64,
+        ));
+        self.window_menu_click(point)
     }
 
     /// Whether a window menu is open (T-01.4 test/observation hook).
@@ -3855,10 +3909,12 @@ impl DfState {
                     self.window_menu_command(&window, command);
                 }
                 self.window_menu = None;
+                self.mark_window_menu_changed();
                 self.needs_redraw = true;
                 true
             }
             MenuActivation::OpenSubmenu => {
+                self.mark_window_menu_changed();
                 self.needs_redraw = true;
                 true
             }
@@ -3876,6 +3932,7 @@ impl DfState {
             .map(|menu| menu.hover(point))
             .unwrap_or(false);
         if changed {
+            self.mark_window_menu_changed();
             self.needs_redraw = true;
         }
         changed
@@ -3898,11 +3955,16 @@ impl DfState {
                     self.window_menu_command(&window, command);
                 }
                 self.window_menu = None;
+                self.mark_window_menu_changed();
                 self.needs_redraw = true;
             }
-            MenuKeyOutcome::Changed => self.needs_redraw = true,
+            MenuKeyOutcome::Changed => {
+                self.mark_window_menu_changed();
+                self.needs_redraw = true;
+            }
             MenuKeyOutcome::Dismiss => {
                 self.window_menu = None;
+                self.mark_window_menu_changed();
                 self.needs_redraw = true;
             }
             MenuKeyOutcome::Ignored => {}
@@ -3931,7 +3993,7 @@ impl DfState {
             .as_ref()
             .is_some_and(|menu| self.windows.id(window) == Some(menu.window))
         {
-            self.window_menu = None;
+            self.close_window_menu();
         }
         // Input-inert from the first frame: unmap, then play the ghost.
         let geometry = self.windows.geometry(window).unwrap_or_default();
@@ -4639,7 +4701,8 @@ impl DfState {
         for surface in self.shell.chrome_layer_surfaces() {
             dismissed += self.dismiss_popups_at(&surface);
         }
-        if self.window_menu.take().is_some() {
+        if self.window_menu.is_some() {
+            self.close_window_menu();
             dismissed += 1;
         }
         if keyboard_released || pointer_released || dismissed > 0 {
@@ -4686,7 +4749,7 @@ impl DfState {
             .as_ref()
             .is_some_and(|menu| menu.window == id)
         {
-            self.window_menu = None;
+            self.close_window_menu();
         }
         // A destroyed fullscreen window takes its dedicated Space with it
         // (T-05 FR-3), so the strip does not keep a phantom Space.

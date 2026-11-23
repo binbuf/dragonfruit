@@ -2797,6 +2797,88 @@ fn window_menu_opens_dismisses_and_is_keyboard_operable() {
     );
 }
 
+/// T329 acceptance: the window menu's row model carries the readable labels
+/// and Tabler icons the trusted shell renders, plus the Space submenu names.
+#[test]
+fn window_menu_row_model_carries_readable_labels_and_icons() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-menu-rows-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-menu-rows",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let report = *reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel");
+    open_window_menu(&input, &report);
+    wait_for_menu(&input, |menu| menu.open);
+
+    let report = input.query("query window-menu-rows");
+    let mut rows: Vec<(u32, String, String)> = Vec::new();
+    let mut spaces: Vec<(u32, String, String)> = Vec::new();
+    for line in report.lines() {
+        if line == "end" {
+            break;
+        }
+        let mut parts = line.splitn(4, ' ');
+        let kind = parts.next().unwrap_or_default();
+        let index = parts
+            .next()
+            .and_then(|value| value.parse().ok())
+            .expect("row index");
+        let icon = parts.next().expect("row icon").to_string();
+        let label = parts.next().expect("row label").to_string();
+        match kind {
+            "window-menu-row" => rows.push((index, icon, label)),
+            "window-menu-space" => spaces.push((index, icon, label)),
+            other => panic!("unexpected row-model line {other:?}"),
+        }
+    }
+    assert_eq!(
+        rows,
+        vec![
+            (0, "layout-grid".to_string(), "Move to Space".to_string()),
+            (1, "minus".to_string(), "Minimize".to_string()),
+            (2, "maximize".to_string(), "Zoom".to_string()),
+            (3, "x".to_string(), "Close".to_string()),
+        ],
+        "the menu rows are readable and every row has a glyph"
+    );
+    assert_eq!(
+        spaces,
+        vec![
+            (0, "layout-grid".to_string(), "Space 1".to_string()),
+            (1, "layout-grid".to_string(), "Space 2".to_string()),
+            (2, "layout-grid".to_string(), "Space 3".to_string()),
+        ],
+        "Move to Space lists the window output's Spaces"
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 /// Wait for a newly mapped SSD window: one whose id is not in `seen`.
 fn wait_for_new_window(
     state: &mut TestClient,
