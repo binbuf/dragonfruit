@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -204,6 +204,15 @@ No single component failure may require a TTY reboot:
   records the decision;
 - a Files desktop that loses the compositor must exit and be restarted;
 - a hung shell must be caught by a watchdog or a documented restart chord;
+- Log Out must end the session through logind, never a direct signal to the
+  shell or compositor. The system menu row and `Super+Shift+Q` share the
+  Restart/Shut Down confirmation, then call
+  `Manager.TerminateSession($XDG_SESSION_ID)`; the compositor anchor exits and
+  the T-12.2 session entry stops the target and returns the greeter. A host
+  without logind falls back to `systemctl --user stop
+  dragonfruit-session.target`, and only a host with neither path disables the
+  row with a reason. ADR [0324](adr/0324-log-out-through-logind.md) records
+  the decision;
 - a `df_output.set_mode` with a zero/negative refresh must not panic the
   compositor;
 - an Xwayland crash must remove its windows from the model, not leave ghosts.
@@ -301,7 +310,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-05 | X11 apps launch without `DISPLAY` | T309 |
 | S-06 | Mouse/trackpad settings never reach libinput | T320 |
 | S-07 | Brightness never reaches the panel | T319 |
-| S-08 | Log Out is a live no-op | T313 |
+| S-08 | Log Out terminates the session through logind (closed by T313) | T313 |
 | S-09 | A hung shell is never recovered | T314 |
 | S-10 | Clipboard-history serving can block the shell forever (closed by T310) | T310 |
 | S-11 | Portal requests hang when the shell restarts or a second request arrives | T311 |

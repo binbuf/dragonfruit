@@ -11,7 +11,7 @@ import Dragonfruit
 Item {
     id: root
 
-    // "shut-down" or "restart".
+    // "shut-down", "restart", or "log-out".
     property string action: "shut-down"
     // Seconds left before the action runs automatically. The shell resets this
     // to 60 when it opens the dialog.
@@ -21,17 +21,23 @@ Item {
     property bool active: false
 
     readonly property bool isRestart: root.action === "restart"
-    readonly property string heading: root.isRestart ? qsTr("Restart") : qsTr("Shut Down")
-    readonly property string question: root.isRestart
-        ? qsTr("Are you sure you want to restart your computer now?")
-        : qsTr("Are you sure you want to shut down your computer now?")
-    readonly property string countdownText: root.isRestart
+    readonly property bool isLogOut: root.action === "log-out"
+    readonly property string heading: root.isLogOut
+        ? qsTr("Log Out")
+        : (root.isRestart ? qsTr("Restart") : qsTr("Shut Down"))
+    readonly property string question: root.isLogOut
+        ? qsTr("Are you sure you want to log out of your account now?")
+        : (root.isRestart
+            ? qsTr("Are you sure you want to restart your computer now?")
+            : qsTr("Are you sure you want to shut down your computer now?"))
+    readonly property string countdownVerb: root.isRestart ? qsTr("restart") : qsTr("shut down")
+    readonly property string countdownText: root.isLogOut
         ? (root.secondsRemaining === 1
-            ? qsTr("If you do nothing, the computer will restart automatically in 1 second.")
-            : qsTr("If you do nothing, the computer will restart automatically in %1 seconds.").arg(root.secondsRemaining))
+            ? qsTr("If you do nothing, you will be logged out automatically in 1 second.")
+            : qsTr("If you do nothing, you will be logged out automatically in %1 seconds.").arg(root.secondsRemaining))
         : (root.secondsRemaining === 1
-            ? qsTr("If you do nothing, the computer will shut down automatically in 1 second.")
-            : qsTr("If you do nothing, the computer will shut down automatically in %1 seconds.").arg(root.secondsRemaining))
+            ? qsTr("If you do nothing, the computer will %1 automatically in 1 second.").arg(root.countdownVerb)
+            : qsTr("If you do nothing, the computer will %1 automatically in %2 seconds.").arg(root.countdownVerb).arg(root.secondsRemaining))
 
     signal confirmed()
     signal cancelled()
@@ -124,7 +130,8 @@ Item {
                     PhosphorIcon {
                         objectName: "powerGlyph"
                         anchors.centerIn: parent
-                        name: root.isRestart ? "arrows-clockwise" : "power"
+                        name: root.isLogOut ? "person"
+                              : (root.isRestart ? "arrows-clockwise" : "power")
                         size: 26
                         color: Theme.color.textPrimary
                     }

@@ -427,6 +427,31 @@ set_tests_properties(tst_settingsclient PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Session action tests (T313): Log Out calls logind
+# `Manager.TerminateSession(sessionId)` on a fake private service, the fixture
+# never touches the host, and the systemctl fallback stops the session target.
+# `DBUS_SYSTEM_BUS_ADDRESS` points at a dead path so a bug can never reach the
+# developer's real logind.
+qt_add_executable(tst_sessionactions
+    tst_sessionactions.cpp
+)
+target_link_libraries(tst_sessionactions PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_sessionactions
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_sessionactions>
+    )
+else()
+    add_test(NAME tst_sessionactions COMMAND tst_sessionactions)
+endif()
+set_tests_properties(tst_sessionactions PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent-dragonfruit-test-bus"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Theme-binding tests (T-08.2b): a settingsd key change (through the same
 # SettingsClient the Dock uses) flips the design-system Theme, and the gallery
 # variant renders the new scheme. Needs a QML engine plus a real scene graph

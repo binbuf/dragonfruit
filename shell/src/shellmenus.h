@@ -29,12 +29,16 @@ QString devBin();
 QVariantList recentItemsMenu(const QVariantList &recentApps);
 
 // The fixed system menu (the brand mark), leftmost on the bar. Rows are
-// `{label, shortcut, action, enabled}` maps, or `{type: "separator"}`. When
-// `devReturn` is non-empty a `quit-to-return` row labeled
-// "Quit to <devReturn>" is inserted before Lock Screen. `recentApps` feeds
-// the Recent Items submenu; empty history still renders the submenu with an
-// explicit disabled reason.
+// `{label, shortcut, action, enabled, disabledReason}` maps, or
+// `{type: "separator"}`. When `devReturn` is non-empty a `quit-to-return` row
+// labeled "Quit to <devReturn>" is inserted before Lock Screen. `recentApps`
+// feeds the Recent Items submenu; empty history still renders the submenu with
+// an explicit disabled reason. `logOutEnabled`/`logOutReason` reflect whether
+// logind (or the systemctl fallback) can end the session; a disabled Log Out
+// row carries the reason for assistive technology.
 QVariantList systemMenu(const QString &userName, const QString &devReturn,
-                        const QVariantList &recentApps = {});
+                        const QVariantList &recentApps = {},
+                        bool logOutEnabled = true,
+                        const QString &logOutReason = QString());
 
 } // namespace ShellMenus

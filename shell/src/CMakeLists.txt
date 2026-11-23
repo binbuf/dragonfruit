@@ -131,6 +131,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     screencastbridge.cpp
     screenshotbridge.cpp
     screenshotwriter.cpp
+    sessionactions.cpp
+    sessionactions.h
     shellmenus.cpp
     systemstatusmodel.cpp
     trayclient.cpp

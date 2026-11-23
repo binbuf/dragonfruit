@@ -4112,6 +4112,21 @@ private slots:
         QVERIFY(index < indexOfMenuAction(menu, QStringLiteral("lock-screen")));
     }
 
+    void systemMenuDisablesLogOutWithAReason()
+    {
+        const QVariantList menu =
+            ShellMenus::systemMenu(QStringLiteral("dfdev"), QString(), {}, false,
+                                   QStringLiteral("logind is not available."));
+        const int index = indexOfMenuAction(menu, QStringLiteral("log-out"));
+        QVERIFY(index >= 0);
+        const QVariantMap row = menu[index].toMap();
+        QCOMPARE(row.value(QStringLiteral("enabled")).toBool(), false);
+        QCOMPARE(row.value(QStringLiteral("disabledReason")).toString(),
+                 QStringLiteral("logind is not available."));
+        QCOMPARE(row.value(QStringLiteral("shortcut")).toString(),
+                 QStringLiteral("Super+Shift+Q"));
+    }
+
     void devReturnDesktopReadsTheEnvironment()
     {
         const QByteArray before = qgetenv("DRAGONFRUIT_DEV_RETURN");

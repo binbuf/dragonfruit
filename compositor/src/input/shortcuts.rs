@@ -335,6 +335,13 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             keysyms::KEY_Q,
             InputAction::LockScreen,
         ),
+        // T313: Cmd+Shift+Q ends the session. The shell opens the same
+        // confirmation as the system menu's Log Out row before calling logind.
+        Shortcut::new(
+            command.union(shift),
+            keysyms::KEY_Q,
+            InputAction::LogOut,
+        ),
         Shortcut::new(
             control.union(shift),
             keysyms::KEY_N,
@@ -464,6 +471,12 @@ mod tests {
         assert_eq!(
             engine.resolve(&mods(true, false, false, true), keysyms::KEY_4),
             Some(ShortcutOutcome::System(InputAction::ScreenshotRegion))
+        );
+        // Cmd+Shift+Q ends the session; the shell owns the confirmation and
+        // the logind call (T313).
+        assert_eq!(
+            engine.resolve(&mods(true, false, false, true), keysyms::KEY_Q),
+            Some(ShortcutOutcome::System(InputAction::LogOut))
         );
     }
 

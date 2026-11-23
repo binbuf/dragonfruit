@@ -369,6 +369,23 @@ descriptor, script, and the systemd user units under one prefix with
 (T164/T165) passes its build root. The contract is frozen in
 [ADR 0066](adr/0066-display-manager-session-entry.md).
 
+**Log Out asks logind, not the shell.** The system menu's Log Out row and
+`Super+Shift+Q` share one action: the shell opens the same 60-second
+destructive-action confirmation as Restart and Shut Down, then calls
+`org.freedesktop.login1.Manager.TerminateSession($XDG_SESSION_ID)` on the
+system bus (`shell/src/sessionactions.*`). Logind terminates the login session,
+the compositor anchor exits, and the session entry performs the teardown above.
+The shell never signals the compositor or itself directly. On a host without
+logind the shell falls back to `systemctl --user stop
+dragonfruit-session.target`; if neither logind nor `systemctl` exists the row
+is disabled with a reason. `TerminateSession` takes only the session id — the
+`interactive` flag is a power-method argument, so the shell's confirmation is
+what makes this request interactive. `DRAGONFRUIT_NO_LOGOUT` is the
+fixture/capture guard: it records the intended call and suppresses the real
+D-Bus and systemctl paths. [ADR 0324](adr/0324-log-out-through-logind.md)
+records the decision; `tst_sessionactions` covers the wire call and the
+fixture.
+
 ### The lock screen (T-12.3a)
 
 Locking is fail-secure and enforced in the compositor over

@@ -8,7 +8,8 @@
 namespace {
 
 QVariantMap entry(const QString &label, const QString &shortcut = QString(),
-                  const QString &action = QString(), bool enabled = true)
+                  const QString &action = QString(), bool enabled = true,
+                  const QString &disabledReason = QString())
 {
     QVariantMap map;
     map.insert(QStringLiteral("label"), label);
@@ -16,8 +17,11 @@ QVariantMap entry(const QString &label, const QString &shortcut = QString(),
         map.insert(QStringLiteral("shortcut"), shortcut);
     if (!action.isEmpty())
         map.insert(QStringLiteral("action"), action);
-    if (!enabled)
+    if (!enabled) {
         map.insert(QStringLiteral("enabled"), false);
+        if (!disabledReason.isEmpty())
+            map.insert(QStringLiteral("disabledReason"), disabledReason);
+    }
     return map;
 }
 
@@ -73,7 +77,8 @@ QVariantList recentItemsMenu(const QVariantList &recentApps)
 }
 
 QVariantList systemMenu(const QString &userName, const QString &devReturn,
-                        const QVariantList &recentApps)
+                        const QVariantList &recentApps, bool logOutEnabled,
+                        const QString &logOutReason)
 {
     QVariantList menu;
     menu << entry(QCoreApplication::translate("ShellMenus", "About This System"),
@@ -103,7 +108,8 @@ QVariantList systemMenu(const QString &userName, const QString &devReturn,
     menu << entry(QCoreApplication::translate("ShellMenus", "Lock Screen"),
                   QStringLiteral("Super+Ctrl+Q"), QStringLiteral("lock-screen"));
     menu << entry(QCoreApplication::translate("ShellMenus", "Log Out %1\u2026").arg(userName),
-                  QStringLiteral("Super+Shift+Q"), QStringLiteral("log-out"));
+                  QStringLiteral("Super+Shift+Q"), QStringLiteral("log-out"),
+                  logOutEnabled, logOutReason);
     return menu;
 }
 

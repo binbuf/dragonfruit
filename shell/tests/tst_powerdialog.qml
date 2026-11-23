@@ -66,6 +66,18 @@ Item {
             compare(findChild(dialog, "powerConfirm").text, "Restart");
         }
 
+        function test_log_out_copy() {
+            var dialog = make({ action: "log-out", secondsRemaining: 60,
+                                active: true });
+            compare(findChild(dialog, "powerHeading").text, "Log Out");
+            compare(findChild(dialog, "powerQuestion").text,
+                    "Are you sure you want to log out of your account now?");
+            compare(findChild(dialog, "powerCountdown").text,
+                    "If you do nothing, you will be logged out automatically in 60 seconds.");
+            compare(findChild(dialog, "powerGlyph").name, "person");
+            compare(findChild(dialog, "powerConfirm").text, "Log Out");
+        }
+
         function test_countdown_ticks_to_zero_and_expires() {
             var dialog = make({ action: "restart", secondsRemaining: 2,
                                 active: true });

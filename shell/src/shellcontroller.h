@@ -30,6 +30,7 @@
 #include "screencastbridge.h"
 #include "screenshotbridge.h"
 #include "screenshotwriter.h"
+#include "sessionactions.h"
 #include "desktopentry.h"
 #include "displayspolicy.h"
 #include "dockmodel.h"
@@ -1274,8 +1275,8 @@ private:
     bool m_polkitSceneGraphCommitLogged = false;
     QString m_polkitResponse;
     // Session power confirmation dialog: a centered scene rendered into the
-    // `power-dialog` overlay surface. The action is `restart` or `shut-down`;
-    // the countdown lives in QML and reports `expired` at zero.
+    // `power-dialog` overlay surface. The action is `restart`, `shut-down`, or
+    // `log-out`; the countdown lives in QML and reports `expired` at zero.
     QQuickWindow *m_powerDialogWindow = nullptr;
     QQuickItem *m_powerDialogItem = nullptr;
     int m_powerDialogWidth = 0;
@@ -1285,6 +1286,9 @@ private:
     bool m_powerDialogRenderPending = false;
     Qt::MouseButtons m_powerDialogButtons = Qt::NoButton;
     QString m_powerDialogAction;
+    // T313: the one log-out path. Logind (or the systemctl fallback) ends the
+    // session; the session entry returns the greeter when the anchor exits.
+    SessionActions *m_sessionActions = nullptr;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
     // `ext-session-lock-v1` surface per output. The map holds each surface's
     // configured size; the QML is a pure view. `m_lockTimer` refreshes the

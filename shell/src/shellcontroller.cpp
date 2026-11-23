@@ -516,9 +516,10 @@ void sendChromeKeyEvent(QQuickWindow *window, quint32 key, bool pressed,
 // tested. The actions are session/system operations: System Settings opens the
 // first-party Settings app (T-09); Lock Screen is wired (T-12.3a); App Store
 // has no equivalent (disabled); About This System needs the General > About
-// pane (T-15.10); Restart and Shut Down ask for confirmation before the logind
-// call; Sleep is immediate; Log Out awaits the real-session work
-// (T-12.6/T-16.4). Unlanded items dispatch as logged stubs.
+// pane (T-15.10); Restart, Shut Down, and Log Out ask for confirmation before
+// the logind call; Sleep is immediate. Log Out terminates this session through
+// logind (or the systemctl fallback); the session entry owns the anchor-exit
+// teardown. Unlanded items dispatch as logged stubs.
 
 // T-21.2c: push one applied material state into a chrome QML item. `prefix`
 // selects the role-specific property group on a scene that hosts more than one
@@ -582,6 +583,18 @@ ShellController::ShellController(QObject *parent)
     connect(m_clipboard, &ClipboardHistory::changed, this,
             &ShellController::onClipboardHistoryChanged);
     loadClipboardHistory();
+    // T313: the one log-out path. The menu's availability check and the
+    // confirmed action share it.
+    m_sessionActions = new SessionActions(this);
+    connect(m_sessionActions, &SessionActions::dispatched, this,
+            [](const QString &method, const QString &sessionId) {
+                qInfo() << "shell: session action dispatched:" << method
+                        << sessionId;
+            });
+    connect(m_sessionActions, &SessionActions::failed, this,
+            [](const QString &reason) {
+                qWarning() << "shell: session action failed:" << reason;
+            });
 }
 
 ShellController::~ShellController()
@@ -3672,7 +3685,11 @@ void ShellController::refreshSystemMenu()
         recent.append(QVariantMap{{QStringLiteral("desktopId"), entry.id},
                                   {QStringLiteral("name"), entry.name}});
     }
-    const QVariantList menu = ShellMenus::systemMenu(m_systemUserName, m_devReturnDesktop, recent);
+    const QString logOutReason =
+        m_sessionActions ? m_sessionActions->unavailableReason() : QString();
+    const QVariantList menu = ShellMenus::systemMenu(
+        m_systemUserName, m_devReturnDesktop, recent, logOutReason.isEmpty(),
+        logOutReason);
     if (m_item->property("systemMenuItems").toList() != menu)
         m_item->setProperty("systemMenuItems", menu);
 }
@@ -6638,11 +6655,12 @@ void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift,
 
 void ShellController::requestSessionAction(const QString &action)
 {
-    // Restart and Shut Down are destructive and get a confirmation; Sleep is
-    // reversible and stays one click. The lock screen's power row keeps its
-    // immediate path because it runs above the session lock.
+    // Restart, Shut Down, and Log Out are destructive and get a confirmation;
+    // Sleep is reversible and stays one click. The lock screen's power row
+    // keeps its immediate path because it runs above the session lock.
     if (action == QLatin1String("restart")
-        || action == QLatin1String("shut-down")) {
+        || action == QLatin1String("shut-down")
+        || action == QLatin1String("log-out")) {
         showPowerDialog(action);
         return;
     }
@@ -7008,6 +7026,16 @@ void ShellController::lockScreen()
 
 void ShellController::performSessionAction(const QString &action)
 {
+    if (action == QLatin1String("log-out")) {
+        // T313: logind TerminateSession (or the systemctl fallback) ends the
+        // session. Never signal the shell/compositor directly: systemd must
+        // stop the whole target and the session entry must see the anchor
+        // exit.
+        if (!m_sessionActions || !m_sessionActions->requestLogout())
+            qWarning() << "shell: log out was not dispatched";
+        return;
+    }
+
     QString method;
     if (action == QLatin1String("sleep"))
         method = QStringLiteral("Suspend");
@@ -7467,9 +7495,10 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
         // confirmation dialog; Sleep and the lock row stay immediate.
         requestSessionAction(action);
     } else if (action == QLatin1String("log-out")) {
-        // The logind session action has no shell implementation yet; it lands
-        // with the real-session work (T-12.6, T-16.4).
-        qInfo() << "shell: session action requested (T-12.6):" << action;
+        // T313: the same confirmation path as Restart/Shut Down. The
+        // compositor's Super+Shift+Q routes the same action through
+        // onInputAction; both end at requestSessionAction().
+        requestSessionAction(action);
     } else if (action == QLatin1String("quit-to-return")) {
         // T-12.6b: the dev harness's return. It restores the previous default
         // session, disarms autologin, and logs out; the shell only triggers it.
@@ -8270,6 +8299,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // lock UI and drives `ext-session-lock-v1` (authentication is
         // T-12.3b).
         lockScreen();
+    } else if (action == QLatin1String("log-out")) {
+        // T313: the compositor routes Super+Shift+Q here; the system menu's
+        // Log Out row routes the same action through dispatchAppAction. Both
+        // use the shared confirmation and the one logind path.
+        requestSessionAction(action);
     } else if (action == QLatin1String("screenshot")) {
         // Cmd+Shift+3 captures the whole output immediately and drops the
         // file on the Desktop, like the desktop's own screenshot shortcut.
