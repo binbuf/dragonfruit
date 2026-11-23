@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 #include "screencastbridge.h"
 
+#include "portalpresenter.h"
+
 #include <QVariantMap>
 
 #if defined(QT_DBUS_LIB)
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
-#include <QDBusInterface>
+#include <QDBusMessage>
 #include <QDBusMetaType>
 #include <QDBusPendingCallWatcher>
-#include <QDBusPendingReply>
 #endif
 
 #if defined(QT_DBUS_LIB)
@@ -106,11 +107,18 @@ void ScreenCastBridge::checkService()
 #if defined(QT_DBUS_LIB)
     QDBusConnection bus = QDBusConnection::sessionBus();
     QDBusConnectionInterface *iface = bus.interface();
+    const bool wasAvailable = m_serviceAvailable;
     m_serviceAvailable = iface && iface->isServiceRegistered(kService);
 #else
     m_serviceAvailable = false;
 #endif
     refreshStreamMode();
+#if defined(QT_DBUS_LIB)
+    // A restarted backend can hold picker requests this shell never saw. Query
+    // after the stream-mode probe so the two replies do not race.
+    if (m_serviceAvailable && !wasAvailable)
+        queryPending();
+#endif
 }
 
 void ScreenCastBridge::refreshStreamMode()
@@ -124,13 +132,13 @@ void ScreenCastBridge::refreshStreamMode()
         return;
     }
 #if defined(QT_DBUS_LIB)
-    QDBusInterface iface(kService, kPath, kInterface, QDBusConnection::sessionBus());
-    if (!iface.isValid()) {
-        setStreamMode(QStringLiteral("stills"));
-        return;
-    }
-    QDBusPendingCall pending = iface.asyncCall(QStringLiteral("ScreenCastStreamMode"));
-    auto *watcher = new QDBusPendingCallWatcher(pending, this);
+    // A message call needs no introspection: the presenter may be served by
+    // this same process (as the tests do), and a blocking Introspect from the
+    // main thread would deadlock on its queued dispatch.
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kService, kPath, kInterface, QStringLiteral("ScreenCastStreamMode"));
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             &ScreenCastBridge::onStreamModeReply);
 #endif
@@ -140,9 +148,12 @@ void ScreenCastBridge::onStreamModeReply(QDBusPendingCallWatcher *watcher)
 {
 #if defined(QT_DBUS_LIB)
     watcher->deleteLater();
-    const QDBusPendingReply<QString> reply = *watcher;
-    if (reply.isValid() && !reply.value().isEmpty())
-        setStreamMode(reply.value());
+    const QDBusMessage reply = watcher->reply();
+    if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty())
+        return;
+    const QString mode = reply.arguments().first().toString();
+    if (!mode.isEmpty())
+        setStreamMode(mode);
 #else
     Q_UNUSED(watcher);
 #endif
@@ -169,6 +180,9 @@ void ScreenCastBridge::onScreenCastOpened(const QString &handle, const QString &
 void ScreenCastBridge::begin(const QString &handle, const QString &sessionHandle,
                              const QString &appId, uint types, bool multiple, uint cursorMode)
 {
+    // A second picker request replaces the first. Answer the old handle before
+    // dropping it, or the first caller waits for the portal's deadline.
+    cancelCurrent();
     reset();
     m_active = true;
     m_handle = handle;
@@ -249,10 +263,10 @@ void ScreenCastBridge::accept()
     const QString handle = m_handle;
 #if defined(QT_DBUS_LIB)
     if (m_serviceAvailable && !handle.isEmpty()) {
-        QDBusInterface iface(kService, kPath, kInterface, QDBusConnection::sessionBus());
-        if (iface.isValid())
-            iface.asyncCall(QStringLiteral("CompleteScreenCast"), handle,
-                            QVariant::fromValue(chosen));
+        QDBusMessage message = QDBusMessage::createMethodCall(
+            kService, kPath, kInterface, QStringLiteral("CompleteScreenCast"));
+        message << handle << QVariant::fromValue(chosen);
+        QDBusConnection::sessionBus().asyncCall(message);
     }
 #else
     Q_UNUSED(handle);
@@ -261,22 +275,72 @@ void ScreenCastBridge::accept()
     emit finished(true);
 }
 
-void ScreenCastBridge::cancel()
+void ScreenCastBridge::cancelCurrent()
 {
-    if (!m_active)
+    if (!m_active || m_handle.isEmpty())
         return;
     const QString handle = m_handle;
 #if defined(QT_DBUS_LIB)
-    if (m_serviceAvailable && !handle.isEmpty()) {
-        QDBusInterface iface(kService, kPath, kInterface, QDBusConnection::sessionBus());
-        if (iface.isValid())
-            iface.asyncCall(QStringLiteral("CancelScreenCast"), handle);
+    // Only a request that came from the running portal has a handle to
+    // answer. A bridge used by a fixture has no service; calling the name
+    // there would make the bus try to activate a backend that is not part of
+    // the test session.
+    if (m_serviceAvailable) {
+        // A message call needs no introspection, so it cannot block on a
+        // presenter that is served by this same process (as the tests do).
+        QDBusMessage message = QDBusMessage::createMethodCall(
+            kService, kPath, kInterface, QStringLiteral("CancelScreenCast"));
+        message << handle;
+        QDBusConnection::sessionBus().asyncCall(message);
     }
 #else
     Q_UNUSED(handle);
 #endif
+}
+
+void ScreenCastBridge::cancel()
+{
+    if (!m_active)
+        return;
+    cancelCurrent();
     reset();
     emit finished(false);
+}
+
+void ScreenCastBridge::queryPending()
+{
+#if defined(QT_DBUS_LIB)
+    if (!m_serviceAvailable)
+        return;
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kService, kPath, kInterface, QStringLiteral("PendingScreenCasts"));
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            &ScreenCastBridge::onPendingReply);
+#endif
+}
+
+void ScreenCastBridge::onPendingReply(QDBusPendingCallWatcher *watcher)
+{
+#if defined(QT_DBUS_LIB)
+    watcher->deleteLater();
+    const QDBusMessage reply = watcher->reply();
+    if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty())
+        return;
+    const QStringList handles =
+        Dragonfruit::PortalPresenter::pendingHandles(reply.arguments().first());
+    for (const QString &handle : handles) {
+        if (handle.isEmpty() || handle == m_handle)
+            continue;
+        QDBusMessage cancel = QDBusMessage::createMethodCall(
+            kService, kPath, kInterface, QStringLiteral("CancelScreenCast"));
+        cancel << handle;
+        QDBusConnection::sessionBus().asyncCall(cancel);
+    }
+#else
+    Q_UNUSED(watcher);
+#endif
 }
 
 void ScreenCastBridge::reset()

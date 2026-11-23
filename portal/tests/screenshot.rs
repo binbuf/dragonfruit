@@ -17,7 +17,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use xdg_desktop_portal_dragonfruit::interfaces::SCREENSHOT_INTERFACE;
-use xdg_desktop_portal_dragonfruit::model::{DBUS_NAME, DBUS_PATH, STATUS_INTERFACE};
+use xdg_desktop_portal_dragonfruit::model::{
+    DBUS_NAME, DBUS_PATH, PRESENTER_NAME, STATUS_INTERFACE,
+};
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::{ObjectPath, OwnedValue, Str};
 use zbus::MatchRule;
@@ -67,6 +69,17 @@ impl PrivateBus {
     fn serve(&self) -> (Connection, xdg_desktop_portal_dragonfruit::Backend) {
         xdg_desktop_portal_dragonfruit::dbus::serve(Some(self.address.as_str()))
             .expect("the backend serves on a private bus")
+    }
+
+    fn serve_with_timeout(
+        &self,
+        timeout: Duration,
+    ) -> (Connection, xdg_desktop_portal_dragonfruit::Backend) {
+        xdg_desktop_portal_dragonfruit::dbus::serve_with_timeout(
+            Some(self.address.as_str()),
+            timeout,
+        )
+        .expect("the backend serves on a private bus")
     }
 }
 
@@ -295,6 +308,97 @@ fn a_cancelled_request_answers_with_the_cancelled_code() {
             "/tmp/x.png"
         )
     ));
+}
+
+#[test]
+fn a_silent_presenter_times_out_as_cancelled() {
+    let bus = PrivateBus::start();
+    // A short bound proves the production path (30 s) without the wait.
+    let (_service, _backend) = bus.serve_with_timeout(Duration::from_millis(250));
+    let client = bus.connect();
+
+    let handle = "/org/freedesktop/portal/desktop/request/1_1/df_shot_timeout";
+    let started = Instant::now();
+    let pending = screenshot_on_its_own_connection(&bus, handle.to_owned(), mode_options("region"));
+    let (response, results) = pending
+        .join()
+        .expect("the Screenshot thread")
+        .expect("Screenshot returns");
+
+    assert_eq!(response, 1, "a timeout is a normal cancelled response");
+    assert!(results.is_empty());
+    assert!(
+        started.elapsed() >= Duration::from_millis(200),
+        "the request waited for the deadline"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "the deadline bounded the wait"
+    );
+    // The timed-out entry is gone, so a late presenter call cannot resurrect it.
+    assert!(
+        diagnostic::<Vec<(String, String)>>(&client, "PendingScreenshots", ()).is_empty(),
+        "the pending entry was removed on expiry"
+    );
+    assert!(!diagnostic::<bool>(
+        &client,
+        "CompleteScreenshot",
+        (handle, "/tmp/late.png")
+    ));
+}
+
+#[test]
+fn a_lost_presenter_cancels_a_pending_request() {
+    let bus = PrivateBus::start();
+    let (_service, _backend) = bus.serve();
+    let client = bus.connect();
+
+    // The shell owns this name for its lifetime; the backend watches it.
+    let presenter = bus.connect();
+    let reply = presenter
+        .call_method(
+            Some("org.freedesktop.DBus"),
+            "/org/freedesktop/DBus",
+            Some("org.freedesktop.DBus"),
+            "RequestName",
+            &(PRESENTER_NAME, 0u32),
+        )
+        .expect("RequestName call");
+    let code: u32 = reply.body().deserialize().expect("RequestName reply");
+    assert_eq!(code, 1, "the test presenter owns the name");
+    wait_for(Duration::from_secs(5), || {
+        diagnostic::<bool>(&client, "PresenterPresent", ()).then_some(())
+    });
+
+    let handle = "/org/freedesktop/portal/desktop/request/1_1/df_shot_presenter_loss";
+    let pending = screenshot_on_its_own_connection(&bus, handle.to_owned(), mode_options("region"));
+    wait_for(Duration::from_secs(5), || {
+        diagnostic::<Vec<(String, String)>>(&client, "PendingScreenshots", ())
+            .iter()
+            .any(|(h, _)| h == handle)
+            .then_some(())
+    });
+
+    // The shell crashes or exits: its bus name disappears. The request must
+    // resolve well before the 30 s completion deadline.
+    let lost = Instant::now();
+    drop(presenter);
+
+    let (response, results) = pending
+        .join()
+        .expect("the Screenshot thread")
+        .expect("Screenshot returns");
+    assert_eq!(response, 1, "presenter loss is a cancelled response");
+    assert!(results.is_empty());
+    assert!(
+        lost.elapsed() < Duration::from_secs(5),
+        "the presenter watch resolved the request, not the deadline"
+    );
+    assert!(
+        diagnostic::<Vec<(String, String)>>(&client, "PendingScreenshots", ()).is_empty(),
+        "the pending entry left the registry"
+    );
+    assert!(!diagnostic::<bool>(&client, "PresenterPresent", ()));
 }
 
 #[test]

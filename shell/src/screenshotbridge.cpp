@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 #include "screenshotbridge.h"
 
+#include "portalpresenter.h"
+
 #if defined(QT_DBUS_LIB)
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
-#include <QDBusInterface>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #endif
 
 namespace {
@@ -60,9 +63,14 @@ void ScreenshotBridge::checkService()
 #if defined(QT_DBUS_LIB)
     QDBusConnection bus = QDBusConnection::sessionBus();
     QDBusConnectionInterface *iface = bus.interface();
+    const bool wasAvailable = m_serviceAvailable;
     m_serviceAvailable = iface && iface->isServiceRegistered(kService);
     qInfo() << "shell: screenshot portal available" << m_serviceAvailable
             << bus.baseService();
+    // A restarted backend can hold requests this shell never saw. Ask it what
+    // is waiting instead of assuming a signal will arrive for them.
+    if (m_serviceAvailable && !wasAvailable)
+        queryPending();
 #else
     m_serviceAvailable = false;
 #endif
@@ -81,6 +89,9 @@ void ScreenshotBridge::begin(const QString &handle, const QString &mode, const Q
                             const QString &parentWindow)
 {
     Q_UNUSED(parentWindow);
+    // A second request replaces the first. Answer the old handle before
+    // dropping it, or the first caller waits for the portal's deadline.
+    cancelCurrent();
     reset();
     m_active = true;
     m_handle = handle;
@@ -92,6 +103,8 @@ void ScreenshotBridge::begin(const QString &handle, const QString &mode, const Q
 
 void ScreenshotBridge::beginLocal(const QString &mode)
 {
+    // The desktop's own shortcut replaces any portal request that is waiting.
+    cancelCurrent();
     reset();
     m_active = true;
     m_mode = normalizeMode(mode);
@@ -125,9 +138,10 @@ void ScreenshotBridge::complete(const QString &uri)
     const QString handle = m_handle;
 #if defined(QT_DBUS_LIB)
     if (m_serviceAvailable && !handle.isEmpty()) {
-        QDBusInterface iface(kService, kPath, kInterface, QDBusConnection::sessionBus());
-        if (iface.isValid())
-            iface.asyncCall(QStringLiteral("CompleteScreenshot"), handle, uri);
+        QDBusMessage message = QDBusMessage::createMethodCall(
+            kService, kPath, kInterface, QStringLiteral("CompleteScreenshot"));
+        message << handle << uri;
+        QDBusConnection::sessionBus().asyncCall(message);
     }
 #else
     Q_UNUSED(handle);
@@ -136,22 +150,72 @@ void ScreenshotBridge::complete(const QString &uri)
     emit finished(true);
 }
 
-void ScreenshotBridge::cancel()
+void ScreenshotBridge::cancelCurrent()
 {
-    if (!m_active)
+    if (!m_active || m_handle.isEmpty())
         return;
     const QString handle = m_handle;
 #if defined(QT_DBUS_LIB)
-    if (m_serviceAvailable && !handle.isEmpty()) {
-        QDBusInterface iface(kService, kPath, kInterface, QDBusConnection::sessionBus());
-        if (iface.isValid())
-            iface.asyncCall(QStringLiteral("CancelScreenshot"), handle);
+    // Only a request that came from the running portal has a handle to
+    // answer. The fixture and the desktop shortcut use `begin()`/`beginLocal`
+    // with no service; calling the name there would make the bus try to
+    // activate a backend that is not part of the test session.
+    if (m_serviceAvailable) {
+        // A message call needs no introspection, so it cannot block on a
+        // presenter that is served by this same process (as the tests do).
+        QDBusMessage message = QDBusMessage::createMethodCall(
+            kService, kPath, kInterface, QStringLiteral("CancelScreenshot"));
+        message << handle;
+        QDBusConnection::sessionBus().asyncCall(message);
     }
 #else
     Q_UNUSED(handle);
 #endif
+}
+
+void ScreenshotBridge::cancel()
+{
+    if (!m_active)
+        return;
+    cancelCurrent();
     reset();
     emit finished(false);
+}
+
+void ScreenshotBridge::queryPending()
+{
+#if defined(QT_DBUS_LIB)
+    if (!m_serviceAvailable)
+        return;
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kService, kPath, kInterface, QStringLiteral("PendingScreenshots"));
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            &ScreenshotBridge::onPendingReply);
+#endif
+}
+
+void ScreenshotBridge::onPendingReply(QDBusPendingCallWatcher *watcher)
+{
+#if defined(QT_DBUS_LIB)
+    watcher->deleteLater();
+    const QDBusMessage reply = watcher->reply();
+    if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty())
+        return;
+    const QStringList handles =
+        Dragonfruit::PortalPresenter::pendingHandles(reply.arguments().first());
+    for (const QString &handle : handles) {
+        if (handle.isEmpty() || handle == m_handle)
+            continue;
+        QDBusMessage cancel = QDBusMessage::createMethodCall(
+            kService, kPath, kInterface, QStringLiteral("CancelScreenshot"));
+        cancel << handle;
+        QDBusConnection::sessionBus().asyncCall(cancel);
+    }
+#else
+    Q_UNUSED(watcher);
+#endif
 }
 
 void ScreenshotBridge::reset()

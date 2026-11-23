@@ -1,5 +1,8 @@
 [package]
-name = "xdg-desktop-portal-dragonfruit"
+# The package name is the design's short name (`dragonfruit-portal`); the
+# installed binary keeps the xdg-desktop-portal backend name. The task gate
+# addresses the package, the packaging scripts address the binary.
+name = "dragonfruit-portal"
 description = "Dragonfruit xdg-desktop-portal backend: the session-bus service and its registration (T-13.1a)"
 version.workspace = true
 edition.workspace = true
@@ -31,6 +34,11 @@ df-ipc.workspace = true
 # seam the picker UI drives. A library link, never a process.
 dragonfruit-files-core = { path = "../services/files-core", version = "0.3.0" }
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
+# T311: the bounded wait every interactive completion uses. `async-io` is the
+# same reactor zbus runs the service on, so a timeout never needs a second
+# executor; `futures-lite` provides the race and the one-shot poll.
+async-io = "=2.6.0"
+futures-lite = "=2.6.1"
 
 [dev-dependencies]
 serde = "=1.0.229"

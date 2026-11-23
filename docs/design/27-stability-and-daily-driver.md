@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -190,7 +190,18 @@ No single component failure may require a TTY reboot:
   the same MIME, a new selection, source cancellation, and protocol teardown
   all cancel the in-flight writer;
 - a portal request must time out or cancel when the shell disappears, and a
-  restarted shell must query pending requests;
+  restarted shell must query pending requests. Every interactive completion
+  (`FileChooser`, `Screenshot`, `ScreenCast.SelectSources`) is bounded by a
+  30 s deadline; expiry removes the pending entry and answers the standard
+  `cancelled` code. The shell owns `org.dragonfruit.PortalPresenter1` for its
+  lifetime; the backend watches that name and cancels every pending request
+  when its owner disappears or is replaced. The bridges answer `Cancel*` for
+  the old handle before a second request replaces it, and each bridge queries
+  its `Pending*` list at startup and cancels anything a previous shell left
+  behind (a stale row carries no options, so re-presenting it would answer
+  wrongly). A second screenshot/screencast request cancels the first; chooser
+  requests still queue. ADR [0322](adr/0322-portal-request-liveness.md)
+  records the decision;
 - a Files desktop that loses the compositor must exit and be restarted;
 - a hung shell must be caught by a watchdog or a documented restart chord;
 - a `df_output.set_mode` with a zero/negative refresh must not panic the

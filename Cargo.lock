@@ -713,6 +713,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-portal"
+version = "0.3.0"
+dependencies = [
+ "async-io",
+ "df-ipc",
+ "dragonfruit-files-core",
+ "dragonfruit-settingsd",
+ "futures-lite",
+ "serde",
+ "zbus",
+]
+
+[[package]]
 name = "dragonfruit-power"
 version = "0.3.0"
 dependencies = [
@@ -3118,17 +3131,6 @@ name = "xcursor"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "163b33ed8786455e2fa5d72f554057ce3f3182425434f756cd39c99839d88e23"
-
-[[package]]
-name = "xdg-desktop-portal-dragonfruit"
-version = "0.3.0"
-dependencies = [
- "df-ipc",
- "dragonfruit-files-core",
- "dragonfruit-settingsd",
- "serde",
- "zbus",
-]
 
 [[package]]
 name = "xkbcommon"

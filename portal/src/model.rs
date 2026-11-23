@@ -25,6 +25,15 @@ pub const DBUS_PATH: &str = "/org/freedesktop/portal/desktop";
 /// requires it: it only observes whether it is on the bus.
 pub const FRONTEND_NAME: &str = "org.freedesktop.portal.Desktop";
 
+/// The shell presenter's well-known name (T311).
+///
+/// The shell owns this name for the lifetime of its process. The backend
+/// watches it and cancels every pending interactive request when the owner
+/// disappears (a crash or restart), so no caller waits for a presenter that is
+/// gone. The name is diagnostic, not part of the portal contract: the
+/// presenter's actual seam is [`STATUS_INTERFACE`].
+pub const PRESENTER_NAME: &str = "org.dragonfruit.PortalPresenter1";
+
 /// The Dragonfruit-facing diagnostic interface the backend serves at
 /// [`DBUS_PATH`] alongside the standard portal interfaces. It is not part of
 /// the portal contract; it exists so the registration and the

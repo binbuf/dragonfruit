@@ -1968,6 +1968,33 @@ documented stills fallback. A live PipeWire producer is still open
   against a fake `org.dragonfruit.Portal1`) and `tst_screencastui` (the view)
   are the shell proof. T-13.7 adds the real frontend routing check.
 
+### Presenter liveness (T311)
+
+The three presenter bridges cannot leave a caller waiting. Contract in ADR
+[0322](adr/0322-portal-request-liveness.md).
+
+- **The completion is bounded.** `portal::liveness` races each interactive
+  completion against a 30 s `async-io` timer; expiry removes the pending
+  registry entry and returns the standard `cancelled` code. A timeout is a
+  normal outcome, never an error dialog.
+- **The presenter is a bus name.** The shell owns
+  `org.dragonfruit.PortalPresenter1` for the life of the process. The backend
+  watches `NameOwnerChanged` for it and cancels every pending FileChooser,
+  Screenshot, and ScreenCast picker request when the owner disappears or is
+  replaced. A first appearance is not a loss.
+- **The bridges answer before replacing.** `ScreenshotBridge` and
+  `ScreenCastBridge` send `Cancel*` for the old handle before `reset()` when a
+  second request or the local screenshot shortcut replaces it. The chooser
+  keeps its queue and cancels only on an explicit cancel.
+- **Startup recovers.** Each bridge queries its `Pending*` list when the
+  backend (re)appears and cancels what a previous shell left. A stale row is
+  cancelled rather than re-presented because it carries no options; a
+  re-presented SaveFiles dialog would lose the caller's file names.
+- `portal/tests/screenshot.rs` proves the timeout and presenter-loss paths;
+  `tst_screenshot` and `tst_screencast` prove replace, local-shortcut cancel,
+  and the startup query; `tst_chooser` proves the startup query and keeps the
+  queue behavior.
+
 ## Clipboard (T-13.5a/T-13.5b)
 
 The clipboard is not a portal: it is the compositor's standard `wl_data_device`

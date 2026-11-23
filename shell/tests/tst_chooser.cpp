@@ -7,8 +7,11 @@
 // so the test is safe on a bus-less host.
 #include "chooserbridge.h"
 
+#include "portalrow.h"
+
 #include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusMetaType>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -49,6 +52,15 @@ public:
                                options);
     }
 
+    // The handles a previous shell left in the backend's registry. Each row is
+    // the `(handle, kind)` pair the real `PendingFileChoosers` returns.
+    void setPending(const QStringList &handles)
+    {
+        m_pending.clear();
+        for (const QString &handle : handles)
+            m_pending.append(PortalPendingRow{handle, QStringLiteral("open")});
+    }
+
 public slots:
     bool CompleteFileChooser(const QString &handle, const QStringList &selections)
     {
@@ -63,7 +75,7 @@ public slots:
         return true;
     }
 
-    QVariantList PendingFileChoosers() const { return {}; }
+    QList<PortalPendingRow> PendingFileChoosers() const { return m_pending; }
 
 signals:
     void FileChooserOpened(const QString &handle, const QString &kind, const QString &appId,
@@ -74,6 +86,7 @@ private:
     QString m_completedHandle;
     QStringList m_completedUris;
     QString m_cancelledHandle;
+    QList<PortalPendingRow> m_pending;
 };
 
 // A temp folder with one directory and one file, sorted folders-first.
@@ -159,6 +172,12 @@ class TestChooser : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        qDBusRegisterMetaType<PortalPendingRow>();
+        qDBusRegisterMetaType<QList<PortalPendingRow>>();
+    }
+
     void beginListsThroughFilesCoreFoldersFirst()
     {
         SampleFolder folder;
@@ -401,6 +420,29 @@ private slots:
         QCOMPARE(finished.count(), 1);
         QCOMPARE(finished.at(0).at(0).toBool(), false);
         QVERIFY(!bridge.active());
+    }
+
+    void startupCancelsTheBackendsPendingRequests()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        FakePortal portal;
+        portal.setPending({QStringLiteral("/req/stale")});
+        const QString connectionName = connectFakePortal(portal);
+        if (connectionName.isEmpty())
+            QSKIP("the fake presenter could not own the portal name");
+
+        // A stale chooser row carries only its handle and kind. Re-presenting
+        // it would lose the caller's options (SaveFiles' names in particular),
+        // so startup answers it with Cancel instead of dropping the handle.
+        ChooserBridge bridge;
+        bridge.connectService();
+        QTRY_COMPARE(portal.cancelledHandle(), QStringLiteral("/req/stale"));
+        QVERIFY(!bridge.active());
+
+        disconnectFakePortal(connectionName);
     }
 
     void theSelectionRoundTripsToThePortalPresenter()

@@ -15,12 +15,14 @@
 //! modules so they are unit-testable without a bus.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use zbus::interface;
 use zbus::object_server::{ObjectServer, SignalEmitter};
 use zbus::zvariant::{ObjectPath, OwnedValue};
 
 use crate::chooser::{self, ChooserKind, ChooserRequest, ChooserResponse, SharedChooser};
+use crate::liveness;
 use crate::screencast::{
     self, ScreenCastRequest, ScreenCastResponse, SharedScreenCast, AVAILABLE_CURSOR_MODES,
     AVAILABLE_SOURCE_TYPES, SCREENCAST_VERSION,
@@ -114,15 +116,26 @@ impl SettingsPortal {
 /// presenter seam; the design-system picker that completes a request is
 /// T-13.2b. The URI/options logic and the listing live in the pure
 /// [`crate::chooser`] module.
+///
+/// The wait is bounded (T311): a presenter that never answers cannot hang the
+/// caller. On expiry the pending entry is removed and the standard
+/// `cancelled` response is returned.
 #[derive(Clone)]
 pub struct FileChooserPortal {
     chooser: SharedChooser,
+    timeout: Duration,
 }
 
 impl FileChooserPortal {
-    /// A FileChooser object over a live request registry.
+    /// A FileChooser object over a live request registry, with the default
+    /// [`liveness::COMPLETION_TIMEOUT`].
     pub fn new(chooser: SharedChooser) -> Self {
-        FileChooserPortal { chooser }
+        Self::with_timeout(chooser, liveness::COMPLETION_TIMEOUT)
+    }
+
+    /// A FileChooser object whose completions are bounded by `timeout`.
+    pub fn with_timeout(chooser: SharedChooser, timeout: Duration) -> Self {
+        FileChooserPortal { chooser, timeout }
     }
 
     /// The registry behind this object.
@@ -137,7 +150,8 @@ impl FileChooserPortal {
         request: ChooserRequest,
         emitter: SignalEmitter<'_>,
     ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
-        let completion = {
+        let handle = request.handle.clone();
+        let mut completion = {
             let mut registry = chooser::lock(&self.chooser);
             registry
                 .begin(request.clone())
@@ -164,7 +178,23 @@ impl FileChooserPortal {
             )
             .await?;
 
-        let response = completion.await.unwrap_or_else(ChooserResponse::cancelled);
+        let response = match liveness::await_bounded(&mut completion, self.timeout).await {
+            Some(response) => response,
+            None => {
+                // The deadline won: remove the entry and answer the standard
+                // cancelled response. The guard is dropped before the await.
+                let cancelled = chooser::lock(&self.chooser).cancel(&handle);
+                match cancelled {
+                    Some(response) => response,
+                    // A presenter resolved it in the same instant; prefer that
+                    // answer over a false cancel.
+                    None => liveness::poll_ready(&mut completion)
+                        .await
+                        .flatten()
+                        .unwrap_or_else(ChooserResponse::cancelled),
+                }
+            }
+        };
         Ok((response.response, response.results))
     }
 }
@@ -243,15 +273,28 @@ impl FileChooserPortal {
 /// completion. The presenter is the shell's selection overlay; the actual
 /// capture is provided by the presenter and normalized in the pure
 /// [`crate::screenshot`] module. T-13.3b wires save/copy.
+///
+/// The wait is bounded (T311): on expiry the pending entry is removed and the
+/// standard `cancelled` response is returned.
 #[derive(Clone)]
 pub struct ScreenshotPortal {
     screenshot: SharedScreenshot,
+    timeout: Duration,
 }
 
 impl ScreenshotPortal {
-    /// A Screenshot object over a live request registry.
+    /// A Screenshot object over a live request registry, with the default
+    /// [`liveness::COMPLETION_TIMEOUT`].
     pub fn new(screenshot: SharedScreenshot) -> Self {
-        ScreenshotPortal { screenshot }
+        Self::with_timeout(screenshot, liveness::COMPLETION_TIMEOUT)
+    }
+
+    /// A Screenshot object whose completions are bounded by `timeout`.
+    pub fn with_timeout(screenshot: SharedScreenshot, timeout: Duration) -> Self {
+        ScreenshotPortal {
+            screenshot,
+            timeout,
+        }
     }
 
     /// The registry behind this object.
@@ -266,7 +309,8 @@ impl ScreenshotPortal {
         request: ScreenshotRequest,
         emitter: SignalEmitter<'_>,
     ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
-        let completion = {
+        let handle = request.handle.clone();
+        let mut completion = {
             let mut registry = screenshot::lock(&self.screenshot);
             registry
                 .begin(request.clone())
@@ -292,9 +336,19 @@ impl ScreenshotPortal {
             )
             .await?;
 
-        let response = completion
-            .await
-            .unwrap_or_else(ScreenshotResponse::cancelled);
+        let response = match liveness::await_bounded(&mut completion, self.timeout).await {
+            Some(response) => response,
+            None => {
+                let cancelled = screenshot::lock(&self.screenshot).cancel(&handle);
+                match cancelled {
+                    Some(response) => response,
+                    None => liveness::poll_ready(&mut completion)
+                        .await
+                        .flatten()
+                        .unwrap_or_else(ScreenshotResponse::cancelled),
+                }
+            }
+        };
         Ok((response.response, response.results))
     }
 }
@@ -337,15 +391,28 @@ impl ScreenshotPortal {
 /// the chosen source as a stream. The source handle is the whole T-13.4a
 /// result; T-13.4b negotiates the mode (live PipeWire, or the named stills
 /// fallback) in [`crate::stream`].
+///
+/// `SelectSources` is bounded like the other interactive portals (T311): on
+/// expiry the pending picker is removed and `cancelled` is returned.
 #[derive(Clone)]
 pub struct ScreenCastPortal {
     screencast: SharedScreenCast,
+    timeout: Duration,
 }
 
 impl ScreenCastPortal {
-    /// A ScreenCast object over a live session/picker registry.
+    /// A ScreenCast object over a live session/picker registry, with the
+    /// default [`liveness::COMPLETION_TIMEOUT`].
     pub fn new(screencast: SharedScreenCast) -> Self {
-        ScreenCastPortal { screencast }
+        Self::with_timeout(screencast, liveness::COMPLETION_TIMEOUT)
+    }
+
+    /// A ScreenCast object whose picker completions are bounded by `timeout`.
+    pub fn with_timeout(screencast: SharedScreenCast, timeout: Duration) -> Self {
+        ScreenCastPortal {
+            screencast,
+            timeout,
+        }
     }
 
     /// The registry behind this object.
@@ -366,7 +433,8 @@ impl ScreenCastPortal {
         request: ScreenCastRequest,
         emitter: SignalEmitter<'_>,
     ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
-        let completion = {
+        let handle = request.handle.clone();
+        let mut completion = {
             let mut registry = screencast::lock(&self.screencast);
             registry
                 .begin_select(request.clone())
@@ -393,9 +461,19 @@ impl ScreenCastPortal {
             )
             .await?;
 
-        let response = completion
-            .await
-            .unwrap_or_else(ScreenCastResponse::cancelled);
+        let response = match liveness::await_bounded(&mut completion, self.timeout).await {
+            Some(response) => response,
+            None => {
+                let cancelled = screencast::lock(&self.screencast).cancel(&handle);
+                match cancelled {
+                    Some(response) => response,
+                    None => liveness::poll_ready(&mut completion)
+                        .await
+                        .flatten()
+                        .unwrap_or_else(ScreenCastResponse::cancelled),
+                }
+            }
+        };
         Ok((response.response, response.results))
     }
 }

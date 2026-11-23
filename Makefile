@@ -292,7 +292,7 @@ verify-settings: gate-checks
 verify-stability: gate-checks
 	$(CARGO) test -p dragonfruit-compositor
 	$(CARGO) test -p dragonfruit-session
-	$(CARGO) test -p xdg-desktop-portal-dragonfruit -- --test-threads=1
+	$(CARGO) test -p dragonfruit-portal -- --test-threads=1
 	$(CARGO) test -p dragonfruit-app-index
 	$(CARGO) test -p dragonfruit-files-core
 	$(MAKE) check-settings-consumers
@@ -376,7 +376,7 @@ e2e: build
 	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-session
 	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-app-index
 	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-wallpaperd
-	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p xdg-desktop-portal-dragonfruit -- --test-threads=1
+	timeout -k 10 $(E2E_TIMEOUT) $(CARGO) test -p dragonfruit-portal -- --test-threads=1
 	timeout -k 10 $(E2E_DEMO_TIMEOUT) $(MAKE) demo DEMO_ARGS=--headless
 
 # T-03.1a: the idle/animation frame budget trace. `make e2e` runs the same

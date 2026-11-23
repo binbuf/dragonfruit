@@ -21,6 +21,8 @@
 //! `xdg-desktop-portal` is a visible, supported state rather than an error
 //! (`tests/session_bus.rs` proves both paths).
 
+use std::time::Duration;
+
 use zbus::blocking::connection;
 use zbus::interface;
 use zbus::object_server::SignalEmitter;
@@ -31,9 +33,10 @@ use crate::interfaces::{
     FileChooserPortal, GlobalShortcuts, ScreenCastPortal, ScreenshotPortal, SettingsPortal,
     FILE_CHOOSER_INTERFACE, SCREENCAST_INTERFACE, SCREENSHOT_INTERFACE, SETTINGS_INTERFACE,
 };
+use crate::liveness;
 use crate::model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
-    DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,
+    DBUS_PATH, FRONTEND_NAME, PRESENTER_NAME, STATUS_INTERFACE,
 };
 use crate::screencast::{self, SharedScreenCast};
 use crate::screenshot::{self, SharedScreenshot};
@@ -44,6 +47,7 @@ use crate::shortcuts::{self, SharedRegistry, GLOBAL_SHORTCUTS_INTERFACE};
 #[derive(Clone)]
 pub struct Backend {
     frontend: FrontendTracker,
+    presenter: FrontendTracker,
     shortcuts: SharedRegistry,
     chooser: SharedChooser,
     screenshot: SharedScreenshot,
@@ -56,6 +60,7 @@ impl Backend {
     pub fn new(frontend: FrontendTracker) -> Self {
         Backend {
             frontend,
+            presenter: FrontendTracker::new(),
             shortcuts: shortcuts::registry(),
             chooser: chooser::registry(),
             screenshot: screenshot::registry(),
@@ -69,6 +74,7 @@ impl Backend {
     pub fn with_shortcuts(frontend: FrontendTracker, shortcuts: SharedRegistry) -> Self {
         Backend {
             frontend,
+            presenter: FrontendTracker::new(),
             shortcuts,
             chooser: chooser::registry(),
             screenshot: screenshot::registry(),
@@ -89,8 +95,30 @@ impl Backend {
         screenshot: SharedScreenshot,
         screencast: SharedScreenCast,
     ) -> Self {
+        Self::with_services_and_presenter(
+            frontend,
+            FrontendTracker::new(),
+            shortcuts,
+            chooser,
+            screenshot,
+            screencast,
+        )
+    }
+
+    /// A diagnostic object sharing every served registry and the live
+    /// presenter-presence cell (T311). [`initialize`] uses this so the
+    /// diagnostic surface and the presenter watch read the same state.
+    pub fn with_services_and_presenter(
+        frontend: FrontendTracker,
+        presenter: FrontendTracker,
+        shortcuts: SharedRegistry,
+        chooser: SharedChooser,
+        screenshot: SharedScreenshot,
+        screencast: SharedScreenCast,
+    ) -> Self {
         Backend {
             frontend,
+            presenter,
             shortcuts,
             chooser,
             screenshot,
@@ -101,6 +129,11 @@ impl Backend {
     /// The frontend tracker behind this object.
     pub fn frontend_tracker(&self) -> &FrontendTracker {
         &self.frontend
+    }
+
+    /// The shell-presenter tracker behind this object.
+    pub fn presenter_tracker(&self) -> &FrontendTracker {
+        &self.presenter
     }
 
     /// The session registry shared with the GlobalShortcuts interface.
@@ -172,6 +205,26 @@ impl Backend {
     /// The frontend's unique name when present, else the empty string.
     fn frontend_owner(&self) -> String {
         self.frontend
+            .presence()
+            .owner()
+            .unwrap_or_default()
+            .to_owned()
+    }
+
+    /// `present` / `absent` / `unknown` — the shell presenter's presence
+    /// (T311). Diagnostic only; the portal frontend never calls it.
+    fn presenter(&self) -> String {
+        self.presenter.presence().label().to_owned()
+    }
+
+    /// Whether the shell presenter owns [`PRESENTER_NAME`].
+    fn presenter_present(&self) -> bool {
+        self.presenter.presence().is_present()
+    }
+
+    /// The shell presenter's unique name when present, else the empty string.
+    fn presenter_owner(&self) -> String {
+        self.presenter
             .presence()
             .owner()
             .unwrap_or_default()
@@ -461,33 +514,54 @@ pub fn name_owner(connection: &connection::Connection, name: &str) -> zbus::Resu
     reply.body().deserialize::<String>()
 }
 
-/// One synchronous probe of the frontend's presence. Never fails: an
+/// One synchronous probe of a well-known name's presence. Never fails: an
 /// unreachable bus is [`FrontendPresence::Unknown`], and an unowned name is
 /// [`FrontendPresence::Absent`].
-pub fn probe_frontend(connection: &connection::Connection) -> FrontendPresence {
-    match name_has_owner(connection, FRONTEND_NAME) {
+fn probe_name(connection: &connection::Connection, name: &str) -> FrontendPresence {
+    match name_has_owner(connection, name) {
         Ok(true) => FrontendPresence::Present {
-            owner: name_owner(connection, FRONTEND_NAME).unwrap_or_default(),
+            owner: name_owner(connection, name).unwrap_or_default(),
         },
         Ok(false) => FrontendPresence::Absent,
         Err(_) => FrontendPresence::Unknown,
     }
 }
 
+/// One synchronous probe of the frontend's presence.
+pub fn probe_frontend(connection: &connection::Connection) -> FrontendPresence {
+    probe_name(connection, FRONTEND_NAME)
+}
+
+/// One synchronous probe of the shell presenter's presence (T311).
+pub fn probe_presenter(connection: &connection::Connection) -> FrontendPresence {
+    probe_name(connection, PRESENTER_NAME)
+}
+
 /// Serve the diagnostic [`STATUS_INTERFACE`] plus the concrete T-13.1b portal
 /// interfaces (`Settings`, `GlobalShortcuts`) at [`DBUS_PATH`], then start the
-/// live frontend and settings watches. Call this after the connection owns
-/// [`DBUS_NAME`]. The connection must outlive the returned object; the watch
-/// threads hold their own clones.
+/// live frontend, presenter, and settings watches. Call this after the
+/// connection owns [`DBUS_NAME`]. The connection must outlive the returned
+/// object; the watch threads hold their own clones.
+///
+/// Interactive completions use [`liveness::COMPLETION_TIMEOUT`].
 pub fn initialize(connection: &connection::Connection) -> Backend {
+    initialize_with_timeout(connection, liveness::COMPLETION_TIMEOUT)
+}
+
+/// [`initialize`] with an explicit completion deadline. Tests use a short
+/// bound to prove the timeout path without waiting 30 seconds.
+pub fn initialize_with_timeout(connection: &connection::Connection, timeout: Duration) -> Backend {
     let frontend = FrontendTracker::new();
     frontend.set(probe_frontend(connection));
+    let presenter = FrontendTracker::new();
+    presenter.set(probe_presenter(connection));
     let registry = shortcuts::registry();
     let chooser = chooser::registry();
     let screenshot = screenshot::registry();
     let screencast = screencast::registry();
-    let backend = Backend::with_services(
+    let backend = Backend::with_services_and_presenter(
         frontend.clone(),
+        presenter.clone(),
         registry.clone(),
         chooser.clone(),
         screenshot.clone(),
@@ -517,28 +591,28 @@ pub fn initialize(connection: &connection::Connection) -> Backend {
              {DBUS_PATH}: {error}"
         );
     }
-    if let Err(error) = connection
-        .object_server()
-        .at(DBUS_PATH, FileChooserPortal::new(chooser))
-    {
+    if let Err(error) = connection.object_server().at(
+        DBUS_PATH,
+        FileChooserPortal::with_timeout(chooser.clone(), timeout),
+    ) {
         eprintln!(
             "xdg-desktop-portal-dragonfruit: cannot serve {FILE_CHOOSER_INTERFACE} at \
              {DBUS_PATH}: {error}"
         );
     }
-    if let Err(error) = connection
-        .object_server()
-        .at(DBUS_PATH, ScreenshotPortal::new(screenshot))
-    {
+    if let Err(error) = connection.object_server().at(
+        DBUS_PATH,
+        ScreenshotPortal::with_timeout(screenshot.clone(), timeout),
+    ) {
         eprintln!(
             "xdg-desktop-portal-dragonfruit: cannot serve {SCREENSHOT_INTERFACE} at \
              {DBUS_PATH}: {error}"
         );
     }
-    if let Err(error) = connection
-        .object_server()
-        .at(DBUS_PATH, ScreenCastPortal::new(screencast))
-    {
+    if let Err(error) = connection.object_server().at(
+        DBUS_PATH,
+        ScreenCastPortal::with_timeout(screencast.clone(), timeout),
+    ) {
         eprintln!(
             "xdg-desktop-portal-dragonfruit: cannot serve {SCREENCAST_INTERFACE} at \
              {DBUS_PATH}: {error}"
@@ -546,6 +620,13 @@ pub fn initialize(connection: &connection::Connection) -> Backend {
     }
 
     spawn_frontend_watch(connection.clone(), frontend);
+    spawn_presenter_watch(
+        connection.clone(),
+        presenter,
+        chooser,
+        screenshot,
+        screencast,
+    );
     crate::settings::spawn_settings_sync(connection.clone(), store);
     backend
 }
@@ -598,20 +679,98 @@ fn frontend_watch_loop(connection: connection::Connection, tracker: FrontendTrac
     }
 }
 
+/// Watch the shell presenter's well-known name and keep `tracker` live.
+///
+/// When the presenter's owner disappears — a crash, an exit, or a restart that
+/// transfers the name to a new connection — every pending FileChooser,
+/// Screenshot, and ScreenCast picker request is resolved as `cancelled`. That
+/// is the T311 rule: a caller never waits for a presenter that is gone.
+pub fn spawn_presenter_watch(
+    connection: connection::Connection,
+    tracker: FrontendTracker,
+    chooser: SharedChooser,
+    screenshot: SharedScreenshot,
+    screencast: SharedScreenCast,
+) {
+    let _ = std::thread::Builder::new()
+        .name("dragonfruit-portal-presenter".to_owned())
+        .spawn(move || presenter_watch_loop(connection, tracker, chooser, screenshot, screencast));
+}
+
+fn presenter_watch_loop(
+    connection: connection::Connection,
+    tracker: FrontendTracker,
+    chooser: SharedChooser,
+    screenshot: SharedScreenshot,
+    screencast: SharedScreenCast,
+) {
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .sender("org.freedesktop.DBus")
+        .expect("valid sender")
+        .interface("org.freedesktop.DBus")
+        .expect("valid interface")
+        .member("NameOwnerChanged")
+        .expect("valid member")
+        .add_arg(PRESENTER_NAME)
+        .expect("valid arg")
+        .build();
+
+    let iterator = match zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(4))
+    {
+        Ok(iterator) => iterator,
+        Err(_) => return,
+    };
+
+    for message in iterator {
+        let Ok(message) = message else { break };
+        // `(name, old owner, new owner)`: any non-empty old owner that is
+        // replaced (including by a new connection with the same name) is a
+        // presenter loss. A name appearing for the first time is not.
+        let lost = message
+            .body()
+            .deserialize::<(String, String, String)>()
+            .map(|(_, old, new)| !old.is_empty() && old != new)
+            .unwrap_or(false);
+        if lost {
+            let cancelled = chooser::lock(&chooser).cancel_all()
+                + screenshot::lock(&screenshot).cancel_all()
+                + screencast::lock(&screencast).cancel_all();
+            if cancelled > 0 {
+                eprintln!(
+                    "xdg-desktop-portal-dragonfruit: presenter left; cancelled {cancelled} \
+                     pending request(s)"
+                );
+            }
+        }
+        tracker.set(probe_presenter(&connection));
+    }
+}
+
 /// Build a service connection on `address` (a session bus, or a private bus
 /// when given), own [`DBUS_NAME`], and serve the diagnostic object with the
-/// live frontend watch. Returns the connection and the backend object; the
-/// caller keeps the connection alive for as long as it wants to serve.
+/// live frontend and presenter watches. Returns the connection and the backend
+/// object; the caller keeps the connection alive for as long as it wants to
+/// serve.
 ///
 /// A missing frontend never makes this fail; only an unreachable bus or an
-/// unavailable name does.
+/// unavailable name does. Interactive completions use
+/// [`liveness::COMPLETION_TIMEOUT`].
 pub fn serve(address: Option<&str>) -> zbus::Result<(connection::Connection, Backend)> {
+    serve_with_timeout(address, liveness::COMPLETION_TIMEOUT)
+}
+
+/// [`serve`] with an explicit completion deadline (tests use a short bound).
+pub fn serve_with_timeout(
+    address: Option<&str>,
+    timeout: Duration,
+) -> zbus::Result<(connection::Connection, Backend)> {
     let builder = match address {
         Some(address) => connection::Builder::address(address)?,
         None => connection::Builder::session()?,
     };
     let connection = builder.name(DBUS_NAME)?.build()?;
-    let backend = initialize(&connection);
+    let backend = initialize_with_timeout(&connection, timeout);
     Ok((connection, backend))
 }
 

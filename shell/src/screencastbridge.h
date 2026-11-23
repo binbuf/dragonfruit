@@ -18,6 +18,10 @@
 // diagnostic mode (`ScreenCastStreamMode`) so the picker can name the fallback
 // before the user chooses; a missing producer is a normal, spoken state, never
 // a silent one.
+//
+// A live picker handle is never dropped silently (T311): a second request and
+// a cancel answer `CancelScreenCast` for the old handle before clearing it, and
+// startup cancels whatever `PendingScreenCasts` the backend still holds.
 #pragma once
 
 #include <QList>
@@ -122,15 +126,24 @@ private slots:
     void onScreenCastOpened(const QString &handle, const QString &sessionHandle,
                             const QString &appId, uint types, bool multiple,
                             const QVariantMap &options);
+    // The startup `PendingScreenCasts` reply: cancel every stale handle.
+    void onPendingReply(QDBusPendingCallWatcher *watcher);
     // The async reply to the diagnostic `ScreenCastStreamMode` call.
     void onStreamModeReply(QDBusPendingCallWatcher *watcher);
 
 private:
-    // Clear every per-request field.
+    // Answer `CancelScreenCast` for the live portal handle, if any. The handle
+    // stays in place; the caller clears it with `reset()`.
+    void cancelCurrent();
+    // Ask the backend for the picker requests a previous shell left pending.
+    void queryPending();
+    // Clear every per-request field. Callers must answer a live portal handle
+    // first (`cancelCurrent()`); this never silently drops one.
     void reset();
     // The chosen selections, in source order.
     QList<ScreenCastSelection> selections() const;
-    // Re-evaluate the portal service presence.
+    // Re-evaluate the portal service presence and query pending requests when
+    // the service (re)appears.
     void checkService();
     // Read the backend's diagnostic stream mode (`ScreenCastStreamMode`); a
     // missing method or service leaves the stills default in place.

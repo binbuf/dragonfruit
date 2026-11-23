@@ -26,6 +26,12 @@
 //
 // Requests are queued: a second application asking while a dialog is open is
 // shown as soon as the first resolves instead of being dropped.
+//
+// A live portal handle is never dropped silently (T311): Cancel answers
+// `CancelFileChooser`, and startup cancels whatever `PendingFileChoosers` the
+// backend still holds. Re-presenting a stale chooser from only its handle and
+// kind would lose the caller's options (notably SaveFiles' file names), so a
+// stale request is cancelled rather than shown with wrong behavior.
 #pragma once
 
 #include "files_core_list.h"
@@ -36,6 +42,7 @@
 #include <QStringList>
 #include <QVariantList>
 
+class QDBusPendingCallWatcher;
 class QTimer;
 
 class ChooserBridge : public QObject
@@ -151,6 +158,8 @@ private slots:
                              const QVariantMap &options);
     // Drain ready listing deltas without blocking the shell's event loop.
     void onListTick();
+    // The startup `PendingFileChoosers` reply: cancel every stale handle.
+    void onPendingReply(QDBusPendingCallWatcher *watcher);
 
 private:
     // One waiting request, decoded from the portal's options.
@@ -169,7 +178,12 @@ private:
         bool fromPortal = false;
     };
 
-    // Clear every per-request field and retire the listing session.
+    // Answer `CancelFileChooser` for the live portal handle, if any.
+    void cancelCurrent();
+    // Ask the backend for the requests a previous shell left pending.
+    void queryPending();
+    // Clear every per-request field and retire the listing session. Callers
+    // must answer a live portal handle first (`cancelCurrent()`/`completeWith`).
     void reset();
     // Show the next queued request, if the dialog is idle.
     void startNext();
@@ -181,7 +195,8 @@ private:
     void stopListing();
     // Apply one incremental delta to `m_entries`.
     void applyDelta(const df_files_delta *delta);
-    // Re-evaluate the portal service presence.
+    // Re-evaluate the portal service presence and query pending requests when
+    // the service (re)appears.
     void checkService();
     // Deliver a success response and close the request.
     void completeWith(const QStringList &selections);

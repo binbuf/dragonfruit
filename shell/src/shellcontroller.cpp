@@ -72,6 +72,7 @@
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "popuptarget.h"
+#include "portalpresenter.h"
 #include "shellprotocol.h"
 #include "shellmenus.h"
 #include "systemstatusclient.h"
@@ -612,6 +613,18 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 {
     m_barHeight = barHeight;
     m_waylandDisplay = socketName;
+
+    // T311: own the presenter name before any bridge subscribes. The portal
+    // backend watches it and cancels every pending FileChooser/Screenshot/
+    // ScreenCast request when it disappears, so a crash or restart can never
+    // leave an application waiting. A missing session bus is not fatal: the
+    // bridges then simply never see a request.
+    QDBusConnection presenterBus = QDBusConnection::sessionBus();
+    if (presenterBus.isConnected()) {
+        if (!presenterBus.registerService(Dragonfruit::PortalPresenter::serviceName()))
+            qWarning() << "shell: the portal presenter name is already owned:"
+                       << Dragonfruit::PortalPresenter::serviceName();
+    }
     // T-21.1d: the GPU rail is GPU-first (unless explicitly disabled) and
     // decided before the first chrome producer. A requested-but-unavailable
     // rail records a reason and keeps every surface on the T185 producer.

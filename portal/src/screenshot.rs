@@ -395,6 +395,17 @@ impl ScreenshotRegistry {
         pending.completer.complete(response.clone());
         Some(response)
     }
+
+    /// Resolve every live request as cancelled and remove it. Returns the
+    /// number resolved. The presenter-loss watch calls this when the shell
+    /// leaves the bus (T311).
+    pub fn cancel_all(&mut self) -> usize {
+        let handles: Vec<String> = self.pending.keys().cloned().collect();
+        handles
+            .iter()
+            .filter(|handle| self.cancel(handle).is_some())
+            .count()
+    }
 }
 
 /// The shared, live screenshot registry: the D-Bus objects and the diagnostic
@@ -528,6 +539,29 @@ mod tests {
             }))
         ));
         assert!(registry.cancel("/req/9").is_none());
+    }
+
+    #[test]
+    fn the_presenter_loss_watch_cancels_every_pending_request() {
+        let mut registry = ScreenshotRegistry::new();
+        let first = ScreenshotRequest::new("/req/1", "app", "", &HashMap::new());
+        let mut first_completion = registry.begin(first).expect("begin");
+        let second = ScreenshotRequest::new("/req/2", "app", "", &HashMap::new());
+        let mut second_completion = registry.begin(second).expect("begin");
+
+        assert_eq!(registry.cancel_all(), 2);
+        assert!(registry.is_empty());
+        for completion in [&mut first_completion, &mut second_completion] {
+            assert!(matches!(
+                poll_once(completion),
+                Poll::Ready(Some(ScreenshotResponse {
+                    response: RESPONSE_CANCELLED,
+                    ..
+                }))
+            ));
+        }
+        // A second sweep has nothing left to resolve.
+        assert_eq!(registry.cancel_all(), 0);
     }
 
     /// Poll a future once without an executor: used to assert a completion is

@@ -7,6 +7,8 @@
 // on a bus-less host.
 #include "screencastbridge.h"
 
+#include "portalrow.h"
+
 #include <QDBusConnection>
 #include <QDBusMetaType>
 #include <QSignalSpy>
@@ -37,6 +39,16 @@ public:
                               multiple, options);
     }
 
+    // The handles a previous shell left in the backend's registry. Each row is
+    // the `(request handle, session handle)` pair `PendingScreenCasts` returns.
+    void setPending(const QStringList &handles)
+    {
+        m_pending.clear();
+        for (const QString &handle : handles)
+            m_pending.append(PortalPendingRow{
+                handle, QStringLiteral("/org/freedesktop/portal/desktop/session/1")});
+    }
+
 public slots:
     bool CompleteScreenCast(const QString &handle, const QList<ScreenCastSelection> &selections)
     {
@@ -51,7 +63,7 @@ public slots:
         return true;
     }
 
-    QVariantList PendingScreenCasts() const { return {}; }
+    QList<PortalPendingRow> PendingScreenCasts() const { return m_pending; }
 
     // The T-13.4b diagnostic: this fake has a live producer.
     QString ScreenCastStreamMode() const { return QStringLiteral("pipewire"); }
@@ -65,6 +77,7 @@ private:
     QString m_completedHandle;
     QList<ScreenCastSelection> m_completedSelections;
     QString m_cancelledHandle;
+    QList<PortalPendingRow> m_pending;
 };
 
 QVariantList source(const QString &kind, const QString &id, const QString &label)
@@ -87,6 +100,37 @@ QVariantList window(const QString &id, const QString &label)
     return source(QStringLiteral("window"), id, label);
 }
 
+QString connectFakePortal(FakePortal &portal, const QString &connectionName)
+{
+    QDBusConnection serviceBus =
+        QDBusConnection::connectToBus(QDBusConnection::SessionBus, connectionName);
+    if (!serviceBus.isConnected())
+        return QString();
+    if (!serviceBus.registerService(kService)) {
+        QDBusConnection::disconnectFromBus(connectionName);
+        return QString();
+    }
+    if (!serviceBus.registerObject(kPath, &portal,
+                                   QDBusConnection::ExportAllSlots
+                                       | QDBusConnection::ExportAllSignals)) {
+        serviceBus.unregisterService(kService);
+        QDBusConnection::disconnectFromBus(connectionName);
+        return QString();
+    }
+    return connectionName;
+}
+
+void disconnectFakePortal(const QString &connectionName)
+{
+    if (connectionName.isEmpty())
+        return;
+    QDBusConnection serviceBus =
+        QDBusConnection::connectToBus(QDBusConnection::SessionBus, connectionName);
+    serviceBus.unregisterObject(kPath);
+    serviceBus.unregisterService(kService);
+    QDBusConnection::disconnectFromBus(connectionName);
+}
+
 } // namespace
 
 class TestScreenCast : public QObject
@@ -98,6 +142,8 @@ private slots:
     {
         qDBusRegisterMetaType<ScreenCastSelection>();
         qDBusRegisterMetaType<QList<ScreenCastSelection>>();
+        qDBusRegisterMetaType<PortalPendingRow>();
+        qDBusRegisterMetaType<QList<PortalPendingRow>>();
     }
 
     void beginPublishesTheRequestedOptions()
@@ -206,6 +252,60 @@ private slots:
         ScreenCastBridge bridge;
         QCOMPARE(bridge.streamMode(), QStringLiteral("stills"));
         QVERIFY(!bridge.streamNote().isEmpty());
+    }
+
+    void aSecondRequestCancelsTheFirstPortalHandle()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        FakePortal portal;
+        const QString connectionName =
+            connectFakePortal(portal, QStringLiteral("dragonfruit_test_screencast_replace"));
+        if (connectionName.isEmpty())
+            QSKIP("the fake presenter could not own the portal name");
+
+        ScreenCastBridge bridge;
+        bridge.connectService();
+        QTRY_VERIFY(bridge.serviceAvailable());
+        // Let the signal match rule settle before the fake emits.
+        QTest::qWait(50);
+
+        portal.emitOpened(QStringLiteral("/req/first"),
+                          QStringLiteral("/org/freedesktop/portal/desktop/session/1"), 1, false,
+                          QVariantMap());
+        QTRY_VERIFY(bridge.active());
+        QCOMPARE(bridge.handle(), QStringLiteral("/req/first"));
+
+        portal.emitOpened(QStringLiteral("/req/second"),
+                          QStringLiteral("/org/freedesktop/portal/desktop/session/1"), 1, false,
+                          QVariantMap());
+        QTRY_COMPARE(portal.cancelledHandle(), QStringLiteral("/req/first"));
+        QCOMPARE(bridge.handle(), QStringLiteral("/req/second"));
+        QVERIFY(bridge.active());
+
+        disconnectFakePortal(connectionName);
+    }
+
+    void startupCancelsTheBackendsPendingRequests()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        FakePortal portal;
+        portal.setPending({QStringLiteral("/req/stale")});
+        const QString connectionName =
+            connectFakePortal(portal, QStringLiteral("dragonfruit_test_screencast_pending"));
+        if (connectionName.isEmpty())
+            QSKIP("the fake presenter could not own the portal name");
+
+        ScreenCastBridge bridge;
+        bridge.connectService();
+        QTRY_COMPARE(portal.cancelledHandle(), QStringLiteral("/req/stale"));
+
+        disconnectFakePortal(connectionName);
     }
 
     void theSelectionRoundTripsToThePortalPresenter()

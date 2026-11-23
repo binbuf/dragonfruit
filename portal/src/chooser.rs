@@ -586,6 +586,17 @@ impl ChooserRegistry {
         pending.completer.complete(response.clone());
         Some(response)
     }
+
+    /// Resolve every queued request as cancelled and remove it. Returns the
+    /// number resolved. The presenter-loss watch calls this when the shell
+    /// leaves the bus (T311).
+    pub fn cancel_all(&mut self) -> usize {
+        let handles: Vec<String> = self.pending.keys().cloned().collect();
+        handles
+            .iter()
+            .filter(|handle| self.cancel(handle).is_some())
+            .count()
+    }
 }
 
 /// The shared, live chooser registry: the D-Bus objects and the diagnostic
@@ -937,6 +948,42 @@ mod tests {
             list_directory("trash:///").err(),
             Some(ChooserError::UnsupportedScheme("trash:///".to_owned()))
         );
+    }
+
+    #[test]
+    fn the_presenter_loss_watch_cancels_every_queued_request() {
+        let mut registry = ChooserRegistry::new();
+        let first = ChooserRequest::new(
+            ChooserKind::OpenFile,
+            "/req/1",
+            "app",
+            "",
+            "",
+            &HashMap::new(),
+        );
+        let mut first_completion = registry.begin(first).expect("begin");
+        let second = ChooserRequest::new(
+            ChooserKind::SaveFile,
+            "/req/2",
+            "app",
+            "",
+            "",
+            &HashMap::new(),
+        );
+        let mut second_completion = registry.begin(second).expect("begin");
+
+        assert_eq!(registry.cancel_all(), 2);
+        assert!(registry.is_empty());
+        for completion in [&mut first_completion, &mut second_completion] {
+            assert!(matches!(
+                poll_once(completion),
+                Poll::Ready(Some(ChooserResponse {
+                    response: RESPONSE_CANCELLED,
+                    ..
+                }))
+            ));
+        }
+        assert_eq!(registry.cancel_all(), 0);
     }
 
     /// Poll a future once without an executor: used to assert a completion is

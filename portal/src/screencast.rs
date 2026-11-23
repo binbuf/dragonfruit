@@ -653,6 +653,18 @@ impl ScreenCastRegistry {
         Some(response)
     }
 
+    /// Resolve every live picker request as cancelled and remove it. Sessions
+    /// are left alone: only a `SelectSources` caller is waiting. Returns the
+    /// number resolved. The presenter-loss watch calls this when the shell
+    /// leaves the bus (T311).
+    pub fn cancel_all(&mut self) -> usize {
+        let handles: Vec<String> = self.pending.keys().cloned().collect();
+        handles
+            .iter()
+            .filter(|handle| self.cancel(handle).is_some())
+            .count()
+    }
+
     /// Build the `Start` response for a session's chosen sources, negotiating
     /// each stream through the transport. Live nodes are remembered so
     /// [`ScreenCastRegistry::close_session`] can release them.
@@ -973,6 +985,31 @@ mod tests {
         assert_eq!(registry.pending_len(), 0);
         assert!(registry.is_empty());
         assert!(!registry.close_session("/s"));
+    }
+
+    #[test]
+    fn the_presenter_loss_watch_cancels_every_pending_picker() {
+        let mut registry = ScreenCastRegistry::new();
+        registry.create_session("app", "/s").unwrap();
+        let first = ScreenCastRequest::new("/r1", "/s", "app", &HashMap::new());
+        let mut first_completion = registry.begin_select(first).expect("begin_select");
+        let second = ScreenCastRequest::new("/r2", "/s", "app", &HashMap::new());
+        let mut second_completion = registry.begin_select(second).expect("begin_select");
+
+        assert_eq!(registry.cancel_all(), 2);
+        assert_eq!(registry.pending_len(), 0);
+        // The session itself survives: only the waiting callers are answered.
+        assert!(registry.session("/s").is_some());
+        for completion in [&mut first_completion, &mut second_completion] {
+            assert!(matches!(
+                poll_once(completion),
+                Poll::Ready(Some(ScreenCastResponse {
+                    response: RESPONSE_CANCELLED,
+                    ..
+                }))
+            ));
+        }
+        assert_eq!(registry.cancel_all(), 0);
     }
 
     #[test]

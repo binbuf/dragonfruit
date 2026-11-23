@@ -17,7 +17,9 @@
 //! * [`data`] — the three discoverability files (`.portal`, `portals.conf`,
 //!   D-Bus activation), their parsers, and [`data::install_into`] for
 //!   packaging.
-//! * [`dbus`] — the session-bus service and the live frontend watch.
+//! * [`dbus`] — the session-bus service, the live frontend watch, and the
+//!   presenter-loss watch (T311).
+//! * [`liveness`] — the bounded wait every interactive request uses (T311).
 //! * [`chooser`] — the FileChooser's pure model (T-13.2a): the options/result
 //!   vardicts, the request registry and its one-shot completion, and the
 //!   files-core listing the picker drives.
@@ -42,6 +44,7 @@ pub mod chooser;
 pub mod data;
 pub mod dbus;
 pub mod interfaces;
+pub mod liveness;
 pub mod model;
 pub mod screencast;
 pub mod screenshot;
@@ -58,14 +61,18 @@ pub use data::{
     install_into, preferred_backends, ACTIVATION_FILE, ACTIVATION_FILE_NAME, DBUS_SERVICES_DIR,
     PORTALS_CONF, PORTALS_CONF_DIR, PORTALS_CONF_NAME, PORTALS_DIR, PORTAL_FILE, PORTAL_FILE_NAME,
 };
-pub use dbus::{initialize, probe_frontend, serve, Backend};
+pub use dbus::{
+    initialize, initialize_with_timeout, probe_frontend, probe_presenter, serve,
+    serve_with_timeout, Backend,
+};
 pub use interfaces::{
     FileChooserPortal, GlobalShortcuts, ScreenCastPortal, ScreenCastSessionObject,
     ScreenshotPortal, SettingsPortal, ShortcutSessionObject,
 };
+pub use liveness::{await_bounded, COMPLETION_TIMEOUT};
 pub use model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
-    DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,
+    DBUS_PATH, FRONTEND_NAME, PRESENTER_NAME, STATUS_INTERFACE,
 };
 pub use screencast::{
     ScreenCastError, ScreenCastOptions, ScreenCastRegistry, ScreenCastRequest, ScreenCastResponse,

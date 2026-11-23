@@ -16,11 +16,18 @@
 // The overlay itself is pure QML (`SelectionOverlay.qml`); this class owns the
 // state the view binds to. `begin()` is the shared entry point for the live
 // signal and the headless/capture fixture (`DF_SCREENSHOT_FIXTURE`).
+//
+// A live portal handle is never dropped silently (T311). A second request, the
+// local shortcut, and a cancel all answer `CancelScreenshot` for the old
+// handle before clearing it. On startup the bridge also queries
+// `PendingScreenshots` and cancels anything the backend still holds.
 #pragma once
 
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
+
+class QDBusPendingCallWatcher;
 
 class ScreenshotBridge : public QObject
 {
@@ -76,11 +83,20 @@ private slots:
     // The portal backend's presenter signal.
     void onScreenshotOpened(const QString &handle, const QString &mode, const QString &appId,
                             const QString &parentWindow, const QVariantMap &options);
+    // The startup `PendingScreenshots` reply: cancel every stale handle.
+    void onPendingReply(QDBusPendingCallWatcher *watcher);
 
 private:
-    // Clear every per-request field.
+    // Answer `CancelScreenshot` for the live portal handle, if any. The handle
+    // stays in place; the caller clears it with `reset()`.
+    void cancelCurrent();
+    // Ask the backend for the requests a previous shell left pending.
+    void queryPending();
+    // Clear every per-request field. Callers must answer a live portal handle
+    // first (`cancelCurrent()`); this never silently drops one.
     void reset();
-    // Re-evaluate the portal service presence.
+    // Re-evaluate the portal service presence and query pending requests when
+    // the service (re)appears.
     void checkService();
 
     bool m_active = false;

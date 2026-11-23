@@ -2,6 +2,7 @@
 #include "chooserbridge.h"
 
 #include "files_core_list.h"
+#include "portalpresenter.h"
 
 #include <QDir>
 #include <QFile>
@@ -18,6 +19,7 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #endif
 
 namespace {
@@ -285,7 +287,11 @@ void ChooserBridge::checkService()
 #if defined(QT_DBUS_LIB)
     QDBusConnection bus = QDBusConnection::sessionBus();
     QDBusConnectionInterface *iface = bus.interface();
+    const bool wasAvailable = m_serviceAvailable;
     m_serviceAvailable = iface && iface->isServiceRegistered(kService);
+    // A restarted backend can hold chooser requests this shell never saw.
+    if (m_serviceAvailable && !wasAvailable)
+        queryPending();
 #else
     m_serviceAvailable = false;
 #endif
@@ -790,23 +796,66 @@ void ChooserBridge::requestReplace(const QString &path)
     emit changed();
 }
 
-void ChooserBridge::cancel()
+void ChooserBridge::cancelCurrent()
 {
-    if (!m_active)
+    if (!m_active || !m_fromPortal || m_handle.isEmpty())
         return;
     const QString handle = m_handle;
 #if defined(QT_DBUS_LIB)
     // Send even if the registration check is stale: a request only exists
     // because the portal is running, and dropping the answer would hang the
     // caller. The fixture (`DF_CHOOSER_FIXTURE`) has no portal request.
-    if (m_fromPortal) {
-        QDBusMessage message = QDBusMessage::createMethodCall(
-            kService, kPath, kInterface, QStringLiteral("CancelFileChooser"));
-        message << handle;
-        QDBusConnection::sessionBus().asyncCall(message);
-    }
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kService, kPath, kInterface, QStringLiteral("CancelFileChooser"));
+    message << handle;
+    QDBusConnection::sessionBus().asyncCall(message);
+#else
+    Q_UNUSED(handle);
 #endif
+}
+
+void ChooserBridge::cancel()
+{
+    if (!m_active)
+        return;
+    cancelCurrent();
     finish(false);
+}
+
+void ChooserBridge::queryPending()
+{
+#if defined(QT_DBUS_LIB)
+    if (!m_serviceAvailable)
+        return;
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kService, kPath, kInterface, QStringLiteral("PendingFileChoosers"));
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            &ChooserBridge::onPendingReply);
+#endif
+}
+
+void ChooserBridge::onPendingReply(QDBusPendingCallWatcher *watcher)
+{
+#if defined(QT_DBUS_LIB)
+    watcher->deleteLater();
+    const QDBusMessage reply = watcher->reply();
+    if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty())
+        return;
+    const QStringList handles =
+        Dragonfruit::PortalPresenter::pendingHandles(reply.arguments().first());
+    for (const QString &handle : handles) {
+        if (handle.isEmpty() || handle == m_handle)
+            continue;
+        QDBusMessage cancel = QDBusMessage::createMethodCall(
+            kService, kPath, kInterface, QStringLiteral("CancelFileChooser"));
+        cancel << handle;
+        QDBusConnection::sessionBus().asyncCall(cancel);
+    }
+#else
+    Q_UNUSED(watcher);
+#endif
 }
 
 void ChooserBridge::completeWith(const QStringList &selections)
