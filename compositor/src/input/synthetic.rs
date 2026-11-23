@@ -2729,8 +2729,9 @@ fn menubar_report(state: &DfState) -> String {
 /// `surfaces` is the number of live lock surfaces (zero after the lock UI
 /// dies) and `lock-focus` is whether the seat keyboard is focused on a live
 /// lock surface (the input-capture target). The report is read-only and never
-/// changes the lock, so a headless test can prove that killing the lock UI
-/// leaves `locked=1`.
+/// changes the lock. A dead lock client ends the compositor (ADR 0312), so a
+/// test asserts the final `locked=1` state from the one-line exit log rather
+/// than querying after the process is gone.
 fn lock_report(state: &DfState) -> String {
     let on_lock = state
         .seat

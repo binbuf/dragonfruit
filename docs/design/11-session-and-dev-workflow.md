@@ -233,9 +233,12 @@ dragonfruit-session.target (started directly by dragonfruit-session-entry)
   optional (`Wants`), so a missing or failed daemon leaves the shell on the
   schema defaults. The portal backend registers with `xdg-desktop-portal`
   last.
-- **Restart policy:** everything but the compositor restarts in place. A
-  compositor crash ends the session and GDM returns — that is the display
-  server reality, and the failure behavior we want.
+- **Restart policy:** everything but the compositor restarts in place while
+  the session is unlocked. A compositor crash ends the session and GDM
+  returns — that is the display server reality, and the failure behavior we
+  want. A shell crash while locked also ends the session: the compositor is
+  the only authority that can distinguish a frozen lock from recoverable
+  chrome ([ADR 0312](adr/0312-lock-loss-ends-the-session.md)).
 - **Locking is fail-secure:** enforced in the compositor (`ext-session-lock-v1`
   semantics); no crash path unlocks a locked session.
 - **Session environment** exported at startup: `XDG_CURRENT_DESKTOP=dragonfruit`,
@@ -540,11 +543,12 @@ Recovery is a fresh login, not an in-place restart: the T-12.2 session entry
 waits for `dragonfruit-compositor.service` to leave the active state, stops
 `dragonfruit-session.target`, clears failed state, removes the runtime
 hand-off files, and the display manager returns the greeter. Everything that is
-*not* the compositor restarts in place ([the matrix
-above](#session-policy-keys-and-the-kill-matrix-t-125b)); apps are plain
-clients, and a crash while locked can never unlock because the lock is
-fail-secure inside the compositor. The compositor may restart subprocesses it
-owns (Xwayland), but that is not a session restart.
+*not* the compositor restarts in place while unlocked ([the matrix
+above](#session-policy-keys-and-the-kill-matrix-t-125b)); a shell crash while
+locked ends the session instead ([ADR 0312](adr/0312-lock-loss-ends-the-session.md)).
+Apps are plain clients, and a crash while locked can never unlock because the
+lock is fail-secure inside the compositor. The compositor may restart
+subprocesses it owns (Xwayland), but that is not a session restart.
 
 The restart policy is enforced headlessly by
 `services/session/tests/restart_policy_matrix.rs`, which crosses all three

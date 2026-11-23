@@ -94,13 +94,14 @@ survive a sleep/resume. The lock surface is the only focus target when the
 lock is confirmed, so the first key after the teardown reaches the lock UI and
 no client sees it.
 
-One defect remains:
-
-1. A shell crash while locked leaves the session locked with no lock surface,
-   and Smithay’s `locked_outputs` prevents a restarted shell from re-creating
-   one. The safe MVP is: the trusted shell disconnect while locked ends the
-   session cleanly (ADR 0312). Re-lock needs a separate lock process or a
-   Smithay change; that is a new decision, not a silent recovery.
+A shell crash while locked cannot recover in place: the session is locked with
+no lock surface, and Smithay’s `locked_outputs` prevents a restarted shell
+from re-creating one. The trusted shell disconnect while locked therefore ends
+the session cleanly ([ADR 0312](adr/0312-lock-loss-ends-the-session.md)):
+`df_core::destroyed` logs the reason and stops the compositor loop without
+unlocking. The session entry returns to the greeter, and a fresh login starts
+a fresh compositor and lock. Re-lock needs a separate lock process or a
+Smithay change; that is a new decision, not a silent recovery.
 
 ### 3.2 Focus is explicit
 

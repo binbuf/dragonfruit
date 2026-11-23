@@ -2,7 +2,10 @@
 
 ## Status
 
-accepted
+accepted. Superseded in part by
+[ADR 0312](0312-lock-loss-ends-the-session.md): a dead lock client now ends
+the session safely instead of leaving a locked, inputless desktop with no
+in-session recovery path.
 
 Related: [ADR 0317](0317-lock-and-suspend-tear-down-client-grabs.md) records
 the T305 grab teardown that makes the capture invariant hold when a client
@@ -50,10 +53,11 @@ request a lock and then `unlock_and_destroy` the real one (the T-81 TODO).
 
 ## Consequences
 
-- A shell crash keeps the session locked and inputless; there is no in-session
-  recovery path for a dead lock UI. Recovering requires the session manager's
-  restart policy and, because Smithay keeps `locked_outputs`, a compositor
-  restart for a fresh lock — T-12.5/T-12.6 own that matrix.
+- A shell crash keeps the session locked and inputless. There is no in-session
+  recovery path for a dead lock UI: because Smithay keeps `locked_outputs`, a
+  restarted shell cannot create a fresh lock. [ADR 0312](0312-lock-loss-ends-the-session.md)
+  therefore ends the session cleanly when the trusted shell disconnects while
+  locked; T-12.5/T-12.6 own the supervision matrix.
 - The password buffer lives only in the shell process and is handed to the PAM
   helper's stdin; the lock scene never sees the characters.
 - Non-US keyboard layouts type an ASCII approximation until a later task adds

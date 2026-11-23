@@ -2095,6 +2095,20 @@ impl Dispatch<df_core::DfCore, CoreUserData> for DfState {
         _data: &CoreUserData,
     ) {
         if let Some(role) = state.shell.forget_client(&client) {
+            // The trusted shell is also the lock UI. If it disappears while
+            // the session is locked there is no lock surface and no input
+            // target left, and Smithay's `locked_outputs` prevents a
+            // restarted shell from creating a fresh lock (ADR 0312). End the
+            // session cleanly instead of leaving a frozen, inputless lock.
+            // Never unlock here: that would make a crash an unlock primitive.
+            if role == TrustedRole::Shell && state.lock.is_locked() {
+                println!(
+                    "dragonfruit-compositor: trusted shell disconnected while locked \
+                     (lock locked=1); ending the session"
+                );
+                state.running = false;
+                return;
+            }
             reissue_token(state, role);
         }
     }

@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted. Superseded in part by
+[ADR 0312](0312-lock-loss-ends-the-session.md): a lock client that dies while
+the session is locked ends the session instead of returning to a lock UI.
 
 ## Context
 
@@ -35,7 +37,7 @@ for it versus everything else.
   | Service | Policy | A death means |
   |---|---|---|
   | compositor | `never` (anchor, `ends_session`) | the session ends; all survivors stop; the greeter returns |
-  | shell / lock UI | `always` | it restarts; windows and the session keep running; a locked session returns to a lock UI |
+  | shell / lock UI | `always` | it restarts while unlocked; windows and the session keep running. If it dies while locked, the compositor ends the session safely and never unlocks ([ADR 0312](0312-lock-loss-ends-the-session.md)) |
   | settingsd, menu-broker, app-index, notifications, wallpaperd | `on-failure` | they restart in place; clients re-read on reappearance |
   | portal backend | `on-failure` (stage 2) | it restarts and fails soft; portals degrade, the session keeps running |
   | apps (clients) | not supervised | a plain client exit; only that window goes |

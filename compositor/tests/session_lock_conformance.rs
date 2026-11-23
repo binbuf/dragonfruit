@@ -19,7 +19,9 @@
 //!   lock surface and synthetic input is delivered there — never to a normal
 //!   client. Before the lock surface exists, input is dropped.
 //! * **kill-resistance.** Disconnecting the lock client (a crash) leaves the
-//!   compositor locked (`query lock locked=1`) with zero live lock surfaces.
+//!   compositor fail-secure (`locked=1`) with zero live lock surfaces; because
+//!   the shell is the lock UI, the compositor then ends the session cleanly
+//!   (ADR 0312) instead of leaving a frozen lock.
 //!
 //! The lock manager global is gated on the T-07 launch-token handshake, so the
 //! client authenticates as the trusted shell before it locks.
@@ -465,6 +467,7 @@ struct CompositorProcess {
     child: Child,
     socket_path: PathBuf,
     token_path: PathBuf,
+    log_path: PathBuf,
     synthetic_path: Option<PathBuf>,
 }
 
@@ -474,6 +477,7 @@ impl Drop for CompositorProcess {
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.socket_path);
         let _ = std::fs::remove_file(&self.token_path);
+        let _ = std::fs::remove_file(&self.log_path);
         common::cleanup_compositor_artifacts(&self.socket_path);
         if let Some(path) = &self.synthetic_path {
             let _ = std::fs::remove_file(path);
@@ -496,6 +500,12 @@ impl CompositorProcess {
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
         let socket_path = PathBuf::from(&runtime_dir).join(&socket_name);
         let token_path = PathBuf::from(&runtime_dir).join(format!("{socket_name}.launch-token"));
+        // Capture the compositor's own log so a test can assert the one-line
+        // session-ending reason after the process has exited. Per-frame
+        // output would be a bug; this file only holds lifecycle lines.
+        let log_path = PathBuf::from(&runtime_dir).join(format!("{socket_name}.log"));
+        let log = std::fs::File::create(&log_path).expect("failed to create compositor log");
+        let log_err = log.try_clone().expect("failed to clone compositor log");
 
         let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
         command
@@ -508,8 +518,8 @@ impl CompositorProcess {
             command.env("DRAGONFRUIT_SYNTHETIC_INPUT", path);
         }
         let mut child = command
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::from(log))
+            .stderr(Stdio::from(log_err))
             .spawn()
             .expect("failed to start compositor");
 
@@ -531,6 +541,7 @@ impl CompositorProcess {
             child,
             socket_path,
             token_path,
+            log_path,
             synthetic_path: synthetic.map(Path::to_path_buf),
         }
     }
@@ -540,6 +551,29 @@ impl CompositorProcess {
             .expect("token file readable")
             .trim()
             .to_string()
+    }
+
+    /// Wait for the compositor to exit on its own and return its status.
+    #[track_caller]
+    fn wait_for_exit(&mut self, timeout: Duration) -> std::process::ExitStatus {
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) => return status,
+                Ok(None) => {
+                    assert!(
+                        Instant::now() < deadline,
+                        "compositor did not exit within {timeout:?}"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(err) => panic!("wait failed: {err}"),
+            }
+        }
+    }
+
+    fn read_log(&self) -> String {
+        std::fs::read_to_string(&self.log_path).unwrap_or_default()
     }
 }
 
@@ -1113,12 +1147,12 @@ fn untrusted_client_cannot_lock() {
 }
 
 #[test]
-fn locked_input_targets_the_lock_ui_and_survives_its_death() {
+fn locked_input_targets_the_lock_ui_and_its_death_ends_the_session() {
     let socket_name = format!("dragonfruit-test-lock-input-{}", std::process::id());
     let synthetic_path = std::env::temp_dir().join(format!("{socket_name}-synth"));
     let _ = std::fs::remove_file(&synthetic_path);
     let token = "ab".repeat(32);
-    let proc = CompositorProcess::start_with_synthetic(
+    let mut proc = CompositorProcess::start_with_synthetic(
         &socket_name,
         std::slice::from_ref(&token),
         Some(&synthetic_path),
@@ -1255,29 +1289,102 @@ fn locked_input_targets_the_lock_ui_and_survives_its_death() {
         "unexpected lock report after input: {during}"
     );
 
-    // Kill the lock UI: hard-close the client socket. The compositor must stay
-    // locked and simply lose its input target.
+    // Kill the lock UI: hard-close the client socket. The compositor stays
+    // fail-secure (locked=1) but loses its only input target; because the
+    // shell is the lock UI, the safe outcome is to end the session rather than
+    // leave a frozen lock (ADR 0312). The one-line reason is logged at exit
+    // with the lock state, so the conformance suite asserts `locked=1` after
+    // the lock client disappears even though no further query can be served.
     unsafe {
         libc::shutdown(kill_fd, libc::SHUT_RDWR);
         libc::close(kill_fd);
     }
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        let report = input.query("query lock");
-        if report.contains("lock locked=1 surfaces=0") {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "lock UI death did not clear lock surfaces: {report}"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    // The compositor is still alive and still locked after the crash.
-    let after = input.query("query lock");
+    let status = proc.wait_for_exit(Duration::from_secs(10));
     assert!(
-        after.contains("lock locked=1"),
-        "session left locked after the lock UI died: {after}"
+        status.success(),
+        "compositor must exit cleanly after lock-client loss: {status}"
+    );
+    let log = proc.read_log();
+    assert!(
+        log.contains("lock locked=1"),
+        "the session did not stay fail-secure while ending: {log}"
+    );
+    assert!(
+        log.contains("trusted shell disconnected while locked"),
+        "the exit reason was not logged: {log}"
+    );
+}
+
+#[test]
+fn lost_lock_client_ends_the_session_and_a_fresh_start_can_lock_again() {
+    let socket_name = format!("dragonfruit-test-lock-loss-{}", std::process::id());
+    let synthetic_path = std::env::temp_dir().join(format!("{socket_name}-synth"));
+    let _ = std::fs::remove_file(&synthetic_path);
+    let token = "ac".repeat(32);
+    let mut proc = CompositorProcess::start_with_synthetic(
+        &socket_name,
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // Keep a duplicate of the socket fd so the test can hard-close the lock
+    // client exactly like a crashed shell.
+    let stream = UnixStream::connect(&proc.socket_path).expect("failed to connect to compositor");
+    let kill_fd = unsafe { libc::dup(stream.as_raw_fd()) };
+    assert!(kill_fd >= 0, "dup failed");
+    let conn = Connection::from_socket(stream).expect("failed to create connection");
+    let mut queue = conn.new_event_queue();
+    let qh = queue.handle();
+    let registry = conn.display().get_registry(&qh, ());
+    let mut state = LockTest {
+        registry: Some(registry),
+        ..Default::default()
+    };
+    queue.roundtrip(&mut state).expect("roundtrip failed");
+    authenticate(&mut state, &mut queue, proc.read_token());
+    let locked = lock_and_map(&mut state, &mut queue);
+    let before = input.query("query lock");
+    assert!(
+        before.contains("lock locked=1 surfaces=1"),
+        "the lock was not established before the client died: {before}"
+    );
+
+    unsafe {
+        libc::shutdown(kill_fd, libc::SHUT_RDWR);
+        libc::close(kill_fd);
+    }
+    let status = proc.wait_for_exit(Duration::from_secs(10));
+    assert!(
+        status.success(),
+        "the compositor exits cleanly on lock-client loss: {status}"
+    );
+    let log = proc.read_log();
+    assert!(
+        log.contains("lock locked=1"),
+        "the session did not stay fail-secure while ending: {log}"
+    );
+
+    // The dead client and the old process are gone; a fresh start reuses the
+    // same socket name (proving the teardown removed the hand-off files) and
+    // can lock again.
+    drop(locked);
+    drop(conn);
+    drop(input);
+    drop(proc);
+
+    let fresh_token = "ad".repeat(32);
+    let fresh = CompositorProcess::start(&socket_name, std::slice::from_ref(&fresh_token));
+    let (_fresh_conn, mut fresh_queue, mut fresh_state) = connect(&fresh.socket_path);
+    authenticate(&mut fresh_state, &mut fresh_queue, fresh.read_token());
+    let _fresh_locked = lock_and_map(&mut fresh_state, &mut fresh_queue);
+    assert!(
+        fresh_state.locked,
+        "a fresh compositor could not lock again after lock-client loss"
+    );
+    assert!(
+        !fresh_state.configures.is_empty(),
+        "the fresh lock did not configure a surface"
     );
 }
 

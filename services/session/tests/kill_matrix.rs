@@ -20,16 +20,21 @@
 //!
 //! | Killed | Outcome |
 //! |---|---|
-//! | shell / lock UI, Files desktop | restart (`always`); the session keeps running |
+//! | shell / lock UI while unlocked, Files desktop | restart (`always`); the session keeps running |
+//! | shell / lock UI while locked | the compositor ends the session safely; never unlocks |
 //! | settingsd, menu-broker, app-index, notifications, system-status, wallpaperd | restart (`on-failure`); the session keeps running |
 //! | portal backend | restarts (`on-failure`) and fails soft; the session keeps running |
 //! | app (a user-launched client) | a plain client exit: not restarted, never a session event; the session keeps running |
 //! | compositor | the session ends; every other service is stopped; never restarted |
 //!
-//! The shell is the lock UI (`shell/lock/LockScreen.qml`): killing it while
-//! locked is a lock kill. The compositor's fail-secure closure of the lock is
-//! asserted in the compositor conformance suite; here we assert the session
-//! manager restarts it in place, so a locked session returns to a lock UI.
+//! The shell is the lock UI (`shell/lock/LockScreen.qml`). Killing it while
+//! unlocked restarts it in place and keeps the session. Killing it while
+//! locked is a lock kill: the compositor stays fail-secure and ends the
+//! session safely ([ADR 0312](../../docs/design/adr/0312-lock-loss-ends-the-session.md)),
+//! so the outcome is “the session ends safely,” not a frozen lock and not a
+//! return to a lock UI. The compositor conformance suite asserts `locked=1`
+//! after the lock client disappears; this file's supervisor has no lock state,
+//! so it covers the unlocked restart and the anchor-exit teardown below.
 //! The compositor-death behavior itself is documented by T-16.8b.
 
 use std::time::{Duration, Instant};
@@ -226,23 +231,27 @@ fn the_restartable_set_is_exactly_the_shipped_services() {
 }
 
 #[test]
-fn killing_the_shell_lock_ui_restarts_it_and_keeps_the_session() {
+fn killing_the_shell_lock_ui_while_unlocked_restarts_it_and_keeps_the_session() {
     let mut supervisor = running_session();
     let first = supervisor.running_pid("shell").expect("shell is running");
 
+    // The supervisor has no lock state: this is the unlocked case, where the
+    // `always` policy restarts the shell in place. A locked shell death is a
+    // different outcome — the compositor ends the session safely (ADR 0312),
+    // asserted by `session_lock_conformance`.
     assert!(supervisor.kill("shell"), "SIGKILL the shell/lock UI");
     assert!(
         drive_until(&mut supervisor, Duration::from_secs(5), |s| {
             s.restarts("shell") == Some(1) && s.running_pid("shell").is_some()
         }),
-        "the shell restarts in place"
+        "the shell restarts in place while unlocked"
     );
     let second = supervisor.running_pid("shell").expect("a fresh shell pid");
     assert_ne!(first, second, "the restart is a new process");
     assert_eq!(
         supervisor.state(),
         SessionState::Running,
-        "the session does not end"
+        "an unlocked shell death does not end the session"
     );
 
     supervisor.shutdown();
