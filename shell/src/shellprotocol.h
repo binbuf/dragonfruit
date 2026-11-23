@@ -57,6 +57,7 @@ struct xkb_keymap;
 struct xkb_state;
 
 class QSocketNotifier;
+class ClipboardSourceWriter;
 
 struct ShellSurfaceBuffer;
 
@@ -1343,6 +1344,9 @@ private:
     // whole selection has been read.
     void onClipboardReadable(int fd);
     void cancelClipboardRead();
+    // Stop every in-flight clipboard serve and close its fd. Called when the
+    // selection changes, the source is cancelled, or the protocol tears down.
+    void cancelClipboardWriters();
     static void onManagerToplevel(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerFocused(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerOutput(void *data, df_toplevel_manager *manager, df_output *id);
@@ -1680,6 +1684,9 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     QMap<QString, QByteArray> m_clipboardReadPayloads;
     zwlr_data_control_source_v1 *m_clipboardSource = nullptr;
     QMap<QString, QByteArray> m_clipboardSourcePayloads;
+    // MIME -> the asynchronous writer serving the granted fd. A repeat send
+    // for the same MIME supersedes the previous writer.
+    QHash<QString, ClipboardSourceWriter *> m_clipboardWriters;
 
     uint32_t m_coreName = 0;
     uint32_t m_coreVersion = 0;

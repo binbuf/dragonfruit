@@ -96,6 +96,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     gpuchromecapabilities.cpp
     gpuchromecapabilities.h
     clipboardhistory.cpp
+    clipboardwriter.cpp
     compositorpolicy.cpp
     controlcenterpolicy.cpp
     desktopentry.cpp

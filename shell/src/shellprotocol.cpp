@@ -31,6 +31,7 @@
 
 #include "chromescale.h"
 #include "chromestats.h"
+#include "clipboardwriter.h"
 #include "dockdrops.h"
 #include "gpuchromeframeproducer.h"
 #include "dockprojection.h"
@@ -3696,6 +3697,7 @@ void ShellProtocol::teardown()
     if (m_dataDeviceManager)
         wl_data_device_manager_destroy(m_dataDeviceManager);
     cancelClipboardRead();
+    cancelClipboardWriters();
     if (m_clipboardSource)
         zwlr_data_control_source_v1_destroy(m_clipboardSource);
     if (m_dataControlOffer)
@@ -4525,6 +4527,7 @@ void ShellProtocol::onDataControlFinished(void *data, zwlr_data_control_device_v
 {
     auto *self = static_cast<ShellProtocol *>(data);
     self->cancelClipboardRead();
+    self->cancelClipboardWriters();
     if (self->m_dataControlOffer) {
         zwlr_data_control_offer_v1_destroy(self->m_dataControlOffer);
         self->m_dataControlOffer = nullptr;
@@ -4595,16 +4598,51 @@ void ShellProtocol::onDataControlSourceSend(void *data, zwlr_data_control_source
                                             const char *mimeType, int32_t fd)
 {
     auto *self = static_cast<ShellProtocol *>(data);
-    const QByteArray payload =
-        self->m_clipboardSourcePayloads.value(QString::fromUtf8(mimeType));
-    ssize_t written = 0;
-    while (written < payload.size()) {
-        const ssize_t n = ::write(fd, payload.constData() + written, payload.size() - written);
-        if (n <= 0)
-            break;
-        written += n;
+    if (fd < 0)
+        return;
+
+    const QString mime = QString::fromUtf8(mimeType);
+    if (!self->m_clipboardSourcePayloads.contains(mime)) {
+        // Nothing offered under this MIME: close the client's pipe so it sees
+        // EOF rather than waiting for a payload the shell does not have.
+        ::close(fd);
+        return;
     }
-    ::close(fd);
+
+    // A second send for the same MIME supersedes the in-flight writer. The
+    // old writer closes its own fd; this one owns the new fd.
+    if (ClipboardSourceWriter *previous = self->m_clipboardWriters.take(mime)) {
+        previous->cancel();
+        previous->deleteLater();
+    }
+
+    // The payload is implicitly shared with `m_clipboardSourcePayloads`; the
+    // writer never copies it again per write.
+    auto *writer = new ClipboardSourceWriter(fd, self->m_clipboardSourcePayloads.value(mime),
+                                             ClipboardSourceWriter::kDefaultTimeoutMs, self);
+    self->m_clipboardWriters.insert(mime, writer);
+    QObject::connect(writer, &ClipboardSourceWriter::finished, self,
+                     [self, writer, mime](ClipboardSourceWriter::Result) {
+                         if (self->m_clipboardWriters.value(mime) == writer)
+                             self->m_clipboardWriters.remove(mime);
+                         writer->deleteLater();
+                     });
+    if (!writer->isActive()) {
+        // Setup failed before the event loop could take over (e.g. fcntl
+        // failed); the fd is already closed.
+        self->m_clipboardWriters.remove(mime);
+        writer->deleteLater();
+    }
+}
+
+void ShellProtocol::cancelClipboardWriters()
+{
+    const auto writers = m_clipboardWriters;
+    m_clipboardWriters.clear();
+    for (ClipboardSourceWriter *writer : writers) {
+        writer->cancel();
+        writer->deleteLater();
+    }
 }
 
 void ShellProtocol::onDataControlSourceCancelled(void *data, zwlr_data_control_source_v1 *source)
@@ -4613,6 +4651,7 @@ void ShellProtocol::onDataControlSourceCancelled(void *data, zwlr_data_control_s
     if (self->m_clipboardSource == source)
         self->m_clipboardSource = nullptr;
     zwlr_data_control_source_v1_destroy(source);
+    self->cancelClipboardWriters();
     self->m_clipboardSourcePayloads.clear();
 }
 
@@ -4622,6 +4661,9 @@ bool ShellProtocol::offerClipboard(const QStringList &mimes,
     if (!m_dataControlManager || !m_dataControlDevice)
         return false;
 
+    // A new selection replaces every payload the previous one offered, so any
+    // serve still draining belongs to a selection that no longer exists.
+    cancelClipboardWriters();
     m_clipboardSourcePayloads.clear();
     for (const QString &mime : mimes) {
         if (payloads.contains(mime))

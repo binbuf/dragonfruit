@@ -141,6 +141,35 @@ private slots:
         QCOMPARE(history.count(), 0);
     }
 
+    void acceptsOneMiBPayload()
+    {
+        ClipboardHistory history;
+        const QString mime = QStringLiteral("text/plain;charset=utf-8");
+        const QByteArray payload(ClipboardHistory::kMaxEntryBytes, 'x');
+        QVERIFY(history.observe({ mime }, textPayload(payload)));
+        QCOMPARE(history.count(), 1);
+        QCOMPARE(history.totalBytes(), ClipboardHistory::kMaxEntryBytes);
+        QCOMPARE(history.entries().constFirst().toMap().value(QStringLiteral("bytes")).toInt(),
+                 ClipboardHistory::kMaxEntryBytes);
+
+        // The largest accepted entry restores byte-for-byte and survives the
+        // persistence round trip.
+        QStringList restoredMimes;
+        ClipboardHistory::EntryMap restoredPayloads;
+        QVERIFY(history.restore(0, &restoredMimes, &restoredPayloads));
+        QCOMPARE(restoredPayloads.value(mime).size(),
+                 qsizetype(ClipboardHistory::kMaxEntryBytes));
+        QCOMPARE(restoredPayloads.value(mime), payload);
+
+        ClipboardHistory reloaded;
+        QVERIFY(reloaded.fromJson(history.toJson()));
+        QCOMPARE(reloaded.count(), 1);
+        QCOMPARE(reloaded.totalBytes(), ClipboardHistory::kMaxEntryBytes);
+        ClipboardHistory::EntryMap reloadedPayloads;
+        QVERIFY(reloaded.restore(0, nullptr, &reloadedPayloads));
+        QCOMPARE(reloadedPayloads.value(mime), payload);
+    }
+
     void persistenceRoundTrip()
     {
         ClipboardHistory history;

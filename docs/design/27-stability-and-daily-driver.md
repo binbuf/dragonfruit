@@ -181,7 +181,14 @@ real consumer behind it.
 
 No single component failure may require a TTY reboot:
 
-- a clipboard client that never drains its pipe must not block the shell;
+- a clipboard client that never drains its pipe must not block the shell.
+  Every stored entry is served through `ClipboardSourceWriter`
+  (`shell/src/clipboardwriter.*`), which sets the fd non-blocking, writes one
+  chunk per `QSocketNotifier` writable callback, resumes at the last offset on
+  `EAGAIN`, and closes the fd on `EPIPE`, cancellation, or a 2 s deadline. The
+  data-control `send` dispatch never loops on `write()`; a second request for
+  the same MIME, a new selection, source cancellation, and protocol teardown
+  all cancel the in-flight writer;
 - a portal request must time out or cancel when the shell disappears, and a
   restarted shell must query pending requests;
 - a Files desktop that loses the compositor must exit and be restarted;
@@ -189,6 +196,13 @@ No single component failure may require a TTY reboot:
 - a `df_output.set_mode` with a zero/negative refresh must not panic the
   compositor;
 - an Xwayland crash must remove its windows from the model, not leave ghosts.
+
+Clipboard serving is the bounded write in that list. The writer holds the
+payload's implicit share for the life of the transfer, so no per-write copy is
+made. The deadline is a safety net for a client that neither reads nor closes
+its end; a client that closes its read end gets `EPIPE` immediately and does
+not take the shell down (SIGPIPE is blocked around the write and ignored by
+the shell process). ADR 0321 records the decision.
 
 ### 3.5 Data operations are all-or-nothing
 
@@ -259,7 +273,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-07 | Brightness never reaches the panel | T319 |
 | S-08 | Log Out is a live no-op | T313 |
 | S-09 | A hung shell is never recovered | T314 |
-| S-10 | Clipboard-history serving can block the shell forever | T310 |
+| S-10 | Clipboard-history serving can block the shell forever (closed by T310) | T310 |
 | S-11 | Portal requests hang when the shell restarts or a second request arrives | T311 |
 | S-12 | Cross-filesystem directory moves can partially move and report failure | T312 |
 

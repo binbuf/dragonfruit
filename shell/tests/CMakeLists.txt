@@ -881,6 +881,27 @@ set_tests_properties(tst_clipboardhistory PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Async clipboard source writer tests (T310): a full pipe with no reader must
+# time out and close the fd without blocking the process, partial writes resume
+# through the notifier, and cancellation/EPIPE finish cleanly. No Wayland,
+# D-Bus, or QML.
+qt_add_executable(tst_clipboardwriter
+    tst_clipboardwriter.cpp
+)
+target_link_libraries(tst_clipboardwriter PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_clipboardwriter
+    COMMAND tst_clipboardwriter
+)
+set_tests_properties(tst_clipboardwriter PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # polkit agent tests (T-13.6): the helper conversation against fake helper
 # scripts, the D-Bus agent against a fake authority on the private session bus,
 # and — when the host actually runs polkit — a real `pkcheck` request. Run

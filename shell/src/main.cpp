@@ -15,6 +15,7 @@
 #include <QDebug>
 
 #include <cstdio>
+#include <csignal>
 
 #include "shellcontroller.h"
 #include "systemfont.h"
@@ -23,6 +24,10 @@
 
 int main(int argc, char *argv[])
 {
+    // A clipboard client can close its read end before the shell finishes
+    // serving it (T310); never let SIGPIPE terminate the session.
+    std::signal(SIGPIPE, SIG_IGN);
+
     // Keep runtime QML warnings (e.g. Canvas paint errors) visible on stderr.
     qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &message) {
         fprintf(stderr, "dragonfruit-shell: %s\n", message.toLocal8Bit().constData());
