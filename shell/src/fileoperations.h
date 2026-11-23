@@ -33,19 +33,36 @@ struct FileOperationItem
     QString error;
 };
 
+// Move policy and deterministic test seams. Production callers leave both at
+// their defaults: a same-filesystem move is one atomic rename and the
+// cross-filesystem fallback is selected only when `rename(2)` reports EXDEV.
+struct FileMoveOptions
+{
+    // Exercise the copy-to-temp path even when both paths are on one
+    // filesystem. Tests use this instead of depending on a second mount.
+    bool forceCrossFilesystem = false;
+    // Stop after this many copied entries and fail the move. Negative means
+    // no limit. The partial temp is removed and the source is left intact.
+    int failAfterEntries = -1;
+};
+
 // Move each of `sources` into `target` on the calling thread, de-duplicating
-// names and falling back to copy+remove across filesystems. Returns the number
-// moved; `error` receives the last failure. Refuses `target` itself and `/`.
-// This is the synchronous core the asynchronous owner runs on a worker; the
-// unit tests exercise it directly.
+// names and using copy-to-temp-sibling plus rename across filesystems.
+// Returns the number moved; `error` receives the last failure. Refuses
+// `target` itself, `/`, and a directory's own subtree. This is the
+// synchronous core the asynchronous owner runs on a worker; the unit tests
+// exercise it directly.
 int moveFilesIntoFolder(const QString &target, const QStringList &sources,
-                        QString *error = nullptr);
+                        QString *error = nullptr,
+                        const FileMoveOptions &options = FileMoveOptions());
 
 // The per-item form used by the asynchronous owner: one outcome per
 // non-empty source, in input order. `error` receives the last failure.
 QList<FileOperationItem> moveFilesIntoFolderDetailed(const QString &target,
                                                     const QStringList &sources,
-                                                    QString *error = nullptr);
+                                                    QString *error = nullptr,
+                                                    const FileMoveOptions &options
+                                                        = FileMoveOptions());
 
 class FileOperations : public QObject
 {
@@ -81,7 +98,10 @@ public:
     // Move each of `sources` into `target` on the mutation worker. Returns the
     // operation id (> 0), or 0 when there is nothing to move or the target is
     // empty. The result arrives through `operationFinished` exactly once.
-    quint64 moveIntoFolder(const QString &target, const QStringList &sources);
+    // `options` carries the deterministic test seams; production callers use
+    // the defaults.
+    quint64 moveIntoFolder(const QString &target, const QStringList &sources,
+                           const FileMoveOptions &options = FileMoveOptions());
 
     // In-flight counts, for tests and diagnostics.
     int pendingListings() const { return m_listingPending; }

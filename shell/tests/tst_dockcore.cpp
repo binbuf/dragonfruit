@@ -1951,6 +1951,52 @@ private slots:
         QCOMPARE(operations.completedOperation(second).succeeded, 1);
     }
 
+    // T312: the Dock classifies a folder dropped on a folder stack as a move.
+    // If that move fails mid-copy across filesystems, the async owner reports
+    // the failure and the dropped folder is still complete in its original
+    // place; nothing half-moved appears in the stack.
+    void dockDropCrossFilesystemFailureLeavesSourceIntact()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString stack = dir.path() + QStringLiteral("/Stack");
+        const QString source = dir.path() + QStringLiteral("/Dropped");
+        QVERIFY(QDir().mkpath(stack));
+        QVERIFY(QDir().mkpath(source));
+        writeFile(source + QStringLiteral("/a.txt"), QStringLiteral("a"));
+        writeFile(source + QStringLiteral("/b.txt"), QStringLiteral("b"));
+        writeFile(source + QStringLiteral("/c.txt"), QStringLiteral("c"));
+
+        QCOMPARE(dockDropActionFor(QStringLiteral("stack"), DockDropPayload::Folder),
+                 DockDropAction::MoveToFolder);
+
+        FileMoveOptions options;
+        options.forceCrossFilesystem = true;
+        options.failAfterEntries = 2;
+
+        FileOperations operations;
+        QSignalSpy finished(&operations, &FileOperations::operationFinished);
+        QVERIFY(finished.isValid());
+        const quint64 id = operations.moveIntoFolder(stack, {source}, options);
+        QVERIFY(id > 0);
+        QTRY_COMPARE(finished.count(), 1);
+
+        const FileOperations::Result result = operations.completedOperation(id);
+        QCOMPARE(result.id, id);
+        QCOMPARE(result.failed, 1);
+        QVERIFY(!result.ok);
+        QVERIFY(!result.error.isEmpty());
+        QCOMPARE(QFileInfo(source + QStringLiteral("/a.txt")).size(), qint64(1));
+        QCOMPARE(QFileInfo(source + QStringLiteral("/b.txt")).size(), qint64(1));
+        QCOMPARE(QFileInfo(source + QStringLiteral("/c.txt")).size(), qint64(1));
+        QVERIFY(!QFileInfo::exists(stack + QStringLiteral("/Dropped")));
+        QVERIFY(!QFileInfo::exists(stack + QStringLiteral("/Dropped.1")));
+
+        const QStringList stackEntries =
+            QDir(stack).entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot);
+        QVERIFY(stackEntries.isEmpty());
+    }
+
     void folderStacksDeduplicateTheFolderSet()
     {
         QTemporaryDir dir;

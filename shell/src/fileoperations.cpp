@@ -4,12 +4,16 @@
 #include "files_core_list.h"
 
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QThreadPool>
 #include <QUrl>
 #include <QVariantMap>
+
+#include <atomic>
+#include <filesystem>
+#include <system_error>
+#include <unistd.h>
 
 namespace {
 
@@ -97,33 +101,259 @@ QVariantList listFolderOnWorker(const QString &path, QString *error)
     return rows;
 }
 
-// Move a file or directory, falling back to copy+remove across filesystems.
-bool movePath(const QString &src, const QString &dst)
+namespace fs = std::filesystem;
+
+// One cross-filesystem copy in progress. `failAfterEntries` is the test seam
+// that stops the copy mid-tree; production leaves it negative.
+struct MoveCopyState
 {
-    if (QFile::rename(src, dst))
-        return true;
-    const QFileInfo info(src);
-    if (info.isDir() && !info.isSymLink()) {
-        if (!QDir().mkpath(dst))
-            return false;
-        const QDir dir(src);
-        const QFileInfoList entries =
-            dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
-        for (const QFileInfo &entry : entries) {
-            if (!movePath(entry.absoluteFilePath(), dst + QLatin1Char('/') + entry.fileName()))
-                return false;
-        }
-        return QDir(src).removeRecursively();
-    }
-    if (QFile::copy(src, dst))
-        return QFile::remove(src);
-    return false;
+    int copiedEntries = 0;
+    int failAfterEntries = -1;
+    QString error;
+};
+
+fs::path nativePath(const QString &path)
+{
+    return fs::path(path.toStdString());
 }
 
-// A free name inside `dir` for `name`: `name`, else `name.N`.
+QString displayPath(const fs::path &path)
+{
+    return QString::fromStdString(path.string());
+}
+
+// `QFileInfo::exists` follows symlinks, so a broken link would look absent.
+bool pathExists(const QString &path)
+{
+    const QFileInfo info(path);
+    return info.exists() || info.isSymLink();
+}
+
+QString copyFailure(const fs::path &path, const std::error_code &error)
+{
+    return QStringLiteral("cannot copy %1: %2")
+        .arg(displayPath(path), QString::fromStdString(error.message()));
+}
+
+// Copy permissions and modification time where the filesystem supports them.
+// Metadata is best-effort: losing it must not turn a completed move into a
+// failure, and a filesystem without POSIX modes simply rejects the call.
+void preserveMetadata(const fs::path &src, const fs::path &dst)
+{
+    std::error_code error;
+    const fs::file_status status = fs::status(src, error);
+    if (!error)
+        fs::permissions(dst, status.permissions(), fs::perm_options::replace, error);
+
+    error.clear();
+    const fs::file_time_type mtime = fs::last_write_time(src, error);
+    if (!error)
+        fs::last_write_time(dst, mtime, error);
+}
+
+// Make a copied tree removable even when the source had read-only directory
+// modes. Cleanup must not fail because a metadata-preserving copy already
+// applied the source's permissions to the partial temp.
+void makeTreeWritable(const fs::path &path)
+{
+    std::error_code error;
+    const fs::file_status status = fs::symlink_status(path, error);
+    if (error || fs::is_symlink(status) || !fs::is_directory(status))
+        return;
+    fs::permissions(path, fs::perms::owner_write | fs::perms::owner_exec,
+                    fs::perm_options::add, error);
+
+    error.clear();
+    fs::directory_iterator it(path, error);
+    if (error)
+        return;
+    for (const fs::directory_entry &entry : it)
+        makeTreeWritable(entry.path());
+}
+
+void removeTree(const QString &path)
+{
+    makeTreeWritable(nativePath(path));
+    std::error_code error;
+    fs::remove_all(nativePath(path), error);
+    if (error) {
+        qWarning() << "fileoperations: could not remove temporary" << path
+                   << QString::fromStdString(error.message());
+    }
+}
+
+// Copy one entry (file, directory, or symlink) and, for directories, its whole
+// subtree. A failure leaves the partial destination for the caller to remove;
+// the source is never touched here.
+bool copyEntry(const fs::path &src, const fs::path &dst, MoveCopyState *state)
+{
+    if (state->failAfterEntries >= 0
+        && state->copiedEntries >= state->failAfterEntries) {
+        state->error = QStringLiteral("simulated copy failure after %1 entries")
+                           .arg(state->copiedEntries);
+        return false;
+    }
+
+    std::error_code error;
+    const fs::file_status status = fs::symlink_status(src, error);
+    if (error) {
+        state->error = QStringLiteral("cannot inspect %1: %2")
+                           .arg(displayPath(src),
+                                QString::fromStdString(error.message()));
+        return false;
+    }
+
+    if (fs::is_symlink(status)) {
+        const fs::path target = fs::read_symlink(src, error);
+        if (error) {
+            state->error = copyFailure(src, error);
+            return false;
+        }
+        fs::create_symlink(target, dst, error);
+        if (error) {
+            state->error = copyFailure(src, error);
+            return false;
+        }
+    } else if (fs::is_directory(status)) {
+        fs::create_directory(dst, error);
+        if (error) {
+            state->error = copyFailure(src, error);
+            return false;
+        }
+        fs::directory_iterator it(src, error);
+        if (error) {
+            state->error = copyFailure(src, error);
+            return false;
+        }
+        while (it != fs::directory_iterator()) {
+            const fs::path child = it->path();
+            if (!copyEntry(child, dst / child.filename(), state))
+                return false;
+            it.increment(error);
+            if (error) {
+                state->error = copyFailure(src, error);
+                return false;
+            }
+        }
+        // After the children, so creating them does not rewrite the mtime.
+        preserveMetadata(src, dst);
+    } else if (fs::is_regular_file(status)) {
+        fs::copy_file(src, dst, fs::copy_options::none, error);
+        if (error) {
+            state->error = copyFailure(src, error);
+            return false;
+        }
+        preserveMetadata(src, dst);
+    } else {
+        state->error = QStringLiteral("cannot move %1: unsupported file type")
+                           .arg(displayPath(src));
+        return false;
+    }
+
+    ++state->copiedEntries;
+    return true;
+}
+
+// A free hidden sibling in the destination folder. It is on the destination
+// filesystem by construction, so the final rename cannot cross a mount.
+QString makeTempSibling(const QString &parent)
+{
+    static std::atomic<quint64> counter{0};
+    for (;;) {
+        const QString candidate =
+            parent + QStringLiteral("/.dragonfruit-move-%1-%2")
+                         .arg(::getpid())
+                         .arg(counter.fetch_add(1) + 1);
+        if (!pathExists(candidate))
+            return candidate;
+    }
+}
+
+// Cross-filesystem move: copy the whole entry into a temp sibling, rename the
+// temp into place, then remove the source. Any copy or rename failure removes
+// the temp and leaves the source complete.
+bool moveAcrossFilesystems(const QString &src, const QString &dst,
+                           const FileMoveOptions &options, QString *error)
+{
+    const QString parent = QFileInfo(dst).absolutePath();
+    if (parent.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("cannot resolve the destination folder for %1").arg(dst);
+        return false;
+    }
+
+    const QString temp = makeTempSibling(parent);
+    MoveCopyState state;
+    state.failAfterEntries = options.failAfterEntries;
+    if (!copyEntry(nativePath(src), nativePath(temp), &state)) {
+        removeTree(temp);
+        if (error)
+            *error = state.error;
+        return false;
+    }
+
+    // `uniqueName` reserved this name before the copy. Re-check so a
+    // concurrently created entry is never overwritten by the rename.
+    if (pathExists(dst)) {
+        removeTree(temp);
+        if (error)
+            *error = QStringLiteral("destination appeared during the move: %1").arg(dst);
+        return false;
+    }
+
+    std::error_code renameError;
+    fs::rename(nativePath(temp), nativePath(dst), renameError);
+    if (renameError) {
+        removeTree(temp);
+        if (error) {
+            *error = QStringLiteral("cannot rename %1 into place: %2")
+                         .arg(temp, QString::fromStdString(renameError.message()));
+        }
+        return false;
+    }
+
+    // The destination is complete. Removing the source is cleanup; if it
+    // fails, deleting a good destination would lose data, so the move stays
+    // complete and the leftover is reported. Read-only source directories are
+    // made writable so the normal case still finishes.
+    makeTreeWritable(nativePath(src));
+    std::error_code removeError;
+    fs::remove_all(nativePath(src), removeError);
+    if (removeError) {
+        qWarning() << "fileoperations: moved" << src << "to" << dst
+                   << "but could not remove the source:"
+                   << QString::fromStdString(removeError.message());
+    }
+    return true;
+}
+
+// Move a file or directory. Same-filesystem moves are one atomic rename;
+// EXDEV selects the copy-to-temp path.
+bool movePath(const QString &src, const QString &dst,
+              const FileMoveOptions &options, QString *error)
+{
+    if (!options.forceCrossFilesystem) {
+        std::error_code renameError;
+        fs::rename(nativePath(src), nativePath(dst), renameError);
+        if (!renameError)
+            return true;
+        if (renameError != std::errc::cross_device_link) {
+            if (error) {
+                *error = QStringLiteral("cannot move %1 into %2: %3")
+                             .arg(src, dst,
+                                  QString::fromStdString(renameError.message()));
+            }
+            return false;
+        }
+    }
+    return moveAcrossFilesystems(src, dst, options, error);
+}
+
+// A free name inside `dir` for `name`: `name`, else `name.N`. A broken
+// symlink counts as occupied so the rename cannot replace it.
 QString uniqueName(const QString &dir, const QString &name)
 {
-    if (!QFileInfo::exists(dir + QLatin1Char('/') + name))
+    if (!pathExists(dir + QLatin1Char('/') + name))
         return name;
     QString stem = name;
     QString extension;
@@ -135,18 +365,19 @@ QString uniqueName(const QString &dir, const QString &name)
     for (int i = 1;; ++i) {
         const QString candidate =
             stem + QLatin1Char('.') + QString::number(i) + extension;
-        if (!QFileInfo::exists(dir + QLatin1Char('/') + candidate))
+        if (!pathExists(dir + QLatin1Char('/') + candidate))
             return candidate;
     }
 }
 
 } // namespace
 
-int moveFilesIntoFolder(const QString &target, const QStringList &sources, QString *error)
+int moveFilesIntoFolder(const QString &target, const QStringList &sources,
+                        QString *error, const FileMoveOptions &options)
 {
     QString lastError;
     const QList<FileOperationItem> outcomes =
-        moveFilesIntoFolderDetailed(target, sources, &lastError);
+        moveFilesIntoFolderDetailed(target, sources, &lastError, options);
     int moved = 0;
     for (const FileOperationItem &item : outcomes) {
         if (item.ok)
@@ -159,7 +390,8 @@ int moveFilesIntoFolder(const QString &target, const QStringList &sources, QStri
 
 QList<FileOperationItem> moveFilesIntoFolderDetailed(const QString &target,
                                                      const QStringList &sources,
-                                                     QString *error)
+                                                     QString *error,
+                                                     const FileMoveOptions &options)
 {
     QList<FileOperationItem> outcomes;
     outcomes.reserve(sources.size());
@@ -203,12 +435,21 @@ QList<FileOperationItem> moveFilesIntoFolderDetailed(const QString &target,
         const QString absolute = info.absoluteFilePath();
         if (absolute == root || absolute.startsWith(root + QLatin1Char('/'))) {
             item.error = QStringLiteral("refusing to move %1 into itself").arg(absolute);
+        } else if (info.isDir() && !info.isSymLink()
+                   && root.startsWith(absolute + QLatin1Char('/'))) {
+            // Copying a directory into its own subtree would recurse forever;
+            // the cross-filesystem temp would land inside the source.
+            item.error = QStringLiteral("refusing to move %1 into its own subtree")
+                             .arg(absolute);
         } else if (!info.exists() && !info.isSymLink()) {
             item.error = QStringLiteral("no such file: %1").arg(absolute);
         } else {
             const QString name = uniqueName(root, info.fileName());
-            if (movePath(absolute, root + QLatin1Char('/') + name))
+            QString moveError;
+            if (movePath(absolute, root + QLatin1Char('/') + name, options, &moveError))
                 item.ok = true;
+            else if (!moveError.isEmpty())
+                item.error = moveError;
             else
                 item.error = QStringLiteral("cannot move %1 into %2").arg(absolute, root);
         }
@@ -260,7 +501,8 @@ bool FileOperations::listFolder(const QString &path, quint64 requestId)
     return true;
 }
 
-quint64 FileOperations::moveIntoFolder(const QString &target, const QStringList &sources)
+quint64 FileOperations::moveIntoFolder(const QString &target, const QStringList &sources,
+                                       const FileMoveOptions &options)
 {
     QStringList items;
     items.reserve(sources.size());
@@ -274,13 +516,13 @@ quint64 FileOperations::moveIntoFolder(const QString &target, const QStringList 
     const quint64 id = m_nextOperationId++;
     ++m_operationPending;
     const QString root = QDir(target).absolutePath();
-    m_mutationPool->start([this, id, root, items]() {
+    m_mutationPool->start([this, id, root, items, options]() {
         FileOperations::Result result;
         result.id = id;
         result.kind = Kind::Move;
         result.target = root;
         QString error;
-        result.items = moveFilesIntoFolderDetailed(root, items, &error);
+        result.items = moveFilesIntoFolderDetailed(root, items, &error, options);
         for (const FileOperationItem &item : result.items) {
             if (item.ok)
                 ++result.succeeded;

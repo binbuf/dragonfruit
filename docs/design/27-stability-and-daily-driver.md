@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -217,9 +217,28 @@ the shell process). ADR 0321 records the decision.
 
 ### 3.5 Data operations are all-or-nothing
 
-A directory move between filesystems is copy-to-temp, rename, remove-source.
-On any error the temporary destination is removed and the source is left
-intact. A retry must not create `name.1` beside a half-moved `name`.
+A move within one filesystem is a single `rename(2)`: the destination either
+appears complete or the source stays where it was. Across filesystems
+`rename(2)` reports `EXDEV`, so the shell copies the entry into a hidden temp
+sibling in the destination folder, renames that temp into the requested name,
+and only then removes the source. The temp is on the destination filesystem
+by construction, so the second rename is atomic and never crosses a mount.
+
+The source is never touched until the destination rename succeeds. Any copy
+or rename error removes the partial temp (including read-only directories
+left by metadata preservation) and leaves the source complete. The
+destination name comes from the existing generated-name helper, so a retry
+after a failure reuses the original name and never creates `name.1` beside a
+half-moved `name`; a broken symlink counts as occupied.
+
+Permissions and modification times are copied where the filesystem supports
+them. Metadata loss is best-effort and does not fail an otherwise complete
+move. Symlinks are copied as links, not followed. If source removal fails
+after the destination rename, the destination is already complete: the move
+stays successful and the leftover source is logged rather than deleting good
+data. A directory is never moved into its own subtree. The synchronous core
+and the Dock's asynchronous owner share this path; ADR
+[0323](adr/0323-cross-filesystem-move-atomicity.md) records the decision.
 
 ### 3.6 Multi-monitor is per-output
 
@@ -286,7 +305,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-09 | A hung shell is never recovered | T314 |
 | S-10 | Clipboard-history serving can block the shell forever (closed by T310) | T310 |
 | S-11 | Portal requests hang when the shell restarts or a second request arrives | T311 |
-| S-12 | Cross-filesystem directory moves can partially move and report failure | T312 |
+| S-12 | Cross-filesystem directory moves can partially move and report failure (closed by T312) | T312 |
 
 ### P1 — first-week friction
 

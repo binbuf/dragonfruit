@@ -232,6 +232,26 @@ set_tests_properties(tst_dockcore PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Filesystem move tests (T312): same-filesystem rename, cross-filesystem
+# copy-to-sibling + rename, mid-copy rollback, metadata preservation, name
+# collisions, and permission-denied cleanup. No Wayland, QML, or compositor.
+qt_add_executable(tst_fileoperations
+    tst_fileoperations.cpp
+)
+target_link_libraries(tst_fileoperations PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_fileoperations
+    COMMAND tst_fileoperations
+)
+set_tests_properties(tst_fileoperations PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Launch-environment tests (T309): the shell reads the compositor's Xwayland
 # DISPLAY hand-off at launch time, trims it, and removes a stale inherited
 # DISPLAY when the file is absent or empty. The last case starts a real
