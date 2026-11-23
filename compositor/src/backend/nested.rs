@@ -745,11 +745,15 @@ impl NestedData {
         state
             .stats
             .record_frame_stage(crate::state::FrameStage::Submit, done.duration);
+        // T325: a zero/negative mode refresh must not divide by zero and panic
+        // inside `Duration::from_secs_f64`. The 60 Hz period is a diagnostic
+        // fallback, not a refresh policy.
         let refresh = pending
             .output
             .current_mode()
-            .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
-            .unwrap_or(Duration::from_secs_f64(1.0 / 60.0));
+            .filter(|mode| mode.refresh > 0)
+            .map(|mode| dragonfruit_compositor::refresh::mode_period(mode.refresh))
+            .unwrap_or(dragonfruit_compositor::refresh::FALLBACK_PERIOD);
         if done.duration > refresh.saturating_mul(2) {
             state.stats.present_stalls = state.stats.present_stalls.saturating_add(1);
             crate::trace::log(

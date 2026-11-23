@@ -1454,10 +1454,12 @@ fn frame_finish(
             .surfaces
             .get(&crtc)
             .and_then(|surface| surface.output.current_mode())
-            .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
-    };
-    let Some(frame_duration) = frame_duration else {
-        return;
+            // T325: a zero/negative mode refresh must not divide by zero and
+            // panic inside `Duration::from_secs_f64`. The 60 Hz period is a
+            // diagnostic fallback, not a refresh policy.
+            .filter(|mode| mode.refresh > 0)
+            .map(|mode| dragonfruit_compositor::refresh::mode_period(mode.refresh))
+            .unwrap_or(dragonfruit_compositor::refresh::FALLBACK_PERIOD)
     };
 
     // Cancel any pending vblank throttle timer for this surface.

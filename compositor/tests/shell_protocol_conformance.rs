@@ -119,6 +119,8 @@ struct TestClient {
     output_reserved: Vec<(u32, u32)>,
     output_geometries: Vec<(i32, i32, i32, i32)>,
     output_modes: Vec<(u32, u32, u32)>,
+    /// `df_output.done` acks, one per output request (T325).
+    output_done: usize,
     output_transforms: Vec<u32>,
     output_brightness: Vec<f64>,
     /// `df_output.dpms` events: `(on, fallback)` in arrival order (T316).
@@ -456,6 +458,7 @@ impl Dispatch<df_output::DfOutput, ()> for TestClient {
             } => state
                 .output_material_role_states
                 .push((role, tier, blur_active, fallback)),
+            df_output::Event::Done => state.output_done += 1,
             _ => {}
         }
     }
@@ -4136,6 +4139,109 @@ fn malformed_private_traffic_never_crashes() {
     let _ = queue.roundtrip(&mut state);
 
     // --- still alive: a fresh request round-trips ------------------------
+    state.done_count = 0;
+    manager.create_workspace();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.done_count > 0,
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T325: a `df_output.set_mode` with a zero, negative, or absurd refresh must
+/// be rejected without panicking the compositor. The request is still acked,
+/// and the ack reports the live mode rather than the rejected one.
+#[test]
+fn set_mode_rejects_a_malformed_refresh() {
+    let token = "78".repeat(32);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-set-mode-refresh",
+        std::slice::from_ref(&token),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && !state.output_modes.is_empty(),
+    );
+
+    let output = state.outputs[0].clone();
+    let live = *state
+        .output_modes
+        .last()
+        .expect("the output reported a mode");
+    assert!(
+        live.2 > 0,
+        "the live mode must have a positive refresh: {live:?}"
+    );
+
+    // `refresh` is a uint on the wire. A negative value arrives as its
+    // two's-complement `i32` after the compositor's cast, so `u32::MAX` is
+    // -1 mHz and `i32::MIN as u32` is the most negative value.
+    let malformed = [
+        (1920u32, 1080u32, 0u32),      // zero refresh
+        (1920, 1080, u32::MAX),        // -1 mHz
+        (1920, 1080, i32::MIN as u32), // negative
+        (1920, 1080, 1_000_001),       // above the 1000 Hz cap
+        (1920, 1080, u32::MAX / 2),    // huge
+        (0, 1080, 60_000),             // zero width
+        (u32::MAX, 1080, 60_000),      // size overflows i32
+    ];
+    let done_before = state.output_done;
+    let modes_before = state.output_modes.len();
+    for (width, height, refresh) in malformed {
+        output.set_mode(width, height, refresh);
+    }
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_done >= done_before + malformed.len(),
+    );
+    assert_eq!(
+        state.output_modes.len(),
+        modes_before + malformed.len(),
+        "every rejected request is still acked with the live mode"
+    );
+    for mode in &state.output_modes[modes_before..] {
+        assert_eq!(*mode, live, "a rejected mode must not become the live mode");
+    }
+
+    // A valid mode still applies, so the validation is not a blanket refusal.
+    let accepted = (1600u32, 900u32, 60_000u32);
+    output.set_mode(accepted.0, accepted.1, accepted.2);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_modes.last() == Some(&accepted),
+    );
+
+    // Still alive: a fresh request round-trips.
     state.done_count = 0;
     manager.create_workspace();
     wait_for(

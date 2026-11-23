@@ -338,6 +338,26 @@ pub struct OutputUserData {
 
 // --- helpers ---------------------------------------------------------------
 
+/// The highest plausible mode refresh a trusted client may request, in
+/// millihertz (1000 Hz). The refresh scheduler applies its own 24–500 Hz
+/// policy; this is only the protocol's "not absurd" ceiling. A persisted mode
+/// or a shell bug must not be able to install an arbitrary value.
+const MAX_MODE_REFRESH_MHZ: i32 = 1_000_000;
+
+/// A client-supplied `df_output.set_mode` is safe to install when the size
+/// fits Smithay's `Size<i32, Physical>` and the refresh is a positive,
+/// plausible millihertz value. A zero/negative refresh would make the render
+/// paths divide by zero (and `Duration::from_secs_f64` panic on `inf`); an
+/// absurd one is not a real panel. The ack still reports the live mode.
+fn valid_mode(width: u32, height: u32, refresh: i32) -> bool {
+    width > 0
+        && height > 0
+        && width <= i32::MAX as u32
+        && height <= i32::MAX as u32
+        && refresh > 0
+        && refresh <= MAX_MODE_REFRESH_MHZ
+}
+
 fn rgba_to_argb(color: [f32; 4]) -> u32 {
     let channel = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
     (channel(color[3]) << 24)
@@ -2993,13 +3013,15 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
             } => {
                 // Client-controlled mode values must never construct an
                 // invalid `Size` (a negative dimension panics inside
-                // Smithay). Reject nonsensical modes instead of aborting
-                // the session; the ack below still reports the live mode.
-                if width > 0 && height > 0 && width <= i32::MAX as u32 && height <= i32::MAX as u32
-                {
+                // Smithay) or a zero/negative refresh (the render paths would
+                // divide by zero). Reject nonsensical modes instead of
+                // aborting the session; the ack below still reports the live
+                // mode.
+                let refresh = refresh as i32;
+                if valid_mode(width, height, refresh) {
                     let mode = Mode {
                         size: (width as i32, height as i32).into(),
-                        refresh: refresh as i32,
+                        refresh,
                     };
                     // T238 P0: an unchanged mode must not reconfigure every
                     // chrome surface. The Displays pane can echo the live mode.
@@ -3017,7 +3039,8 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                     }
                 } else {
                     eprintln!(
-                        "dragonfruit-compositor: ignoring invalid mode request {width}x{height}"
+                        "dragonfruit-compositor: ignoring invalid mode request \
+                         {width}x{height}@{refresh}mHz"
                     );
                 }
             }
@@ -3239,7 +3262,30 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{protocol_string, protocol_string_opt};
+    use super::{protocol_string, protocol_string_opt, valid_mode};
+
+    #[test]
+    fn mode_validation_rejects_a_malformed_refresh() {
+        assert!(valid_mode(1920, 1080, 24_000));
+        assert!(valid_mode(1920, 1080, 60_000));
+        assert!(valid_mode(1920, 1080, 1_000_000));
+        for (width, height, refresh) in [
+            (0, 1080, 60_000),
+            (1920, 0, 60_000),
+            (u32::MAX, 1080, 60_000),
+            (1920, u32::MAX, 60_000),
+            (1920, 1080, 0),
+            (1920, 1080, -1),
+            (1920, 1080, i32::MIN),
+            (1920, 1080, 1_000_001),
+            (1920, 1080, i32::MAX),
+        ] {
+            assert!(
+                !valid_mode(width, height, refresh),
+                "{width}x{height}@{refresh}mHz must be rejected"
+            );
+        }
+    }
 
     #[test]
     fn protocol_strings_never_contain_nul() {

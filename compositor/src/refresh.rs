@@ -193,6 +193,14 @@ impl OutputRefresh {
     }
 }
 
+/// One frame at a Smithay mode refresh, defensively. A zero/negative value is
+/// the 60 Hz fallback and an absurd positive value is clamped to the model's
+/// sane range. Render paths use this instead of `Duration::from_secs_f64(1000.0
+/// / refresh)`, which turns a zero refresh into `inf` and panics.
+pub fn mode_period(refresh_mhz: i32) -> Duration {
+    OutputRefresh::from_mhz(refresh_mhz, RefreshSource::Mode, VrrState::Unknown).period
+}
+
 /// One period in nanoseconds from a millihertz refresh. The caller guarantees
 /// `refresh_mhz > 0`; integer truncation keeps the value below one nanosecond
 /// of error per frame.
@@ -339,6 +347,16 @@ mod tests {
             assert_eq!(refresh.source, RefreshSource::Fallback);
             assert_eq!(refresh.period, FALLBACK_PERIOD);
         }
+    }
+
+    #[test]
+    fn mode_period_never_divides_by_a_malformed_refresh() {
+        assert_eq!(mode_period(0), FALLBACK_PERIOD);
+        assert_eq!(mode_period(-1), FALLBACK_PERIOD);
+        assert_eq!(mode_period(i32::MIN), FALLBACK_PERIOD);
+        assert_eq!(mode_period(60_000), Duration::from_nanos(16_666_666));
+        // An absurd positive value is clamped, never converted to `inf`.
+        assert_eq!(mode_period(i32::MAX), Duration::from_nanos(2_000_000));
     }
 
     #[test]

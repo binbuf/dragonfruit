@@ -267,8 +267,14 @@ No single component failure may require a TTY reboot:
   dragonfruit-session.target`, and only a host with neither path disables the
   row with a reason. ADR [0324](adr/0324-log-out-through-logind.md) records
   the decision;
-- a `df_output.set_mode` with a zero/negative refresh must not panic the
-  compositor;
+- a `df_output.set_mode` with a zero, negative, or absurd refresh must not
+  panic the compositor. The compositor's `valid_mode` helper rejects a zero
+  size, a non-positive refresh, and a refresh above 1000 Hz (millihertz on the
+  wire); the request is still acked, and the ack reports the live mode, not
+  the rejected one. The DRM and nested frame paths defensively filter a
+  non-positive `current_mode().refresh` and use the 60 Hz fallback period
+  instead of dividing by it, so a persisted mode or a backend bug cannot reach
+  `Duration::from_secs_f64(inf)` (T325);
 - an Xwayland crash must remove its windows from the model, not leave ghosts.
 
 Clipboard serving is the bounded write in that list. The writer holds the
@@ -520,7 +526,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-18 | Pointer constraints are refused for games/remote desktop; refusals grow unbounded (closed by T322) | T322 |
 | S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output (closed by T323) | T323 |
 | S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output | T324 |
-| S-21 | `df_output.set_mode` accepts a zero/negative refresh and panics the compositor | T325 |
+| S-21 | `df_output.set_mode` accepts a zero/negative refresh and panics the compositor (closed by T325) | T325 |
 | S-22 | Xwayland restart leaves ghost windows and can lose new X11 windows | T326 |
 | S-23 | Unpinning every Dock app is overwritten with defaults on next login | T336 |
 | S-24 | Settings Desktop & Dock and wallpaper paths block the GUI thread | T337, T338 |

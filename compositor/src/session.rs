@@ -190,8 +190,8 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
             .next()
             .and_then(|output| output.current_mode())
             .filter(|mode| mode.refresh > 0)
-            .map(|mode| std::time::Duration::from_secs_f64(1_000.0 / f64::from(mode.refresh)))
-            .unwrap_or_else(|| std::time::Duration::from_millis(16));
+            .map(|mode| dragonfruit_compositor::refresh::mode_period(mode.refresh))
+            .unwrap_or(dragonfruit_compositor::refresh::FALLBACK_PERIOD);
         let timeout = (ticking || render_failures > 0).then_some(refresh_interval);
         event_loop
             .dispatch(timeout, &mut state)
