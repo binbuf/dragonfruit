@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -313,12 +313,9 @@ at the next enabled deadline and emits the stable `idle-dim`, `idle-blank`,
 `idle-lock`, `idle-suspend`, and `idle-awake` strings through the existing
 `input_action` event. A late tick emits every crossed stage in order, so the
 shell still dims, blanks, and locks before it suspends. A disabled stage (`0`)
-is skipped and does not constrain a later stage. The shell-side forwarding of
-the `idle.*` values with `df_toplevel_manager.set_idle_policy` (private protocol
-v14) and the dim/blank/lock/suspend effects are T317; older compositors ignore
-the additive request. T315 ships the request and the compositor timer; the
-compositor already applies its shipped defaults until the shell sends a
-policy.
+is skipped and does not constrain a later stage. T315 ships the request and the
+compositor timer; the compositor applies its shipped defaults until the shell
+sends a policy. Older compositors ignore the additive v14 request.
 
 T316 lands the panel-power half as a per-output connector property
 ([ADR 0326](adr/0326-per-output-dpms.md)). `SurfaceData` keeps the connector
@@ -335,6 +332,22 @@ named fallback through `df_output.dpms` (`none|nested|headless|failed`); a
 failed DRM write is logged, leaves the previous state live, and never ends the
 session. The actual panel-off remains hardware-open for the T347 DRM pass;
 headless conformance proves the request/ack and the fallback.
+
+T317 lands the shell effects. `shell/src/idlepolicy.*` reads `idle.dim`,
+`idle.blank`, `idle.lock`, `idle.suspend`, and `power.preventSleep` from
+settingsd and forwards one normalized `df_toplevel_manager.set_idle_policy`
+snapshot on startup and on every change; `power.preventSleep` zeroes the
+suspend stage so it never arms. The controller maps the compositor's actions:
+`idle-dim` maps a full-output translucent `overlay` layer surface (namespace
+`idle-dim`, empty input region, no keyboard) and drops the forwarded brightness
+to half until T319 owns the panel backlight; `idle-blank` calls
+`df_output.set_dpms(false)` and remembers the pre-blank state; `idle-lock` calls
+the existing `lockScreen()`; `idle-suspend` calls the existing logind `Suspend`;
+`idle-awake` restores the pre-dim brightness and the pre-blank DPMS state.
+Disabled stages (`0`) do nothing, repeated stages are idempotent, and no new
+HUD or OSD is introduced. `tst_idle` drives the pure controller with a mock
+protocol/logind sink, and the settings-consumer table marks all five keys
+verified.
 
 The compositor deliberately duplicates the normalized stage rules rather than
 adding a dependency edge to `dragonfruit-session`. `idle_policy_conformance`

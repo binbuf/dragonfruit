@@ -21,6 +21,7 @@
 #include <QVariantList>
 
 #include <functional>
+#include <memory>
 #include <optional>
 
 #include "compositorpolicy.h"
@@ -38,6 +39,7 @@
 #include "fileoperations.h"
 #include "focusschedule.h"
 #include "folderstacks.h"
+#include "idlepolicy.h"
 #include "lockauth.h"
 #include "materialpolicy.h"
 #include "menubrokerclient.h"
@@ -993,6 +995,24 @@ private:
     // compositor (`df_output.set_scale` / `df_output.set_transform`). Runs on
     // every `changed`/`refreshed` and once after the protocol connects.
     void applyDisplayPolicy();
+    // T317: re-read `idle.*` and `power.preventSleep` and forward the one
+    // normalized policy to the compositor (`set_idle_policy`). Runs on every
+    // `changed`/`refreshed` and once after the protocol connects.
+    void applyIdlePolicy();
+    // T317: one compositor idle action (`idle-dim`, `idle-blank`, ...).
+    void handleIdleAction(const QString &action);
+    // T317 capture seam (`DF_IDLE_CAPTURE_DIR`): ask the compositor for a
+    // full-output still at a stage transition. Dev/evidence only; never set in
+    // a normal session.
+    void captureIdleStage(const QString &dir, const QString &stage);
+    // T317: map/unmap the dim overlay and apply/restore the pre-dim
+    // brightness factor. The overlay is the visible effect until T319 owns
+    // the panel backlight.
+    void setIdleDimmed(bool dimmed);
+    // T317: the dim overlay resolved its full-output size.
+    void onIdleDimConfigured(int width, int height);
+    // T317: paint the translucent overlay at the configured output size.
+    void renderIdleDim();
     // Startup ordering: wait (bounded) for settingsd's first `GetAll` snapshot
     // before any chrome scene is created. The shell is the display-policy
     // forwarder, so the first configure must already use the persisted scale,
@@ -1424,6 +1444,18 @@ private:
     // a battery/AC transition re-sends the same selection with a new level.
     double m_displayBrightness = 1.0;
     bool m_displaySent = false;
+    // T317: the settingsd idle/power view and its stage effects. The
+    // compositor owns the timer; this controller only forwards the policy and
+    // applies the actions it receives.
+    std::unique_ptr<IdleController> m_idleController;
+    // Paths requested by the idle capture seam, so the normal screenshot
+    // delivery does not rename or delete them.
+    QSet<QString> m_idleCapturePaths;
+    // The dim overlay's configured size (0 until the compositor configures
+    // it) and whether the overlay is currently mapped.
+    int m_idleDimWidth = 0;
+    int m_idleDimHeight = 0;
+    bool m_idleDimActive = false;
     // The typed Dock view of the client's keys, refreshed on every change.
     DockConfig m_dockConfig;
     // True while a local write is in flight, so the client's synchronous

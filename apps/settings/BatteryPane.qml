@@ -784,7 +784,7 @@ Item {
                     width: parent.width
                     label: qsTr("Prevent sleep")
                     settingsId: "options.preventSleep"
-                    owner: "settingsd -> session/idle"
+                    owner: "settingsd -> compositor idle"
                     settingsKey: "power.preventSleep"
                     description: qsTr("Disable the automatic suspend stage. Dim, "
                                       + "blank, and lock still apply.")

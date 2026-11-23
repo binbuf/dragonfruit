@@ -599,6 +599,28 @@ ShellController::ShellController(QObject *parent)
     // T314: one GUI-thread heartbeat object. `startShellWatchdog()` loads
     // libsystemd and arms it after the event loop is about to run.
     m_watchdog = new ShellWatchdog(this);
+    // T317: the shell is the idle effect owner. The compositor owns the
+    // timer and emits the actions; these callbacks map them onto the one
+    // lock/logind/DPMS path the shell already owns.
+    m_idleController = std::make_unique<IdleController>(IdleEffects{
+        [this](const IdleCompositorPolicy &policy) {
+            if (!m_protocol)
+                return;
+            m_protocol->setIdlePolicy(policy.dim, policy.blank, policy.lock,
+                                      policy.suspend);
+            qInfo() << "shell: idle policy forwarded"
+                    << "dim=" << policy.dim << "blank=" << policy.blank
+                    << "lock=" << policy.lock << "suspend=" << policy.suspend;
+        },
+        [this](bool dimmed) { setIdleDimmed(dimmed); },
+        [this]() { return m_protocol ? m_protocol->outputDpmsOn() : true; },
+        [this](bool on) {
+            if (m_protocol)
+                m_protocol->setDpms(on);
+        },
+        [this]() { lockScreen(); },
+        [this]() { performSessionAction(QStringLiteral("sleep")); },
+    });
 }
 
 ShellController::~ShellController()
@@ -738,6 +760,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::applyDisplayPolicy);
     connect(m_settingsClient, &SettingsClient::refreshed, this,
             &ShellController::applyDisplayPolicy);
+    // T317: the idle/power policy is another view of the same client; forward
+    // it to the compositor on every change and fresh snapshot.
+    connect(m_settingsClient, &SettingsClient::changed, this,
+            &ShellController::applyIdlePolicy);
+    connect(m_settingsClient, &SettingsClient::refreshed, this,
+            &ShellController::applyIdlePolicy);
     // T-18.1b: the provider's resolved defaults are a second wallpaper input;
     // subscribing here means the shipped default reaches the compositor even
     // when settingsd is absent, and a provider restart re-syncs it.
@@ -840,6 +868,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // seed the scale from it too so the very first configure is already at the
     // persisted scale even if the compositor's scale event is still in flight.
     applyDisplayPolicy();
+    // T317: forward the idle/power policy. The compositor's timer is live with
+    // its shipped defaults; this makes settingsd authoritative before the
+    // first idle deadline.
+    applyIdlePolicy();
     if (m_settingsSnapshotReceived && m_settingsClient
         && m_settingsClient->isAvailable()) {
         m_chromeScale = ChromeScale::sanitize(m_displaySettings.scale);
@@ -1985,6 +2017,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                      [this]() { renderScreenshot(); });
     connect(m_protocol, &ShellProtocol::screenshotConfigured, this,
             &ShellController::onScreenshotConfigured);
+    connect(m_protocol, &ShellProtocol::idleDimConfigured, this,
+            &ShellController::onIdleDimConfigured);
     connect(m_protocol, &ShellProtocol::screenshotPointerMoved, this,
             &ShellController::onScreenshotPointerMoved);
     connect(m_protocol, &ShellProtocol::screenshotPointerButton, this,
@@ -2252,6 +2286,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The screenshot selection overlay is a full-output `overlay` surface,
     // unmapped until a capture starts (T-13.3a).
     if (!m_protocol->createScreenshotSurface())
+        return false;
+    // The idle-dim overlay is a full-output `overlay` surface, unmapped until
+    // the compositor's dim stage (T317). It has no input region and no HUD.
+    if (!m_protocol->createIdleDimSurface())
         return false;
     // The ScreenCast source picker is a centered `overlay` surface, unmapped
     // until a portal request arrives (T-13.4a).
@@ -5994,6 +6032,13 @@ void ShellController::onScreenshotCaptureRequested(const QString &mode, int x, i
 
 void ShellController::onScreenshotSaved(const QString &path)
 {
+    // T317 evidence captures are written by the compositor at the exact path
+    // the idle seam asked for; leave them there instead of renaming them into
+    // the normal screenshot collection.
+    if (m_idleCapturePaths.remove(path)) {
+        qInfo() << "shell: idle capture saved" << path;
+        return;
+    }
     const QImage image(path);
     if (image.isNull()) {
         onScreenshotFailed(tr("The captured image could not be read."));
@@ -8333,6 +8378,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // lock UI and drives `ext-session-lock-v1` (authentication is
         // T-12.3b).
         lockScreen();
+    } else if (action.startsWith(QLatin1String("idle-"))) {
+        // T317: the compositor's idle timer emits dim/blank/lock/suspend/awake
+        // through this one action stream. The shell applies the effects; no
+        // second HUD or timer exists.
+        handleIdleAction(action);
     } else if (action == QLatin1String("log-out")) {
         // T313: the compositor routes Super+Shift+Q here; the system menu's
         // Log Out row routes the same action through dispatchAppAction. Both
@@ -9089,8 +9139,10 @@ void ShellController::applyDisplayPolicy()
     const bool onBattery = battery.value(QStringLiteral("onBattery")).toBool()
         || battery.value(QStringLiteral("chargeState")).toString()
                == QLatin1String("discharging");
-    const double brightness = dimOnBattery && onBattery
+    double brightness = dimOnBattery && onBattery
         ? settings.brightness * 0.7 : settings.brightness;
+    if (m_idleDimActive)
+        brightness *= kIdleDimFactor;
     if (m_displaySent && settings == m_displaySettings
             && qFuzzyCompare(brightness, m_displayBrightness))
         return;
@@ -9099,8 +9151,108 @@ void ShellController::applyDisplayPolicy()
     m_displaySent = true;
     m_protocol->setDisplayPolicy(settings.scale, outputTransformFromName(settings.rotation),
                                  brightness);
-    fprintf(stderr, "dragonfruit-shell: display applied (scale=%.3f rotation=%s brightness=%.3f)\n",
-            settings.scale, qPrintable(settings.rotation), brightness);
+    fprintf(stderr, "dragonfruit-shell: display applied (scale=%.3f rotation=%s brightness=%.3f%s)\n",
+            settings.scale, qPrintable(settings.rotation), brightness,
+            m_idleDimActive ? " idle-dim" : "");
+}
+
+void ShellController::applyIdlePolicy()
+{
+    // T317: one view of the settingsd idle/power keys, forwarded to the
+    // compositor as `set_idle_policy`. The compositor owns the timer; the
+    // shell owns the effects. Never publish the schema defaults while the
+    // daemon's first snapshot is in flight (the display/wallpaper rule).
+    if (!m_settingsClient || !m_protocol || !m_idleController)
+        return;
+    if (m_settingsClient->isAvailable() && !m_settingsSnapshotReceived)
+        return;
+    m_idleController->setSettings(idleSettingsFromValues(m_settingsClient->values()));
+}
+
+void ShellController::handleIdleAction(const QString &action)
+{
+    if (m_idleController)
+        m_idleController->handleAction(action);
+    // T317 evidence seam: one full-output still per stage. The capture is a
+    // second compositor render of the live scene, so it shows the dim overlay
+    // and the lock surface exactly as composited. Dev/capture only.
+    const QString captureDir = qEnvironmentVariable("DF_IDLE_CAPTURE_DIR");
+    if (captureDir.isEmpty() || !m_protocol)
+        return;
+    if (action != QLatin1String("idle-dim")
+        && action != QLatin1String("idle-blank")
+        && action != QLatin1String("idle-lock")
+        && action != QLatin1String("idle-awake")) {
+        return;
+    }
+    // The lock scene is mapped and rendered after the compositor confirms, so
+    // give it a longer settle than the synchronous dim overlay.
+    const int delay = action == QLatin1String("idle-lock") ? 1500 : 400;
+    QTimer::singleShot(delay, this, [this, captureDir, action]() {
+        captureIdleStage(captureDir, action);
+    });
+}
+
+void ShellController::captureIdleStage(const QString &dir, const QString &stage)
+{
+    if (!m_protocol)
+        return;
+    QDir().mkpath(dir);
+    const QString path = dir + QStringLiteral("/t317-") + stage + QStringLiteral(".png");
+    m_idleCapturePaths.insert(path);
+    if (!m_protocol->captureScreenshot(path, 0, 0, 0, 0, QStringLiteral("fullscreen")))
+        qWarning() << "shell: cannot capture idle stage" << stage << ":"
+                   << m_protocol->lastError();
+    else
+        qInfo() << "shell: idle capture requested" << path;
+}
+
+void ShellController::setIdleDimmed(bool dimmed)
+{
+    if (m_idleDimActive == dimmed)
+        return;
+    m_idleDimActive = dimmed;
+    // The dim overlay is the visible effect until T319 owns the panel
+    // backlight; the forwarded brightness also drops so the value the OSD and
+    // a future backlight writer see matches the stage.
+    applyDisplayPolicy();
+    if (!m_protocol)
+        return;
+    if (dimmed) {
+        renderIdleDim();
+        qInfo() << "shell: idle-dim overlay mapped";
+    } else {
+        m_protocol->hideIdleDim();
+        qInfo() << "shell: idle-dim overlay unmapped";
+    }
+}
+
+void ShellController::onIdleDimConfigured(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return;
+    m_idleDimWidth = width;
+    m_idleDimHeight = height;
+    fprintf(stderr, "dragonfruit-shell: idle-dim configured %dx%d\n", width, height);
+    if (m_idleDimActive)
+        renderIdleDim();
+}
+
+void ShellController::renderIdleDim()
+{
+    if (!m_idleDimActive || !m_protocol)
+        return;
+    if (m_idleDimWidth <= 0 || m_idleDimHeight <= 0)
+        return;
+    const QSize logical(m_idleDimWidth, m_idleDimHeight);
+    const QSize physical = ChromeScale::bufferSize(logical, m_chromeScale);
+    QImage image(physical, QImage::Format_ARGB32_Premultiplied);
+    // A 45% black scrim: readable but clearly dimmed, and translucent so the
+    // compositor keeps compositing the live scene underneath.
+    image.fill(QColor(0, 0, 0, 115));
+    if (!m_protocol->commitIdleDimImage(image, logical))
+        qWarning() << "shell: cannot commit the idle-dim overlay:"
+                   << m_protocol->lastError();
 }
 
 void ShellController::onDockStateChanged(const QVariantList &entries)

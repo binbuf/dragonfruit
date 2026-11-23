@@ -297,6 +297,10 @@ where
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}
             InputEvent::Keyboard { event } => {
                 route_locked_keyboard::<B>(state, event);
+                // T317: input still resets the idle chain while locked. The
+                // lock scene stays up; only the dim/blank stages and the
+                // pending idle deadlines wake.
+                state.notify_activity();
                 return;
             }
             // The lock UI is the only client that may receive pointer input
@@ -306,6 +310,7 @@ where
             InputEvent::PointerMotion { event } => {
                 let delta = event.delta();
                 route_locked_pointer_motion(state, delta, event.time_msec());
+                state.notify_activity();
                 return;
             }
             InputEvent::PointerMotionAbsolute { event } => {
@@ -313,6 +318,7 @@ where
                 if let Some(location) = location {
                     route_locked_pointer_motion_to(state, location, event.time_msec());
                 }
+                state.notify_activity();
                 return;
             }
             InputEvent::PointerButton { event } => {
@@ -322,10 +328,17 @@ where
                     event.state(),
                     event.time_msec(),
                 );
+                state.notify_activity();
                 return;
             }
-            InputEvent::PointerAxis { .. } => return,
-            _ => return,
+            InputEvent::PointerAxis { .. } => {
+                state.notify_activity();
+                return;
+            }
+            _ => {
+                state.notify_activity();
+                return;
+            }
         }
     }
     // Suspend (T-12.5a): a sleeping session drops user input until it wakes;

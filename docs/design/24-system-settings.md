@@ -1892,10 +1892,10 @@ The rules:
 | Keyboard | Layout, model, options | Keyboard → Text Input | `sources` | ibus/fcitx5 + `localectl` | `input.sources` | shell/compositor keymap, ibus/fcitx5 delegate | delegated | T280 |
 | Trackpad | Gesture mapping | Trackpad → More gestures | `gestures` | `settingsd` | `gestures.*` | compositor/input (enabled/spaceSwitch/missionControl live; rest stored-only) | live-on-defaults | T280 |
 | Power | Charge threshold | Energy → Power adapter | `adapter.chargeLimit` | UPower | `Battery.ChargeThreshold` | UPower read-only | read-only | T273 |
-| Session | Dim stage | Lock Screen → timing | `idleDim` | `settingsd` | `idle.dim` | session/idle engine | live-on-defaults | T281 |
-| Session | Display-off stage | Lock Screen → timing | `displayBattery` | `settingsd` | `idle.blank` | session/idle engine | live-on-defaults | T278 |
-| Session | Lock stage | Lock Screen → timing | `requirePassword` | `settingsd` | `lock.requirePasswordAfter` | session/idle engine (derives `idle.lock`) | live-on-defaults | T278 |
-| Session | Suspend stage | Lock Screen → timing | `idleSuspend` | `settingsd` | `idle.suspend` | session/idle engine, session/suspend | live-on-defaults | T281 |
+| Session | Dim stage | Lock Screen → timing | `idleDim` | `settingsd` | `idle.dim` | compositor idle timer, shell idle effects | live-on-defaults | T281 |
+| Session | Display-off stage | Lock Screen → timing | `displayBattery` | `settingsd` | `idle.blank` | compositor idle timer, shell idle effects | live-on-defaults | T278 |
+| Session | Lock stage | Lock Screen → timing | `requirePassword` | `settingsd` | `lock.requirePasswordAfter` | compositor idle timer (derives `idle.lock`) | live-on-defaults | T278 |
+| Session | Suspend stage | Lock Screen → timing | `idleSuspend` | `settingsd` | `idle.suspend` | compositor idle timer, shell idle effects, session/suspend | live-on-defaults | T281 |
 | Network | Firewall rules and zones | Network → Firewall | `firewallOptions` | firewall adapter | `firewall.rules` | firewall adapter (read-only/delegated tiers) | disabled-with-reason | T272 |
 | Network | Bridge, bond, VLAN | Network → Services | `addService` | NetworkManager | `AddConnection` | NetworkManager | disabled-with-reason | T272 |
 | Network | WireGuard | VPN → Connections | `vpn.wireguard` | NetworkManager VPN | `wireguard` | NetworkManager native connection type | read-only | T272 |

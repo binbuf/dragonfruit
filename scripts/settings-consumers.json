@@ -340,33 +340,33 @@
       "task": "T304"
     },
     "power.preventSleep": {
-      "consumer": "session/idle engine",
-      "test": "apps/settings/tests/tst_settings_battery.qml",
-      "state": "known-gap",
+      "consumer": "shell/idle controller",
+      "test": "shell/tests/tst_idle.cpp",
+      "state": "verified",
       "task": "T317"
     },
     "idle.dim": {
-      "consumer": "session/idle engine",
-      "test": "services/session/tests/session_policy.rs",
-      "state": "known-gap",
+      "consumer": "compositor/idle timer, shell/idle effects",
+      "test": "shell/tests/tst_idle.cpp",
+      "state": "verified",
       "task": "T317"
     },
     "idle.blank": {
-      "consumer": "session/idle engine",
-      "test": "services/session/tests/session_policy.rs",
-      "state": "known-gap",
-      "task": "T316"
+      "consumer": "compositor/idle timer, shell/idle effects",
+      "test": "shell/tests/tst_idle.cpp",
+      "state": "verified",
+      "task": "T317"
     },
     "idle.lock": {
-      "consumer": "session/idle engine",
-      "test": "services/session/tests/session_policy.rs",
-      "state": "known-gap",
+      "consumer": "compositor/idle timer, shell/idle effects",
+      "test": "shell/tests/tst_idle.cpp",
+      "state": "verified",
       "task": "T317"
     },
     "idle.suspend": {
-      "consumer": "session/idle engine, session/suspend",
-      "test": "services/session/tests/session_policy.rs",
-      "state": "known-gap",
+      "consumer": "compositor/idle timer, shell/idle effects, session/suspend",
+      "test": "shell/tests/tst_idle.cpp",
+      "state": "verified",
       "task": "T317"
     },
     "menu.global": {

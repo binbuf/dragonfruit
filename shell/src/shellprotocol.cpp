@@ -1257,6 +1257,70 @@ bool ShellProtocol::hideScreenshot()
     return true;
 }
 
+// --- idle-dim overlay (T317) ------------------------------------------------
+
+bool ShellProtocol::createIdleDimSurface()
+{
+    if (m_idleDimSurface || m_idleDimLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_idleDimSurface = wl_compositor_create_surface(m_compositor);
+    ensureScaleObjects(m_idleDimSurface);
+    m_idleDimLayer = df_shell_get_layer_surface(m_shell, m_idleDimSurface, nullptr,
+                                                DF_SHELL_LAYER_OVERLAY, "idle-dim");
+    if (!m_idleDimLayer)
+        return fail(QStringLiteral("compositor refused the idle-dim layer surface"));
+    static const df_layer_surface_listener listener = { onIdleDimConfigure,
+                                                        onIdleDimLayerClosed };
+    df_layer_surface_add_listener(m_idleDimLayer, &listener, this);
+
+    // Cover the whole output, reserve nothing, and take no keyboard. The
+    // empty input region keeps the pointer and keyboard with the window
+    // below; the overlay is a pure dim, never a HUD or a focus target.
+    df_layer_surface_set_anchor(m_idleDimLayer,
+                                kAnchorTop | kAnchorBottom | kAnchorLeft | kAnchorRight);
+    df_layer_surface_set_exclusive_zone(m_idleDimLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_idleDimLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    if (wl_region *region = wl_compositor_create_region(m_compositor)) {
+        wl_surface_set_input_region(m_idleDimSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_idleDimSurface, nullptr, 0, 0);
+    wl_surface_commit(m_idleDimSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the idle-dim surface creation"));
+    return true;
+}
+
+bool ShellProtocol::commitIdleDimImage(const QImage &image, const QSize &logicalSize)
+{
+    if (!m_idleDimSurface)
+        return false;
+    if (!commitTo(m_idleDimSurface, image, logicalSize))
+        return false;
+    m_idleDimMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideIdleDim()
+{
+    if (!m_idleDimSurface || !m_idleDimLayer)
+        return false;
+    if (!m_idleDimMapped)
+        return true;
+    cancelPendingFrame(QStringLiteral("idle-dim"));
+    wl_surface_attach(m_idleDimSurface, nullptr, 0, 0);
+    wl_surface_commit(m_idleDimSurface);
+    resetSurfaceScale(m_idleDimSurface);
+    m_idleDimMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 // --- ScreenCast source picker overlay (T-13.4a) -----------------------------
 
 bool ShellProtocol::createScreenCastSurface(int width, int height)
@@ -2718,6 +2782,8 @@ QString ShellProtocol::surfaceLabel(wl_surface *surface) const
         return QStringLiteral("widget-gallery");
     if (surface == m_screenshotSurface)
         return QStringLiteral("screenshot");
+    if (surface == m_idleDimSurface)
+        return QStringLiteral("idle-dim");
     if (surface == m_screencastSurface)
         return QStringLiteral("screencast");
     if (surface == m_polkitSurface)
@@ -2761,6 +2827,8 @@ wl_surface *ShellProtocol::surfaceForLabel(const QString &label) const
         return m_widgetGallerySurface;
     if (label == QLatin1String("screenshot"))
         return m_screenshotSurface;
+    if (label == QLatin1String("idle-dim"))
+        return m_idleDimSurface;
     if (label == QLatin1String("screencast"))
         return m_screencastSurface;
     if (label == QLatin1String("polkit"))
@@ -4093,6 +4161,23 @@ void ShellProtocol::onScreenshotConfigure(void *data, df_layer_surface *, uint32
     if (self->m_screenshotLayer)
         df_layer_surface_ack_configure(self->m_screenshotLayer, serial);
     emit self->screenshotConfigured(width, height, serial);
+}
+
+void ShellProtocol::onIdleDimConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                       int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_idleDimLayer)
+        df_layer_surface_ack_configure(self->m_idleDimLayer, serial);
+    emit self->idleDimConfigured(width, height);
+}
+
+void ShellProtocol::onIdleDimLayerClosed(void *data, df_layer_surface *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_idleDimLayer = nullptr;
+    self->m_idleDimSurface = nullptr;
+    self->m_idleDimMapped = false;
 }
 
 void ShellProtocol::onScreenCastConfigure(void *data, df_layer_surface *, uint32_t serial,

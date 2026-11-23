@@ -444,6 +444,20 @@ public:
     // Unmap the screenshot surface (attach a null buffer).
     bool hideScreenshot();
 
+    // Create the idle-dim overlay (T317): a full-output `overlay` layer
+    // surface, namespace "idle-dim", unmapped until the compositor's
+    // `idle-dim` stage. It reserves nothing, takes no keyboard, and has an
+    // empty input region so the desktop below stays interactive. The shell
+    // commits a translucent black buffer; the compositor composites it over
+    // the live scene.
+    bool createIdleDimSurface();
+
+    // Attach the translucent `image` and map the idle-dim overlay.
+    bool commitIdleDimImage(const QImage &image, const QSize &logicalSize = QSize());
+
+    // Unmap the idle-dim overlay (attach a null buffer).
+    bool hideIdleDim();
+
     // Create the ScreenCast source picker overlay (T-13.4a): a centered
     // `overlay` layer surface, namespace "screencast", unmapped until a portal
     // request arrives. It reserves nothing (`exclusive_zone = -1`) and takes
@@ -912,6 +926,8 @@ signals:
     void widgetGalleryKeyEvent(uint32_t key, bool pressed);
     // Screenshot selection overlay (T-13.3a).
     void screenshotConfigured(int width, int height, uint32_t serial);
+    // The idle-dim overlay resolved its full-output size (T317).
+    void idleDimConfigured(int width, int height);
     void screenshotPointerMoved(qreal x, qreal y);
     void screenshotPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void screenshotPointerLeft();
@@ -1275,6 +1291,9 @@ private:
                                          uint32_t serial, int32_t width, int32_t height);
     static void onScreenshotConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                       int32_t width, int32_t height);
+    static void onIdleDimConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                   int32_t width, int32_t height);
+    static void onIdleDimLayerClosed(void *data, df_layer_surface *layer);
     static void onScreenCastConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                       int32_t width, int32_t height);
     static void onPolkitConfigure(void *data, df_layer_surface *layer, uint32_t serial,
@@ -1581,6 +1600,11 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     bool m_screenshotMapped = false;
     bool m_pointerOnScreenshot = false;
     bool m_keyboardOnScreenshot = false;
+    // Idle-dim overlay (T317): a full-output `overlay` surface mapped only
+    // while the idle chain is dimmed. It has no input region and no keyboard.
+    wl_surface *m_idleDimSurface = nullptr;
+    df_layer_surface *m_idleDimLayer = nullptr;
+    bool m_idleDimMapped = false;
     // ScreenCast source picker overlay (T-13.4a): a centered `overlay` surface
     // mapped only while a portal request waits for a presenter.
     wl_surface *m_screencastSurface = nullptr;

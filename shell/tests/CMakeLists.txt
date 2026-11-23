@@ -395,6 +395,26 @@ set_tests_properties(tst_displayspolicy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Idle-policy tests (T317): the pure settingsd idle/power mapping and the
+# stage-to-effect controller with a mock protocol/logind sink. No bus,
+# Wayland, or QML.
+qt_add_executable(tst_idle
+    tst_idle.cpp
+)
+target_link_libraries(tst_idle PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_idle
+    COMMAND tst_idle
+)
+set_tests_properties(tst_idle PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings-client tests (T-08.2a): the typed value store and the live
 # `org.dragonfruit.Settings1` client against a fake service on a private
 # session bus. The bus-dependent half skips when no bus is present.

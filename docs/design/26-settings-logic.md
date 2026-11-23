@@ -81,7 +81,7 @@ with no battery still selects a profile and still owns the policy rows.
 | Usage History | Screen On Usage | session sampler, `power.screenOn` | no sampler; the row says so |
 | Options… | Show battery percentage | settingsd, `power.showPercentage` | consumer: shell/MenuBar |
 | Options… | Dim on battery | settingsd, `power.dimOnBattery` | consumer: shell/display |
-| Options… | Prevent sleep | settingsd, `power.preventSleep` | consumer: session/idle |
+| Options… | Prevent sleep | settingsd, `power.preventSleep` | consumer: shell idle controller |
 | Options… | Wake for network access | host firmware, `power.wakeForNetwork` | disabled; owner named |
 | Options… | Optimize video streaming | media pipeline, `power.optimizeVideo` | disabled; owner named |
 | Options… | Power Adapter | UPower, `Battery.State` | live source |

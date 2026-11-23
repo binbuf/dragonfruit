@@ -416,7 +416,7 @@ Item {
                 description: qsTr("Lower the display brightness after this much "
                                   + "inactivity, before it turns off.")
                 settingsId: "idleDim"
-                owner: "settingsd -> session/idle"
+                owner: "settingsd -> compositor idle"
                 settingsKey: "idle.dim"
                 controlData: Select {
                     id: dimSelect
@@ -510,7 +510,7 @@ Item {
                 description: qsTr("Suspend the session after this much inactivity; "
                                   + "Off by default.")
                 settingsId: "idleSuspend"
-                owner: "settingsd -> session/idle"
+                owner: "settingsd -> compositor idle"
                 settingsKey: "idle.suspend"
                 controlData: Select {
                     id: suspendSelect

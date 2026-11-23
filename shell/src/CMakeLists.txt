@@ -111,6 +111,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     folderstacks.cpp
     focusstatus.cpp
     focusschedule.cpp
+    idlepolicy.cpp
     launchfailure.cpp
     lockauth.cpp
     lockinput.cpp

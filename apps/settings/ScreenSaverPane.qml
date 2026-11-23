@@ -179,7 +179,7 @@ Item {
                            + "The lock scene is the shipped screen saver.")
                     : qsTr("The screen saver is off, so there is no start time.")
                 settingsId: "startAfter"
-                owner: "settingsd -> session/idle engine"
+                owner: "settingsd -> compositor idle"
                 settingsKey: "idle.blank"
                 showSeparator: false
 

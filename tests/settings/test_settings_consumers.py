@@ -76,7 +76,7 @@ class SettingsConsumerGateTests(unittest.TestCase):
         )
         live = [row for row in specs if not row["stored_only"]]
         self.assertEqual(len(live), 171)
-        self.assertEqual(len(gaps), 18)
+        self.assertEqual(len(gaps), 13)
 
     def test_live_key_without_entry_fails(self) -> None:
         self.write_table({})
