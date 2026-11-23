@@ -4,7 +4,8 @@
 //! Most of the compositor lives in the `dragonfruit-compositor` binary. This
 //! library exists so the pure policy modules can be unit- and conformance-
 //! tested from `compositor/tests/` without spawning the binary. Right now it
-//! exposes the XDnD bridge model ([`xdnd`]), the DRM bring-up classification
+//! exposes the XDnD bridge model ([`xdnd`]) and its X11 target connection
+//! ([`xdnd_bridge`]), the DRM bring-up classification
 //! ([`drm_bringup`]), the hardware input validation matrix
 //! ([`input_validation`]), the output scoping for popups and absolute input
 //! ([`output_input`]), the multi-GPU import/fallback classification
@@ -28,3 +29,4 @@ pub mod pointer_policy;
 pub mod presentation;
 pub mod refresh;
 pub mod xdnd;
+pub mod xdnd_bridge;

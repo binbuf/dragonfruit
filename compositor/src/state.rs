@@ -7647,12 +7647,67 @@ impl DataDeviceHandler for DfState {
 
 impl ClientDndGrabHandler for DfState {}
 impl ServerDndGrabHandler for DfState {
-    fn send(
+    fn accept(&mut self, mime_type: Option<String>, _seat: smithay::input::Seat<DfState>) {
+        // Only the synthetic X11→Wayland drop participates here; the
+        // Wayland→X11 source role (T328b) owns its own negotiation.
+        if !self.xwayland.dnd_drop_armed {
+            return;
+        }
+        if mime_type.as_deref() != Some(dragonfruit_compositor::xdnd::URI_LIST_MIME) {
+            self.xwayland.dnd_offer_accepted = false;
+            self.finish_xdnd_wayland_drop();
+            return;
+        }
+        self.xwayland.dnd_offer_accepted = true;
+        self.maybe_finish_xdnd_wayland_drop();
+    }
+
+    fn action(
         &mut self,
-        _mime_type: String,
-        _fd: std::os::unix::io::OwnedFd,
+        action: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
         _seat: smithay::input::Seat<DfState>,
     ) {
+        if !self.xwayland.dnd_drop_armed {
+            return;
+        }
+        self.xwayland.dnd_offer_action = !action.is_empty();
+        self.maybe_finish_xdnd_wayland_drop();
+    }
+
+    fn dropped(&mut self, _seat: smithay::input::Seat<DfState>) {
+        // Keep the paths: the client requests the payload (`send`) after the
+        // drop and before `finished`.
+    }
+
+    fn cancelled(&mut self, _seat: smithay::input::Seat<DfState>) {
+        self.clear_xdnd_offer();
+    }
+
+    fn send(
+        &mut self,
+        mime_type: String,
+        fd: std::os::unix::io::OwnedFd,
+        _seat: smithay::input::Seat<DfState>,
+    ) {
+        if mime_type != dragonfruit_compositor::xdnd::URI_LIST_MIME {
+            return;
+        }
+        let Some(paths) = self.xwayland.dnd_offer.as_ref() else {
+            return;
+        };
+        let payload = dragonfruit_compositor::xdnd::format_uri_list(paths);
+        // The client is local and the payload is a short URI list; write from
+        // a detached thread so a stalled reader cannot block the compositor's
+        // event loop (the clipboard lesson, T310).
+        std::thread::spawn(move || {
+            use std::io::Write as _;
+            let mut file = std::fs::File::from(fd);
+            let _ = file.write_all(payload.as_bytes());
+        });
+    }
+
+    fn finished(&mut self, _seat: smithay::input::Seat<DfState>) {
+        self.clear_xdnd_offer();
     }
 }
 

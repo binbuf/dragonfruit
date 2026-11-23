@@ -1376,7 +1376,8 @@ roadmap (see [ROADMAP.md](../ROADMAP.md)).
 
 ### Implementation note (T-14.5)
 
-Cross-boundary **drag-and-drop** (XDnD) is still not live. Smithay 0.7's XWM
+Cross-boundary **drag-and-drop** (XDnD) was not live when this note was
+written; the X11→Wayland half landed in T328a (see the next note). Smithay 0.7's XWM
 implements no XDnD translation and does not expose the X connection or a
 client-message hook, so a bridge must own its own X11 connection (the wlroots
 `xwm.c` model) and drive Smithay's `start_dnd` on a drop. The protocol half
@@ -1390,6 +1391,27 @@ window, atom interning, `XdndSelection` transfer, and the `start_dnd` call — i
 recorded as an explicit gap; see
 [ADR 0099](adr/0099-xdnd-bridge-model-and-documented-gap.md) and the T-17 note
 in [ADR 0179](adr/0179-t17-premium-gate-sign-off.md).
+
+### Implementation note (T328a)
+
+The X11→Wayland half of the runtime bridge now lands as
+`compositor/src/xdnd_bridge.rs`. `XdndBridge` owns a **dedicated** X11
+connection (never the XWM's), interns the atom table, creates an
+override-redirect InputOnly bridge window advertising `XdndAware = 5`, and
+publishes that window as Xwayland's root `XdndProxy`. A Wayland surface has no
+X11 window, so a drag source resolving the pointer over one reaches the root
+and follows the proxy; X11 windows keep receiving their own drags. The bridge
+answers `XdndStatus`/`XdndFinished` and reads `XdndSelection` (direct and
+`INCR`, bounded to 2 s and 1 MiB), then hands the local paths to the
+compositor. On the Wayland side the compositor installs a short-lived pointer
+grab at the drop location, sends a `text/uri-list` offer to the surface under
+the pointer, and releases once the client accepts the type and an action. Only
+Copy is accepted, and `XdndFinished` reports success once the payload is read,
+so a later client refusal cannot lose the source. Hover negotiation is not
+mirrored: the offer appears at drop time. An XdndAware X11 window that is
+geometrically under the pointer still receives its own drag (an X protocol
+limit). The decision is frozen in
+[ADR 0334](adr/0334-xdnd-bridge-as-target.md); the source role is T328b.
 
 ### Implementation note (T-14.6a)
 

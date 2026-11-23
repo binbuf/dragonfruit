@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use dragonfruit_compositor::xdnd::{
     XdndAction, XdndAtoms, XdndMessage, XdndTarget, URI_LIST_MIME, XDND_VERSION,
 };
+use dragonfruit_compositor::xdnd_bridge::{serve_selection_request, BridgeEvent, XdndBridge};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
     Atom, AtomEnum, ClientMessageEvent, ConnectionExt as _, CreateWindowAux, EventMask, PropMode,
@@ -316,5 +317,604 @@ fn xdnd_messages_round_trip_through_xwayland() {
     assert!(text_only.drop(1).is_none());
 
     // `proc` drops here (SIGKILL + wait); `conn` drops with the test.
+    std::mem::drop(conn);
+}
+
+/// Drain the bridge and answer the fake source's selection request. Returns
+/// the bridge's events and every client message the source received.
+fn pump_bridge(
+    bridge: &mut XdndBridge,
+    source_conn: &RustConnection,
+    payload: &[u8],
+    timeout: Duration,
+    want_drop: bool,
+) -> (Vec<BridgeEvent>, Vec<(Atom, [u32; 5])>) {
+    let deadline = Instant::now() + timeout;
+    let mut events = Vec::new();
+    let mut received = Vec::new();
+    while Instant::now() < deadline {
+        events.extend(bridge.poll().expect("bridge poll"));
+        loop {
+            match source_conn.poll_for_event() {
+                Ok(Some(Event::SelectionRequest(request))) => {
+                    serve_selection_request(source_conn, &request, payload)
+                        .expect("serve selection request");
+                }
+                Ok(Some(Event::ClientMessage(message))) => {
+                    received.push((message.type_, message.data.as_data32()));
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => break,
+                Err(err) => panic!("source poll_for_event: {err}"),
+            }
+        }
+        if want_drop {
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    BridgeEvent::Dropped { .. } | BridgeEvent::Failed { .. }
+                )
+            }) {
+                break;
+            }
+        } else if received
+            .iter()
+            .any(|(type_atom, _)| *type_atom == bridge.atoms().status)
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // The bridge sends its final reply in the same poll that produces the
+    // drop event; the X server may not have routed it yet, so drain the source
+    // for a short bounded window.
+    let drain_deadline = Instant::now() + Duration::from_millis(500);
+    let finished_atom = bridge.atoms().finished;
+    loop {
+        loop {
+            match source_conn.poll_for_event() {
+                Ok(Some(Event::SelectionRequest(request))) => {
+                    serve_selection_request(source_conn, &request, payload)
+                        .expect("serve selection request");
+                }
+                Ok(Some(Event::ClientMessage(message))) => {
+                    received.push((message.type_, message.data.as_data32()));
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => break,
+                Err(err) => panic!("source poll_for_event: {err}"),
+            }
+        }
+        if Instant::now() >= drain_deadline
+            || received
+                .iter()
+                .any(|(type_atom, _)| *type_atom == finished_atom)
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    (events, received)
+}
+
+/// T328a: an `INCR` selection transfer completes in bounded chunks.
+///
+/// The fake source answers the first `ConvertSelection` with an `INCR`
+/// property and then writes one chunk per deletion (the bridge deletes each
+/// chunk as it reads it). The bridge must accumulate the chunks, stop at the
+/// zero-length terminator, and produce the same drop as a direct transfer.
+#[test]
+fn xdnd_target_bridge_reads_an_incr_selection() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-xdnd-incr-{}", std::process::id());
+    let proc = CompositorProcess::start(&socket_name);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let screen = conn.setup().roots[screen_num].clone();
+    let mut bridge = XdndBridge::connect(&display).expect("start the XDnD target bridge");
+    let bridge_window = bridge.window();
+    let atoms = *bridge.atoms();
+    let uri_list = bridge.uri_list_atom();
+
+    let source = make_window(&conn, &screen);
+    let selection = intern(&conn, "XdndSelection");
+    let incr = intern(&conn, "INCR");
+    let property = intern(&conn, "DF_XDND_SELECTION");
+    conn.set_selection_owner(source, selection, x11rb::CURRENT_TIME)
+        .expect("own XdndSelection")
+        .check()
+        .expect("set XdndSelection owner");
+    // The source must see the bridge delete each chunk (PropertyNotify
+    // Deleted) to know when to write the next one.
+    conn.change_window_attributes(
+        bridge_window,
+        &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+            .event_mask(EventMask::PROPERTY_CHANGE),
+    )
+    .expect("watch bridge property changes");
+    conn.flush().expect("flush source setup");
+
+    let enter = XdndMessage::Enter {
+        source,
+        version: XDND_VERSION,
+        more_types: false,
+        types: vec![uri_list],
+    };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.enter,
+        enter.encode(&atoms).expect("encode Enter"),
+    );
+    let position = XdndMessage::Position {
+        source,
+        position: (3, 4),
+        time: 0,
+        action: XdndAction::Copy,
+    };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.position,
+        position.encode(&atoms).expect("encode Position"),
+    );
+    let drop = XdndMessage::Drop { source, time: 0 };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.drop,
+        drop.encode(&atoms).expect("encode Drop"),
+    );
+    conn.flush().expect("flush drop");
+
+    let payload = b"file:///home/u/incr.txt\r\n";
+    let mut events = Vec::new();
+    let mut incr_started = false;
+    let mut offset = 0usize;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        events.extend(bridge.poll().expect("bridge poll"));
+        loop {
+            match conn.poll_for_event() {
+                Ok(Some(Event::SelectionRequest(request))) => {
+                    // Announce an INCR transfer with the total byte count.
+                    conn.change_property32(
+                        PropMode::REPLACE,
+                        request.requestor,
+                        request.property,
+                        incr,
+                        &[payload.len() as u32],
+                    )
+                    .expect("announce INCR");
+                    let notify = x11rb::protocol::xproto::SelectionNotifyEvent {
+                        response_type: x11rb::protocol::xproto::SELECTION_NOTIFY_EVENT,
+                        sequence: 0,
+                        time: request.time,
+                        requestor: request.requestor,
+                        selection: request.selection,
+                        target: request.target,
+                        property: request.property,
+                    };
+                    conn.send_event(false, request.requestor, EventMask::NO_EVENT, notify)
+                        .expect("send INCR SelectionNotify");
+                    conn.flush().expect("flush INCR notify");
+                    incr_started = true;
+                }
+                Ok(Some(Event::PropertyNotify(notify))) => {
+                    if !incr_started
+                        || notify.window != bridge_window
+                        || notify.atom != property
+                        || notify.state != x11rb::protocol::xproto::Property::DELETE
+                    {
+                        continue;
+                    }
+                    let end = (offset + 8).min(payload.len());
+                    let chunk = &payload[offset..end];
+                    conn.change_property8(
+                        PropMode::REPLACE,
+                        bridge_window,
+                        property,
+                        uri_list,
+                        chunk,
+                    )
+                    .expect("write INCR chunk");
+                    conn.flush().expect("flush INCR chunk");
+                    offset = end;
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => break,
+                Err(err) => panic!("source poll_for_event: {err}"),
+            }
+        }
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                BridgeEvent::Dropped { .. } | BridgeEvent::Failed { .. }
+            )
+        }) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    let dropped = events
+        .iter()
+        .find_map(|event| match event {
+            BridgeEvent::Dropped { paths, .. } => Some(paths.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("the bridge read the INCR drop: events={events:?}"));
+    assert_eq!(dropped, vec![PathBuf::from("/home/u/incr.txt")]);
+    assert_eq!(offset, payload.len(), "every chunk was consumed");
+
+    std::mem::drop(bridge);
+    std::mem::drop(conn);
+}
+
+/// T328a: a source that never answers `ConvertSelection` is bounded, not
+/// waited on forever. The bridge must refuse the drop and tell the source.
+#[test]
+fn xdnd_target_bridge_times_out_a_silent_source() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-xdnd-timeout-{}", std::process::id());
+    let proc = CompositorProcess::start(&socket_name);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let screen = conn.setup().roots[screen_num].clone();
+    let mut bridge = XdndBridge::connect(&display).expect("start the XDnD target bridge");
+    let bridge_window = bridge.window();
+    let atoms = *bridge.atoms();
+    let uri_list = bridge.uri_list_atom();
+
+    let source = make_window(&conn, &screen);
+    let selection = intern(&conn, "XdndSelection");
+    conn.set_selection_owner(source, selection, x11rb::CURRENT_TIME)
+        .expect("own XdndSelection")
+        .check()
+        .expect("set XdndSelection owner");
+
+    let enter = XdndMessage::Enter {
+        source,
+        version: XDND_VERSION,
+        more_types: false,
+        types: vec![uri_list],
+    };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.enter,
+        enter.encode(&atoms).expect("encode Enter"),
+    );
+    let position = XdndMessage::Position {
+        source,
+        position: (1, 1),
+        time: 0,
+        action: XdndAction::Copy,
+    };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.position,
+        position.encode(&atoms).expect("encode Position"),
+    );
+    let drop = XdndMessage::Drop { source, time: 0 };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.drop,
+        drop.encode(&atoms).expect("encode Drop"),
+    );
+    conn.flush().expect("flush drop");
+
+    let mut events = Vec::new();
+    let mut finished = None;
+    let deadline = Instant::now() + Duration::from_secs(4);
+    while Instant::now() < deadline {
+        events.extend(bridge.poll().expect("bridge poll"));
+        // Read the SelectionRequest but never answer it.
+        while let Ok(Some(event)) = conn.poll_for_event() {
+            if let Event::ClientMessage(message) = event {
+                if message.type_ == atoms.finished {
+                    finished = Some(message.data.as_data32());
+                }
+            }
+        }
+        if events
+            .iter()
+            .any(|event| matches!(event, BridgeEvent::Failed { .. }))
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    let failed = events
+        .iter()
+        .find_map(|event| match event {
+            BridgeEvent::Failed { reason, .. } => Some(reason.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("the silent transfer timed out: events={events:?}"));
+    assert!(failed.contains("timed out"), "reason was {failed:?}");
+    // The bridge sends its refusal in the same poll that produces the event;
+    // give the server a bounded moment to route it to the source.
+    let drain = Instant::now() + Duration::from_millis(500);
+    while finished.is_none() && Instant::now() < drain {
+        while let Ok(Some(event)) = conn.poll_for_event() {
+            if let Event::ClientMessage(message) = event {
+                if message.type_ == atoms.finished {
+                    finished = Some(message.data.as_data32());
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let finished = finished.expect("the source was told the transfer failed");
+    assert_eq!(finished[1] & 1, 0, "Finished reports failure");
+
+    std::mem::drop(bridge);
+    std::mem::drop(conn);
+}
+
+/// T328a: the running compositor publishes the root `XdndProxy` and its
+/// bridge window advertises XDnD 5. This is the wiring the library test
+/// cannot see.
+#[test]
+fn compositor_publishes_the_root_xdnd_proxy() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-xdnd-proxy-{}", std::process::id());
+    let proc = CompositorProcess::start(&socket_name);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let screen = conn.setup().roots[screen_num].clone();
+    let proxy_atom = intern(&conn, "XdndProxy");
+    let aware_atom = intern(&conn, "XdndAware");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let proxy = loop {
+        let reply = conn
+            .get_property(false, screen.root, proxy_atom, AtomEnum::WINDOW, 0, 1)
+            .expect("get XdndProxy")
+            .reply()
+            .expect("XdndProxy reply");
+        if let Some(window) = reply
+            .value32()
+            .and_then(|mut it| it.next())
+            .filter(|w| *w != 0)
+        {
+            break window;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the compositor never published the root XdndProxy"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+
+    let aware = conn
+        .get_property(false, proxy, aware_atom, AtomEnum::ATOM, 0, 1)
+        .expect("get bridge XdndAware")
+        .reply()
+        .expect("bridge XdndAware reply");
+    assert_eq!(
+        aware.value32().and_then(|mut it| it.next()),
+        Some(u32::from(XDND_VERSION)),
+        "the compositor's bridge window advertises XDnD 5"
+    );
+
+    std::mem::drop(conn);
+}
+
+///
+/// T328a: the bridge-as-target connection half against a fake X11 source.
+///
+/// The bridge interns its atoms, creates the bridge window, advertises
+/// `XdndAware`, and publishes the root `XdndProxy`. A fake X11 drag source then
+/// sends real `XdndEnter`/`Position`/`Drop` client messages to the bridge
+/// window and answers the `ConvertSelection` with a `text/uri-list` payload.
+/// The bridge must accept the drag, read the payload, and answer `XdndStatus`
+/// and `XdndFinished`.
+#[test]
+fn xdnd_target_bridge_reads_a_file_drop() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-xdnd-target-{}", std::process::id());
+    let proc = CompositorProcess::start(&socket_name);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let screen = conn.setup().roots[screen_num].clone();
+
+    // The bridge owns its own X connection (never the XWM's).
+    let mut bridge = XdndBridge::connect(&display).expect("start the XDnD target bridge");
+    let bridge_window = bridge.window();
+    let root = bridge.root();
+    let atoms = *bridge.atoms();
+    let uri_list = bridge.uri_list_atom();
+
+    // The root proxy and the bridge's XdndAware are the two properties that
+    // make a Wayland-surface drag resolve to the bridge.
+    let proxy_atom = intern(&conn, "XdndProxy");
+    let aware_atom = intern(&conn, "XdndAware");
+    let proxy = conn
+        .get_property(false, root, proxy_atom, AtomEnum::WINDOW, 0, 1)
+        .expect("get XdndProxy")
+        .reply()
+        .expect("XdndProxy reply");
+    assert_eq!(
+        proxy.value32().and_then(|mut it| it.next()),
+        Some(bridge_window),
+        "the root XdndProxy points at the bridge window"
+    );
+    let aware = conn
+        .get_property(false, bridge_window, aware_atom, AtomEnum::ATOM, 0, 1)
+        .expect("get XdndAware")
+        .reply()
+        .expect("XdndAware reply");
+    assert_eq!(
+        aware.value32().and_then(|mut it| it.next()),
+        Some(u32::from(XDND_VERSION)),
+        "the bridge window advertises XDnD 5"
+    );
+
+    // A fake X11 source owns XdndSelection and offers only a text/plain atom
+    // first: the bridge must refuse it.
+    let source = make_window(&conn, &screen);
+    let selection = intern(&conn, "XdndSelection");
+    conn.set_selection_owner(source, selection, x11rb::CURRENT_TIME)
+        .expect("own XdndSelection")
+        .check()
+        .expect("set XdndSelection owner");
+    // A round-trip so the owner is visible before the bridge's
+    // ConvertSelection on its own connection (cross-connection requests have
+    // no ordering guarantee).
+    let owner = conn
+        .get_selection_owner(selection)
+        .expect("get selection owner")
+        .reply()
+        .expect("selection owner reply")
+        .owner;
+    assert_eq!(owner, source, "the fake source owns XdndSelection");
+
+    let text_only = XdndMessage::Enter {
+        source,
+        version: XDND_VERSION,
+        more_types: false,
+        types: vec![atoms.action_list],
+    };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.enter,
+        text_only.encode(&atoms).expect("encode Enter"),
+    );
+    let position = XdndMessage::Position {
+        source,
+        position: (10, 20),
+        time: 0,
+        action: XdndAction::Copy,
+    };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.position,
+        position.encode(&atoms).expect("encode Position"),
+    );
+    conn.flush().expect("flush refusal");
+
+    let (events, received) = pump_bridge(&mut bridge, &conn, b"", Duration::from_secs(5), false);
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, BridgeEvent::Dropped { .. })),
+        "a non-file drag produces no drop: {events:?}"
+    );
+    let status = received
+        .iter()
+        .find(|(type_atom, _)| *type_atom == atoms.status)
+        .expect("the bridge answered XdndStatus");
+    assert_eq!(status.1[1] & 1, 0, "a text/plain drag is refused");
+
+    // Now the real file drag. The source offers text/uri-list, the bridge
+    // accepts, and the drop's ConvertSelection is answered with two files.
+    let enter = XdndMessage::Enter {
+        source,
+        version: XDND_VERSION,
+        more_types: false,
+        types: vec![uri_list],
+    };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.enter,
+        enter.encode(&atoms).expect("encode Enter"),
+    );
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.position,
+        position.encode(&atoms).expect("encode Position"),
+    );
+    let drop = XdndMessage::Drop { source, time: 0 };
+    send_message(
+        &conn,
+        bridge_window,
+        atoms.drop,
+        drop.encode(&atoms).expect("encode Drop"),
+    );
+    conn.flush().expect("flush drop");
+
+    let payload = b"# a comment\r\nfile:///home/u/one.txt\r\nfile:///home/u/two%20words.txt\r\n";
+    let (events, received) = pump_bridge(&mut bridge, &conn, payload, Duration::from_secs(5), true);
+
+    let dropped = events
+        .iter()
+        .find_map(|event| match event {
+            BridgeEvent::Dropped {
+                paths, position, ..
+            } => Some((paths.clone(), *position)),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("the bridge read the file drop: events={events:?} received={received:?}")
+        });
+    assert_eq!(
+        dropped.0,
+        vec![
+            PathBuf::from("/home/u/one.txt"),
+            PathBuf::from("/home/u/two words.txt")
+        ]
+    );
+    assert_eq!(dropped.1, (10, 20));
+
+    let accepted = received
+        .iter()
+        .filter(|(type_atom, _)| *type_atom == atoms.status)
+        .map(|(_, data)| data[1] & 1)
+        .next_back()
+        .expect("the bridge answered XdndStatus");
+    assert_eq!(accepted, 1, "a text/uri-list drag is accepted");
+    let finished = received
+        .iter()
+        .find(|(type_atom, _)| *type_atom == atoms.finished)
+        .unwrap_or_else(|| {
+            panic!("the bridge answered XdndFinished: received={received:?} events={events:?}")
+        });
+    assert_eq!(finished.1[0], bridge_window, "Finished names the target");
+    assert_eq!(finished.1[1] & 1, 1, "Finished reports success");
+    assert_eq!(finished.1[2], atoms.action_copy, "the copy action is used");
+
+    // `proc` drops here (SIGKILL + wait); `conn`/`bridge` drop with the test.
+    std::mem::drop(bridge);
     std::mem::drop(conn);
 }

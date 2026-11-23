@@ -20,15 +20,24 @@
 //!
 //! Clipboard (not primary) selection is bridged both directions through the
 //! data-device selection the shell's `wlr-data-control` manager observes.
-//! XDnD is *not* implemented by Smithay 0.7's XWM, so drag-and-drop across
-//! the boundary is a known gap (see PROGRESS.md) until a bridge lands.
+//! XDnD is *not* implemented by Smithay 0.7's XWM. The compositor's own
+//! `xdnd_bridge` module covers the X11→Wayland target role (T328a); the
+//! Wayland→X11 source role remains T328b.
 
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::time::Duration;
 
+use dragonfruit_compositor::xdnd::URI_LIST_MIME;
+use dragonfruit_compositor::xdnd_bridge::{BridgeEvent, XdndBridge, TRANSFER_TIMEOUT};
+use smithay::backend::input::ButtonState;
 use smithay::desktop::Window;
 use smithay::input::pointer::Focus as PointerFocus;
-use smithay::reexports::calloop::RegistrationToken;
+use smithay::input::pointer::{ButtonEvent, GrabStartData, MotionEvent};
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+use smithay::reexports::calloop::{Interest, Mode, PostAction, RegistrationToken};
+use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::x11rb::connection::Connection as _;
 use smithay::reexports::x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, PropMode};
@@ -38,7 +47,7 @@ use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus as _;
 use smithay::wayland::selection::data_device::{
     clear_data_device_selection, current_data_device_selection_userdata,
-    request_data_device_client_selection, set_data_device_selection,
+    request_data_device_client_selection, set_data_device_selection, start_dnd, SourceMetadata,
 };
 use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
@@ -89,6 +98,23 @@ pub struct XwaylandState {
     pub property_conn: Option<RustConnection>,
     /// The cached `_NET_FRAME_EXTENTS` atom on [`Self::property_conn`].
     pub frame_extents_atom: Option<Atom>,
+    /// The dedicated X11 connection and bridge window for XDnD-as-target
+    /// (T328a). `None` until Xwayland is ready or when the server goes away.
+    pub dnd: Option<XdndBridge>,
+    /// The calloop readiness source for [`Self::dnd`].
+    pub dnd_source_token: Option<RegistrationToken>,
+    /// Local paths read from the current X11 drop, served to the Wayland
+    /// client through the compositor-owned data source.
+    pub dnd_offer: Option<Vec<PathBuf>>,
+    /// The Wayland client accepted the `text/uri-list` offer.
+    pub dnd_offer_accepted: bool,
+    /// The Wayland client chose an action for the offer.
+    pub dnd_offer_action: bool,
+    /// A synthetic drop is in flight: the release that ends the grab has not
+    /// been injected yet.
+    pub dnd_drop_armed: bool,
+    /// The bounded fallback timer for a client that never accepts.
+    pub dnd_drop_timer: Option<RegistrationToken>,
 }
 
 impl Default for XwaylandState {
@@ -106,6 +132,13 @@ impl Default for XwaylandState {
             integer_scale: 1,
             property_conn: None,
             frame_extents_atom: None,
+            dnd: None,
+            dnd_source_token: None,
+            dnd_offer: None,
+            dnd_offer_accepted: false,
+            dnd_offer_action: false,
+            dnd_drop_armed: false,
+            dnd_drop_timer: None,
         }
     }
 }
@@ -155,6 +188,66 @@ pub fn cleanup_x11_files(display_number: u32) {
 /// serialization (and panic it).
 fn x11_string(value: &str) -> String {
     value.replace('\0', "")
+}
+
+/// Start the XDnD bridge-as-target on its own X11 connection (T328a).
+///
+/// The bridge publishes the root `XdndProxy` and creates the bridge window;
+/// this function only owns its calloop readiness source. Called once when
+/// Xwayland reports ready, and dropped when the server goes away.
+fn start_xdnd_bridge(state: &mut DfState) {
+    if state.xwayland.dnd.is_some() {
+        return;
+    }
+    let Some(display) = state.xwayland.display.clone() else {
+        return;
+    };
+    let bridge = match XdndBridge::connect(&display) {
+        Ok(bridge) => bridge,
+        Err(err) => {
+            eprintln!("dragonfruit-compositor: XDnD target bridge unavailable: {err}");
+            return;
+        }
+    };
+    let fd = match bridge.duplicate_fd() {
+        Ok(fd) => fd,
+        Err(err) => {
+            eprintln!("dragonfruit-compositor: XDnD bridge fd unavailable: {err}");
+            return;
+        }
+    };
+    let source = Generic::new(fd, Interest::READ, Mode::Level);
+    match state.loop_handle.insert_source(source, |_, _, state| {
+        state.poll_xdnd_bridge();
+        Ok(PostAction::Continue)
+    }) {
+        Ok(token) => {
+            println!(
+                "dragonfruit-compositor: XDnD target bridge ready (window {:#x})",
+                bridge.window()
+            );
+            state.xwayland.dnd = Some(bridge);
+            state.xwayland.dnd_source_token = Some(token);
+        }
+        Err(err) => {
+            eprintln!("dragonfruit-compositor: failed to register the XDnD bridge source: {err}")
+        }
+    }
+}
+
+/// Tear down the XDnD bridge (server restart or connection error).
+fn stop_xdnd_bridge(state: &mut DfState) {
+    if let Some(token) = state.xwayland.dnd_source_token.take() {
+        state.loop_handle.remove(token);
+    }
+    if let Some(token) = state.xwayland.dnd_drop_timer.take() {
+        state.loop_handle.remove(token);
+    }
+    state.xwayland.dnd = None;
+    state.xwayland.dnd_offer = None;
+    state.xwayland.dnd_offer_accepted = false;
+    state.xwayland.dnd_offer_action = false;
+    state.xwayland.dnd_drop_armed = false;
 }
 
 /// Spawn Xwayland and register its event source. Idempotent; returns
@@ -228,6 +321,7 @@ pub fn start(state: &mut DfState) -> Result<(), String> {
                         state.xwayland.display = Some(display.clone());
                         state.xwayland.running = true;
                         state.xwayland.pending_restart = false;
+                        start_xdnd_bridge(state);
                         println!(
                             "dragonfruit-compositor: Xwayland ready: DISPLAY={display} \
                              (start #{}, integer scale {})",
@@ -282,6 +376,8 @@ pub fn maybe_restart(state: &mut DfState) {
     state.xwayland.wm = None;
     state.xwayland.running = false;
     state.xwayland.pending_restart = false;
+    // The DnD bridge belongs to the dead server (T328a).
+    stop_xdnd_bridge(state);
     // The property connection belongs to the dead server (T327).
     state.xwayland.property_conn = None;
     state.xwayland.frame_extents_atom = None;
@@ -477,6 +573,201 @@ impl DfState {
             .windows()
             .find(|window| window.x11_surface().map(|s| s.window_id()) == Some(id))
             .cloned()
+    }
+
+    /// Drain the XDnD bridge's X connection and act on what it observed
+    /// (T328a). Called from the bridge's calloop readiness source.
+    pub(crate) fn poll_xdnd_bridge(&mut self) {
+        let result = self.xwayland.dnd.as_mut().map(|bridge| bridge.poll());
+        match result {
+            Some(Ok(events)) => {
+                for event in events {
+                    self.handle_xdnd_event(event);
+                }
+            }
+            Some(Err(err)) => {
+                eprintln!("dragonfruit-compositor: XDnD bridge error: {err}");
+                stop_xdnd_bridge(self);
+            }
+            None => {}
+        }
+    }
+
+    fn handle_xdnd_event(&mut self, event: BridgeEvent) {
+        match event {
+            BridgeEvent::Dropped { paths, .. } => {
+                // The X11 source has already been told the target took the
+                // data. Offer the paths to the Wayland surface under the
+                // pointer; `send` serves them when the client requests them.
+                self.clear_xdnd_offer();
+                self.xwayland.dnd_offer = Some(paths);
+                self.offer_xdnd_drop_to_wayland();
+            }
+            BridgeEvent::Failed { source, reason } => {
+                eprintln!("dragonfruit-compositor: XDnD drop from {source:#x} failed: {reason}");
+                self.clear_xdnd_offer();
+            }
+            BridgeEvent::Leave => self.clear_xdnd_offer(),
+            BridgeEvent::TransferStarted { .. } => {
+                // The bridge's deadline is only checked when the connection
+                // wakes it. A one-shot wakeup guarantees a silent or wedged
+                // source still expires and is refused.
+                let wake = TRANSFER_TIMEOUT + Duration::from_millis(200);
+                let _ =
+                    self.loop_handle
+                        .insert_source(Timer::from_duration(wake), |_, _, state| {
+                            state.poll_xdnd_bridge();
+                            TimeoutAction::Drop
+                        });
+            }
+            BridgeEvent::Enter { .. } | BridgeEvent::Position { .. } => {}
+        }
+    }
+
+    /// Start a compositor-owned Wayland drag at the pointer and immediately
+    /// deliver the X11 drop to the surface under it.
+    ///
+    /// The X11 source drops on button release, so by the time the bridge has
+    /// the payload the physical press is over. The compositor therefore
+    /// synthesises the `enter`/`drop` pair: it installs a pointer grab with the
+    /// current location, sends the offer to the surface under the pointer, and
+    /// releases as soon as the client has accepted both the MIME type and an
+    /// action (bounded by a 750 ms fallback). The client sees a normal data
+    /// offer and requests `text/uri-list` through `send`.
+    fn offer_xdnd_drop_to_wayland(&mut self) {
+        let Some(paths) = self.xwayland.dnd_offer.as_ref() else {
+            return;
+        };
+        if paths.is_empty() {
+            self.clear_xdnd_offer();
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else {
+            self.clear_xdnd_offer();
+            return;
+        };
+        if self.lock.is_locked() || self.suspend.is_suspended() {
+            // A drag cannot legitimately complete while input is captured.
+            self.clear_xdnd_offer();
+            return;
+        }
+        if pointer.is_grabbed() {
+            // Never clobber a client's grab (a menu, a popup, or an earlier
+            // synthetic drop). The X11 source has already been answered.
+            eprintln!("dragonfruit-compositor: XDnD drop skipped because the pointer is grabbed");
+            self.clear_xdnd_offer();
+            return;
+        }
+        let location = pointer.current_location();
+        let Some((surface, origin)) = crate::input::surface_under(self, location) else {
+            eprintln!("dragonfruit-compositor: XDnD drop had no Wayland surface under the pointer");
+            self.clear_xdnd_offer();
+            return;
+        };
+        if self.is_above_window_chrome_surface(&surface) {
+            // Shell chrome is not a data-device client.
+            self.clear_xdnd_offer();
+            return;
+        }
+
+        let start = GrabStartData {
+            focus: Some((surface.clone(), origin.to_f64())),
+            button: 0x110, // BTN_LEFT
+            location,
+        };
+        let seat = self.seat.clone();
+        let display_handle = self.display_handle.clone();
+        let serial = SERIAL_COUNTER.next_serial();
+        self.xwayland.dnd_drop_armed = true;
+        self.xwayland.dnd_offer_accepted = false;
+        self.xwayland.dnd_offer_action = false;
+        start_dnd(
+            &display_handle,
+            &seat,
+            self,
+            serial,
+            Some(start),
+            None,
+            SourceMetadata {
+                mime_types: vec![URI_LIST_MIME.to_string()],
+                dnd_action: DndAction::Copy,
+            },
+        );
+        // Deliver the offer to the surface under the pointer. The grab is
+        // active; this is the `wl_data_device.enter` the client answers.
+        pointer.motion(
+            self,
+            Some((surface, origin.to_f64())),
+            &MotionEvent {
+                location,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: 0,
+            },
+        );
+        pointer.frame(self);
+        // If the client never accepts, finish the offer (which cancels it)
+        // so the grab cannot outlive the drop.
+        let token = self
+            .loop_handle
+            .insert_source(
+                Timer::from_duration(Duration::from_millis(750)),
+                |_, _, state| {
+                    state.xwayland.dnd_drop_timer = None;
+                    state.finish_xdnd_wayland_drop();
+                    TimeoutAction::Drop
+                },
+            )
+            .ok();
+        self.xwayland.dnd_drop_timer = token;
+    }
+
+    /// Inject the release that ends the synthetic Wayland drag. The grab's
+    /// `button` handler turns the empty pressed set into a drop (validated) or
+    /// a cancellation.
+    pub(crate) fn finish_xdnd_wayland_drop(&mut self) {
+        if !self.xwayland.dnd_drop_armed {
+            return;
+        }
+        self.xwayland.dnd_drop_armed = false;
+        if let Some(token) = self.xwayland.dnd_drop_timer.take() {
+            self.loop_handle.remove(token);
+        }
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
+        let serial = SERIAL_COUNTER.next_serial();
+        pointer.button(
+            self,
+            &ButtonEvent {
+                serial,
+                time: 0,
+                button: 0x110, // BTN_LEFT
+                state: ButtonState::Released,
+            },
+        );
+        pointer.frame(self);
+    }
+
+    /// Finish the synthetic drop once the client has accepted both the MIME
+    /// type and an action.
+    pub(crate) fn maybe_finish_xdnd_wayland_drop(&mut self) {
+        if self.xwayland.dnd_drop_armed
+            && self.xwayland.dnd_offer_accepted
+            && self.xwayland.dnd_offer_action
+        {
+            self.finish_xdnd_wayland_drop();
+        }
+    }
+
+    /// Drop the current Wayland offer state (new drag, cancellation, finish).
+    pub(crate) fn clear_xdnd_offer(&mut self) {
+        self.xwayland.dnd_offer = None;
+        self.xwayland.dnd_offer_accepted = false;
+        self.xwayland.dnd_offer_action = false;
+        self.xwayland.dnd_drop_armed = false;
+        if let Some(token) = self.xwayland.dnd_drop_timer.take() {
+            self.loop_handle.remove(token);
+        }
     }
 
     /// Drop every X11 window when the X server goes away (T326).
