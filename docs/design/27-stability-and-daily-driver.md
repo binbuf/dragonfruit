@@ -157,6 +157,20 @@ The synthetic `query focus` report carries a `keyboard
 none|window <id>|chrome|other|dead` line beside the cached `focus` line;
 `keyboard dead` is the invariant violation the conformance suites reject.
 
+Pointer constraints follow the same focus rule (T322,
+[ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md)). A client's
+`zwp_pointer_constraints_v1` lock or confine is scoped to its own focused
+surface: any client may create one, a constraint created while the surface is
+unfocused activates on pointer enter, and `DfState::focus_changed` releases an
+active constraint when its window loses keyboard focus. The grab is
+self-healing — a destroyed constraint or surface unsets it — so a client crash
+cannot leave the pointer frozen. A constraint never confines input over
+another application. Pointer constraints do not pass through the
+`GrabArbiter`; the arbiter still gates raw keyboard and popup grabs, its
+refusal record is bounded to 64 entries, and a disconnected client is pruned
+from the sanctioned set. The conformance suite is
+`compositor/tests/pointer_constraints_conformance.rs`.
+
 ### 3.3 Settings are truthful
 
 The schema and the Settings map are a contract. A key marked
@@ -469,7 +483,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-15 | Files lacks copy/move/paste, undo, watcher, tabs, New Window, Open With | T330–T334 |
 | S-16 | Screen sharing is stills-only | T335a, T335b |
 | S-17 | X11 `_NET_FRAME_EXTENTS` is missing; XDnD is a model only | T327, T328a, T328b |
-| S-18 | Pointer constraints are refused for games/remote desktop; refusals grow unbounded | T322 |
+| S-18 | Pointer constraints are refused for games/remote desktop; refusals grow unbounded (closed by T322) | T322 |
 | S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output | T323 |
 | S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output | T324 |
 | S-21 | `df_output.set_mode` accepts a zero/negative refresh and panics the compositor | T325 |

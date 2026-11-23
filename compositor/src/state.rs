@@ -94,6 +94,7 @@ use smithay::wayland::xdg_activation::{
 use smithay::xwayland::XWaylandClientData;
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
@@ -109,7 +110,7 @@ use crate::input::hot_corners::{parse_hot_corner_modifier, HotCornerAction, HotC
 use crate::input::keymap::parse_binding;
 use crate::input::settings::InputSettings;
 use crate::pointer_policy::{PointerConfig, PointerController, PointerKind};
-use crate::input::shortcuts::{GrabArbiter, GrabKind, Shortcut, ShortcutEngine};
+use crate::input::shortcuts::{GrabArbiter, Shortcut, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::{GestureBudgetTrace, LatencyInstrument};
 use crate::lock::LockModel;
@@ -165,10 +166,33 @@ pub struct DfClientState {
     /// Set when the client identifies itself via `security-context`
     /// (sandboxed/Flatpak clients) — the basis of T-07/T-27 access control.
     pub security_context: Option<SecurityContext>,
+    /// Disconnected client ids, drained by the session loop so the compositor
+    /// can revoke their grab sanctions (T322). `ClientData::disconnected` is
+    /// `&self`, so this is the shared inbox it can write through.
+    pub disconnected_clients: Arc<Mutex<Vec<ClientId>>>,
+}
+
+impl DfClientState {
+    /// Per-client state sharing `disconnected_clients` with the compositor.
+    pub fn new(
+        compositor_state: CompositorClientState,
+        security_context: Option<SecurityContext>,
+        disconnected_clients: Arc<Mutex<Vec<ClientId>>>,
+    ) -> Self {
+        DfClientState {
+            compositor_state,
+            security_context,
+            disconnected_clients,
+        }
+    }
 }
 
 impl ClientData for DfClientState {
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn disconnected(&self, client_id: ClientId, _reason: DisconnectReason) {
+        if let Ok(mut disconnected) = self.disconnected_clients.lock() {
+            disconnected.push(client_id);
+        }
+    }
 }
 
 /// One rendered frame's timing sample (T-11 U-2).
@@ -1743,8 +1767,17 @@ pub struct DfState {
     pub pointer_controller: PointerController,
     /// The outbox/audit log every trigger writes to (shell protocol T-07).
     pub input_dispatch: InputDispatch,
-    /// Gate for every client grab request (FR-5).
+    /// Gate for the privileged client grabs (raw keyboard and popup). Pointer
+    /// constraints do not pass through it (T322, ADR 0314).
     pub grab_arbiter: GrabArbiter<ClientId>,
+    /// Disconnected client ids written by `ClientData::disconnected` and
+    /// drained each dispatch so `grab_arbiter` cannot accumulate stale
+    /// sanctions (T322).
+    pub disconnected_clients: Arc<Mutex<Vec<ClientId>>>,
+    /// The surface whose pointer constraint the live `PointerConstraintGrab`
+    /// enforces, if any. Used to release the grab on focus loss and cleared by
+    /// the grab's `unset` (T322).
+    pub constraint_grab: Option<WlSurface>,
     /// Pending hot-corner dwell timer, if armed.
     pub hot_corner_timer: Option<RegistrationToken>,
     /// Pending animation-clock timer, if any animation is in flight
@@ -2076,6 +2109,8 @@ impl DfState {
             pointer_controller: PointerController::new(),
             input_dispatch: InputDispatch::new(),
             grab_arbiter: GrabArbiter::new(),
+            disconnected_clients: Arc::new(Mutex::new(Vec::new())),
+            constraint_grab: None,
             hot_corner_timer: None,
             animation_timer: None,
             animation_clock: AnimationClock::new(),
@@ -7679,6 +7714,10 @@ impl SeatHandler for DfState {
         // outside the top band this conceals a bar that no longer has an
         // active menu or focus holding it up.
         self.sync_menu_bar_reveal();
+        // T322: a pointer lock/confine belongs to the focused surface. When
+        // its window loses keyboard focus the grab is released so a
+        // background client cannot keep the pointer.
+        self.release_pointer_constraint_on_focus_change(focused);
     }
 
     fn cursor_image(
@@ -7708,29 +7747,44 @@ impl TabletSeatHandler for DfState {
 
 impl FractionalScaleHandler for DfState {}
 
-impl PointerConstraintsHandler for DfState {
-    fn new_constraint(
+impl DfState {
+    /// Drain the disconnect inbox and revoke those clients' grab sanctions
+    /// (T322).
+    ///
+    /// `ClientData::disconnected` cannot touch compositor state, so it writes
+    /// the id to the shared inbox; the session loop calls this after each
+    /// dispatch. The sanctioned set therefore stays bounded across shell
+    /// restarts and client crashes.
+    pub fn forget_disconnected_grab_clients(&mut self) {
+        let disconnected: Vec<ClientId> = match self.disconnected_clients.lock() {
+            Ok(mut inbox) => std::mem::take(&mut *inbox),
+            Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+        };
+        for client in disconnected {
+            self.grab_arbiter.forget(&client);
+        }
+    }
+
+    /// Activate the pointer constraint registered on `surface`, if the
+    /// pointer is over it and no other grab owns the pointer (T322).
+    ///
+    /// Any client may create a constraint (ADR 0314); the protocol scopes it
+    /// to the surface's own pointer focus. A constraint created while the
+    /// surface is unfocused stays registered with Smithay and is activated
+    /// here when the pointer enters it.
+    pub fn activate_pointer_constraint(
         &mut self,
         surface: &WlSurface,
         pointer: &smithay::input::pointer::PointerHandle<DfState>,
     ) {
-        // Every grab goes through the arbiter (FR-5): only a sanctioned
-        // session client may confine or lock the pointer. An unsanctioned
-        // request is logged and refused, leaving normal pointer motion.
-        let Some(client) = self.display_handle.get_client(surface.id()).ok() else {
-            return;
-        };
-        if self
-            .grab_arbiter
-            .request(client.id(), GrabKind::Pointer)
-            .is_err()
-        {
+        if pointer.is_grabbed() || pointer.current_focus().as_ref() != Some(surface) {
             return;
         }
-        // Activate only while the pointer is over this surface. A
-        // constraint created while unfocused stays registered; activation
-        // on a future pointer-enter is a follow-up (see PROGRESS.md).
-        if pointer.current_focus().as_ref() != Some(surface) {
+        // Already enforced: do not replace a live grab or re-send `locked`.
+        let active = with_pointer_constraint(surface, pointer, |constraint| {
+            constraint.is_some_and(|constraint| constraint.is_active())
+        });
+        if active {
             return;
         }
         let location = pointer.current_location();
@@ -7759,6 +7813,74 @@ impl PointerConstraintsHandler for DfState {
             SERIAL_COUNTER.next_serial(),
             PointerFocus::Keep,
         );
+        self.constraint_grab = Some(surface.clone());
+    }
+
+    /// Release an active pointer constraint when its window loses keyboard
+    /// focus (T322).
+    ///
+    /// A locked pointer would otherwise keep consuming motion for a
+    /// background window. Focus loss is the compositor's release signal
+    /// alongside the resource destroy; the grab's own `unset` deactivates the
+    /// constraint and clears [`Self::constraint_grab`].
+    fn release_pointer_constraint_on_focus_change(&mut self, focused: Option<&WlSurface>) {
+        let Some(constrained) = self.constraint_grab.clone() else {
+            return;
+        };
+        let Some(pointer) = self.seat.get_pointer() else {
+            self.constraint_grab = None;
+            return;
+        };
+        // A stale field means the grab self-healed or was replaced by another
+        // grab; never unset an unrelated grab.
+        if pointer.current_focus().as_ref() != Some(&constrained) {
+            self.constraint_grab = None;
+            return;
+        }
+        let active = with_pointer_constraint(&constrained, &pointer, |constraint| {
+            constraint.is_some_and(|constraint| constraint.is_active())
+        });
+        if !active {
+            self.constraint_grab = None;
+            return;
+        }
+        let constrained_window = self.window_for_surface(&constrained);
+        let focused_window = focused.and_then(|surface| self.window_for_surface(surface));
+        if constrained_window.is_some() && constrained_window == focused_window {
+            return;
+        }
+        let serial = SERIAL_COUNTER.next_serial();
+        pointer.unset_grab(self, serial, 0);
+        // Restore the pointer to whatever is under it now; the unset restored
+        // the stale focus target.
+        let location = pointer.current_location();
+        let target = crate::input::surface_under(self, location)
+            .map(|(surface, origin)| (surface, origin.to_f64()));
+        pointer.motion(
+            self,
+            target,
+            &smithay::input::pointer::MotionEvent {
+                location,
+                serial,
+                time: 0,
+            },
+        );
+        pointer.frame(self);
+    }
+}
+
+impl PointerConstraintsHandler for DfState {
+    fn new_constraint(
+        &mut self,
+        surface: &WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<DfState>,
+    ) {
+        // Any client whose surface has pointer focus may lock or confine the
+        // pointer (ADR 0314). The protocol already scopes the constraint to
+        // this surface; it is not a privileged session grab and does not pass
+        // through `GrabArbiter`. A constraint created while the surface is
+        // unfocused stays registered and activates on pointer enter.
+        self.activate_pointer_constraint(surface, pointer);
     }
 
     fn cursor_position_hint(
@@ -7866,10 +7988,11 @@ impl SecurityContextHandler for DfState {
             .loop_handle
             .insert_source(source, move |stream, _, state| {
                 let mut dh = state.display_handle.clone();
-                let client_state = std::sync::Arc::new(DfClientState {
-                    compositor_state: CompositorClientState::default(),
-                    security_context: Some(context.clone()),
-                });
+                let client_state = std::sync::Arc::new(DfClientState::new(
+                    CompositorClientState::default(),
+                    Some(context.clone()),
+                    state.disconnected_clients.clone(),
+                ));
                 if let Err(err) = dh.insert_client(stream, client_state) {
                     eprintln!("dragonfruit-compositor: rejecting sandboxed client: {err}");
                 }

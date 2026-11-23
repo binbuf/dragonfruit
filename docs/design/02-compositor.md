@@ -144,6 +144,19 @@ ladder.
   (see [06-global-menu.md](06-global-menu.md)), and sandboxed applications
   register shortcuts through the portal's GlobalShortcuts interface — no
   client grabs keys directly.
+- `zwp_pointer_constraints_v1` is unprivileged (T322,
+  [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md)). Any client
+  whose surface has pointer focus may lock or confine the pointer: the
+  protocol scopes the constraint to that surface, and the grab releases when
+  the surface loses focus or the resource is destroyed. A constraint created
+  while the surface is not focused stays registered and activates on pointer
+  enter. Pointer constraints do not pass through the `GrabArbiter`; the
+  arbiter remains the one gate for the privileged session grabs
+  (`RawKeyboard` and `Popup`), and its refusal record is bounded (64) so a
+  create/destroy loop is a diagnostic, not unbounded memory. A constrained
+  pointer cannot confine input over another application — the grab is
+  surface-scoped and `DfState::focus_changed` releases it when its window
+  loses keyboard focus.
 
 ## Renderer and effects
 
@@ -1228,7 +1241,9 @@ Standard protocols the compositor implements or consumes:
   legacy protocol GTK 3 checks on Wayland before deciding to draw CSD. It is
   advertised for compatibility; a client that explicitly requests `Client`
   keeps its own decoration.
-- Pointer constraints, relative pointer, `cursor-shape`, `idle-inhibit`
+- Pointer constraints, relative pointer, `cursor-shape`, `idle-inhibit`.
+  Pointer constraints are unprivileged and surface-scoped (T322,
+  [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md)).
 - `wp-content-type-manager-v1` content-type hints. The global is advertised,
   but the compositor does not yet apply a content-type-specific scanout policy;
   that tuning is still open (G-13).

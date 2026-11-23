@@ -67,10 +67,18 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         socket_path.display()
     );
     println!("dragonfruit-compositor: WAYLAND_DISPLAY={printed_name}");
+    // T322: every client shares the disconnect inbox so the compositor can
+    // revoke a disconnected client's grab sanction.
+    let disconnected_clients = state.disconnected_clients.clone();
     loop_handle
         .insert_source(socket_source, move |client_stream, _, _state| {
             let mut dh = dh.clone();
-            if let Err(err) = dh.insert_client(client_stream, Arc::new(DfClientState::default())) {
+            let client_state = Arc::new(DfClientState::new(
+                smithay::wayland::compositor::CompositorClientState::default(),
+                None,
+                disconnected_clients.clone(),
+            ));
+            if let Err(err) = dh.insert_client(client_stream, client_state) {
                 eprintln!("dragonfruit-compositor: rejecting client: {err}");
             }
         })
@@ -86,6 +94,10 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
                 // upstream anvil).
                 let display: &mut Display<DfState> = unsafe { display.get_mut() };
                 let _ = display.dispatch_clients(state);
+                // T322: `ClientData::disconnected` cannot touch compositor
+                // state; drain its inbox here so a gone client's grab
+                // sanction is revoked.
+                state.forget_disconnected_grab_clients();
                 Ok(PostAction::Continue)
             },
         )

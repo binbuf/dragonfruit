@@ -16,7 +16,7 @@
 //! system shortcuts take precedence over application accelerators, and the
 //! focused window's menu wins among application accelerators.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use smithay::input::keyboard::xkb::keysyms;
 use smithay::input::keyboard::ModifiersState;
@@ -77,22 +77,33 @@ pub struct GrabRefusal<K = u32> {
 }
 
 /// The kind of grab a client attempted.
+///
+/// Pointer constraints are deliberately absent: `zwp_pointer_constraints_v1`
+/// is scoped to the client's own focused surface by the protocol and does not
+/// pass through this arbiter (ADR 0314). Only the privileged session grabs
+/// below do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrabKind {
     /// A raw keyboard grab (shortcut-inhibit-style).
     RawKeyboard,
-    /// A pointer grab.
-    Pointer,
     /// A popup grab.
     Popup,
 }
 
-/// The single gate every grab request must pass through.
+/// How many refusals the arbiter retains for diagnostics.
+///
+/// A refusal is a diagnostic, not a queue: past this bound the oldest entry
+/// is discarded and stderr logging stops, so a client that loops
+/// create/destroy cannot grow either.
+pub const MAX_GRAB_REFUSALS: usize = 64;
+
+/// The single gate every privileged grab request must pass through.
 ///
 /// The compositor sanctions a small set of trusted session clients (the
 /// shell and the Files desktop surface) with one-time launch tokens
 /// ([02-compositor.md](../../docs/design/02-compositor.md)); everyone else
-/// is logged and refused.
+/// is logged and refused. Pointer constraints are not privileged and never
+/// reach this gate (ADR 0314).
 ///
 /// The client key is generic so the live compositor can key on Smithay's
 /// `ClientId` (which cannot be constructed in a unit test) while the model
@@ -100,14 +111,14 @@ pub enum GrabKind {
 #[derive(Debug)]
 pub struct GrabArbiter<K = u32> {
     sanctioned: HashSet<K>,
-    refusals: Vec<GrabRefusal<K>>,
+    refusals: VecDeque<GrabRefusal<K>>,
 }
 
 impl<K> Default for GrabArbiter<K> {
     fn default() -> Self {
         GrabArbiter {
             sanctioned: HashSet::new(),
-            refusals: Vec::new(),
+            refusals: VecDeque::new(),
         }
     }
 }
@@ -120,6 +131,12 @@ impl<K: Eq + std::hash::Hash + Clone + std::fmt::Debug> GrabArbiter<K> {
     /// Mark a client as a sanctioned session client (shell token, T-07).
     pub fn sanction(&mut self, client: K) {
         self.sanctioned.insert(client);
+    }
+
+    /// Forget a disconnected client so the sanctioned set cannot grow across
+    /// shell restarts (T322).
+    pub fn forget(&mut self, client: &K) {
+        self.sanctioned.remove(client);
     }
 
     pub fn is_sanctioned(&self, client: &K) -> bool {
@@ -137,16 +154,23 @@ impl<K: Eq + std::hash::Hash + Clone + std::fmt::Debug> GrabArbiter<K> {
             kind,
             reason: "client is not a sanctioned session client",
         };
-        eprintln!(
-            "dragonfruit-compositor: refused {kind:?} grab from client {:?} (not sanctioned)",
-            refusal.client
-        );
-        self.refusals.push(refusal.clone());
+        // Log only while the bounded window has room; a spam loop stops at
+        // `MAX_GRAB_REFUSALS` lines instead of growing stderr forever.
+        if self.refusals.len() < MAX_GRAB_REFUSALS {
+            eprintln!(
+                "dragonfruit-compositor: refused {kind:?} grab from client {:?} (not sanctioned)",
+                refusal.client
+            );
+        }
+        if self.refusals.len() == MAX_GRAB_REFUSALS {
+            self.refusals.pop_front();
+        }
+        self.refusals.push_back(refusal.clone());
         Err(refusal)
     }
 
-    /// All refusals so far, oldest first.
-    pub fn refusals(&self) -> &[GrabRefusal<K>] {
+    /// The retained refusals, oldest first.
+    pub fn refusals(&self) -> &VecDeque<GrabRefusal<K>> {
         &self.refusals
     }
 }
@@ -780,5 +804,35 @@ mod tests {
         arbiter.sanction(7);
         assert!(arbiter.request(7, GrabKind::Popup).is_ok());
         assert_eq!(arbiter.refusals().len(), 1);
+    }
+
+    #[test]
+    fn the_refusal_log_is_bounded() {
+        // T322: a spam loop is a bounded diagnostic, not unbounded memory.
+        let mut arbiter = GrabArbiter::new();
+        for i in 0..(MAX_GRAB_REFUSALS as u32 + 40) {
+            let _ = arbiter.request(i, GrabKind::Popup);
+        }
+        assert_eq!(arbiter.refusals().len(), MAX_GRAB_REFUSALS);
+        // The newest refusal is retained; the oldest were evicted.
+        assert_eq!(
+            arbiter.refusals().back().map(|refusal| refusal.client),
+            Some(MAX_GRAB_REFUSALS as u32 + 39)
+        );
+        assert_eq!(
+            arbiter.refusals().front().map(|refusal| refusal.client),
+            Some(40)
+        );
+    }
+
+    #[test]
+    fn forgetting_a_client_revokes_its_sanction() {
+        // T322: a disconnected client must not stay in `sanctioned`.
+        let mut arbiter = GrabArbiter::new();
+        arbiter.sanction(7);
+        assert!(arbiter.request(7, GrabKind::RawKeyboard).is_ok());
+        arbiter.forget(&7);
+        assert!(!arbiter.is_sanctioned(&7));
+        assert!(arbiter.request(7, GrabKind::RawKeyboard).is_err());
     }
 }

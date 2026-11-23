@@ -6040,11 +6040,11 @@ fn sanctioned_client_can_lock_the_pointer() {
     );
 }
 
-/// T-03 FR-5 (malicious half): an ordinary, unsanctioned client requests the
-/// same pointer lock and is refused. It receives no `locked` event and the
-/// pointer keeps moving.
+/// T322 / ADR 0314: an ordinary, non-shell client is not privileged for
+/// pointer constraints. It may lock the pointer while its surface has focus,
+/// and the pointer freezes just as it does for the shell.
 #[test]
-fn unsanctioned_pointer_constraint_is_refused() {
+fn non_shell_client_can_lock_the_pointer() {
     let token = "aa".repeat(32);
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
     let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
@@ -6099,9 +6099,15 @@ fn unsanctioned_pointer_constraint_is_refused() {
         &queue.handle(),
         (),
     );
-    // Order the request before the synthetic motion on the same loop.
-    let _ = queue.roundtrip(&mut state);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.locked >= 1,
+    );
 
+    // The pointer must freeze: motion keeps arriving but stays put.
     let before = state.pointer_motions.last().copied();
     let before_len = state.pointer_motions.len();
     input.send("motion 80 60");
@@ -6112,14 +6118,10 @@ fn unsanctioned_pointer_constraint_is_refused() {
         Duration::from_secs(5),
         |state| state.pointer_motions.len() > before_len,
     );
-    assert_ne!(
+    assert_eq!(
         before,
         state.pointer_motions.last().copied(),
-        "an unsanctioned lock must not freeze the pointer"
-    );
-    assert_eq!(
-        state.locked, 0,
-        "no locked event for an unsanctioned client"
+        "a non-shell client's lock must freeze the pointer"
     );
 
     let _ = conn.flush();

@@ -6,11 +6,15 @@
 //! client could request a lock or a confine and get no enforcement. This
 //! module supplies the grab that makes a constraint real.
 //!
-//! Constraints are gated by [`crate::input::shortcuts::GrabArbiter`]: the
-//! compositor is the sole arbiter of grabs, and only a sanctioned session
-//! client (the shell/Files, authenticated with a launch token) may install
-//! one. An unsanctioned request is logged and refused (FR-5) — the client
-//! simply keeps moving normally.
+//! Constraints are unprivileged (ADR 0314): any client whose surface has
+//! pointer focus may lock or confine the pointer, because the protocol itself
+//! scopes the constraint to that surface and the grab releases when the
+//! surface loses focus or the resource is destroyed. The compositor's
+//! [`crate::input::shortcuts::GrabArbiter`] gates only the privileged session
+//! grabs (raw keyboard and popup), not this one.
+//!
+//! A constraint created while the surface is not focused stays registered and
+//! is activated on pointer enter (`DfState::activate_pointer_constraint`).
 //!
 //! The grab is self-healing: on every event it re-checks that its
 //! constraint still exists and is active, and unsets itself if the client
@@ -242,7 +246,7 @@ impl PointerGrab<DfState> for PointerConstraintGrab {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut DfState) {
+    fn unset(&mut self, data: &mut DfState) {
         // Deactivate so the client receives `unlocked`/`unconfined`. If the
         // client already destroyed the resource, the lookup is `None`.
         with_pointer_constraint(&self.surface, &self.pointer, |constraint| {
@@ -252,6 +256,11 @@ impl PointerGrab<DfState> for PointerConstraintGrab {
                 }
             }
         });
+        // T322: the state field tracks the one enforced constraint so focus
+        // loss can release it; a self-healing unset clears it here.
+        if data.constraint_grab.as_ref() == Some(&self.surface) {
+            data.constraint_grab = None;
+        }
     }
 }
 

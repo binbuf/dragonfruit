@@ -264,6 +264,24 @@ fn refresh_resize_cursor(
     }
 }
 
+/// Activate a registered pointer constraint on the surface the pointer just
+/// entered (T322).
+///
+/// A client may create a constraint before its surface has pointer focus; the
+/// protocol expects it to take effect on enter. The activation is a no-op when
+/// another grab owns the pointer or the surface has no registered constraint.
+fn activate_constraint_on_enter(
+    state: &mut DfState,
+    pointer: &smithay::input::pointer::PointerHandle<DfState>,
+) {
+    if pointer.is_grabbed() {
+        return;
+    }
+    if let Some(focus) = pointer.current_focus() {
+        state.activate_pointer_constraint(&focus, pointer);
+    }
+}
+
 /// Route one input event from any backend.
 #[allow(clippy::too_many_lines)]
 pub fn process_input_event<B: InputBackend>(state: &mut DfState, event: InputEvent<B>)
@@ -585,6 +603,9 @@ where
                 },
             );
             pointer.frame(state);
+            // T322: a constraint created while this surface was unfocused
+            // takes effect as soon as the pointer enters it.
+            activate_constraint_on_enter(state, &pointer);
             // A live-representation drag follows the pointer (T-05.3); a
             // no-op when nothing is being dragged.
             state.overview_update_drag(location);
@@ -642,6 +663,9 @@ where
                 },
             );
             pointer.frame(state);
+            // T322: activate a constraint registered before the pointer
+            // entered this surface.
+            activate_constraint_on_enter(state, &pointer);
             // A live-representation drag follows the pointer (T-05.3); a
             // no-op when nothing is being dragged.
             state.overview_update_drag(location);
@@ -679,6 +703,9 @@ where
             {
                 sync_pointer_focus_before_button(state, &pointer, serial, event.time_msec());
             }
+            // T322: a constraint registered on the surface the press just
+            // brought under the pointer activates before the button routes.
+            activate_constraint_on_enter(state, &pointer);
 
             // Click-to-focus: focus never follows motion alone. A chrome
             // surface takes focus on any button press (a right-click context
