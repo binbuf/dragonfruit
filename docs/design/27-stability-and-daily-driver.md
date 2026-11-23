@@ -329,6 +329,10 @@ stays successful and the leftover source is logged rather than deleting good
 data. A directory is never moved into its own subtree. The synchronous core
 and the Dock's asynchronous owner share this path; ADR
 [0323](adr/0323-cross-filesystem-move-atomicity.md) records the decision.
+T330 ports the same rule into `files-core` (`StdFsOps::move_as`), so Files
+copy/cut/paste and the Dock drop path are two implementations of one decision,
+not two policies; ADR [0337](adr/0337-files-clipboard-paste-and-conflicts.md)
+records the Files side.
 
 ### 3.6 Multi-monitor is per-output
 

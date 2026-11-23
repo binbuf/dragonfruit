@@ -78,7 +78,45 @@ int main(int argc, char **argv)
     writeFile(mutationRoot + QStringLiteral("/Empty/x.txt"), QByteArray("x"));
     writeFile(mutationRoot + QStringLiteral("/Empty/y.txt"), QByteArray("y"));
     writeFile(mutationRoot + QStringLiteral("/Info/item.txt"), QByteArray("item"));
+
+    // T330: copy/cut/paste fixtures. The functional cases use Paste*, the
+    // capture case uses its own Capture* trees so a capture run is repeatable
+    // even after the functional tests have moved things.
+    for (const QString &folder : {QStringLiteral("PasteSrc"),
+                                  QStringLiteral("PasteDst"),
+                                  QStringLiteral("PasteConflict"),
+                                  QStringLiteral("PasteCut"),
+                                  QStringLiteral("PasteCutDest"),
+                                  QStringLiteral("PasteKeyboard"),
+                                  QStringLiteral("CaptureSrc"),
+                                  QStringLiteral("CaptureDst"),
+                                  QStringLiteral("CaptureConflict"),
+                                  QStringLiteral("CaptureCut"),
+                                  QStringLiteral("CaptureCutDest")}) {
+        QDir(mutationRoot).mkpath(folder);
+    }
+    QDir(mutationRoot).mkpath(QStringLiteral("PasteSrc/Folder"));
+    QDir(mutationRoot).mkpath(QStringLiteral("CaptureSrc/Folder"));
+    writeFile(mutationRoot + QStringLiteral("/PasteSrc/report.txt"), QByteArray("report"));
+    writeFile(mutationRoot + QStringLiteral("/PasteSrc/Folder/leaf.txt"), QByteArray("leaf"));
+    writeFile(mutationRoot + QStringLiteral("/PasteConflict/report.txt"), QByteArray("old"));
+    writeFile(mutationRoot + QStringLiteral("/PasteCut/move-me.txt"), QByteArray("move"));
+    writeFile(mutationRoot + QStringLiteral("/CaptureSrc/report.txt"), QByteArray("report"));
+    writeFile(mutationRoot + QStringLiteral("/CaptureSrc/Folder/leaf.txt"), QByteArray("leaf"));
+    writeFile(mutationRoot + QStringLiteral("/CaptureConflict/report.txt"), QByteArray("old"));
+    writeFile(mutationRoot + QStringLiteral("/CaptureCut/move-me.txt"), QByteArray("move"));
     qputenv("DF_FILES_MUTATION_FIXTURE", mutationRoot.toUtf8());
+    // The capture runner records the temp trees in its manifest. QtTest's
+    // message pattern filters qInfo, so write the paths beside the stills.
+    const QByteArray captureDir = qgetenv("DF_FILES_CAPTURE_DIR");
+    if (!captureDir.isEmpty()) {
+        QFile paths(QString::fromUtf8(captureDir)
+                    + QStringLiteral("/t330-files-paths.txt"));
+        if (paths.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            paths.write("view fixture: " + root.toUtf8() + "\n");
+            paths.write("mutation fixture: " + mutationRoot.toUtf8() + "\n");
+        }
+    }
 
     // Keep the trash backend's store inside the test temp dir, never the real
     // user trash. The Rust worker reads this at spawn.

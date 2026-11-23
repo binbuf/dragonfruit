@@ -13,26 +13,30 @@
 //! # What T-10.2a owns
 //!
 //! * [`FileOps`] — the seam: `rename`, `create_dir` (new folder),
-//!   `copy`, `move_to`, `delete`, plus `exists` for name probing and a
-//!   provided [`FileOps::new_folder`] that generates `untitled folder`,
-//!   `untitled folder 2`, … (the one next-available-name helper the design
-//!   requires for new-folder, duplicate, paste, and compress).
+//!   `copy_as`/`copy`, `move_as`/`move_to`, `delete`, plus `exists` for name
+//!   probing and a provided [`FileOps::new_folder`] that generates
+//!   `untitled folder`, `untitled folder 2`, … (the one next-available-name
+//!   helper the design requires for new-folder, duplicate, paste, and
+//!   compress).
 //! * [`StdFsOps`] — the fallback. Copy is recursive and recreates symlinks
-//!   (never following them); move falls back to copy-then-delete across
-//!   devices; delete is permanent and recursive. Only `file://` is resolved;
-//!   `trash://`/`recent://`/remote schemes return
+//!   (never following them); a cross-device move copies into a hidden
+//!   destination sibling, renames it into place, then removes the source
+//!   (ADR 0323); delete is permanent and recursive. Only `file://` is
+//!   resolved; `trash://`/`recent://`/remote schemes return
 //!   [`OperationError::UnsupportedScheme`].
 //! * [`OperationError`] — the per-operation failure, classifying the common
 //!   errno cases so a view can render "The item is gone", "Stop", and so on.
+//! * [`ConflictPolicy`] — the paste policy the clipboard module applies
+//!   (Replace / Skip / Keep Both, T330).
 //!
 //! # Deferred on purpose
 //!
-//! T-10.2a is the synchronous primitive layer. **Optimistic rendering,
-//! reconciliation, undo, progress, conflict policy (Keep Both / Replace /
-//! Merge), the journal, and `trash://` are later tasks** (T-10.2b, T-10.3a).
-//! A destination that already exists fails with [`OperationError::AlreadyExists`]
-//! rather than guessing a policy. Because none of these calls may run on the
-//! UI thread, callers drive them from a worker; the trait is `Send + Sync`.
+//! Undo/redo, the journal, merge, and per-byte progress are later tasks.
+//! A destination that already exists fails with
+//! [`OperationError::AlreadyExists`] rather than guessing a policy; the paste
+//! layer resolves the conflict explicitly. Because none of these calls may run
+//! on the UI thread, callers drive them from a worker; the trait is
+//! `Send + Sync`.
 //!
 //! ```no_run
 //! use std::sync::Arc;
@@ -49,11 +53,40 @@
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::Location;
 
 /// The base name [`FileOps::new_folder`] generates.
 pub const NEW_FOLDER_BASE: &str = "untitled folder";
+
+/// How a paste resolves a destination name that already exists.
+///
+/// T330: the Files conflict sheet offers these three. `Replace` removes the
+/// existing destination first (folder-over-folder is a replace, not a merge);
+/// `Skip` leaves it untouched; `KeepBoth` numbers the incoming item with the
+/// one [`generated_name`] helper (`report.txt`, `report 2.txt`, …).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictPolicy {
+    /// Remove the existing destination, then place the source.
+    Replace,
+    /// Leave the existing destination and skip the item.
+    Skip,
+    /// Place the source under the next available name.
+    KeepBoth,
+}
+
+impl ConflictPolicy {
+    /// Parse the wire/ABI spelling (`replace`, `skip`, `keep-both`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "replace" => Some(Self::Replace),
+            "skip" => Some(Self::Skip),
+            "keep-both" | "keep_both" | "keepboth" => Some(Self::KeepBoth),
+            _ => None,
+        }
+    }
+}
 
 /// A filesystem operation failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,13 +197,40 @@ pub trait FileOps: Send + Sync + 'static {
         self.create_dir(parent, &name)
     }
 
+    /// Copy `from` into directory `into` under `name`. Recursive for
+    /// directories; symlinks are recreated, never followed. Returns the copy.
+    /// Fails with [`OperationError::AlreadyExists`] when the name is taken.
+    fn copy_as(
+        &self,
+        from: &Location,
+        into: &Location,
+        name: &OsStr,
+    ) -> Result<Location, OperationError>;
+
+    /// Move `from` into directory `into` under `name`. Returns the moved
+    /// location. Same-filesystem moves are one `rename(2)`; a cross-device
+    /// move copies into a hidden destination sibling, renames that into
+    /// place, and only then removes the source (ADR 0323).
+    fn move_as(
+        &self,
+        from: &Location,
+        into: &Location,
+        name: &OsStr,
+    ) -> Result<Location, OperationError>;
+
     /// Copy `from` into directory `into`, keeping its file name. Recursive for
     /// directories; symlinks are recreated, never followed. Returns the copy.
-    fn copy(&self, from: &Location, into: &Location) -> Result<Location, OperationError>;
+    fn copy(&self, from: &Location, into: &Location) -> Result<Location, OperationError> {
+        let name = entry_name(from)?;
+        self.copy_as(from, into, &name)
+    }
 
     /// Move `from` into directory `into`, keeping its file name. Returns the
     /// moved location. Cross-device moves copy fully, then delete the source.
-    fn move_to(&self, from: &Location, into: &Location) -> Result<Location, OperationError>;
+    fn move_to(&self, from: &Location, into: &Location) -> Result<Location, OperationError> {
+        let name = entry_name(from)?;
+        self.move_as(from, into, &name)
+    }
 
     /// Permanently delete `target`, recursively for a directory. This is the
     /// immediate delete; moving to Trash is T-10.3a.
@@ -186,14 +246,45 @@ pub trait FileOps: Send + Sync + 'static {
 /// pinned toolchain, so this fallback is the shipping backend, marked for
 /// replacement by ADR [0043](../../../docs/design/adr/0043-files-core-fallback-is-the-shipping-backend.md)
 /// just like [`crate::StdFsSource`].
+///
+/// The two optional fields are deterministic test seams for the
+/// cross-filesystem move rule: `force_cross_device` selects the copy-to-temp
+/// path without a second mount, and `fail_after_entries` stops the copy
+/// mid-tree so a test can prove the temp is removed and the source survives.
+/// Production callers use [`StdFsOps::new`].
 #[derive(Debug, Default, Clone, Copy)]
-pub struct StdFsOps;
+pub struct StdFsOps {
+    force_cross_device: bool,
+    fail_after_entries: Option<usize>,
+}
 
 impl StdFsOps {
     /// Create the fallback operations backend.
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
+
+    /// Exercise the cross-filesystem move path even when both locations are on
+    /// one filesystem. Tests use this instead of depending on a second mount.
+    pub fn with_forced_cross_device(mut self) -> Self {
+        self.force_cross_device = true;
+        self
+    }
+
+    /// Stop a copy after `entries` successful entries and fail it. The
+    /// cross-device move removes the partial temp and leaves the source.
+    pub fn with_failure_after(mut self, entries: usize) -> Self {
+        self.fail_after_entries = Some(entries);
+        self
+    }
+}
+
+/// The final path component of a `file://` location, as raw bytes.
+fn entry_name(location: &Location) -> Result<OsString, OperationError> {
+    path_of(location)?
+        .file_name()
+        .map(OsStr::to_os_string)
+        .ok_or_else(|| OperationError::InvalidName(location.display()))
 }
 
 /// Resolve a location to a local path, refusing non-`file://` schemes.
@@ -226,33 +317,124 @@ fn validate_name(name: &OsStr) -> Result<(), OperationError> {
     }
 }
 
+/// Progress state for one recursive copy. The test seam stops the copy after
+/// a deterministic number of entries; production leaves it `None`.
+#[derive(Default)]
+struct CopyState {
+    copied: usize,
+    fail_after: Option<usize>,
+}
+
+impl CopyState {
+    fn step(&mut self, path: &Path) -> Result<(), OperationError> {
+        if let Some(limit) = self.fail_after {
+            if self.copied >= limit {
+                return Err(OperationError::Io(format!(
+                    "simulated copy failure after {} entries ({})",
+                    self.copied,
+                    path.display()
+                )));
+            }
+        }
+        self.copied += 1;
+        Ok(())
+    }
+}
+
+/// Copy permissions and modification time where the filesystem supports them.
+/// Metadata is best-effort (ADR 0323): losing it must not fail an otherwise
+/// complete copy or move.
+fn preserve_metadata(from: &Path, to: &Path) {
+    if let Ok(metadata) = std::fs::symlink_metadata(from) {
+        let _ = std::fs::set_permissions(to, metadata.permissions());
+        if let Ok(modified) = metadata.modified() {
+            if let Ok(file) = std::fs::File::open(to) {
+                let _ = file.set_times(std::fs::FileTimes::new().set_modified(modified));
+            }
+        }
+    }
+}
+
 /// Recursively copy `from` to `to`. Directories are recreated, then their
-/// permissions restored after the children arrive (so a read-only directory
-/// can still receive them); symlinks are recreated with their raw target,
-/// never followed; regular files use `fs::copy`, which carries permissions.
+/// metadata restored after the children arrive (so a read-only directory can
+/// still receive them); symlinks are recreated with their raw target, never
+/// followed; regular files use `fs::copy`. Metadata is best-effort.
 pub(crate) fn copy_entry(from: &Path, to: &Path) -> Result<(), OperationError> {
+    copy_entry_with_state(from, to, &mut CopyState::default())
+}
+
+fn copy_entry_with_state(
+    from: &Path,
+    to: &Path,
+    state: &mut CopyState,
+) -> Result<(), OperationError> {
     let metadata = std::fs::symlink_metadata(from)
         .map_err(|error| OperationError::from_io(&error, from.display()))?;
     let file_type = metadata.file_type();
     if file_type.is_symlink() {
         let target = std::fs::read_link(from)
             .map_err(|error| OperationError::from_io(&error, from.display()))?;
-        create_symlink(&target, to)
+        create_symlink(&target, to)?;
+        state.step(from)
     } else if file_type.is_dir() {
         std::fs::create_dir(to).map_err(|error| OperationError::from_io(&error, to.display()))?;
         let entries = std::fs::read_dir(from)
             .map_err(|error| OperationError::from_io(&error, from.display()))?;
         for entry in entries {
             let entry = entry.map_err(|error| OperationError::from_io(&error, from.display()))?;
-            copy_entry(&entry.path(), &to.join(entry.file_name()))?;
+            copy_entry_with_state(&entry.path(), &to.join(entry.file_name()), state)?;
         }
-        std::fs::set_permissions(to, metadata.permissions())
-            .map_err(|error| OperationError::from_io(&error, to.display()))?;
-        Ok(())
+        // After the children, so creating them does not rewrite the mtime.
+        preserve_metadata(from, to);
+        state.step(from)
     } else {
         std::fs::copy(from, to)
             .map(|_| ())
-            .map_err(|error| OperationError::from_io(&error, to.display()))
+            .map_err(|error| OperationError::from_io(&error, to.display()))?;
+        preserve_metadata(from, to);
+        state.step(from)
+    }
+}
+
+/// Make a copied tree removable even when the source had read-only directory
+/// modes. Cleanup must not fail because metadata preservation already applied
+/// the source's permissions to the partial temp (ADR 0323).
+fn make_tree_writable(path: &Path) {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return;
+    }
+    let mut permissions = metadata.permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(permissions.mode() | 0o700);
+    }
+    #[cfg(not(unix))]
+    permissions.set_readonly(false);
+    let _ = std::fs::set_permissions(path, permissions);
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            make_tree_writable(&entry.path());
+        }
+    }
+}
+
+/// A free hidden sibling in the destination folder. It is on the destination
+/// filesystem by construction, so the final rename cannot cross a mount.
+fn temp_sibling(parent: &Path) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    loop {
+        let candidate = parent.join(format!(
+            ".dragonfruit-move-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed) + 1
+        ));
+        if !lexists(&candidate) {
+            return candidate;
+        }
     }
 }
 
@@ -266,6 +448,12 @@ pub(crate) fn remove_entry(path: &Path) -> Result<(), OperationError> {
     } else {
         std::fs::remove_file(path).map_err(|error| OperationError::from_io(&error, path.display()))
     }
+}
+
+/// Remove a partial temp tree, making read-only directories writable first.
+fn remove_temp(path: &Path) {
+    make_tree_writable(path);
+    let _ = remove_entry(path);
 }
 
 #[cfg(unix)]
@@ -282,19 +470,18 @@ fn create_symlink(_target: &Path, to: &Path) -> Result<(), OperationError> {
     )))
 }
 
-/// The destination path `from` takes when placed in `into`, plus the guard
-/// that the source is not being copied or moved inside itself.
+/// The destination path `from` takes when placed in `into` under `name`, plus
+/// the guard that the source is not being copied or moved inside itself.
 fn destination_for(
     from_path: &Path,
     into_path: &Path,
     into: &Location,
+    name: &OsStr,
 ) -> Result<PathBuf, OperationError> {
+    validate_name(name)?;
     if !into_path.is_dir() {
         return Err(OperationError::NotADirectory(into.display()));
     }
-    let name = from_path
-        .file_name()
-        .ok_or_else(|| OperationError::InvalidName(from_path.display().to_string()))?;
     let target = into_path.join(name);
     if target.starts_with(from_path) {
         return Err(OperationError::InvalidName(format!(
@@ -303,6 +490,47 @@ fn destination_for(
         )));
     }
     Ok(target)
+}
+
+/// Cross-filesystem move (ADR 0323): copy the whole entry into a hidden temp
+/// sibling on the destination filesystem, rename that into place, and only
+/// then remove the source. Any copy or rename failure removes the temp and
+/// leaves the source complete. A source-removal failure after the destination
+/// rename keeps the move successful: the destination is the only complete
+/// copy, and deleting it would lose data.
+fn move_across_filesystems(
+    from: &Path,
+    target: &Path,
+    fail_after: Option<usize>,
+) -> Result<(), OperationError> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| OperationError::InvalidName(target.display().to_string()))?;
+    let temp = temp_sibling(parent);
+    let mut state = CopyState {
+        copied: 0,
+        fail_after,
+    };
+    if let Err(error) = copy_entry_with_state(from, &temp, &mut state) {
+        remove_temp(&temp);
+        return Err(error);
+    }
+    // The name was reserved before the copy. Re-check so a concurrently
+    // created entry is never overwritten by the rename.
+    if lexists(target) {
+        remove_temp(&temp);
+        return Err(OperationError::AlreadyExists(
+            Location::file(target).display(),
+        ));
+    }
+    if let Err(error) = std::fs::rename(&temp, target) {
+        remove_temp(&temp);
+        return Err(OperationError::from_io(&error, target.display()));
+    }
+    // The destination is complete; source removal is cleanup.
+    make_tree_writable(from);
+    let _ = remove_entry(from);
+    Ok(())
 }
 
 impl FileOps for StdFsOps {
@@ -346,47 +574,59 @@ impl FileOps for StdFsOps {
         Ok(Location::file(&target))
     }
 
-    fn copy(&self, from: &Location, into: &Location) -> Result<Location, OperationError> {
+    fn copy_as(
+        &self,
+        from: &Location,
+        into: &Location,
+        name: &OsStr,
+    ) -> Result<Location, OperationError> {
         let from_path = path_of(from)?;
         if !lexists(&from_path) {
             return Err(OperationError::NotFound(from.display()));
         }
         let into_path = path_of(into)?;
-        let target = destination_for(&from_path, &into_path, into)?;
+        let target = destination_for(&from_path, &into_path, into, name)?;
         if lexists(&target) {
             return Err(OperationError::AlreadyExists(
                 Location::file(&target).display(),
             ));
         }
-        copy_entry(&from_path, &target)?;
+        let mut state = CopyState {
+            copied: 0,
+            fail_after: self.fail_after_entries,
+        };
+        copy_entry_with_state(&from_path, &target, &mut state)?;
         Ok(Location::file(&target))
     }
 
-    fn move_to(&self, from: &Location, into: &Location) -> Result<Location, OperationError> {
+    fn move_as(
+        &self,
+        from: &Location,
+        into: &Location,
+        name: &OsStr,
+    ) -> Result<Location, OperationError> {
         let from_path = path_of(from)?;
         if !lexists(&from_path) {
             return Err(OperationError::NotFound(from.display()));
         }
         let into_path = path_of(into)?;
-        let target = destination_for(&from_path, &into_path, into)?;
+        let target = destination_for(&from_path, &into_path, into, name)?;
         if lexists(&target) {
             return Err(OperationError::AlreadyExists(
                 Location::file(&target).display(),
             ));
         }
-        match std::fs::rename(&from_path, &target) {
-            Ok(()) => Ok(Location::file(&target)),
-            Err(error) => match error.kind() {
-                // Across filesystems `rename` cannot work: copy fully, then
-                // delete the source, so a killed move never loses data.
-                std::io::ErrorKind::CrossesDevices => {
-                    copy_entry(&from_path, &target)?;
-                    remove_entry(&from_path)?;
-                    Ok(Location::file(&target))
+        if !self.force_cross_device {
+            match std::fs::rename(&from_path, &target) {
+                Ok(()) => return Ok(Location::file(&target)),
+                Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => {
+                    // The temp-and-rename rule below.
                 }
-                _ => Err(OperationError::from_io(&error, from.display())),
-            },
+                Err(error) => return Err(OperationError::from_io(&error, from.display())),
+            }
         }
+        move_across_filesystems(&from_path, &target, self.fail_after_entries)?;
+        Ok(Location::file(&target))
     }
 
     fn delete(&self, target: &Location) -> Result<(), OperationError> {

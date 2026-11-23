@@ -333,6 +333,18 @@ impl OptimisticModel {
         self.push(PendingKind::Create { node: id })
     }
 
+    /// Insert a provisional node now (a paste into the current directory),
+    /// returning the pending [`OpId`].
+    ///
+    /// The node carries the destination name and URI the paste planned; a
+    /// confirmed paste leaves it in place, and a failed or skipped one removes
+    /// it so the row snaps back. The caller chooses the name (Keep Both has
+    /// already numbered it), so this method does no I/O and never renames.
+    pub fn begin_paste_insert(&mut self, node: Node) -> OpId {
+        let id = self.model.insert_node(node);
+        self.push(PendingKind::Create { node: id })
+    }
+
     /// Remove `id` from the model now, returning the pending [`OpId`].
     ///
     /// This is the optimistic path for Move to Trash and Delete Immediately;

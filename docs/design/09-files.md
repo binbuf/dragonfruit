@@ -395,27 +395,59 @@ column/gallery rendering, search results, tags, sidebar/toolbar customization
 and motion remain `OPEN` (see §9 of the structural review). See
 [ADR 0247](adr/0247-files-measured-anatomy-and-get-info.md).
 
+**Implementation status (T330).** Copy, Cut, and Paste are real, and the
+clipboard is an app-level model (`FilesClipboard.qml`), not the directory
+session, so a copy survives navigation. Copy and Cut **mark** items; nothing
+moves until Paste. `Super+C` / `Super+X` / `Super+V` and the item/background
+menus drive the same shell functions. The paste itself is files-core's one
+rule: `clipboard::paste_one` resolves the conflict policy and calls
+`FileOps::copy_as` / `FileOps::move_as`; the C ABI `df_files_begin_paste`
+queues one item at a time and groups consecutive calls into a batch with
+per-item `active/total/done` counters. The shell pre-flights conflicts against
+the current listing and opens one sheet with **Replace / Skip / Keep Both /
+Cancel**; Replace removes the destination first (folder-over-folder is a
+replace, merge is deferred), Skip leaves it and reports the item skipped, and
+Keep Both numbers the incoming item with the same `generated_name` helper as
+New Folder and Duplicate. The model update is optimistic **only for the
+current directory**: a paste into the visible folder paints its row (or hides
+a cut source) before the worker runs, confirms on success, and reverts with
+`lastError` on failure or skip. One failed item does not abort the rest. The
+status bar shows "Copying 2 of 3…" while the batch runs and the summary
+("Copied 2", "Moved 1", "Skipped 1", "1 failed") after it. Cross-filesystem
+moves use ADR [0323](adr/0323-cross-filesystem-move-atomicity.md)'s
+all-or-nothing rule inside `StdFsOps::move_as` (hidden destination sibling,
+copy, rename, then remove the source); symlinks are recreated as links and
+never followed, so a directory copy cannot escape its tree. See
+[ADR 0337](adr/0337-files-clipboard-paste-and-conflicts.md). **Deferred:**
+undo (T331), tabs/New Window (T333), Open With (T334), drag-and-drop inside
+Files, Duplicate/Compress/Make Alias, merge, byte-level progress/cancel, and
+the native Files menu model.
+
 **Current status (2026-11) — what the Files MVP actually ships.** The browsing
 core is real: streaming listings, natural sorting, the C ABI delta path,
 sidebar favorites/volumes/Computer/Trash, icon/list views, selection
 (click/Super/Shift/marquee), inline rename, New Folder, Move to Trash, Empty
 Trash, file opening, thumbnails, Trash browsing, path bar, back/forward
 history, local name search, the measured window anatomy, the status bar,
-toolbar-hidden mode, Get Info, and the Dock/desktop integration. It is **not**
-the full Files design:
+toolbar-hidden mode, Get Info, copy/cut/paste with conflict policy and
+per-item progress, and the Dock/desktop integration. It is **not** the full
+Files design:
 
-- **Not implemented:** tabs, New Window (the context row is disabled), copy /
-  move / paste, drag-and-drop inside Files, duplicate, Make Alias,
-  Compress, Open With, undo/redo, per-item progress, conflict policy, batch
-  operations, column/gallery views, Preview, preview pane, tags, saved
-  searches, batch rename, Connect to Server, and the Files menu model.
-  T230d landed the measured 52/198/30/28 pt chrome, the status bar, the
-  toolbar-hidden mode and the Get Info inspector; T244a lands the column and
-  gallery views. Tabs remain open.
+- **Not implemented:** tabs, New Window (the context row is disabled),
+  drag-and-drop inside Files, duplicate, Make Alias, Compress, Open With,
+  undo/redo, merge, byte-level progress/cancel, column/gallery views, Preview,
+  preview pane, tags, saved searches, batch rename, Connect to Server, and the
+  Files menu model. T230d landed the measured 52/198/30/28 pt chrome, the
+  status bar, the toolbar-hidden mode and the Get Info inspector; T330 landed
+  copy/cut/paste, the conflict sheet and per-item paste progress; T244a lands
+  the column and gallery views. Tabs remain open.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a
   host helper exists; no archives/remote), search (current-location name
   filter, not the app-index Search), and the folder watcher (the
-  files-core seam exists but is not wired into the Files facade).
+  files-core seam exists but is not wired into the Files facade). Paste is
+  per-item (one files-core operation per clipboard entry) rather than one
+  batched engine request; the progress counters still group a batch, but
+  cancel and per-byte progress are deferred.
 - **Deliberate fallbacks:** GIO/GVfs is the design target; the shipping backend
   is the marked `StdFsSource` / `InotifyWatcher` / `FreedesktopTrash` fallback,
   which speaks the same on-disk contracts. The "no file-manager daemon" rule
@@ -558,7 +590,8 @@ persistence format.
   - **Gallery view** — one item at full height with a filmstrip below;
     Left / Right step through the folder; Space overlays Preview (zoom
     and pan for large media); Return still renames.
-- **Status bar:** item count, selection count, volume free space.
+- **Status bar:** item count, selection count, volume free space, and the
+  live paste progress/summary (T330).
 - **Info inspector** (Get Info, Super+I): preview thumbnail, kind, size (and
   size on disk), where (a clickable path), created/modified, tags (later),
   permissions (display in the MVP; editing later). Multi-selection
@@ -580,6 +613,9 @@ The Super role maps to **Super/Mod4** and Option to **Alt**, system-wide (see
 | **Rename** | **Return** |
 | Preview (later) | Space (reserved from day one) |
 | New folder | Shift+Super+N |
+| Copy | Super+C |
+| Cut | Super+X |
+| Paste | Super+V |
 | Move to Trash | Super+Delete |
 | Delete Immediately (in Trash) | Option+Super+Delete |
 | Duplicate | Super+D |
@@ -659,7 +695,9 @@ makes undo, progress, and conflict handling uniform.
   errors that do not abort the batch, and "Apply to all" for conflict
   decisions.
 - **Conflicts.** Keep Both / Stop / Replace; folder-over-folder offers
-  **Merge** (files inside apply the same per-file policy).
+  **Merge** (files inside apply the same per-file policy). **Implemented
+  (T330):** Replace / Skip / Keep Both behind one conflict sheet, with the
+  batch-wide decision. Stop and folder Merge remain the target.
 - **Undo/redo.** Move, rename, trash (Put Back), duplicate, new-folder, and
   paste are undoable; undoing a paste trashes the pasted copies,
   Files-correct. The journal persists across restarts at least for trash
@@ -671,7 +709,9 @@ makes undo, progress, and conflict handling uniform.
   delete the source).
 - **Progress UI.** One unified operations surface: per-operation and per-item
   progress, cancel, speed/ETA; conflicts pause the operation with a sheet
-  rather than a stack of modal dialogs.
+  rather than a stack of modal dialogs. **Implemented (T330):** per-item
+  progress in the status bar and the one conflict sheet; cancel and speed/ETA
+  remain the target.
 - **Busy volumes.** Unmount/eject failure reports the holder processes where
   UDisks names them; Force Unmount is explicit and confirmation-guarded.
 - **Privileged paths.** No terminal dance: unreadable locations offer

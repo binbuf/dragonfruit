@@ -19,8 +19,8 @@ import Dragonfruit
 //
 // Keyboard: Up/Down/Home/End/Return on the sidebar; Alt+Left/Alt+Right step
 // history; Ctrl+F focuses search; Escape clears it; Cmd+A selects all;
-// Cmd+O/Cmd+Down opens the selection; Shift+Cmd+N makes a folder; Delete
-// trashes; Return renames.
+// Cmd+O/Cmd+Down opens the selection; Cmd+C/Cmd+X/Cmd+V copy/cut/paste;
+// Shift+Cmd+N makes a folder; Delete trashes; Return renames.
 Item {
     id: root
 
@@ -42,6 +42,10 @@ Item {
     property var contextNode: null
     // A transient inline notice (a snapped-back operation).
     property string notice: ""
+    // The conflicting names shown by the paste conflict sheet, and the policy
+    // its action buttons choose.
+    property var pasteConflictNames: []
+    property string pastePolicy: "keep-both"
     // Capture seams (siblings of `DF_FILES_START_VIEW`) applied once the
     // listing settles; nested synthetic pointer input cannot hold a modifier
     // or right-click a Qt client surface reliably.
@@ -88,6 +92,8 @@ Item {
     property alias listView: listView
     property alias contextMenu: contextMenu
     property alias emptyTrashDialog: emptyTrashDialog
+    property alias pasteConflictDialog: pasteConflictDialog
+    property alias clipboard: clipboard
     property alias detailSheet: detailSheet
     property alias resizeEdges: resizeEdges
     property alias contentArea: contentArea
@@ -188,6 +194,10 @@ Item {
     // Bound to the host Window's focus so the titlebar/controls show the
     // focused state; the app-local chrome material itself is focus-invariant.
     property bool windowActive: true
+
+    // T330: the copy/cut marks and the mode a paste uses. It lives here, not
+    // in the directory session, so a copy survives navigation.
+    FilesClipboard { id: clipboard }
 
     // The sidebar sections the design doc names: Favorites (real XDG user
     // directories), then Locations (Computer, mounted volumes, Trash last).
@@ -558,6 +568,127 @@ Item {
         directory.newFolder(browser.currentUri);
     }
 
+    // -- Copy / cut / paste (T330) ------------------------------------------
+
+    // The marked items, in selection order. A copy never changes the listing;
+    // a cut only marks, exactly as the Files design requires.
+    function selectionClipboardItems() {
+        var ids = root.selectedIds.slice();
+        if (ids.length === 0 && root.selectedId > 0)
+            ids = [root.selectedId];
+        var items = [];
+        for (var i = 0; i < ids.length; ++i) {
+            if (!directory)
+                continue;
+            var info = directory.nodeInfo(ids[i]);
+            if (!info || !info.uri)
+                continue;
+            items.push({ uri: info.uri, name: info.name || "",
+                         isDir: info.isDir === true });
+        }
+        return items;
+    }
+
+    function copySelection() {
+        var items = root.selectionClipboardItems();
+        if (items.length === 0)
+            return false;
+        clipboard.copy(items);
+        root.notice = items.length === 1
+                ? qsTr("Copied “%1”").arg(items[0].name)
+                : qsTr("Copied %1 items").arg(items.length);
+        noticeTimer.restart();
+        return true;
+    }
+
+    function cutSelection() {
+        var items = root.selectionClipboardItems();
+        if (items.length === 0)
+            return false;
+        clipboard.cut(items);
+        root.notice = items.length === 1
+                ? qsTr("Cut “%1”").arg(items[0].name)
+                : qsTr("Cut %1 items").arg(items.length);
+        noticeTimer.restart();
+        return true;
+    }
+
+    // The names the clipboard would collide with in the current folder. The
+    // pre-flight is intentionally model-only: the optimistic path only paints
+    // the current directory, and a conflict outside it is resolved by the
+    // worker's policy.
+    function pasteConflicts() {
+        var out = [];
+        if (!directory || clipboard.count === 0)
+            return out;
+        var names = directory.names();
+        for (var i = 0; i < clipboard.items.length; ++i) {
+            var name = clipboard.items[i].name;
+            if (names.indexOf(name) >= 0)
+                out.push(name);
+        }
+        return out;
+    }
+
+    // Paste the clipboard into the current folder. A conflict pauses on the
+    // one conflict sheet (Replace / Skip / Keep Both / Cancel); a clean paste
+    // uses Keep Both, which is a no-op policy when nothing conflicts.
+    function paste() {
+        if (clipboard.empty)
+            return false;
+        if (root.inTrash) {
+            root.notice = qsTr("Paste is not available in the Trash.");
+            noticeTimer.restart();
+            return false;
+        }
+        var conflicts = root.pasteConflicts();
+        if (conflicts.length > 0) {
+            root.pasteConflictNames = conflicts;
+            pasteConflictDialog.show();
+            return true;
+        }
+        return root.performPaste("keep-both");
+    }
+
+    // Queue one files-core paste per marked item. The clipboard is cleared for
+    // a cut immediately: the marks are consumed by the paste, and a failed
+    // item remains on disk for the user to retry.
+    function performPaste(policy) {
+        if (clipboard.empty || !directory)
+            return false;
+        var target = browser.currentUri;
+        var mode = clipboard.mode;
+        var items = clipboard.items.slice();
+        var queued = 0;
+        for (var i = 0; i < items.length; ++i) {
+            if (directory.pasteItem(target, items[i].uri, items[i].name,
+                                    items[i].isDir === true, mode, policy))
+                ++queued;
+        }
+        if (queued === 0)
+            return false;
+        if (mode === "cut")
+            clipboard.clear();
+        return true;
+    }
+
+    function pasteFinished(copied, skipped, failed) {
+        var message = "";
+        if (failed > 0)
+            message = failed === 1 ? qsTr("1 item could not be pasted.")
+                                   : qsTr("%1 items could not be pasted.").arg(failed);
+        else if (skipped > 0)
+            message = skipped === 1 ? qsTr("Skipped 1 existing item.")
+                                    : qsTr("Skipped %1 existing items.").arg(skipped);
+        else if (copied > 0)
+            message = copied === 1 ? qsTr("Pasted 1 item.")
+                                   : qsTr("Pasted %1 items.").arg(copied);
+        if (message.length > 0) {
+            root.notice = message;
+            noticeTimer.restart();
+        }
+    }
+
     // Empty Trash (T-10.6b): always a confirmation, per 09-files.md#trash. The
     // action itself routes through files-core, so the Dock and Files share the
     // one result.
@@ -580,6 +711,8 @@ Item {
             return [
                 { label: qsTr("Get Info"), shortcut: "Super+I",
                   action: "getInfo" },
+                { label: qsTr("Copy"), shortcut: "Super+C", action: "copy" },
+                { label: qsTr("Cut"), shortcut: "Super+X", action: "cut" },
                 { label: qsTr("Move to Trash"), shortcut: "Delete",
                   action: "trash" }
             ];
@@ -593,6 +726,11 @@ Item {
             entries.push({ label: qsTr("Open in New Window"), action: "noop",
                            enabled: false });
         }
+        entries.push({ type: "separator" });
+        entries.push({ label: qsTr("Copy"), shortcut: "Super+C",
+                       action: "copy", enabled: node !== null });
+        entries.push({ label: qsTr("Cut"), shortcut: "Super+X",
+                       action: "cut", enabled: node !== null });
         entries.push({ type: "separator" });
         entries.push({ label: qsTr("Rename"), shortcut: "Return",
                        action: "rename" });
@@ -617,6 +755,9 @@ Item {
             ];
         }
         var rows = [
+            { label: qsTr("Paste Item"), shortcut: "Super+V",
+              action: "paste", enabled: clipboard.count > 0 },
+            { type: "separator" },
             { label: qsTr("New Folder"), shortcut: "Shift+Super+N",
               action: "newFolder" }
         ];
@@ -652,6 +793,15 @@ Item {
         case "rename":
             if (root.contextNode)
                 root.beginRename(root.contextNode.id);
+            break;
+        case "copy":
+            root.copySelection();
+            break;
+        case "cut":
+            root.cutSelection();
+            break;
+        case "paste":
+            root.paste();
             break;
         case "trash":
             root.trashSelection();
@@ -789,6 +939,24 @@ Item {
         case Qt.Key_N:
             if (command && (event.modifiers & Qt.ShiftModifier)) {
                 root.makeFolder();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_C:
+            if (command) {
+                root.copySelection();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_X:
+            if (command) {
+                root.cutSelection();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_V:
+            if (command) {
+                root.paste();
                 event.accepted = true;
             }
             break;
@@ -1235,6 +1403,7 @@ Item {
                         itemCount: directory ? directory.count : 0
                         selectionCount: root.selectedIds.length
                         freeSpaceText: root.freeSpaceText
+                        pasteText: directory ? directory.pasteProgressText : ""
                     }
                 }
             }
@@ -1316,6 +1485,9 @@ Item {
         function onDataChanged() {
             root.directoryRevision += 1;
         }
+        function onPasteFinished(copied, skipped, failed) {
+            root.pasteFinished(copied, skipped, failed);
+        }
     }
 
     Timer {
@@ -1330,6 +1502,62 @@ Item {
         target: viewControl
         property: "currentIndex"
         value: browser.currentView === "list" ? 1 : 0
+    }
+
+    // T330: one conflict sheet for the whole paste. Replace / Skip / Keep Both
+    // are the three policies files-core implements; "Apply to all" is the
+    // sheet's scope (one decision for the batch), matching the design's
+    // "one sheet, not a stack of modals".
+    Dialog {
+        id: pasteConflictDialog
+        title: qsTr("An item already exists")
+        message: {
+            var names = root.pasteConflictNames;
+            if (names.length === 1)
+                return qsTr("“%1” already exists in this folder. "
+                            + "Choose how to paste it.").arg(names[0]);
+            return qsTr("%1 items already exist in this folder. "
+                        + "Choose how to paste them.").arg(names.length);
+        }
+        onAccepted: root.performPaste(root.pastePolicy)
+        onRejected: root.pasteConflictNames = []
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                id: pasteCancel
+                text: qsTr("Cancel")
+                variant: "ghost"
+                onClicked: pasteConflictDialog.reject()
+            }
+            Button {
+                id: pasteSkip
+                text: qsTr("Skip")
+                variant: "secondary"
+                onClicked: {
+                    root.pastePolicy = "skip";
+                    pasteConflictDialog.accept();
+                }
+            }
+            Button {
+                id: pasteReplace
+                text: qsTr("Replace")
+                variant: "secondary"
+                onClicked: {
+                    root.pastePolicy = "replace";
+                    pasteConflictDialog.accept();
+                }
+            }
+            Button {
+                id: pasteKeepBoth
+                text: qsTr("Keep Both")
+                variant: "primary"
+                onClicked: {
+                    root.pastePolicy = "keep-both";
+                    pasteConflictDialog.accept();
+                }
+            }
+        }
     }
 
     // Empty Trash is a confirmation, never a one-click destructive action

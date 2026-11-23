@@ -13,6 +13,9 @@ Item {
     property int itemCount: 0
     property int selectionCount: 0
     property string freeSpaceText: ""
+    // T330: the live paste progress or the last paste summary. Empty when
+    // nothing has been pasted since the window opened.
+    property string pasteText: ""
 
     readonly property string itemText:
         root.itemCount === 1 ? qsTr("1 item")
@@ -53,6 +56,18 @@ Item {
         visible: root.selectionCount > 0
         text: root.selectionText
         color: Theme.color.textPrimary
+        font.pixelSize: Theme.primitive.font.sizeSm
+        elide: Text.ElideRight
+    }
+
+    Text {
+        id: pasteLabel
+        anchors.left: selectionLabel.visible ? selectionLabel.right : itemLabel.right
+        anchors.leftMargin: Theme.primitive.spacing.md
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.pasteText.length > 0
+        text: root.pasteText
+        color: Theme.color.textSecondary
         font.pixelSize: Theme.primitive.font.sizeSm
         elide: Text.ElideRight
     }

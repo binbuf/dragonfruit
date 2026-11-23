@@ -220,6 +220,64 @@ bool FilesDirectoryModel::emptyTrash()
     return true;
 }
 
+bool FilesDirectoryModel::pasteItem(const QString &targetUri, const QString &sourceUri,
+                                    const QString &name, bool isDir,
+                                    const QString &mode, const QString &policy)
+{
+    if (!m_session || targetUri.isEmpty() || sourceUri.isEmpty() || name.isEmpty())
+        return false;
+    const int modeValue = mode == QStringLiteral("cut") ? DF_FILES_CLIPBOARD_CUT
+                                                        : DF_FILES_CLIPBOARD_COPY;
+    int policyValue = DF_FILES_CONFLICT_KEEP_BOTH;
+    if (policy == QStringLiteral("replace"))
+        policyValue = DF_FILES_CONFLICT_REPLACE;
+    else if (policy == QStringLiteral("skip"))
+        policyValue = DF_FILES_CONFLICT_SKIP;
+    const int kind = isDir ? DF_NODE_DIRECTORY : DF_NODE_FILE;
+    const quint64 op = df_files_begin_paste(
+            m_session, targetUri.toUtf8().constData(),
+            sourceUri.toUtf8().constData(), name.toUtf8().constData(), kind,
+            modeValue, policyValue);
+    if (op == 0)
+        return false;
+    // A new batch starts its own progress report.
+    m_pasteReported = false;
+    repaint();
+    setPendingOps(int(df_files_pending_ops(m_session)));
+    updatePasteProgress();
+    ensurePolling();
+    return true;
+}
+
+QStringList FilesDirectoryModel::names() const
+{
+    QStringList out;
+    out.reserve(int(m_nodes.size()));
+    for (const Node &node : m_nodes)
+        out.append(node.name);
+    return out;
+}
+
+QString FilesDirectoryModel::pasteProgressText() const
+{
+    if (m_pasteActive > 0) {
+        const QString verb = m_pasteMode == QStringLiteral("cut")
+                ? tr("Moving") : tr("Copying");
+        const int position = qMin(m_pasteDone + 1, m_pasteTotal);
+        return tr("%1 %2 of %3…").arg(verb).arg(position).arg(m_pasteTotal);
+    }
+    if (m_pasteTotal > 0 && m_pasteDone >= m_pasteTotal) {
+        if (m_pasteFailed > 0)
+            return tr("%1 failed").arg(m_pasteFailed);
+        if (m_pasteSkipped > 0)
+            return tr("%1 skipped").arg(m_pasteSkipped);
+        const QString verb = m_pasteMode == QStringLiteral("cut")
+                ? tr("Moved") : tr("Copied");
+        return tr("%1 %2").arg(verb).arg(m_pasteCopied);
+    }
+    return {};
+}
+
 int FilesDirectoryModel::rowForNodeId(quint64 nodeId) const
 {
     for (int row = 0; row < int(m_nodes.size()); ++row) {
@@ -377,6 +435,21 @@ void FilesDirectoryModel::stop()
         m_session = nullptr;
     }
     setPendingOps(0);
+    // A new session starts with no paste history. The clipboard itself lives
+    // in the shell and survives navigation.
+    if (m_pasteTotal != 0 || m_pasteDone != 0 || m_pasteActive != 0
+        || m_pasteCopied != 0 || m_pasteSkipped != 0 || m_pasteFailed != 0
+        || !m_pasteMode.isEmpty()) {
+        m_pasteTotal = 0;
+        m_pasteDone = 0;
+        m_pasteActive = 0;
+        m_pasteCopied = 0;
+        m_pasteSkipped = 0;
+        m_pasteFailed = 0;
+        m_pasteMode.clear();
+        emit pasteProgressChanged();
+    }
+    m_pasteReported = false;
 }
 
 void FilesDirectoryModel::poll()
@@ -414,10 +487,44 @@ void FilesDirectoryModel::poll()
     takeError();
     const int pending = m_session ? int(df_files_pending_ops(m_session)) : 0;
     setPendingOps(pending);
+    updatePasteProgress();
     // Stop the timer (never free the session) once the listing is settled and
     // no operation is pending, so an idle window does zero polling.
     if (pending == 0 && m_state != QStringLiteral("streaming"))
         m_timer.stop();
+}
+
+void FilesDirectoryModel::updatePasteProgress()
+{
+    if (!m_session)
+        return;
+    const df_files_paste_progress progress = df_files_paste_state(m_session);
+    const int total = int(progress.total);
+    const int done = int(progress.done);
+    const int active = int(progress.active);
+    const int copied = int(progress.copied);
+    const int skipped = int(progress.skipped);
+    const int failed = int(progress.failed);
+    const QString mode = progress.mode == DF_FILES_CLIPBOARD_CUT
+            ? QStringLiteral("cut")
+            : progress.mode == DF_FILES_CLIPBOARD_COPY
+                  ? QStringLiteral("copy") : QString();
+    if (m_pasteTotal != total || m_pasteDone != done || m_pasteActive != active
+        || m_pasteCopied != copied || m_pasteSkipped != skipped
+        || m_pasteFailed != failed || m_pasteMode != mode) {
+        m_pasteTotal = total;
+        m_pasteDone = done;
+        m_pasteActive = active;
+        m_pasteCopied = copied;
+        m_pasteSkipped = skipped;
+        m_pasteFailed = failed;
+        m_pasteMode = mode;
+        emit pasteProgressChanged();
+    }
+    if (active == 0 && total > 0 && done >= total && !m_pasteReported) {
+        m_pasteReported = true;
+        emit pasteFinished(copied, skipped, failed);
+    }
 }
 
 void FilesDirectoryModel::repaint()

@@ -21,6 +21,7 @@
 
 #include <QAbstractListModel>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
@@ -53,6 +54,19 @@ class FilesDirectoryModel : public QAbstractListModel
     // The most recent operation that snapped back, for an inline notice; empty
     // when there is none (T-10.4c).
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    // T330: per-item paste progress. `pasteTotal`/`pasteDone` describe the
+    // current batch, `pasteActive` counts items still on the worker, and
+    // `pasteProgressText` is the status-bar label ("Copying 1 of 3…" while
+    // active, then the last summary). `pasteFinished` fires once when the
+    // batch settles.
+    Q_PROPERTY(int pasteTotal READ pasteTotal NOTIFY pasteProgressChanged)
+    Q_PROPERTY(int pasteDone READ pasteDone NOTIFY pasteProgressChanged)
+    Q_PROPERTY(int pasteActive READ pasteActive NOTIFY pasteProgressChanged)
+    Q_PROPERTY(int pasteCopied READ pasteCopied NOTIFY pasteProgressChanged)
+    Q_PROPERTY(int pasteSkipped READ pasteSkipped NOTIFY pasteProgressChanged)
+    Q_PROPERTY(int pasteFailed READ pasteFailed NOTIFY pasteProgressChanged)
+    Q_PROPERTY(QString pasteMode READ pasteMode NOTIFY pasteProgressChanged)
+    Q_PROPERTY(QString pasteProgressText READ pasteProgressText NOTIFY pasteProgressChanged)
 
 public:
     enum Roles {
@@ -92,6 +106,14 @@ public:
     bool foldersFirst() const { return m_foldersFirst; }
     int pendingOps() const { return m_pendingOps; }
     QString lastError() const { return m_lastError; }
+    int pasteTotal() const { return m_pasteTotal; }
+    int pasteDone() const { return m_pasteDone; }
+    int pasteActive() const { return m_pasteActive; }
+    int pasteCopied() const { return m_pasteCopied; }
+    int pasteSkipped() const { return m_pasteSkipped; }
+    int pasteFailed() const { return m_pasteFailed; }
+    QString pasteMode() const { return m_pasteMode; }
+    QString pasteProgressText() const;
 
     // Sort by `key`, flipping direction when it is already active.
     Q_INVOKABLE void sortBy(const QString &key);
@@ -108,6 +130,15 @@ public:
     // Optimistically clear the whole Trash (`trash://` listings only). The
     // rows disappear before this returns, then confirm or snap back.
     Q_INVOKABLE bool emptyTrash();
+    // Paste one clipboard item (T330). `mode` is `copy` or `cut`; `policy` is
+    // `replace`, `skip`, or `keep-both`. The row paints before this returns
+    // for a paste into this folder; the worker confirms or reverts it.
+    Q_INVOKABLE bool pasteItem(const QString &targetUri, const QString &sourceUri,
+                               const QString &name, bool isDir,
+                               const QString &mode, const QString &policy);
+    // The names currently painted, for the shell's pre-flight conflict check
+    // (the clipboard model lives in QML and survives navigation).
+    Q_INVOKABLE QStringList names() const;
     // The row currently painting `nodeId`, or -1. The shell uses it to
     // translate an anchor + a clicked id into a contiguous range.
     Q_INVOKABLE int rowForNodeId(quint64 nodeId) const;
@@ -134,6 +165,10 @@ signals:
     void sortChanged();
     void pendingOpsChanged();
     void lastErrorChanged();
+    void pasteProgressChanged();
+    // Emitted once when a paste batch settles; the shell clears a cut
+    // clipboard and shows the summary.
+    void pasteFinished(int copied, int skipped, int failed);
 
 private slots:
     void poll();
@@ -176,6 +211,9 @@ private:
     // Drain a snapped-back operation message into `lastError`.
     void takeError();
     void setPendingOps(int pending);
+    // Fold the Rust session's paste counters into the properties and emit
+    // `pasteFinished` once when a batch settles.
+    void updatePasteProgress();
     static QString iconFor(int kind, const QString &name);
     static QString thumbnailFor(int kind, const QString &uri, const QString &name);
     static QString kindTextFor(int kind);
@@ -196,4 +234,12 @@ private:
     bool m_foldersFirst = true;
     int m_pendingOps = 0;
     QString m_lastError;
+    int m_pasteTotal = 0;
+    int m_pasteDone = 0;
+    int m_pasteActive = 0;
+    int m_pasteCopied = 0;
+    int m_pasteSkipped = 0;
+    int m_pasteFailed = 0;
+    QString m_pasteMode;
+    bool m_pasteReported = false;
 };

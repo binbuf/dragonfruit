@@ -82,6 +82,15 @@ Item {
                        "PNG");
         }
 
+        function captureT330(item, suffix) {
+            waitForRendering(stage);
+            var image = grabImage(item);
+            verify(image !== null);
+            verify(image.width > 0 && image.height > 0);
+            image.save(Files.captureDir + "/t330-files-" + suffix + ".png",
+                       "PNG");
+        }
+
         // -- Platform seam ------------------------------------------------------
 
         function test_platform_locations_are_deterministic() {
@@ -772,16 +781,23 @@ Item {
             verify(actions.indexOf("rename") >= 0);
             verify(actions.indexOf("trash") >= 0);
 
-            // Multiple selected: Get Info plus Move to Trash.
+            // Multiple selected: Get Info, Copy, Cut, Move to Trash.
             shell.selectNode(ids[1], Qt.ControlModifier);
             shell.openNodeMenu(ids[0], "file:///fixture/alpha.txt", false, 12, 12);
-            compare(shell.contextMenu.model.length, 2);
+            compare(shell.contextMenu.model.length, 4);
             compare(shell.contextMenu.model[0].action, "getInfo");
-            compare(shell.contextMenu.model[1].action, "trash");
+            compare(shell.contextMenu.model[1].action, "copy");
+            compare(shell.contextMenu.model[2].action, "cut");
+            compare(shell.contextMenu.model[3].action, "trash");
             shell.contextMenu.hide();
 
+            // The background owns Paste Item; it is disabled with an empty
+            // clipboard and New Folder follows it.
             shell.openBackgroundMenu(12, 12);
-            compare(shell.contextMenu.model[0].action, "newFolder");
+            compare(shell.contextMenu.model[0].action, "paste");
+            compare(shell.contextMenu.model[0].enabled, false);
+            var actions = shell.contextMenu.model.map(function(e) { return e.action; });
+            verify(actions.indexOf("newFolder") >= 0);
             compare(shell.contextMenu.model[shell.contextMenu.model.length - 1].action,
                     "selectAll");
             shell.contextMenu.hide();
@@ -1079,6 +1095,209 @@ Item {
             compare(shell.directory.count, 0); // gone within the same call
             tryCompare(shell.directory, "pendingOps", 0);
             compare(shell.directory.lastError, "");
+        }
+
+        // -- Copy / cut / paste (T330) ------------------------------------------
+
+        function test_copy_paste_copies_a_file_and_a_folder() {
+            var shell = make();
+            var src = Files.mutationFixtureUri + "/PasteSrc";
+            var dst = Files.mutationFixtureUri + "/PasteDst";
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 2);
+
+            // Select the file and the folder, then mark them.
+            var ids = shell.directory.allNodeIds();
+            shell.selectedIds = ids.slice();
+            shell.selectedId = ids[ids.length - 1];
+            verify(shell.copySelection());
+            compare(shell.clipboard.mode, "copy");
+            compare(shell.clipboard.count, 2);
+            // Copy removes nothing.
+            compare(shell.directory.count, 2);
+
+            shell.browser.navigate(dst);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.directory.count, 0);
+            verify(shell.paste());
+            tryCompare(shell.directory, "count", 2);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+
+            var names = shell.directory.names();
+            verify(names.indexOf("report.txt") >= 0);
+            verify(names.indexOf("Folder") >= 0);
+            // The status bar reports the paste result.
+            verify(shell.statusBar.pasteText.length > 0);
+            verify(shell.statusBar.pasteText.indexOf("Copied") >= 0
+                   || shell.statusBar.pasteText.indexOf("Pasted") >= 0);
+            // The copy leaves the clipboard intact for a second paste.
+            compare(shell.clipboard.mode, "copy");
+        }
+
+        function test_cut_paste_moves_the_item_and_consumes_the_clipboard() {
+            var shell = make();
+            var src = Files.mutationFixtureUri + "/PasteCut";
+            var dst = Files.mutationFixtureUri + "/PasteCutDest";
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = idForUri(shell, src + "/move-me.txt");
+            verify(id > 0);
+            shell.selectNode(id, 0);
+            verify(shell.cutSelection());
+            compare(shell.clipboard.mode, "cut");
+
+            shell.browser.navigate(dst);
+            tryCompare(shell.directory, "state", "complete");
+            verify(shell.paste());
+            tryCompare(shell.directory, "count", 1);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+            compare(shell.clipboard.count, 0, "a cut paste consumes the marks");
+
+            // The source folder is now empty.
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.directory.count, 0);
+        }
+
+        function test_paste_conflict_sheet_keeps_both() {
+            var shell = make();
+            var src = Files.mutationFixtureUri + "/PasteSrc";
+            var conflict = Files.mutationFixtureUri + "/PasteConflict";
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            var id = idForUri(shell, src + "/report.txt");
+            verify(id > 0);
+            shell.selectNode(id, 0);
+            verify(shell.copySelection());
+
+            shell.browser.navigate(conflict);
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            verify(shell.paste());
+            // A conflict pauses before anything is queued.
+            compare(shell.pasteConflictDialog.open, true);
+            compare(shell.pasteConflictNames, ["report.txt"]);
+            compare(shell.directory.count, 1);
+
+            // Keep Both is the primary action.
+            shell.pastePolicy = "keep-both";
+            shell.pasteConflictDialog.accept();
+            tryCompare(shell.directory, "count", 2);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+            var names = shell.directory.names();
+            verify(names.indexOf("report.txt") >= 0);
+            verify(names.indexOf("report.txt 2") >= 0);
+        }
+
+        function test_paste_keyboard_copy_and_paste() {
+            var shell = make();
+            var src = Files.mutationFixtureUri + "/PasteSrc";
+            var dst = Files.mutationFixtureUri + "/PasteKeyboard";
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            var id = idForUri(shell, src + "/report.txt");
+            verify(id > 0);
+            shell.selectNode(id, 0);
+            shell.forceActiveFocus();
+            keyClick(Qt.Key_C, Qt.ControlModifier);
+            compare(shell.clipboard.mode, "copy");
+            compare(shell.clipboard.count, 1);
+
+            shell.browser.navigate(dst);
+            tryCompare(shell.directory, "state", "complete");
+            shell.forceActiveFocus();
+            keyClick(Qt.Key_V, Qt.ControlModifier);
+            tryCompare(shell.directory, "count", 1);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+        }
+
+        function test_paste_into_the_same_folder_is_skipped() {
+            var shell = make();
+            var src = Files.mutationFixtureUri + "/PasteSrc";
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            var id = idForUri(shell, src + "/report.txt");
+            verify(id > 0);
+            shell.selectNode(id, 0);
+            verify(shell.cutSelection());
+            // The conflict pre-flight sees the item itself.
+            verify(shell.pasteConflicts().indexOf("report.txt") >= 0);
+            shell.pastePolicy = "skip";
+            verify(shell.performPaste("skip"));
+            tryCompare(shell.directory, "pendingOps", 0);
+            // The item stays and the clipboard is consumed.
+            compare(shell.directory.count, 2);
+            compare(shell.clipboard.count, 0);
+            compare(shell.directory.lastError, "");
+        }
+
+        // T330 deterministic capture. The runner sets DF_FILES_CAPTURE_DIR; a
+        // normal ctest run skips it.
+        function test_capture_t330_copy_cut_paste() {
+            if (Files.captureDir.length === 0) {
+                skip("DF_FILES_CAPTURE_DIR not set");
+                return;
+            }
+            var shell = make({ width: 900, height: 600 });
+            var src = Files.mutationFixtureUri + "/CaptureSrc";
+            var dst = Files.mutationFixtureUri + "/CaptureDst";
+            var conflict = Files.mutationFixtureUri + "/CaptureConflict";
+            var cutSrc = Files.mutationFixtureUri + "/CaptureCut";
+            var cutDst = Files.mutationFixtureUri + "/CaptureCutDest";
+
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            var ids = shell.directory.allNodeIds();
+            shell.selectedIds = ids.slice();
+            shell.selectedId = ids[ids.length - 1];
+            verify(shell.copySelection());
+            shell.browser.navigate(dst);
+            tryCompare(shell.directory, "state", "complete");
+            verify(shell.paste());
+            tryCompare(shell.directory, "count", 2);
+            tryCompare(shell.directory, "pendingOps", 0);
+            captureT330(shell, "paste-copy");
+
+            // The conflict sheet is the visible report.
+            shell.browser.navigate(src);
+            tryCompare(shell.directory, "state", "complete");
+            var reportId = idForUri(shell, src + "/report.txt");
+            verify(reportId > 0);
+            shell.selectNode(reportId, 0);
+            verify(shell.copySelection());
+            shell.browser.navigate(conflict);
+            tryCompare(shell.directory, "state", "complete");
+            verify(shell.paste());
+            compare(shell.pasteConflictDialog.open, true);
+            // Let the dialog's open animation finish before grabbing.
+            wait(400);
+            captureT330(shell, "paste-conflict");
+            shell.pastePolicy = "keep-both";
+            shell.pasteConflictDialog.accept();
+            tryCompare(shell.directory, "count", 2);
+            tryCompare(shell.directory, "pendingOps", 0);
+            captureT330(shell, "paste-keep-both");
+
+            // Cut/paste.
+            shell.browser.navigate(cutSrc);
+            tryCompare(shell.directory, "state", "complete");
+            var moveId = idForUri(shell, cutSrc + "/move-me.txt");
+            verify(moveId > 0);
+            shell.selectNode(moveId, 0);
+            verify(shell.cutSelection());
+            shell.browser.navigate(cutDst);
+            tryCompare(shell.directory, "state", "complete");
+            verify(shell.paste());
+            tryCompare(shell.directory, "count", 1);
+            tryCompare(shell.directory, "pendingOps", 0);
+            captureT330(shell, "paste-cut");
+            shell.destroy();
         }
 
         // -- Trash location and Empty Trash (T-10.6b) ---------------------------

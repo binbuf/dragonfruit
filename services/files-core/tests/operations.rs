@@ -369,3 +369,175 @@ fn foreign_schemes_are_refused_by_every_operation() {
     unsupported(ops.delete(&trash).expect_err("delete"));
     assert!(!ops.exists(&trash));
 }
+
+// -- T330: cross-filesystem moves are all-or-nothing (ADR 0323) -------------
+
+#[test]
+fn copy_as_places_the_item_under_the_requested_name() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ops = StdFsOps::new();
+    fs::write(dir.path().join("note.txt"), b"hello").expect("write");
+    let dest = dir.path().join("dest");
+    fs::create_dir(&dest).expect("mkdir dest");
+
+    let copied = ops
+        .copy_as(
+            &file(dir.path(), "note.txt"),
+            &Location::file(&dest),
+            OsStr::new("renamed.txt"),
+        )
+        .expect("copy as");
+    assert_eq!(path(&copied), dest.join("renamed.txt"));
+    assert_eq!(fs::read(dest.join("renamed.txt")).unwrap(), b"hello");
+}
+
+#[test]
+fn forced_cross_device_move_copies_the_tree_then_removes_the_source() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ops = StdFsOps::new().with_forced_cross_device();
+    let source = dir.path().join("tree");
+    fs::create_dir_all(source.join("nested")).expect("mkdir tree");
+    fs::write(source.join("top.txt"), b"top").expect("write top");
+    fs::write(source.join("nested/leaf.txt"), b"leaf").expect("write leaf");
+    let dest = dir.path().join("dest");
+    fs::create_dir(&dest).expect("mkdir dest");
+
+    let moved = ops
+        .move_as(
+            &Location::file(&source),
+            &Location::file(&dest),
+            OsStr::new("tree"),
+        )
+        .expect("cross-device move");
+    assert_eq!(path(&moved), dest.join("tree"));
+    assert_eq!(fs::read(dest.join("tree/top.txt")).unwrap(), b"top");
+    assert_eq!(
+        fs::read(dest.join("tree/nested/leaf.txt")).unwrap(),
+        b"leaf"
+    );
+    assert!(
+        !source.exists(),
+        "the source must be removed after the copy"
+    );
+    // No hidden temp sibling is left behind.
+    let leftovers: Vec<_> = fs::read_dir(&dest)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with(".dragonfruit-move-"))
+        .collect();
+    assert!(leftovers.is_empty(), "leftover temp: {leftovers:?}");
+}
+
+#[test]
+fn a_failed_cross_device_move_removes_the_temp_and_keeps_the_source() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ops = StdFsOps::new()
+        .with_forced_cross_device()
+        .with_failure_after(2);
+    let source = dir.path().join("tree");
+    fs::create_dir(&source).expect("mkdir tree");
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        fs::write(source.join(name), name.as_bytes()).expect("write");
+    }
+    let dest = dir.path().join("dest");
+    fs::create_dir(&dest).expect("mkdir dest");
+
+    let error = ops
+        .move_as(
+            &Location::file(&source),
+            &Location::file(&dest),
+            OsStr::new("tree"),
+        )
+        .expect_err("the simulated copy must fail");
+    assert!(matches!(error, OperationError::Io(_)), "got {error:?}");
+    // The source is complete and no destination or temp remains.
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        assert!(source.join(name).exists(), "source lost {name}");
+    }
+    assert!(!dest.join("tree").exists());
+    let leftovers: Vec<_> = fs::read_dir(&dest)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a failed move left temp/destination entries: {leftovers:?}"
+    );
+
+    // A retry reuses the original name instead of leaving `tree.1` beside it.
+    let retry = StdFsOps::new().with_forced_cross_device();
+    let moved = retry
+        .move_as(
+            &Location::file(&source),
+            &Location::file(&dest),
+            OsStr::new("tree"),
+        )
+        .expect("retry");
+    assert_eq!(path(&moved), dest.join("tree"));
+    assert!(!dest.join("tree.1").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn a_real_cross_filesystem_move_is_all_or_nothing_when_available() {
+    use std::os::unix::fs::MetadataExt;
+    // `/dev/shm` is usually a separate tmpfs from the default temp dir. Skip
+    // when the host puts them on one filesystem.
+    let shm = Path::new("/dev/shm");
+    if !shm.is_dir() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("temp dir");
+    let source_root = match tempfile::tempdir_in(shm) {
+        Ok(root) => root,
+        Err(_) => return,
+    };
+    let source = source_root.path().join("tree");
+    fs::create_dir(&source).expect("mkdir tree");
+    fs::write(source.join("note.txt"), b"note").expect("write");
+    let dest = dir.path().join("dest");
+    fs::create_dir(&dest).expect("mkdir dest");
+    if fs::metadata(&source).unwrap().dev() == fs::metadata(&dest).unwrap().dev() {
+        return;
+    }
+
+    let moved = StdFsOps::new()
+        .move_as(
+            &Location::file(&source),
+            &Location::file(&dest),
+            OsStr::new("tree"),
+        )
+        .expect("real cross-device move");
+    assert_eq!(path(&moved), dest.join("tree"));
+    assert_eq!(fs::read(dest.join("tree/note.txt")).unwrap(), b"note");
+    assert!(!source.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn a_cross_device_move_recreates_a_symlink_without_following_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ops = StdFsOps::new().with_forced_cross_device();
+    fs::write(dir.path().join("target.txt"), b"target").expect("write");
+    std::os::unix::fs::symlink("target.txt", dir.path().join("link")).expect("symlink");
+    let dest = dir.path().join("dest");
+    fs::create_dir(&dest).expect("mkdir dest");
+
+    let moved = ops
+        .move_as(
+            &file(dir.path(), "link"),
+            &Location::file(&dest),
+            OsStr::new("link"),
+        )
+        .expect("move link");
+    let metadata = fs::symlink_metadata(path(&moved)).expect("lstat");
+    assert!(metadata.file_type().is_symlink(), "move followed the link");
+    assert_eq!(
+        fs::read_link(path(&moved)).unwrap(),
+        Path::new("target.txt")
+    );
+    // The link target was not copied along.
+    assert!(!dest.join("target.txt").exists());
+}

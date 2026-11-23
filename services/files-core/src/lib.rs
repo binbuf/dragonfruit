@@ -86,6 +86,18 @@
 //!   [`FreedesktopTrash`] store Files uses. Exposed to the shell through the
 //!   C ABI ([`ffi`]).
 //!
+//! # What T330 owns
+//!
+//! * [`Clipboard`] — the copy/cut marks and the one paste rule. `paste_one`
+//!   resolves a [`ConflictPolicy`] (Replace / Skip / Keep Both) and calls
+//!   [`FileOps::copy_as`]/[`FileOps::move_as`], so a paste never grows a
+//!   second copy loop. Cut marks only; a same-folder cut is a skip.
+//! * [`StdFsOps::move_as`] — the ADR 0323 cross-filesystem rule in Rust:
+//!   hidden destination sibling, copy, rename, remove the source; failure
+//!   removes the temp and leaves the source complete.
+//! * The C ABI's `df_files_begin_paste` / `df_files_paste_state` expose the
+//!   per-item paste and its progress counters to the Qt facade.
+//!
 //! # Sorting is incremental and stable
 //!
 //! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
@@ -132,6 +144,7 @@
 //! [adr/0043]: ../../../docs/design/adr/0043-files-core-fallback-is-the-shipping-backend.md
 //! [adr/0046]: ../../../docs/design/adr/0046-files-core-trash-seam-and-spec-fallback.md
 
+mod clipboard;
 mod fallback;
 pub mod ffi;
 mod listing;
@@ -148,13 +161,16 @@ mod trash;
 mod trash_source;
 mod watch;
 
+pub use clipboard::{
+    paste_one, Clipboard, ClipboardItem, ClipboardMode, PasteItemOutcome, PasteOutcome, PasteStatus,
+};
 pub use fallback::{StdFsSource, SANCTIONED_FALLBACK_MARKER};
 pub use listing::{ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
 pub use location::{Location, LocationError};
 pub use mock::{MockSource, MockWatcher, SyntheticSource};
 pub use model::{DirectoryModel, ListingState};
 pub use node::{Node, NodeId, NodeKind};
-pub use ops::{generated_name, FileOps, OperationError, StdFsOps, NEW_FOLDER_BASE};
+pub use ops::{generated_name, ConflictPolicy, FileOps, OperationError, StdFsOps, NEW_FOLDER_BASE};
 pub use optimistic::{OpId, OptimisticModel};
 pub use selection::Selection;
 pub use sort::{SortDirection, SortKey, SortSpec};

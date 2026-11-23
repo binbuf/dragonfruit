@@ -27,6 +27,15 @@ extern "C" {
 #define DF_NODE_SYMLINK 2
 #define DF_NODE_OTHER 3
 
+// Clipboard modes (T330).
+#define DF_FILES_CLIPBOARD_COPY 0
+#define DF_FILES_CLIPBOARD_CUT 1
+
+// Conflict policies for a paste (T330).
+#define DF_FILES_CONFLICT_REPLACE 0
+#define DF_FILES_CONFLICT_SKIP 1
+#define DF_FILES_CONFLICT_KEEP_BOTH 2
+
 // One listed item. All strings are NUL-terminated and owned by the event that
 // carries them; null means absent.
 typedef struct df_files_node {
@@ -126,6 +135,31 @@ uint64_t df_files_begin_trash(void *session, uint64_t node_id);
 // empty. Returns the operation id, or 0 when the session is not listing the
 // Trash or the listing is already empty.
 uint64_t df_files_begin_empty_trash(void *session);
+
+// Paste one clipboard item into `target_uri` (T330). `kind` is DF_NODE_*,
+// `mode` is DF_FILES_CLIPBOARD_*, and `policy` is DF_FILES_CONFLICT_*.
+// Returns a non-zero token when queued, 0 for a null session or a bad URI.
+// A copy into the current folder paints its row before returning; a cut whose
+// source row is in the current model hides it. The worker's outcome confirms
+// or reverts on the next poll.
+uint64_t df_files_begin_paste(void *session, const char *target_uri,
+                              const char *source_uri, const char *name,
+                              int32_t kind, int32_t mode, int32_t policy);
+
+// Per-item paste progress (T330). `active == 0 && total == done && total > 0`
+// means the batch finished. `mode` is DF_FILES_CLIPBOARD_*, or -1 before the
+// first paste.
+typedef struct df_files_paste_progress {
+    uint32_t active;
+    uint32_t total;
+    uint32_t done;
+    uint32_t copied;
+    uint32_t skipped;
+    uint32_t failed;
+    int32_t mode;
+} df_files_paste_progress;
+
+df_files_paste_progress df_files_paste_state(const void *session);
 
 // How many operations are still awaiting their worker outcome. The facade
 // keeps polling while this is non-zero.

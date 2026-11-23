@@ -27,6 +27,9 @@
 //!   and enqueue the real [`crate::FileOps`]/[`crate::TrashOps`] call to a
 //!   worker thread. The worker's outcome is confirmed or reverted on the next
 //!   poll, so no I/O ever runs on the UI thread.
+//! * [`df_files_begin_paste`] queues one clipboard item (T330) and
+//!   [`df_files_paste_state`] reports the batch's per-item counters. The
+//!   clipboard itself lives in the shell so it survives navigation.
 //! * [`df_files_pending_ops`] tells the facade whether it must keep polling
 //!   (there is an outcome still to fold), and [`df_files_take_error`] surfaces
 //!   the last snapped-back failure for an inline notice.
@@ -49,8 +52,9 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use crate::sort::{SortDirection, SortKey, SortSpec};
 use crate::{
-    DirectoryModel, DirectorySource, FileOps, FreedesktopTrash, ListingHandle, ListingState,
-    Location, Node, NodeId, NodeKind, OpId, OperationError, OptimisticModel, StdFsOps, StdFsSource,
+    paste_one, ClipboardMode, ConflictPolicy, DirectoryModel, DirectorySource, FileOps,
+    FreedesktopTrash, ListingHandle, ListingState, Location, Node, NodeId, NodeKind, OpId,
+    OperationError, OptimisticModel, PasteItemOutcome, PasteStatus, StdFsOps, StdFsSource,
     SyntheticSource, TrashMonitor, TrashOps, TrashSource, TrashState,
 };
 
@@ -71,6 +75,39 @@ pub const DF_NODE_FILE: i32 = 1;
 pub const DF_NODE_SYMLINK: i32 = 2;
 /// Anything else (socket, FIFO, device, unknown).
 pub const DF_NODE_OTHER: i32 = 3;
+
+/// The clipboard marks items to copy.
+pub const DF_FILES_CLIPBOARD_COPY: i32 = 0;
+/// The clipboard marks items to cut (move on paste).
+pub const DF_FILES_CLIPBOARD_CUT: i32 = 1;
+
+/// A conflicting destination is removed, then the source is placed.
+pub const DF_FILES_CONFLICT_REPLACE: i32 = 0;
+/// A conflicting destination is left alone; the item is skipped.
+pub const DF_FILES_CONFLICT_SKIP: i32 = 1;
+/// A conflicting destination stays; the source gets the next free name.
+pub const DF_FILES_CONFLICT_KEEP_BOTH: i32 = 2;
+
+/// Per-item paste progress for the Qt facade (T330). `active` counts queued
+/// items still on the worker; `total`/`done` are the current paste batch.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct df_files_paste_progress {
+    /// Items still awaiting a worker outcome.
+    pub active: u32,
+    /// Items queued in the current paste batch.
+    pub total: u32,
+    /// Items that have produced an outcome.
+    pub done: u32,
+    /// Items copied successfully.
+    pub copied: u32,
+    /// Items skipped by conflict policy.
+    pub skipped: u32,
+    /// Items that failed.
+    pub failed: u32,
+    /// `DF_FILES_CLIPBOARD_*`, or -1 for no paste yet.
+    pub mode: i32,
+}
 
 /// One listed item, owned by the event that carries it.
 #[repr(C)]
@@ -161,6 +198,19 @@ enum OpRequest {
     EmptyTrash {
         op: OpId,
     },
+    /// One clipboard item pasted into `target`. `op` is the optimistic row
+    /// insert (a copy into the current folder) and `remove_op` the optimistic
+    /// source removal (a cut whose source row is in the current model).
+    Paste {
+        op: Option<OpId>,
+        remove_op: Option<OpId>,
+        source: Location,
+        target: Location,
+        name: OsString,
+        mode: ClipboardMode,
+        policy: ConflictPolicy,
+        skip: bool,
+    },
 }
 
 /// The worker's outcome for one [`OpRequest`].
@@ -180,6 +230,11 @@ enum OpOutcome {
     EmptyTrash {
         op: OpId,
         result: Result<(), OperationError>,
+    },
+    Paste {
+        op: Option<OpId>,
+        remove_op: Option<OpId>,
+        result: Result<PasteItemOutcome, OperationError>,
     },
 }
 
@@ -216,6 +271,30 @@ fn spawn_op_worker() -> (Sender<OpRequest>, Receiver<OpOutcome>) {
                         op,
                         result: trash.empty().map(|_| ()),
                     },
+                    OpRequest::Paste {
+                        op,
+                        remove_op,
+                        source,
+                        target,
+                        name,
+                        mode,
+                        policy,
+                        skip,
+                    } => OpOutcome::Paste {
+                        op,
+                        remove_op,
+                        result: if skip {
+                            Ok(PasteItemOutcome {
+                                destination: target.child(&name),
+                                source,
+                                name,
+                                status: PasteStatus::Skipped,
+                                error: None,
+                            })
+                        } else {
+                            paste_one(&ops, &source, &target, &name, mode, policy)
+                        },
+                    },
                 };
                 if outcome_tx.send(outcome).is_err() {
                     break;
@@ -234,6 +313,16 @@ pub struct FfiSession {
     outcome_rx: Receiver<OpOutcome>,
     pending: u32,
     last_error: Option<String>,
+    /// Per-item paste progress (T330). A new batch starts when the previous
+    /// one is settled; the Qt facade reads it through
+    /// [`df_files_paste_state`].
+    paste_active: u32,
+    paste_total: u32,
+    paste_done: u32,
+    paste_copied: u32,
+    paste_skipped: u32,
+    paste_failed: u32,
+    paste_mode: i32,
     /// The node ids the receiver has already been told about, so an
     /// incremental poll can serialize only the newly arrived nodes (T-10.5).
     /// Seeded by every `reset` delta; grown by every insertion delta.
@@ -370,6 +459,51 @@ impl FfiSession {
                         self.last_error = Some(error.to_string());
                     }
                 },
+                OpOutcome::Paste {
+                    op,
+                    remove_op,
+                    result,
+                } => {
+                    self.paste_active = self.paste_active.saturating_sub(1);
+                    self.paste_done += 1;
+                    match result {
+                        Ok(item) => match item.status {
+                            PasteStatus::Skipped => {
+                                self.paste_skipped += 1;
+                                // A skipped item leaves the destination as it
+                                // was; undo the provisional row.
+                                if let Some(op) = op {
+                                    self.model.revert(op);
+                                }
+                                if let Some(op) = remove_op {
+                                    self.model.revert(op);
+                                }
+                            }
+                            status => {
+                                if status.is_success() {
+                                    self.paste_copied += 1;
+                                    if let Some(op) = op {
+                                        self.model.retarget(op, &item.destination);
+                                        self.model.confirm(op);
+                                    }
+                                    if let Some(op) = remove_op {
+                                        self.model.confirm(op);
+                                    }
+                                }
+                            }
+                        },
+                        Err(error) => {
+                            self.paste_failed += 1;
+                            if let Some(op) = op {
+                                self.model.revert(op);
+                            }
+                            if let Some(op) = remove_op {
+                                self.model.revert(op);
+                            }
+                            self.last_error = Some(error.to_string());
+                        }
+                    }
+                }
             }
         }
         changed
@@ -540,6 +674,13 @@ unsafe fn begin_session(
         outcome_rx,
         pending: 0,
         last_error: None,
+        paste_active: 0,
+        paste_total: 0,
+        paste_done: 0,
+        paste_copied: 0,
+        paste_skipped: 0,
+        paste_failed: 0,
+        paste_mode: -1,
         reported: HashSet::new(),
     }))
 }
@@ -859,6 +1000,183 @@ pub unsafe extern "C" fn df_files_begin_empty_trash(session: *mut FfiSession) ->
     let _ = session.op_tx.send(OpRequest::EmptyTrash { op });
     session.pending += 1;
     op.get()
+}
+
+/// Paste one clipboard item into `target_uri` (T330). The item's `name` and
+/// `kind` come from the shell's clipboard; `mode` is `DF_FILES_CLIPBOARD_*`
+/// and `policy` is `DF_FILES_CONFLICT_*`. Returns a non-zero token when the
+/// item was queued, `0` for a null session or an unparseable location.
+///
+/// The optimistic row (a copy into the current folder) is painted before this
+/// returns; a cut whose source row is in the current model hides it. The
+/// worker's outcome confirms or reverts on the next poll, and the per-item
+/// counters behind [`df_files_paste_state`] advance as items finish.
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`]; every
+/// string must be a valid NUL-terminated C string or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_begin_paste(
+    session: *mut FfiSession,
+    target_uri: *const c_char,
+    source_uri: *const c_char,
+    name: *const c_char,
+    kind: i32,
+    mode: i32,
+    policy: i32,
+) -> u64 {
+    let Some(session) = session.as_mut() else {
+        return 0;
+    };
+    let Some(target) = read_str(target_uri).and_then(|uri| Location::parse(&uri).ok()) else {
+        return 0;
+    };
+    let Some(source) = read_str(source_uri).and_then(|uri| Location::parse(&uri).ok()) else {
+        return 0;
+    };
+    let Some(name) = read_str(name) else {
+        return 0;
+    };
+    let name = OsString::from(name);
+    let mode = match mode {
+        DF_FILES_CLIPBOARD_COPY => ClipboardMode::Copy,
+        DF_FILES_CLIPBOARD_CUT => ClipboardMode::Cut,
+        _ => return 0,
+    };
+    let policy = match policy {
+        DF_FILES_CONFLICT_REPLACE => ConflictPolicy::Replace,
+        DF_FILES_CONFLICT_SKIP => ConflictPolicy::Skip,
+        DF_FILES_CONFLICT_KEEP_BOTH => ConflictPolicy::KeepBoth,
+        _ => return 0,
+    };
+    let kind = match kind {
+        DF_NODE_DIRECTORY => NodeKind::Directory,
+        DF_NODE_FILE => NodeKind::File,
+        DF_NODE_SYMLINK => NodeKind::Symlink,
+        _ => NodeKind::Other,
+    };
+
+    // Consecutive per-item calls form one batch. A call after the previous
+    // batch settled starts a fresh one.
+    if session.paste_active == 0 && session.paste_done == session.paste_total {
+        session.paste_total = 0;
+        session.paste_done = 0;
+        session.paste_copied = 0;
+        session.paste_skipped = 0;
+        session.paste_failed = 0;
+    }
+    session.paste_active += 1;
+    session.paste_total += 1;
+    session.paste_mode = match mode {
+        ClipboardMode::Copy => DF_FILES_CLIPBOARD_COPY,
+        ClipboardMode::Cut => DF_FILES_CLIPBOARD_CUT,
+    };
+
+    let current = session.model.model().location().cloned();
+    let target_is_current = current.as_ref() == Some(&target);
+    let mut op = None;
+    let mut remove_op = None;
+    let mut skip = false;
+
+    if mode == ClipboardMode::Cut {
+        if source.parent().as_ref() == Some(&target) {
+            // Cutting into the folder the item already lives in is a skip.
+            skip = true;
+        } else if let Some(current) = current.as_ref() {
+            if current != &target && source.parent().as_ref() == Some(current) {
+                // The source row is in this model; hide it while the move
+                // runs so the cut is visible immediately.
+                let source_id = session
+                    .model
+                    .model()
+                    .nodes()
+                    .iter()
+                    .find(|node| node.uri() == source.uri())
+                    .map(Node::id);
+                if let Some(id) = source_id {
+                    remove_op = session.model.begin_delete(id);
+                }
+            }
+        }
+    }
+
+    if target_is_current && !skip {
+        let existing = session
+            .model
+            .model()
+            .nodes()
+            .iter()
+            .find(|node| node.name() == name.as_os_str())
+            .map(Node::id);
+        let mut destination_name = name.clone();
+        match policy {
+            ConflictPolicy::Skip if existing.is_some() => skip = true,
+            ConflictPolicy::KeepBoth if existing.is_some() => {
+                let mut taken = |candidate: &std::ffi::OsStr| {
+                    session
+                        .model
+                        .model()
+                        .nodes()
+                        .iter()
+                        .any(|node| node.name() == candidate)
+                };
+                destination_name = crate::generated_name(&name, &mut taken);
+            }
+            ConflictPolicy::Replace => {
+                if let Some(id) = existing {
+                    remove_op = session.model.begin_delete(id);
+                }
+            }
+            _ => {}
+        }
+        if !skip {
+            let uri = target.child(&destination_name).uri().to_owned();
+            let node = Node::new(destination_name, uri, kind);
+            op = Some(session.model.begin_paste_insert(node));
+        }
+    }
+
+    let _ = session.op_tx.send(OpRequest::Paste {
+        op,
+        remove_op,
+        source,
+        target,
+        name,
+        mode,
+        policy,
+        skip,
+    });
+    session.pending += 1;
+    // `1` is a queued token for a paste with no model row to point at.
+    op.or(remove_op).map(OpId::get).unwrap_or(1)
+}
+
+/// Per-item paste progress (T330). The Qt facade reads this after every poll;
+/// `active == 0 && total == done && total > 0` means the batch finished.
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`] or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_paste_state(
+    session: *const FfiSession,
+) -> df_files_paste_progress {
+    match session.as_ref() {
+        Some(session) => df_files_paste_progress {
+            active: session.paste_active,
+            total: session.paste_total,
+            done: session.paste_done,
+            copied: session.paste_copied,
+            skipped: session.paste_skipped,
+            failed: session.paste_failed,
+            mode: session.paste_mode,
+        },
+        None => df_files_paste_progress {
+            mode: -1,
+            ..df_files_paste_progress::default()
+        },
+    }
 }
 
 /// How many operations are still awaiting their worker outcome. The facade
@@ -1444,6 +1762,141 @@ mod tests {
             let snapshot = df_files_snapshot(session);
             assert_eq!(names(snapshot).len(), 1, "the row is untouched");
             df_files_event_free(snapshot);
+            df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn paste_abi_paints_the_row_then_confirms_and_reports_progress() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("source")).expect("source");
+        std::fs::create_dir(dir.path().join("dest")).expect("dest");
+        std::fs::write(dir.path().join("source/report.txt"), b"report").expect("file");
+        let dest_uri = Location::file(dir.path().join("dest")).uri().to_owned();
+        let source_uri = Location::file(dir.path().join("source/report.txt"))
+            .uri()
+            .to_owned();
+        unsafe {
+            let session = df_files_begin(c(&dest_uri).as_ptr());
+            assert!(!session.is_null());
+            drain_listing(session);
+
+            let token = df_files_begin_paste(
+                session,
+                c(&dest_uri).as_ptr(),
+                c(&source_uri).as_ptr(),
+                c("report.txt").as_ptr(),
+                DF_NODE_FILE,
+                DF_FILES_CLIPBOARD_COPY,
+                DF_FILES_CONFLICT_KEEP_BOTH,
+            );
+            assert_ne!(token, 0);
+            // The optimistic row is painted before the worker runs.
+            let painted = df_files_snapshot(session);
+            assert!(names(painted).iter().any(|name| name == "report.txt"));
+            df_files_event_free(painted);
+
+            let final_snapshot = await_ops(session);
+            assert!(names(final_snapshot)
+                .iter()
+                .any(|name| name == "report.txt"));
+            df_files_event_free(final_snapshot);
+            assert!(dir.path().join("dest/report.txt").exists());
+            let progress = df_files_paste_state(session);
+            assert_eq!(progress.active, 0);
+            assert_eq!(progress.total, 1);
+            assert_eq!(progress.done, 1);
+            assert_eq!(progress.copied, 1);
+            assert_eq!(progress.failed, 0);
+            assert_eq!(progress.mode, DF_FILES_CLIPBOARD_COPY);
+            df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn paste_abi_keep_both_numbers_a_conflict() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("source")).expect("source");
+        std::fs::create_dir(dir.path().join("dest")).expect("dest");
+        std::fs::write(dir.path().join("source/report.txt"), b"new").expect("source");
+        std::fs::write(dir.path().join("dest/report.txt"), b"old").expect("dest");
+        let dest_uri = Location::file(dir.path().join("dest")).uri().to_owned();
+        let source_uri = Location::file(dir.path().join("source/report.txt"))
+            .uri()
+            .to_owned();
+        unsafe {
+            let session = df_files_begin(c(&dest_uri).as_ptr());
+            assert!(!session.is_null());
+            drain_listing(session);
+
+            assert_ne!(
+                df_files_begin_paste(
+                    session,
+                    c(&dest_uri).as_ptr(),
+                    c(&source_uri).as_ptr(),
+                    c("report.txt").as_ptr(),
+                    DF_NODE_FILE,
+                    DF_FILES_CLIPBOARD_COPY,
+                    DF_FILES_CONFLICT_KEEP_BOTH,
+                ),
+                0
+            );
+            let final_snapshot = await_ops(session);
+            let names = names(final_snapshot);
+            df_files_event_free(final_snapshot);
+            assert!(names.iter().any(|name| name == "report.txt"));
+            assert!(names.iter().any(|name| name == "report.txt 2"));
+            assert_eq!(
+                std::fs::read(dir.path().join("dest/report.txt")).unwrap(),
+                b"old"
+            );
+            assert_eq!(
+                std::fs::read(dir.path().join("dest/report.txt 2")).unwrap(),
+                b"new"
+            );
+            assert_eq!(df_files_paste_state(session).copied, 1);
+            df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn paste_abi_skip_leaves_the_destination_and_counts_the_skip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("source")).expect("source");
+        std::fs::create_dir(dir.path().join("dest")).expect("dest");
+        std::fs::write(dir.path().join("source/report.txt"), b"new").expect("source");
+        std::fs::write(dir.path().join("dest/report.txt"), b"old").expect("dest");
+        let dest_uri = Location::file(dir.path().join("dest")).uri().to_owned();
+        let source_uri = Location::file(dir.path().join("source/report.txt"))
+            .uri()
+            .to_owned();
+        unsafe {
+            let session = df_files_begin(c(&dest_uri).as_ptr());
+            assert!(!session.is_null());
+            drain_listing(session);
+
+            assert_ne!(
+                df_files_begin_paste(
+                    session,
+                    c(&dest_uri).as_ptr(),
+                    c(&source_uri).as_ptr(),
+                    c("report.txt").as_ptr(),
+                    DF_NODE_FILE,
+                    DF_FILES_CLIPBOARD_COPY,
+                    DF_FILES_CONFLICT_SKIP,
+                ),
+                0
+            );
+            let final_snapshot = await_ops(session);
+            assert_eq!(names(final_snapshot), vec!["report.txt".to_owned()]);
+            df_files_event_free(final_snapshot);
+            assert_eq!(
+                std::fs::read(dir.path().join("dest/report.txt")).unwrap(),
+                b"old"
+            );
+            let progress = df_files_paste_state(session);
+            assert_eq!(progress.skipped, 1);
+            assert_eq!(progress.copied, 0);
             df_files_free(session);
         }
     }

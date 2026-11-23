@@ -23,6 +23,7 @@ qt_add_qml_module(dragonfruit-files-ui
         FilesThumbnailProvider.h
     QML_FILES
         FilesBrowser.qml
+        FilesClipboard.qml
         FilesIconView.qml
         FilesListView.qml
         PathBar.qml
