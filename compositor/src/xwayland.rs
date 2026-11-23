@@ -226,13 +226,26 @@ pub fn start(state: &mut DfState) -> Result<(), String> {
                 }
             }
             XWaylandEvent::Error => {
-                eprintln!("dragonfruit-compositor: Xwayland exited; scheduling restart");
-                state.xwayland.wm = None;
+                eprintln!("dragonfruit-compositor: Xwayland exited");
                 state.xwayland.running = false;
                 state.xwayland.display = None;
-                // Keep `display_number` so `maybe_restart` can clean up the
-                // dead server's socket/lock before respawning.
-                state.xwayland.pending_restart = true;
+                // A live X11 WM still owns queued events for the dead server.
+                // Restarting now would let those events be applied to the new
+                // server's windows (a reused id can otherwise be associated
+                // with a dead `wl_surface`, T326). When a WM exists, wait for
+                // its `disconnected`, which is delivered only after its event
+                // channel has fully drained; that path removes the windows and
+                // schedules the restart. With no WM there is nothing to drain.
+                if state.xwayland.wm.is_none() {
+                    state.remove_all_x11_windows("Xwayland exited");
+                    // Keep `display_number` so `maybe_restart` can clean up the
+                    // dead server's socket/lock before respawning.
+                    state.xwayland.pending_restart = true;
+                } else {
+                    eprintln!(
+                        "dragonfruit-compositor: waiting for the X11 WM to drain before restart"
+                    );
+                }
             }
         })
         .map_err(|err| format!("failed to register Xwayland source: {err}"))?;
@@ -258,6 +271,17 @@ pub fn maybe_restart(state: &mut DfState) {
         cleanup_x11_files(number);
     }
     remove_display_file(&state.socket_name);
+    // Smithay's xwayland-shell state keeps a serial → wl_surface map that is
+    // never cleared when the Xwayland client disconnects. A restarted server
+    // reuses Wayland object ids/serials, so without a fresh map its new
+    // surface can be associated with the dead surface from the previous
+    // server (and a reused X11 id then focuses a dead surface, T326).
+    // Recreate the global so the new server starts with an empty map.
+    let old_shell_global = state.xwayland_shell_state.global();
+    state
+        .display_handle
+        .remove_global::<DfState>(old_shell_global);
+    state.xwayland_shell_state = XWaylandShellState::new::<DfState>(&state.display_handle);
     if let Err(err) = start(state) {
         eprintln!("dragonfruit-compositor: Xwayland restart failed: {err}");
     }
@@ -282,6 +306,50 @@ impl DfState {
             .windows()
             .find(|window| window.x11_surface().map(|s| s.window_id()) == Some(id))
             .cloned()
+    }
+
+    /// Drop every X11 window when the X server goes away (T326).
+    ///
+    /// `space.refresh()` drops dead `Window`s from the scene but not from
+    /// [`WindowModel`], which is the shell's source; each entry must go
+    /// through [`Self::remove_window`] so the shell receives `Unmapped` and
+    /// focus is released. Override-redirect windows live outside the model
+    /// and are unmapped directly. Clearing `override_windows` (and the model
+    /// entries) is what lets a restarted server's reused X11 window id map as
+    /// a **new** window instead of matching the dead entry through
+    /// [`Self::x11_window_for`].
+    pub(crate) fn remove_all_x11_windows(&mut self, reason: &str) {
+        // Release the keyboard before the surfaces disappear. `remove_window`
+        // also does this for the focused entry, but an X11 surface can hold
+        // the seat focus without the `active_window` cache naming it.
+        let active_is_x11 = self
+            .active_window
+            .as_ref()
+            .is_some_and(|window| window.x11_surface().is_some());
+        let seat_is_x11 = self
+            .seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus())
+            .and_then(|surface| self.window_for_surface(&surface))
+            .is_some_and(|window| window.x11_surface().is_some());
+        if active_is_x11 || seat_is_x11 {
+            self.clear_keyboard_focus(reason);
+        }
+
+        let windows: Vec<Window> = self
+            .windows
+            .windows()
+            .filter(|window| window.x11_surface().is_some())
+            .cloned()
+            .collect();
+        for window in windows {
+            self.remove_window(&window, WindowEventKind::Unmapped);
+        }
+
+        for (_, window) in self.xwayland.override_windows.drain(..) {
+            self.space.unmap_elem(&window);
+        }
+        self.needs_redraw = true;
     }
 
     /// Publish the raw X11 identity for a window. The `WM_CLASS` class is
@@ -746,8 +814,17 @@ impl XwmHandler for DfState {
         }
     }
 
-    fn disconnected(&mut self, _xwm: XwmId) {
-        eprintln!("dragonfruit-compositor: X11 WM disconnected; scheduling restart");
+    fn disconnected(&mut self, xwm: XwmId) {
+        // A restarted server installs a new `X11Wm`. A late `Closed` from the
+        // previous WM source must not tear down the new server's windows
+        // (T326), so only the current WM owns the teardown.
+        if self.xwayland.wm.as_ref().map(|wm| wm.id()) != Some(xwm) {
+            return;
+        }
+        eprintln!(
+            "dragonfruit-compositor: X11 WM disconnected; removing X11 windows and scheduling restart"
+        );
+        self.remove_all_x11_windows("Xwayland disconnected");
         self.xwayland.wm = None;
         self.xwayland.running = false;
         self.xwayland.pending_restart = true;

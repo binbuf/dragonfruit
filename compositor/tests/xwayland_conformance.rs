@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
-    AtomEnum, ConnectionExt as _, CreateWindowAux, PropMode, Window as X11Window, WindowClass,
+    AtomEnum, ConnectionExt as _, CreateWindowAux, PropMode, Screen, Window as X11Window,
+    WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
@@ -1398,6 +1399,232 @@ fn xwayland_restart_after_kill_is_clean() {
     assert!(recovered, "Xwayland did not recover after being killed");
 
     proc.assert_clean_exit();
+}
+
+/// Create, map, and wait for an X11 window to be managed by the XWM.
+fn create_mapped_x11_window(
+    conn: &RustConnection,
+    root: X11Window,
+    screen: &Screen,
+    x: i16,
+    y: i16,
+    w: u16,
+    h: u16,
+) -> X11Window {
+    let window = conn.generate_id().expect("generate window id");
+    let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+    conn.create_window(
+        screen.root_depth,
+        window,
+        root,
+        x,
+        y,
+        w,
+        h,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &aux,
+    )
+    .expect("create_window");
+    conn.map_window(window).expect("map_window");
+    conn.flush().expect("flush");
+    wait_until(
+        || client_list(conn, root).contains(&window),
+        Duration::from_secs(5),
+        "X11 window to be managed",
+    );
+    window
+}
+
+/// T326 acceptance: an Xwayland crash removes every X11 window from the
+/// model and the scene, releases keyboard focus, and a restarted server's
+/// reused window id maps as a new window.
+#[test]
+fn xwayland_disconnect_removes_x11_windows_and_reuses_ids() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-x11-disconnect-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-x11-disconnect-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(&socket_name, Some(&synthetic_path));
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+
+    // Two live X11 windows, both tracked by the model (the shell's source).
+    let first = create_mapped_x11_window(&conn, root, screen, 40, 40, 200, 120);
+    let _second = create_mapped_x11_window(&conn, root, screen, 300, 200, 220, 140);
+    let reports = wait_for_report(&input, |reports| reports.len() == 2);
+    let old_model_ids: Vec<u64> = reports.iter().map(|report| report.window).collect();
+
+    // The most recently mapped X11 window owns the keyboard.
+    wait_until(
+        || {
+            let report = input.query("query focus");
+            report.lines().any(|line| line.starts_with("focus "))
+                && report
+                    .lines()
+                    .any(|line| line.starts_with("keyboard window "))
+        },
+        Duration::from_secs(5),
+        "an X11 window to hold focus",
+    );
+
+    // Force the server to die. This is the `Error`/`disconnected` path.
+    assert!(
+        kill_xwayland_for(&display),
+        "could not identify the Xwayland process to kill"
+    );
+
+    // The model must drop both entries (the shell receives `Unmapped` for
+    // each through `remove_window`), the scene must be empty, and no X11
+    // surface may keep the keyboard.
+    wait_until(
+        || {
+            let report = input.query("query decorations");
+            !report.lines().any(|line| line.starts_with("decoration "))
+        },
+        Duration::from_secs(10),
+        "the model to drop every X11 window after the disconnect",
+    );
+    wait_until(
+        || {
+            let report = input.query("query scale");
+            !report.lines().any(|line| line.starts_with("scale window "))
+        },
+        Duration::from_secs(10),
+        "the scene to drop every X11 window after the disconnect",
+    );
+    let focus = input.query("query focus");
+    assert!(
+        focus.lines().any(|line| line == "focus none"),
+        "focus must be cleared when the X11 surface dies: {focus:?}"
+    );
+    assert!(
+        focus.lines().any(|line| line == "keyboard none"),
+        "the keyboard must not stay on a dead X11 surface: {focus:?}"
+    );
+
+    // With no trusted shell attached, the lifecycle outbox stays pending, so
+    // this is exactly what the shell would learn: one `Unmapped` per window.
+    let events = input.query("query events");
+    for id in &old_model_ids {
+        assert!(
+            events
+                .lines()
+                .any(|line| line == format!("event unmapped {id}")),
+            "the shell must receive Unmapped for window {id}: {events:?}"
+        );
+    }
+
+    // The compositor restarts Xwayland. Wait for a fresh WM, then map a
+    // window with the **same X11 id** the first connection used: a restarted
+    // server reuses its client resource base.
+    drop(conn);
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let (conn, screen_num) = loop {
+        if let Ok(contents) = std::fs::read_to_string(&proc.display_path) {
+            let display = contents.trim();
+            if !display.is_empty() {
+                if let Ok((conn, screen_num)) = x11rb::connect(Some(display)) {
+                    let root = conn.setup().roots[screen_num].root;
+                    let atom = conn
+                        .intern_atom(false, b"_NET_CLIENT_LIST")
+                        .ok()
+                        .and_then(|cookie| cookie.reply().ok())
+                        .map(|reply| reply.atom)
+                        .unwrap_or(0);
+                    if atom != 0
+                        && conn
+                            .get_property(false, root, atom, AtomEnum::WINDOW, 0, u32::MAX)
+                            .ok()
+                            .and_then(|cookie| cookie.reply().ok())
+                            .is_some()
+                    {
+                        break (conn, screen_num);
+                    }
+                }
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Xwayland did not restart after the disconnect"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+
+    let root = conn.setup().roots[screen_num].root;
+    let depth = conn.setup().roots[screen_num].root_depth;
+    let white_pixel = conn.setup().roots[screen_num].white_pixel;
+    let reused = conn.generate_id().expect("generate reused window id");
+    assert_eq!(
+        reused, first,
+        "a restarted Xwayland must reuse the client resource base for this test to prove id reuse"
+    );
+    let aux = CreateWindowAux::new().background_pixel(white_pixel);
+    conn.create_window(
+        depth,
+        reused,
+        root,
+        60,
+        60,
+        200,
+        120,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &aux,
+    )
+    .expect("create_window with the reused id");
+    conn.map_window(reused).expect("map_window");
+    conn.flush().expect("flush");
+    wait_until(
+        || client_list(&conn, root).contains(&reused),
+        Duration::from_secs(5),
+        "the reused-id X11 window to be managed",
+    );
+
+    // The reused X11 id maps as a brand-new model window, not the dead one.
+    let reports = wait_for_report(&input, |reports| reports.len() == 1);
+    assert!(
+        !old_model_ids.contains(&reports[0].window),
+        "the reused X11 id must map as a new compositor window: old={old_model_ids:?} new={:?}",
+        reports[0].window
+    );
+    wait_until(
+        || {
+            let report = input.query("query focus");
+            report
+                .lines()
+                .any(|line| line.starts_with("focus ") && line != "focus none")
+                && report
+                    .lines()
+                    .any(|line| line.starts_with("keyboard window "))
+        },
+        Duration::from_secs(5),
+        "the reused-id window to take focus",
+    );
+
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
 }
 
 /// Find and SIGKILL the Xwayland process serving `display` (e.g. `:1`).

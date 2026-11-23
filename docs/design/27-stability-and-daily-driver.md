@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -276,6 +276,20 @@ No single component failure may require a TTY reboot:
   instead of dividing by it, so a persisted mode or a backend bug cannot reach
   `Duration::from_secs_f64(inf)` (T325);
 - an Xwayland crash must remove its windows from the model, not leave ghosts.
+  The X11 WM's `disconnected` (and `XWaylandEvent::Error` when no WM is live)
+  calls `remove_all_x11_windows`, which routes every tracked X11 window through
+  `remove_window` (so the shell receives one `Unmapped` per window), releases
+  the keyboard from a dead X11 surface, unmaps and clears the override-redirect
+  map, and drops the entries from the model, scene, and workspaces. When a WM
+  is live, the restart is scheduled from `disconnected`, which is delivered
+  only after the old WM's event channel has drained; restarting on `Error`
+  would let a queued association or configure event mutate the new server's
+  windows. Because Smithay's `xwayland_shell` state never clears its serial →
+  `wl_surface` map, the global is recreated on restart so a new surface cannot
+  be associated with the dead one. With both the model entry and the override
+  map gone, a reused X11 window id maps as a new `Window` and takes focus
+  normally (T326). [ADR 0332](adr/0332-xwayland-disconnect-teardown.md) records
+  the ordering decision.
 
 Clipboard serving is the bounded write in that list. The writer holds the
 payload's implicit share for the life of the transfer, so no per-write copy is
@@ -527,7 +541,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output (closed by T323) | T323 |
 | S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output | T324 |
 | S-21 | `df_output.set_mode` accepts a zero/negative refresh and panics the compositor (closed by T325) | T325 |
-| S-22 | Xwayland restart leaves ghost windows and can lose new X11 windows | T326 |
+| S-22 | Xwayland restart leaves ghost windows and can lose new X11 windows (closed by T326) | T326 |
 | S-23 | Unpinning every Dock app is overwritten with defaults on next login | T336 |
 | S-24 | Settings Desktop & Dock and wallpaper paths block the GUI thread | T337, T338 |
 | S-25 | Files desktop spins on compositor loss and creates its background layer twice | T339 |
