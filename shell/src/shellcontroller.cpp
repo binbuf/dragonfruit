@@ -76,6 +76,7 @@
 #include "shellprotocol.h"
 #include "shellmenus.h"
 #include "shellwatchdog.h"
+#include "suspendlock.h"
 #include "systemstatusclient.h"
 #include "themebinding.h"
 #include "widgetmodel.h"
@@ -620,6 +621,19 @@ ShellController::ShellController(QObject *parent)
         },
         [this]() { lockScreen(); },
         [this]() { performSessionAction(QStringLiteral("sleep")); },
+    });
+    // T318: logind's PrepareForSleep is the one signal for a menu suspend, an
+    // idle suspend, and a lid close alike. The gate holds a sleep delay
+    // inhibitor so the machine waits for the lock to confirm, then releases
+    // it. A wake refreshes the lock scene and DPMS; there is no unlock path.
+    m_suspendLock = std::make_unique<SuspendLock>(SuspendLockEffects{
+        [this]() { return lockScreen(); },
+        [this]() { return m_protocol && m_protocol->isSessionLocked(); },
+        [this]() { refreshLockAfterWake(); },
+        [this]() {
+            if (m_protocol)
+                m_protocol->setDpms(true);
+        },
     });
 }
 
@@ -3008,6 +3022,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // again after the first delayed re-render, then commit the neutral frame.
     QTimer::singleShot(0, this, &ShellController::settleInitialState);
     QTimer::singleShot(400, this, &ShellController::settleInitialState);
+
+    // T318: subscribe to logind's PrepareForSleep once every chrome scene
+    // exists, so a suspend that arrives immediately can still present the
+    // lock. An absent system bus is logged by the gate and is not fatal.
+    if (m_suspendLock && !m_suspendLock->start()) {
+        qWarning() << "shell: lock-on-suspend is unavailable";
+    }
     return true;
 }
 
@@ -7091,16 +7112,15 @@ void ShellController::onLockPointerLeft(quintptr lockSurfaceId)
     repaintLockSurfaces();
 }
 
-void ShellController::lockScreen()
+bool ShellController::lockScreen()
 {
-    // T-12.3a: one entry point for the Cmd+Ctrl+Q shortcut and the system
-    // menu's Lock Screen; the shell owns the lock UI and drives
-    // `ext-session-lock-v1`.
+    // T-12.3a: one entry point for the Cmd+Ctrl+Q shortcut, the system
+    // menu's Lock Screen, and the T318 sleep gate; the shell owns the lock UI
+    // and drives `ext-session-lock-v1`.
     // A confirmation cannot live above the fail-secure lock surface.
     if (m_powerDialogActive)
         hidePowerDialog();
-    if (m_protocol)
-        m_protocol->lockSession();
+    return m_protocol && m_protocol->lockSession();
 }
 
 void ShellController::performSessionAction(const QString &action)
@@ -7309,6 +7329,17 @@ void ShellController::repaintLockSurfaces()
     const auto ids = m_lockSurfaceSizes.keys();
     for (quintptr id : ids)
         renderLockSurface(id);
+}
+
+void ShellController::refreshLockAfterWake()
+{
+    if (!m_lockActive)
+        return;
+    // The clock and date moved while the machine slept. Refresh the scene's
+    // data and repaint every configured surface before the panel comes back;
+    // the lock state itself is untouched.
+    applyLockData();
+    repaintLockSurfaces();
 }
 
 void ShellController::teardownLockScreen()

@@ -492,6 +492,31 @@ set_tests_properties(tst_sessionactions PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Lock-before-sleep tests (T318): a fake logind emits PrepareForSleep on a
+# private bus; the gate holds one sleep delay inhibitor, locks once, confirms
+# before the handler returns, ignores duplicates, and on wake only refreshes
+# the scene and DPMS. `DBUS_SYSTEM_BUS_ADDRESS` points at a dead path so a bug
+# can never reach the developer's real logind.
+qt_add_executable(tst_locksuspend
+    tst_locksuspend.cpp
+)
+target_link_libraries(tst_locksuspend PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_locksuspend
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_locksuspend>
+    )
+else()
+    add_test(NAME tst_locksuspend COMMAND tst_locksuspend)
+endif()
+set_tests_properties(tst_locksuspend PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent-dragonfruit-test-bus"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Theme-binding tests (T-08.2b): a settingsd key change (through the same
 # SettingsClient the Dock uses) flips the design-system Theme, and the gallery
 # variant renders the new scheme. Needs a QML engine plus a real scene graph

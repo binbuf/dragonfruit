@@ -58,6 +58,7 @@
 
 class SystemStatusClient;
 class ThemeBinding;
+class SuspendLock;
 class QDBusServiceWatcher;
 class QQmlEngine;
 class QQuickWindow;
@@ -868,11 +869,16 @@ private:
     // change, and reset the lock scene state after a successful unlock.
     void repaintLockSurfaces();
     void teardownLockScreen();
+    // T318: a wake repaints the lock scene (the clock moved while asleep) and
+    // wakes DPMS. It never unlocks.
+    void refreshLockAfterWake();
     // The account the lock card authenticates as.
     QString lockUserName() const;
     // Lock the session now (T-12.3a): the Cmd+Ctrl+Q shortcut and the system
-    // menu's Lock Screen both route here; the shell owns the lock UI.
-    void lockScreen();
+    // menu's Lock Screen both route here; the shell owns the lock UI. Returns
+    // true when the request was handed to the compositor (already locked
+    // counts); false when there is no protocol or the compositor refused.
+    bool lockScreen();
     // T229a: perform a logind session action (`sleep`/`restart`/`shut-down`)
     // from the lock screen's power row. The system menu's confirmed Restart
     // and Shut Down calls this after the user answers.
@@ -1448,6 +1454,10 @@ private:
     // compositor owns the timer; this controller only forwards the policy and
     // applies the actions it receives.
     std::unique_ptr<IdleController> m_idleController;
+    // T318: the lock-before-sleep gate. It owns the logind PrepareForSleep
+    // subscription and the sleep delay inhibitor; the effects below map to the
+    // existing lock, DPMS, and display paths.
+    std::unique_ptr<SuspendLock> m_suspendLock;
     // Paths requested by the idle capture seam, so the normal screenshot
     // delivery does not rename or delete them.
     QSet<QString> m_idleCapturePaths;

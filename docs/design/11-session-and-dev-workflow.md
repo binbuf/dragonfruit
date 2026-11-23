@@ -506,7 +506,8 @@ manager half runs the same cycle 100 times through the real `Supervisor` and the
 recording `MockSuspend`: exactly one platform request per cycle, the supervised
 child's pid never changes, and no service restarts. Both live in
 `compositor/tests/suspend_resume_conformance.rs` and
-`services/session/tests/suspend.rs` (the compositor suite is in `make e2e`); the
+`services/session/tests/suspend.rs` (the compositor suite is in `make e2e`;
+`suspend_resume.rs` covers the T318 external lid-close case); the
 transcript and reproduction are `make t16-suspend-resume-soak`
 (`docs/captures/t16-suspend-resume-soak.txt`). The real-machine half — logind
 actually sleeping the box 100 times — is a probe on this host, recorded **OPEN**
@@ -603,8 +604,13 @@ The real greeter/login and DRM logout ends of the demo are T-12.6.
   persisted state, and quiesce rendering before suspend; resume re-inits
   outputs and resumes render loops. T-12.5a implements the round trip as the
   compositor `SuspendModel` plus the session `SuspendController`
-  ([above](#suspendresume-t-125a)); the concrete logind backend and the
-  `PrepareForSleep` forwarding land with the real-session work.
+  ([above](#suspendresume-t-125a)). The shell's T318 gate subscribes to
+  `PrepareForSleep` on the system bus, holds a logind sleep delay inhibitor,
+  and locks before releasing it
+  ([ADR 0328](adr/0328-lock-before-sleep.md)); `services/session/tests/suspend_resume.rs`
+  covers the external (lid-close) cycle. The concrete logind `SuspendBackend`
+  in `services/session` remains future real-session work; the compositor's
+  suspend quiesce on hardware still comes from the DRM session pause.
 
 ## Absent services never block session start (T-17.5a)
 

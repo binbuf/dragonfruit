@@ -137,6 +137,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     shellmenus.cpp
     shellwatchdog.cpp
     shellwatchdog.h
+    suspendlock.cpp
+    suspendlock.h
     systemstatusmodel.cpp
     trayclient.cpp
     trashbridge.cpp

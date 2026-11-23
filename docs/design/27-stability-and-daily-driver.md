@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -102,6 +102,19 @@ the session cleanly ([ADR 0312](adr/0312-lock-loss-ends-the-session.md)):
 unlocking. The session entry returns to the greeter, and a fresh login starts
 a fresh compositor and lock. Re-lock needs a separate lock process or a
 Smithay change; that is a new decision, not a silent recovery.
+
+Sleep is a lock trigger, not an unlock. The shell subscribes to logind’s
+`PrepareForSleep` on the system bus. On `true` it calls the one `lockScreen()`
+path and waits (bounded at 2 s) for the compositor’s `locked` confirmation
+before the handler returns, so the lock is confirmed while the compositor can
+still render; a duplicate `true` is ignored. The shell holds a logind
+`sleep` delay inhibitor while awake and releases it after that confirmation
+(or the 2 s bound expires), so logind’s own delay window is what keeps the
+machine awake long enough to lock. On `false` the shell refreshes the lock scene and restores
+DPMS; it never unlocks. A lid close is indistinguishable from a menu suspend
+at this layer: both are `PrepareForSleep(true)`. If the shell is gone while
+locked, the T306 policy above ends the session; the gate never unlocks on its
+behalf (T318, [ADR 0328](adr/0328-lock-before-sleep.md)).
 
 ### 3.2 Focus is explicit
 
@@ -355,6 +368,23 @@ drives the duplicate with a fake clock (the four stages, skipped stages,
 inhibitor suppression, a live policy change, and a wake), and the session
 engine's own tests stay the oracle. If the rules grow beyond this shape, the
 shared crate ADR 0313 mentions is the extraction point.
+
+T318 lands the sleep hook. `shell/src/suspendlock.*` subscribes to
+`org.freedesktop.login1.Manager.PrepareForSleep` on the system bus and holds a
+logind `sleep` delay inhibitor while awake. On `PrepareForSleep(true)` it calls
+the existing `lockScreen()` once, pumps the GUI loop until the compositor
+reports the lock (bounded at 2 s), then releases the inhibitor so logind may
+sleep; a duplicate `true` is ignored and a missing lock path is logged rather
+than blocking. On `PrepareForSleep(false)` it refreshes the lock scene’s clock
+and every configured lock surface, wakes DPMS with `df_output.set_dpms(true)`,
+and re-takes the inhibitor for the next cycle. It never unlocks: a wake cannot
+clear the lock, and a shell that disappears while locked is still the T306
+case. `tst_locksuspend` drives a fake logind signal on a private bus and
+asserts one lock request, confirmation before the handler returns, one
+inhibitor release, duplicate idempotence, and a wake that only refreshes and
+wakes DPMS. `services/session/tests/suspend_resume.rs` proves the cycle accepts
+the same external hook without an idle-chain request. The decision is frozen in
+[ADR 0328](adr/0328-lock-before-sleep.md).
 
 ## 4. Defect register and task map
 
