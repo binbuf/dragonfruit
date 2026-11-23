@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -203,7 +203,18 @@ No single component failure may require a TTY reboot:
   requests still queue. ADR [0322](adr/0322-portal-request-liveness.md)
   records the decision;
 - a Files desktop that loses the compositor must exit and be restarted;
-- a hung shell must be caught by a watchdog or a documented restart chord;
+- a hung shell is caught by a GUI-thread watchdog and can be restarted by a
+  documented chord. `dragonfruit-shell.service` is `Type=notify` with
+  `WatchdogSec=30`; `ShellWatchdog` sends `READY=1` and a `WATCHDOG=1`
+  heartbeat every 10 s from a `QTimer` on the GUI thread, so a GUI-thread
+  deadlock stops the beat and systemd restarts the process. `Ctrl+Alt+Esc`
+  resolves to `InputAction::RestartShell`; the compositor closes the trusted
+  shell connection itself (so the chord works even when the GUI thread is
+  hung), the disconnect path reissues the one-time launch token, and
+  `Restart=always` starts a fresh shell. The exact chord is the only key
+  taken; a shell loss while locked still ends the session safely
+  ([ADR 0312](adr/0312-lock-loss-ends-the-session.md), T314,
+  [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md));
 - Log Out must end the session through logind, never a direct signal to the
   shell or compositor. The system menu row and `Super+Shift+Q` share the
   Restart/Shut Down confirmation, then call
@@ -311,7 +322,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-06 | Mouse/trackpad settings never reach libinput | T320 |
 | S-07 | Brightness never reaches the panel | T319 |
 | S-08 | Log Out terminates the session through logind (closed by T313) | T313 |
-| S-09 | A hung shell is never recovered | T314 |
+| S-09 | A hung shell is never recovered (closed by T314) | T314 |
 | S-10 | Clipboard-history serving can block the shell forever (closed by T310) | T310 |
 | S-11 | Portal requests hang when the shell restarts or a second request arrives | T311 |
 | S-12 | Cross-filesystem directory moves can partially move and report failure (closed by T312) | T312 |
@@ -361,7 +372,7 @@ per check and a PASS/FAIL/`OPEN` verdict:
 | Suspend/resume | 20 cycles; session survives; lock is shown on wake; Wi-Fi/Bluetooth/audio recover |
 | Lid close | 20 cycles; locks before sleep; external display resumes |
 | Lock/unlock | 50 cycles; PAM; no key leak to a client; shell restart while locked ends the session safely |
-| Shell kill | 20 unlocked kills → chrome back < 2 s; 20 locked kills → session ends safely, never frozen |
+| Shell kill | 20 unlocked kills → chrome back < 2 s; 20 locked kills → session ends safely, never frozen; a blocked GUI thread is watchdog-killed and restarted |
 | Hotplug | 20 plug/unplug cycles; one output each; no phantom; popups/touch on the right output |
 | Launch | X11 app, Wayland app, Flatpak file dialog, screenshot, screen share fallback |
 | Data | Cross-filesystem move; interrupt; source intact; retry clean |

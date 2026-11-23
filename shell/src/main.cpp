@@ -114,8 +114,13 @@ int main(int argc, char *argv[])
     constexpr int kStartAttempts = 4;
     for (int attempt = 0; attempt < kStartAttempts; ++attempt) {
         ShellController controller;
-        if (controller.start(socketName, token, barHeight))
+        if (controller.start(socketName, token, barHeight)) {
+            // T314: the unit is Type=notify with WatchdogSec=30. READY and the
+            // GUI-thread heartbeat are armed from the event loop, so a shell
+            // that hangs before its first iteration is still caught.
+            controller.startShellWatchdog();
             return app.exec();
+        }
         fprintf(stderr, "dragonfruit-shell: start failed (attempt %d/%d): %s\n",
                 attempt + 1, kStartAttempts, qPrintable(controller.lastError()));
         if (attempt + 1 == kStartAttempts)

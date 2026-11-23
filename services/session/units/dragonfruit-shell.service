@@ -11,7 +11,13 @@ After=dragonfruit-compositor.service dragonfruit-settingsd.service
 PartOf=dragonfruit-session.target
 
 [Service]
-Type=simple
+# T314: the shell sends READY=1 once its event loop runs and a WATCHDOG=1
+# heartbeat from a GUI-thread timer every 10 s. A GUI-thread deadlock stops
+# the beat, systemd kills the process after WatchdogSec, and Restart=always
+# starts a fresh shell against the compositor's reissued launch token.
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
 # The supervisor's readiness gate (T-12.1a): the shell starts only once the
 # compositor's private socket exists, and `dragonfruit-session` waits for it.
 ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland --timeout 10

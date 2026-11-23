@@ -5545,7 +5545,31 @@ impl DfState {
         if matches!(action, InputAction::FocusMenuBar) {
             self.focus_menu_bar();
         }
+        // T314: the manual restart chord drops the shell's connection instead
+        // of asking the (possibly hung) GUI thread to act. The disconnect path
+        // reissues the launch token and systemd's Restart=always starts it.
+        if matches!(action, InputAction::RestartShell) {
+            self.restart_shell();
+        }
         self.needs_redraw = true;
+    }
+
+    /// Drop the trusted shell's Wayland connection (T314).
+    ///
+    /// Returns whether a shell was connected. The disconnect is a clean
+    /// connection close, so the normal `df_core::destroyed` path runs:
+    /// chrome layers are removed, focus is restored to the active window, and
+    /// the shell's one-time token is reissued for the systemd restart.
+    pub fn restart_shell(&mut self) -> bool {
+        let Some(client) = self.shell.shell_client() else {
+            return false;
+        };
+        self.display_handle.backend_handle().kill_client(
+            client,
+            wayland_server::backend::DisconnectReason::ConnectionClosed,
+        );
+        println!("dragonfruit-compositor: restart chord dropped the shell connection");
+        true
     }
 
     // --- app switcher (T-06.1) ---------------------------------------------

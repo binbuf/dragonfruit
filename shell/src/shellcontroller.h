@@ -65,6 +65,7 @@ class QTimer;
 class QChronoTimer;
 class ChromeFrameProducer;
 class GpuChromeFrameProducer;
+class ShellWatchdog;
 class WidgetModel;
 
 class ShellController : public QObject
@@ -81,6 +82,11 @@ public:
     // state. The `DF_STATUS_FIXTURE` environment variable selects the
     // fixture client for headless/capture use only.
     bool start(const QString &socketName, const QString &tokenHex, int barHeight);
+
+    // T314: send READY=1 and start the GUI-thread watchdog heartbeat. Called
+    // by main after `start()` succeeds; the READY beat is deferred to the
+    // event loop so a hung first iteration is caught by systemd.
+    void startShellWatchdog();
 
     QString lastError() const;
 
@@ -872,6 +878,10 @@ private:
     // The system menu's Restart and Shut Down are gated by a confirmation
     // dialog; Sleep and the lock screen's power row stay immediate.
     void requestSessionAction(const QString &action);
+    // T314: exit the shell so systemd's Restart=always starts a fresh one.
+    // The compositor normally drops the connection first; this is the
+    // shell-side fallback when it only routes the `restart-shell` action.
+    void requestShellRestart();
     // Show/hide the session power confirmation dialog and drive its scene.
     void showPowerDialog(const QString &action);
     void hidePowerDialog();
@@ -1289,6 +1299,10 @@ private:
     // T313: the one log-out path. Logind (or the systemctl fallback) ends the
     // session; the session entry returns the greeter when the anchor exits.
     SessionActions *m_sessionActions = nullptr;
+    // T314: the GUI-thread heartbeat. The compositor normally drops this
+    // connection when the restart chord fires; the shell-side action path is
+    // the fallback for a compositor that only routes the action.
+    ShellWatchdog *m_watchdog = nullptr;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
     // `ext-session-lock-v1` surface per output. The map holds each surface's
     // configured size; the QML is a pure view. `m_lockTimer` refreshes the

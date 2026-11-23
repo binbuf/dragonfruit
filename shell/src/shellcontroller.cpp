@@ -75,6 +75,7 @@
 #include "portalpresenter.h"
 #include "shellprotocol.h"
 #include "shellmenus.h"
+#include "shellwatchdog.h"
 #include "systemstatusclient.h"
 #include "themebinding.h"
 #include "widgetmodel.h"
@@ -595,6 +596,9 @@ ShellController::ShellController(QObject *parent)
             [](const QString &reason) {
                 qWarning() << "shell: session action failed:" << reason;
             });
+    // T314: one GUI-thread heartbeat object. `startShellWatchdog()` loads
+    // libsystemd and arms it after the event loop is about to run.
+    m_watchdog = new ShellWatchdog(this);
 }
 
 ShellController::~ShellController()
@@ -2967,6 +2971,21 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     QTimer::singleShot(0, this, &ShellController::settleInitialState);
     QTimer::singleShot(400, this, &ShellController::settleInitialState);
     return true;
+}
+
+void ShellController::startShellWatchdog()
+{
+    if (!m_watchdog)
+        return;
+    m_watchdog->load();
+    // READY and the first heartbeat wait for the event loop. If the GUI thread
+    // is already blocked here, systemd's start timeout catches it instead of
+    // accepting a READY from a process that cannot paint.
+    ShellWatchdog *watchdog = m_watchdog;
+    QTimer::singleShot(0, this, [watchdog]() {
+        watchdog->notifyReady();
+        watchdog->start();
+    });
 }
 
 void ShellController::settleInitialState()
@@ -6667,6 +6686,21 @@ void ShellController::requestSessionAction(const QString &action)
     performSessionAction(action);
 }
 
+void ShellController::requestShellRestart()
+{
+    // Exiting closes the Wayland connection. systemd's `Restart=always` starts
+    // a fresh shell; the compositor's disconnect handler reissues the one-time
+    // launch token, so the new process authenticates instead of crash-looping.
+    qInfo() << "shell: restart chord; dropping the compositor connection";
+    if (m_watchdog)
+        m_watchdog->stop();
+    // Disable the dispatch notifier first so a fatal event cannot re-enter the
+    // exit while it is queued.
+    if (m_notifier)
+        m_notifier->setEnabled(false);
+    QTimer::singleShot(0, this, []() { QCoreApplication::exit(1); });
+}
+
 void ShellController::showPowerDialog(const QString &action)
 {
     if (!m_powerDialogItem)
@@ -8304,6 +8338,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // Log Out row routes the same action through dispatchAppAction. Both
         // use the shared confirmation and the one logind path.
         requestSessionAction(action);
+    } else if (ShellWatchdog::isRestartAction(action)) {
+        // T314: Ctrl+Alt+Esc. The compositor normally drops this client
+        // directly (the robust path when the GUI thread is hung); this branch
+        // is the fallback for a compositor that only routes the action.
+        requestShellRestart();
     } else if (action == QLatin1String("screenshot")) {
         // Cmd+Shift+3 captures the whole output immediately and drops the
         // file on the Desktop, like the desktop's own screenshot shortcut.

@@ -342,6 +342,15 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             keysyms::KEY_Q,
             InputAction::LogOut,
         ),
+        // T314: Ctrl+Alt+Esc is the last-resort manual shell restart. The
+        // compositor drops the trusted shell connection and systemd starts a
+        // fresh one against the reissued launch token. It is an exact chord;
+        // Ctrl+Esc or Alt+Esc alone still reach the focused app.
+        Shortcut::new(
+            control.union(RoleMods::OPTION),
+            keysyms::KEY_Escape,
+            InputAction::RestartShell,
+        ),
         Shortcut::new(
             control.union(shift),
             keysyms::KEY_N,
@@ -477,6 +486,30 @@ mod tests {
         assert_eq!(
             engine.resolve(&mods(true, false, false, true), keysyms::KEY_Q),
             Some(ShortcutOutcome::System(InputAction::LogOut))
+        );
+    }
+
+    #[test]
+    fn ctrl_alt_escape_restarts_the_shell_and_keeps_partial_chords_forwarded() {
+        // T314: the exact chord drops the shell connection. Ctrl+Esc and
+        // Alt+Esc are ordinary application keys and must not resolve.
+        let engine = ShortcutEngine::default();
+        assert_eq!(
+            engine.resolve(&mods(false, true, true, false), keysyms::KEY_Escape),
+            Some(ShortcutOutcome::System(InputAction::RestartShell))
+        );
+        assert_eq!(
+            InputAction::RestartShell.name(),
+            "restart-shell",
+            "the shell protocol action name is stable"
+        );
+        assert_eq!(
+            engine.resolve(&mods(false, false, true, false), keysyms::KEY_Escape),
+            None
+        );
+        assert_eq!(
+            engine.resolve(&mods(false, true, false, false), keysyms::KEY_Escape),
+            None
         );
     }
 

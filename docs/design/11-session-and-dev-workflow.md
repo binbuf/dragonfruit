@@ -214,7 +214,7 @@ requires it and sandboxed apps need the portal's Settings interface.
 dragonfruit-session.target (started directly by dragonfruit-session-entry)
   ├── dragonfruit-compositor.service     # starts first, owns the seat
   ├── dragonfruit-settingsd.service      # Type=dbus, Restart=on-failure
-  ├── dragonfruit-shell.service          # After=compositor + settingsd, Restart=always
+  ├── dragonfruit-shell.service          # Type=notify, WatchdogSec=30, Restart=always
   ├── dragonfruit-files-desktop.service  # After=compositor + settingsd, Restart=always
   ├── dragonfruit-menu-broker.service   # Restart=on-failure
   ├── dragonfruit-app-index.service      # Restart=on-failure
@@ -239,6 +239,15 @@ dragonfruit-session.target (started directly by dragonfruit-session-entry)
   want. A shell crash while locked also ends the session: the compositor is
   the only authority that can distinguish a frozen lock from recoverable
   chrome ([ADR 0312](adr/0312-lock-loss-ends-the-session.md)).
+- **Shell liveness (T314):** the shell unit is `Type=notify` with
+  `WatchdogSec=30`. A `QTimer` on the GUI thread sends `READY=1` and then a
+  `WATCHDOG=1` beat every 10 s through `ShellWatchdog`; a GUI-thread deadlock
+  stops the beat and systemd kills and restarts the process. `Ctrl+Alt+Esc`
+  is the manual last resort: the compositor closes the trusted shell
+  connection (so it works even when the GUI thread is hung), reissues the
+  one-time launch token on disconnect, and `Restart=always` starts a fresh
+  shell. The chord takes only the exact key combination. The decision is
+  [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md).
 - **Locking is fail-secure:** enforced in the compositor (`ext-session-lock-v1`
   semantics); no crash path unlocks a locked session.
 - **Session environment** exported at startup: `XDG_CURRENT_DESKTOP=dragonfruit`,
@@ -283,7 +292,7 @@ together by `dragonfruit-session.target`:
 dragonfruit-session.target                 # started by the session entry
   ├── dragonfruit-compositor.service       # --backend drm, Restart=no (anchor)
   ├── dragonfruit-settingsd.service        # Type=dbus, Restart=on-failure
-  ├── dragonfruit-shell.service            # After=settingsd, Restart=always
+  ├── dragonfruit-shell.service            # Type=notify, WatchdogSec=30, Restart=always
   ├── dragonfruit-files-desktop.service    # After=settingsd, Restart=always
   ├── dragonfruit-menu-broker.service
   ├── dragonfruit-app-index.service

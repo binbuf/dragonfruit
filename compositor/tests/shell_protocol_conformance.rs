@@ -4736,6 +4736,110 @@ fn keyboard_only_walkthrough_dispatches_every_system_binding() {
     );
 }
 
+/// T314: Ctrl+Alt+Esc is the manual shell restart. The compositor drops the
+/// trusted shell's connection itself (so a hung GUI thread still recovers),
+/// the observer sees the action, and the disconnect path reissues the
+/// shell's one-time token for systemd's `Restart=always`.
+#[test]
+fn restart_chord_drops_the_shell_and_reissues_its_token() {
+    let shell_token = "ab".repeat(32);
+    let observer_token = "cd".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-synth-restart-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-restart-chord",
+        &[shell_token.clone(), format!("desktop:{observer_token}")],
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // The observer is a desktop-role client: it survives the shell drop and
+    // receives the action broadcast.
+    let (obs_conn, mut obs_queue, mut obs) = connect(&proc.socket_path);
+    let (name, version) = obs.core_global.expect("df_core advertised");
+    let obs_core = bind_core(&mut obs, &obs_queue, name, version);
+    obs_core.authenticate(1, observer_token);
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = obs.manager_global.expect("manager advertised");
+    let obs_manager = bind_manager(&mut obs, &obs_queue, manager_name, manager_version);
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // The trusted shell is the connection the chord drops.
+    let (shell_conn, mut shell_queue, mut shell_state) = connect(&proc.socket_path);
+    let (name, version) = shell_state.core_global.expect("df_core advertised");
+    let shell_core = bind_core(&mut shell_state, &shell_queue, name, version);
+    shell_core.authenticate(1, shell_token.clone());
+    wait_for(
+        &shell_conn,
+        &mut shell_queue,
+        &mut shell_state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let initial = proc.read_token();
+    assert_eq!(
+        initial, shell_token,
+        "the provisioned shell token is the hand-off"
+    );
+
+    // Ctrl+Alt+Esc: evdev Ctrl=29 Alt=56 Esc=1.
+    obs.input_actions.clear();
+    input.send("key 29 down\nkey 56 down\nkey 1 down\nkey 1 up\nkey 56 up\nkey 29 up");
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .input_actions
+                .iter()
+                .any(|(action, source, _)| action == "restart-shell" && source == "keyboard")
+        },
+    );
+
+    // The shell's connection is closed by the compositor, not by the shell's
+    // (possibly hung) event loop.
+    let result = shell_queue.roundtrip(&mut shell_state);
+    assert!(
+        result.is_err() || shell_conn.protocol_error().is_some(),
+        "the restart chord must drop the shell connection: {result:?}"
+    );
+
+    // The reissued token is what lets systemd start a fresh shell.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut reissued = proc.read_token();
+    while reissued == initial && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+        reissued = proc.read_token();
+    }
+    assert_ne!(
+        reissued, initial,
+        "the shell token must be reissued after the restart chord"
+    );
+
+    obs_manager.destroy();
+    let _ = obs_conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// T-11 FR-1: a gesture and a hot corner drive the *same* overview state
 /// machine, so one opens Overview and the other toggles it closed.
 #[test]

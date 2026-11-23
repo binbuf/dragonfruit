@@ -43,6 +43,10 @@ pub enum InputAction {
     /// End the session through logind (T313). The shell owns the confirmation
     /// and the logind call; the compositor only routes the chord.
     LogOut,
+    /// Drop the trusted shell's client connection so systemd restarts it
+    /// (T314). This is the manual recovery chord for a hung shell; the
+    /// compositor reissues the one-time launch token on disconnect.
+    RestartShell,
     /// Move keyboard focus into the Dock (T-10 section 20). The compositor
     /// focuses the `dock` chrome surface; the shell then owns in-Dock
     /// navigation.
@@ -94,6 +98,7 @@ impl InputAction {
             InputAction::DesktopReveal => "desktop-reveal",
             InputAction::LockScreen => "lock-screen",
             InputAction::LogOut => "log-out",
+            InputAction::RestartShell => "restart-shell",
             InputAction::FocusDock => "focus-dock",
             InputAction::FocusMenuBar => "focus-menu-bar",
             InputAction::ToggleDock => "toggle-dock",

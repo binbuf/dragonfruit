@@ -215,6 +215,17 @@ fn the_shell_waits_for_the_settings_bus_name() {
 }
 
 #[test]
+fn the_shell_is_a_notify_service_with_a_gui_watchdog() {
+    // T314: the shell sends READY=1 and a GUI-thread WATCHDOG=1 beat. A
+    // blocked GUI thread stops the beat and systemd restarts the process.
+    let shell = load("dragonfruit-shell.service");
+    assert_eq!(one(&shell, "Service", "Type"), "notify");
+    assert_eq!(one(&shell, "Service", "NotifyAccess"), "main");
+    assert_eq!(one(&shell, "Service", "WatchdogSec"), "30");
+    assert_eq!(one(&shell, "Service", "Restart"), "always");
+}
+
+#[test]
 fn the_files_desktop_is_the_role_scoped_background_client() {
     let desktop = load("dragonfruit-files-desktop.service");
     assert_eq!(

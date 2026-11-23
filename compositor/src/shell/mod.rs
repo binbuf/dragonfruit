@@ -267,6 +267,17 @@ impl ShellProtocolState {
         self.sessions.get(client).and_then(|session| session.role)
     }
 
+    /// The authenticated shell's client id, if a shell is connected (T314).
+    ///
+    /// The restart chord drops this one connection. The disconnect path then
+    /// reissues the shell's one-time launch token so systemd's `Restart=always`
+    /// can start a fresh shell without a token-consumed crash loop.
+    pub fn shell_client(&self) -> Option<ClientId> {
+        self.sessions.iter().find_map(|(client, session)| {
+            (session.role == Some(TrustedRole::Shell)).then(|| client.clone())
+        })
+    }
+
     /// The reserved zones that apply to `output_name` (T-16.1a).
     ///
     /// Falls back to the global union for an output that has not been

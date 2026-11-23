@@ -427,6 +427,26 @@ set_tests_properties(tst_settingsclient PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Shell watchdog tests (T314): the GUI-thread heartbeat sends READY/WATCHDOG
+# on the event loop, a blocked GUI thread stops the beats, and the restart
+# chord maps to the stable `restart-shell` action. No Wayland, D-Bus, or QML.
+qt_add_executable(tst_shellwatchdog
+    tst_shellwatchdog.cpp
+)
+target_link_libraries(tst_shellwatchdog PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_shellwatchdog
+    COMMAND tst_shellwatchdog
+)
+set_tests_properties(tst_shellwatchdog PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Session action tests (T313): Log Out calls logind
 # `Manager.TerminateSession(sessionId)` on a fake private service, the fixture
 # never touches the host, and the systemctl fallback stops the session target.
