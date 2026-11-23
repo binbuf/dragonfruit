@@ -320,10 +320,30 @@ period), so it does not discard a working output. The synthetic-output harness
 drives the same add/remove path in the headless tests; the real hotplug proof
 stays on the hardware rail.
 
-Popups are constrained to the parent window’s output. Absolute pointer, touch,
-and tablet events are mapped to the output under the device/pointer. The lock
-surface on a secondary output receives that output’s input. The decision is
-frozen in [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md).
+Popups are constrained to the parent window's output. `set_popup_geometry`
+resolves the output containing the parent window's centre (the
+protocol-correct anchor — focus can move while a popup is open), falling back
+to the focused output and then the primary, and passes that geometry to
+`constrained_popup_geometry`. A menu opened on the second monitor therefore
+flips and slides against that monitor.
+
+Absolute pointer, touch, and tablet events are mapped to the output under the
+device/pointer. The device's normalized position is mapped across the
+output-layout bounding box; the output containing that point is the authority,
+the output under the current pointer is the fallback when the layout has a
+gap, and the nearest output is the last resort. The position is then
+interpreted within that output's geometry. This is the
+`output_input::absolute_output` rule shared by the router and the headless
+tests. A single live lock surface is always the locked absolute target even
+when the pointer rests on another display; with several lock surfaces the
+event position, then the pointer, selects one. The decision is frozen in
+[ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md).
+
+A per-device `map-to-output` override is not part of this task: a device is
+scoped by the position it reports. A real touchscreen whose axis range is
+local to one display therefore follows the layout-mapping default (the same
+default wlroots uses) until the input-settings follow-up adds an explicit
+mapping.
 
 ### 3.7 Launch is complete
 

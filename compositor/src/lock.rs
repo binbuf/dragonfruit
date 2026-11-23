@@ -98,6 +98,19 @@ impl LockModel {
             .count()
     }
 
+    /// The names of the outputs with a live lock surface (T324).
+    ///
+    /// Absolute input resolves the lock surface's output from this list: one
+    /// surface always wins, so a lock UI painted only on a secondary display is
+    /// still clickable there.
+    pub fn output_names(&self) -> Vec<String> {
+        self.surfaces
+            .iter()
+            .filter(|(_, surface)| surface.alive())
+            .map(|(output, _)| output.clone())
+            .collect()
+    }
+
     /// The surface that should receive keyboard input while locked.
     ///
     /// Every lock surface belongs to the one lock client and paints the same

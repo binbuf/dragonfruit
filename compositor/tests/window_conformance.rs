@@ -23,9 +23,9 @@ use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface,
+    wl_shm_pool, wl_surface, wl_touch,
 };
-use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
+use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
@@ -65,12 +65,19 @@ impl ToplevelConfigure {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PopupConfigure {
     x: i32,
     y: i32,
     width: i32,
     height: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TouchDown {
+    surface: u32,
+    x: f64,
+    y: f64,
 }
 
 #[derive(Default)]
@@ -84,10 +91,14 @@ struct TestClient {
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
+    touch: Option<wl_touch::WlTouch>,
     /// Key codes delivered to the focused client (T307 typing proof).
     keys: Vec<u32>,
     /// Serial of each pointer button press delivered to the client.
     pointer_button_serials: Vec<u32>,
+    /// Touch downs delivered to the client (T324 output-scoped touch proof):
+    /// the surface id and surface-local position.
+    touch_downs: Vec<TouchDown>,
     toplevel_configures: Vec<ToplevelConfigure>,
     /// Decoration modes delivered by `zxdg_toplevel_decoration_v1.configure`.
     decoration_configures: Vec<zxdg_toplevel_decoration_v1::Mode>,
@@ -236,6 +247,9 @@ impl Dispatch<wl_seat::WlSeat, ()> for TestClient {
             if caps.contains(wl_seat::Capability::Keyboard) && state.keyboard.is_none() {
                 state.keyboard = Some(seat.get_keyboard(qh, ()));
             }
+            if caps.contains(wl_seat::Capability::Touch) && state.touch.is_none() {
+                state.touch = Some(seat.get_touch(qh, ()));
+            }
         }
     }
 }
@@ -266,6 +280,25 @@ impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
     ) {
         if let wl_pointer::Event::Button { serial, .. } = event {
             state.pointer_button_serials.push(serial);
+        }
+    }
+}
+
+impl Dispatch<wl_touch::WlTouch, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_touch::WlTouch,
+        event: wl_touch::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_touch::Event::Down { surface, x, y, .. } = event {
+            state.touch_downs.push(TouchDown {
+                surface: surface.id().protocol_id(),
+                x,
+                y,
+            });
         }
     }
 }
@@ -481,6 +514,7 @@ struct CompositorProcess {
     child: Child,
     socket_path: PathBuf,
     synthetic_path: Option<PathBuf>,
+    synthetic_output_path: Option<PathBuf>,
     stats_rx: Receiver<RenderStats>,
     reader: Option<std::thread::JoinHandle<()>>,
 }
@@ -505,17 +539,31 @@ impl Drop for CompositorProcess {
         if let Some(path) = &self.synthetic_path {
             let _ = std::fs::remove_file(path);
         }
+        if let Some(path) = &self.synthetic_output_path {
+            let _ = std::fs::remove_file(path);
+        }
     }
 }
 
 impl CompositorProcess {
     fn start(socket_name: &str) -> Self {
-        Self::start_with_synthetic(socket_name, None)
+        Self::start_with_harnesses(socket_name, None, None)
     }
 
     /// Start with the T-03 synthetic-input harness bound at
     /// `synthetic_path` (`DRAGONFRUIT_SYNTHETIC_INPUT`).
     fn start_with_synthetic(socket_name: &str, synthetic_path: Option<&Path>) -> Self {
+        Self::start_with_harnesses(socket_name, synthetic_path, None)
+    }
+
+    /// Start with the T-03 synthetic-input harness and the T-09 synthetic
+    /// output hotplug harness (`DRAGONFRUIT_SYNTHETIC_OUTPUT`) bound. T324 uses
+    /// both to place a popup and an absolute pointer on a second output.
+    fn start_with_harnesses(
+        socket_name: &str,
+        synthetic_path: Option<&Path>,
+        synthetic_output_path: Option<&Path>,
+    ) -> Self {
         let socket_name = format!("{socket_name}-{}", std::process::id());
         let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
         command
@@ -527,6 +575,9 @@ impl CompositorProcess {
             .stderr(Stdio::null());
         if let Some(path) = synthetic_path {
             command.env("DRAGONFRUIT_SYNTHETIC_INPUT", path);
+        }
+        if let Some(path) = synthetic_output_path {
+            command.env("DRAGONFRUIT_SYNTHETIC_OUTPUT", path);
         }
         let mut child = command.spawn().expect("failed to start compositor");
         let stdout = child.stdout.take().expect("stdout piped");
@@ -569,11 +620,21 @@ impl CompositorProcess {
                 std::thread::sleep(Duration::from_millis(10));
             }
         }
+        if let Some(path) = synthetic_output_path {
+            while !path.exists() {
+                assert!(
+                    Instant::now() < deadline,
+                    "synthetic-output socket never appeared"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
 
         Self {
             child,
             socket_path,
             synthetic_path: synthetic_path.map(Path::to_path_buf),
+            synthetic_output_path: synthetic_output_path.map(Path::to_path_buf),
             stats_rx: rx,
             reader: Some(reader),
         }
@@ -701,6 +762,30 @@ impl SyntheticInput {
 impl Drop for SyntheticInput {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.reply_path);
+    }
+}
+
+/// Client end of the T-09 synthetic-output harness
+/// (`DRAGONFRUIT_SYNTHETIC_OUTPUT`): drives headless output hotplug.
+struct SyntheticOutput {
+    socket: std::os::unix::net::UnixDatagram,
+    path: PathBuf,
+}
+
+impl SyntheticOutput {
+    fn connect(path: &Path) -> Self {
+        let socket = std::os::unix::net::UnixDatagram::unbound().expect("unbound datagram");
+        Self {
+            socket,
+            path: path.to_path_buf(),
+        }
+    }
+
+    #[track_caller]
+    fn send(&self, command: &str) {
+        self.socket
+            .send_to(command.as_bytes(), &self.path)
+            .unwrap_or_else(|err| panic!("failed to send synthetic output {command:?}: {err}"));
     }
 }
 
@@ -3311,6 +3396,220 @@ fn popup_configure_is_constrained_to_the_output() {
     surface.destroy();
     xdg_surface.destroy();
     proc.shutdown();
+}
+
+/// One parsed `query decorations` line (the content geometry).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DecorationGeometry {
+    loc: (i32, i32),
+    size: (i32, i32),
+}
+
+/// Parse the first `decoration` line of a `query decorations` report.
+fn parse_decoration(report: &str) -> Option<DecorationGeometry> {
+    let line = report
+        .lines()
+        .find(|line| line.starts_with("decoration "))?;
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    // decoration <id> <ssd> <tbx> <tby> <tbw> <tbh> <cx> <cy> <cw> <ch>
+    //            <state> <space>
+    Some(DecorationGeometry {
+        loc: (parts.get(7)?.parse().ok()?, parts.get(8)?.parse().ok()?),
+        size: (parts.get(9)?.parse().ok()?, parts.get(10)?.parse().ok()?),
+    })
+}
+
+/// Poll a synthetic `query` until `pred` accepts the report.
+fn wait_for_query(
+    input: &SyntheticInput,
+    command: &str,
+    mut pred: impl FnMut(&str) -> bool,
+) -> String {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let report = input.query(command);
+        if pred(&report) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for {command:?}: {report}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Parse the logical pointer position from `query pointer`.
+fn pointer_position(input: &SyntheticInput) -> (f64, f64) {
+    let report = input.query("query pointer");
+    let x = report
+        .split("x=")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| panic!("malformed pointer report: {report}"));
+    let y = report
+        .split("y=")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| panic!("malformed pointer report: {report}"));
+    (x, y)
+}
+
+/// Poll `query pointer` until it reports `expected` (or the deadline expires).
+fn wait_for_pointer(input: &SyntheticInput, expected: (f64, f64)) -> (f64, f64) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut position = pointer_position(input);
+    while Instant::now() < deadline {
+        if position == expected {
+            return position;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        position = pointer_position(input);
+    }
+    panic!("pointer stayed at {position:?}, expected {expected:?}");
+}
+
+/// T324 acceptance (headless, two outputs): a popup and an absolute pointer
+/// land on the second output, and touch follows the same mapping. The
+/// synthetic-output harness attaches a 1920x1080 display at x=1280; the
+/// synthetic-input harness moves the pointer and injects absolute/touch
+/// events through the real compositor router.
+#[test]
+fn popup_and_absolute_input_are_scoped_to_the_second_output() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-two-output-input-{}",
+        std::process::id()
+    ));
+    let output_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-two-output-hotplug-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-two-output",
+        Some(&synthetic_path),
+        Some(&output_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let outputs = SyntheticOutput::connect(&output_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // The static headless output is 1280x720 at the origin; login centres the
+    // pointer on it.
+    wait_for_pointer(&input, (640.0, 360.0));
+
+    // --- attach the second output -----------------------------------------
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    let scale = wait_for_query(&input, "query scale", |report| {
+        report.contains("scale output HDMI-A-1")
+    });
+    assert!(
+        scale.contains("scale output HDMI-A-1 physical=1920x1080 logical=1920x1080 scale=1.000"),
+        "the second output geometry is the headless two-output report: {scale}"
+    );
+
+    // --- map a window on the second output --------------------------------
+    // New windows open on the focused output (the output under the pointer).
+    input.send("motion 2000 0");
+    wait_for_pointer(&input, (2640.0, 360.0));
+    let (_parent_surface, parent_xdg_surface, _parent_toplevel, _file) =
+        map_toplevel(&mut state, &mut queue);
+    let decorations = wait_for_query(&input, "query decorations", |report| {
+        parse_decoration(report).is_some_and(|geometry| geometry.loc.0 >= 1280)
+    });
+    let parent = parse_decoration(&decorations).expect("parent window geometry");
+    assert!(
+        parent.loc.0 >= 1280,
+        "the new window must open on the second output: {parent:?}"
+    );
+
+    // --- popup bounds stay on the second output ---------------------------
+    let qh = queue.handle();
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let positioner = wm_base.create_positioner(&qh, ());
+    positioner.set_size(2000, 2000);
+    positioner.set_anchor_rect(0, 0, WINDOW_W, WINDOW_H);
+    positioner.set_anchor(xdg_positioner::Anchor::BottomRight);
+    positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+    positioner.set_constraint_adjustment(xdg_positioner::ConstraintAdjustment::all());
+    let _popup = xdg_surface.get_popup(Some(&parent_xdg_surface), &positioner, &qh, ());
+    positioner.destroy();
+    surface.commit();
+    queue.roundtrip(&mut state).expect("popup configure");
+    let popup = *state
+        .popup_configures
+        .last()
+        .expect("popup must produce a configure");
+    assert!(
+        popup.width >= 1 && popup.height >= 1,
+        "popup configure must not be empty: {popup:?}"
+    );
+    // The configure is relative to the parent window geometry; translate it
+    // back to global space and require the whole popup on the second output.
+    let global_x = parent.loc.0 + popup.x;
+    let global_y = parent.loc.1 + popup.y;
+    assert!(
+        global_x >= 1280 && global_x + popup.width <= 1280 + 1920,
+        "popup x must stay inside the second output: parent={parent:?} popup={popup:?}"
+    );
+    assert!(
+        global_y >= 0 && global_y + popup.height <= 1080,
+        "popup y must stay inside the second output: parent={parent:?} popup={popup:?}"
+    );
+    assert!(
+        popup.width <= 1920 && popup.height <= 1080,
+        "popup must fit the second output, not the first: {popup:?}"
+    );
+    surface.destroy();
+    xdg_surface.destroy();
+
+    // --- absolute pointer motion on the second output ---------------------
+    // The layout is 3200x1080; 0.75 maps to x=2400 (second output), then the
+    // second output's 1920 width places it at 1280 + 0.75*1920 = 2720.
+    input.send("motion-abs 0.75 0.5");
+    wait_for_pointer(&input, (2720.0, 540.0));
+
+    // --- touch on the second output ---------------------------------------
+    // A touch at the layout centre resolves the second output and maps to its
+    // centre (2240, 540), inside the window that opened there. The old
+    // first-output path would have mapped it to (640, 360) on the primary and
+    // delivered no touch to the window.
+    input.send("touch-down 1 0.5 0.5");
+    input.send("touch-frame");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        queue.roundtrip(&mut state).expect("touch roundtrip");
+        if !state.touch_downs.is_empty() {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "touch at the second output never reached the window"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let touch = state.touch_downs.first().copied().unwrap();
+    assert!(
+        touch.x >= 0.0 && touch.x <= WINDOW_W as f64,
+        "touch must land inside the second-output window: {touch:?}"
+    );
+    assert!(
+        touch.y >= 0.0 && touch.y <= WINDOW_H as f64,
+        "touch must land inside the second-output window: {touch:?}"
+    );
+    input.send("touch-up 1");
+    input.send("touch-frame");
+
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists() && !output_path.exists(),
+        "teardown leak: synthetic harness sockets survived"
+    );
 }
 
 /// T-04 test-plan requirement: a client sending contradictory or

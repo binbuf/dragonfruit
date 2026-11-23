@@ -134,3 +134,97 @@ fn a_non_us_layout_compiles_and_remaps_keys() {
     assert_eq!(layout_keysym_for_evdev("de", KEY_Z), Some('y' as u32));
     assert_eq!(layout_keysym_for_evdev("de", KEY_Y), Some('z' as u32));
 }
+
+// --- T324: absolute/touch/tablet and locked input are output-scoped --------
+
+use dragonfruit_compositor::output_input::{
+    absolute_output, lock_output, map_into_output, parent_output,
+};
+use smithay::utils::{Logical, Point, Rectangle, Size};
+
+/// Two headless-style outputs: 1280x720 primary at the origin and a 1920x1080
+/// secondary to its right (the synthetic-output harness geometry).
+fn two_outputs() -> Vec<Rectangle<i32, Logical>> {
+    vec![
+        Rectangle::new(Point::from((0, 0)), Size::from((1280, 720))),
+        Rectangle::new(Point::from((1280, 0)), Size::from((1920, 1080))),
+    ]
+}
+
+fn normalized(x: f64, y: f64) -> impl Fn(Size<i32, Logical>) -> Point<f64, Logical> {
+    move |size| (x * f64::from(size.w), y * f64::from(size.h)).into()
+}
+
+#[test]
+fn absolute_input_maps_to_the_output_under_the_device() {
+    let outputs = two_outputs();
+    // A device reporting 0.75 of the layout is on the secondary output even
+    // when no pointer exists yet; 0.25 is on the primary.
+    assert_eq!(
+        absolute_output(&outputs, None, normalized(0.75, 0.5)),
+        Some(outputs[1]),
+        "absolute motion at 0.75 must resolve the second output"
+    );
+    assert_eq!(
+        absolute_output(&outputs, None, normalized(0.25, 0.5)),
+        Some(outputs[0])
+    );
+    // The resolved output's geometry interprets the device position.
+    assert_eq!(
+        map_into_output(outputs[1], normalized(0.75, 0.5)),
+        Point::from((2720.0, 540.0)),
+        "the second output starts at x=1280 and is 1920 wide"
+    );
+}
+
+#[test]
+fn touch_and_tablet_positions_use_the_same_two_output_mapping() {
+    let outputs = two_outputs();
+    // Touch/tablet share `absolute_output`; a touch at the second output's
+    // centre resolves there and lands at that output's centre, not the
+    // primary's.
+    let output = absolute_output(&outputs, None, normalized(0.5, 0.5)).unwrap();
+    assert_eq!(output, outputs[1]);
+    assert_eq!(
+        map_into_output(output, normalized(0.5, 0.5)),
+        Point::from((2240.0, 540.0))
+    );
+}
+
+#[test]
+fn locked_absolute_uses_the_lock_surfaces_output() {
+    let outputs = two_outputs();
+    // A single lock surface painted only on the secondary output is the target
+    // even though the pointer rests on the primary.
+    let pointer = Some(Point::from((100.0, 100.0)));
+    assert_eq!(
+        lock_output(&[outputs[1]], pointer, normalized(0.1, 0.1)),
+        Some(outputs[1]),
+        "the lone secondary lock surface must be clickable"
+    );
+    // With lock surfaces on both outputs the event position selects one.
+    assert_eq!(
+        lock_output(&outputs, pointer, normalized(0.75, 0.5)),
+        Some(outputs[1])
+    );
+    assert_eq!(
+        lock_output(&outputs, pointer, normalized(0.25, 0.5)),
+        Some(outputs[0])
+    );
+}
+
+#[test]
+fn popup_output_comes_from_the_parent_window_geometry() {
+    let outputs = two_outputs();
+    let parent_on_second = Rectangle::new(Point::from((2200, 400)), Size::from((200, 150)));
+    assert_eq!(
+        parent_output(&outputs, parent_on_second),
+        Some(outputs[1]),
+        "a popup follows its parent window's output"
+    );
+    assert_eq!(
+        parent_output(&outputs, Rectangle::default()),
+        None,
+        "an untracked parent falls back to the focused/primary output"
+    );
+}

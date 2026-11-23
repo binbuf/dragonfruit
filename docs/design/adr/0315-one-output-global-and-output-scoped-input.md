@@ -49,7 +49,13 @@ setup, not visual polish.
    primary) and pass that geometry to `constrained_popup_geometry`.
 4. **Absolute input is output-scoped.** Map `PointerMotionAbsolute`, touch,
    and tablet events to the output under the device/pointer, using that
-   output’s geometry. The locked absolute path uses the lock surface’s output.
+   output's geometry. The device's normalized position is mapped across the
+   output-layout bounding box; the output containing that point is the
+   authority, the output under the current pointer is the fallback when the
+   layout has a gap, and the nearest output is the last resort. The locked
+   absolute path uses the lock surface's output: a single live lock surface is
+   always the target, and with several the event position (then the pointer)
+   selects one.
 5. **Mixed-DPI chrome is not part of this decision.** The shell’s single
    `m_outputScale` remains; per-output chrome is deferred in design 27 §7.
    This ADR fixes geometry and globals, not raster scale.
@@ -73,3 +79,10 @@ Rejected alternatives:
   tests update.
 - The T347 hotplug row is the hardware proof; the headless tests prove the
   global count and the geometry mapping.
+- The output-scoping geometry is a pure module
+  (`compositor/src/output_input.rs`) shared by the router and the headless
+  conformance tests, so a two-output run proves popup bounds, absolute motion,
+  touch, and the locked path without hardware.
+- A per-device `map-to-output` override is a follow-up. Until it exists, a
+  device is scoped by the position it reports (the wlroots layout-mapping
+  default), which is correct for the synthetic/libinput normalized model.

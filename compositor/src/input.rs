@@ -85,6 +85,7 @@ use crate::overview::{InputOwner, OverviewKind};
 use crate::shell::layer::KeyboardInteraction;
 use crate::state::DfState;
 use crate::window::{MenuKey, WindowState};
+use dragonfruit_compositor::output_input;
 
 /// The chrome (shell layer) surface under a global-space point, with the
 /// surface origin and its keyboard-interaction policy.
@@ -624,25 +625,7 @@ where
             state.notify_activity();
         }
         InputEvent::PointerMotionAbsolute { event } => {
-            let Some(output) = state.space.outputs().next().cloned() else {
-                return;
-            };
-            let Some(geometry) = state.space.output_geometry(&output) else {
-                return;
-            };
-            // `position_transformed` is backend-agnostic: winit's
-            // `CursorMoved` is window pixels, libinput reports
-            // device-normalized coordinates, and each backend converts to
-            // output pixels here. (Treating `position()` as normalized broke
-            // nested pointer input: winit hands back pixels, so every motion
-            // landed far outside the output and hit nothing.)
-            let location = if geometry.size.w > 0 && geometry.size.h > 0 {
-                let position = event.position_transformed(geometry.size);
-                Point::from((
-                    geometry.loc.x as f64 + position.x,
-                    geometry.loc.y as f64 + position.y,
-                ))
-            } else {
+            let Some(location) = absolute_location(state, &event) else {
                 return;
             };
             // The magnifier maps the physical pointer position back to the
@@ -944,7 +927,7 @@ where
         // Hold gestures are not a system trigger today; drop them.
         InputEvent::GestureHoldBegin { .. } | InputEvent::GestureHoldEnd { .. } => {}
         InputEvent::TouchDown { event } => {
-            let location = touch_location(state, event.position());
+            let location = touch_location(state, &event);
             let focus =
                 surface_under(state, location).map(|(surface, loc)| (surface, loc.to_f64()));
             state.seat.get_touch().unwrap().down(
@@ -960,7 +943,7 @@ where
             state.notify_activity();
         }
         InputEvent::TouchMotion { event } => {
-            let location = touch_location(state, event.position());
+            let location = touch_location(state, &event);
             let focus =
                 surface_under(state, location).map(|(surface, loc)| (surface, loc.to_f64()));
             state.seat.get_touch().unwrap().motion(
@@ -996,7 +979,7 @@ where
             let tool = ensure_tool(state, &event.tool());
             match event.state() {
                 ProximityState::In => {
-                    let location = touch_location(state, event.position());
+                    let location = touch_location(state, &event);
                     if let Some((surface, loc)) = surface_under(state, location) {
                         tool.proximity_in(
                             location,
@@ -1014,7 +997,7 @@ where
         InputEvent::TabletToolAxis { event } => {
             let tablet = ensure_tablet(state, &TabletDescriptor::from(&event.device()));
             let tool = ensure_tool(state, &event.tool());
-            let location = touch_location(state, event.position());
+            let location = touch_location(state, &event);
             let focus =
                 surface_under(state, location).map(|(surface, loc)| (surface, loc.to_f64()));
             tool.motion(
@@ -1121,6 +1104,12 @@ fn route_locked_pointer_motion(state: &mut DfState, delta: Point<f64, Logical>, 
 }
 
 /// Route an absolute pointer motion to the lock surface.
+///
+/// The lock UI paints one surface per output, and each surface covers exactly
+/// that output. A single live lock surface is therefore the target even when
+/// the pointer currently rests on another display; with several surfaces the
+/// event position (then the pointer) selects one. This is what makes a lock
+/// surface on a secondary output clickable (T324).
 fn locked_absolute_location<B: InputBackend>(
     state: &DfState,
     event: &B::PointerMotionAbsoluteEvent,
@@ -1128,16 +1117,20 @@ fn locked_absolute_location<B: InputBackend>(
 where
     B::PointerMotionAbsoluteEvent: backend_input::PointerMotionAbsoluteEvent<B>,
 {
-    let output = state.space.outputs().next()?;
-    let geometry = state.space.output_geometry(output)?;
-    if geometry.size.w <= 0 || geometry.size.h <= 0 {
-        return None;
-    }
-    let position = event.position_transformed(geometry.size);
-    let location = Point::from((
-        f64::from(geometry.loc.x) + position.x,
-        f64::from(geometry.loc.y) + position.y,
-    ));
+    let lock_outputs: Vec<Rectangle<i32, Logical>> = state
+        .lock
+        .output_names()
+        .into_iter()
+        .filter_map(|name| state.output_geometry_named(&name))
+        .collect();
+    let pointer = state
+        .seat
+        .get_pointer()
+        .map(|pointer| pointer.current_location());
+    let output = output_input::lock_output(&lock_outputs, pointer, |size| {
+        event.position_transformed(size)
+    })?;
+    let location = output_input::map_into_output(output, |size| event.position_transformed(size));
     Some(confine_to_outputs(state, location))
 }
 
@@ -1516,24 +1509,46 @@ fn confine_to_rect(
         .into()
 }
 
-/// libinput reports device-normalized coordinates for touch; winit reports
-/// window pixels. `position()` is in Raw coordinates in both cases, so map
-/// through the output geometry like absolute pointer motion.
-fn touch_location(
-    state: &DfState,
-    position: Point<f64, smithay::utils::Raw>,
-) -> Point<f64, Logical> {
-    let Some(output) = state.space.outputs().next().cloned() else {
-        return Point::from((0.0, 0.0));
-    };
-    let Some(geometry) = state.space.output_geometry(&output) else {
-        return Point::from((0.0, 0.0));
-    };
-    let view = Point::from((
-        geometry.loc.x as f64 + position.x * geometry.size.w as f64,
-        geometry.loc.y as f64 + position.y * geometry.size.h as f64,
-    ));
-    confine_to_outputs(state, magnified_location(state, view))
+/// Map an absolute device position to a global-logical scene point.
+///
+/// The device's normalized position is mapped across the **output layout**
+/// (T324): the output containing that point is the authority, so a touch or
+/// tablet on the second monitor lands there even when the pointer rests on the
+/// primary. The output under the current pointer is the fallback when the
+/// layout has a gap, then the nearest output. The position is then interpreted
+/// within the resolved output's geometry and passed through the magnifier.
+///
+/// `position_transformed` is backend-agnostic: winit's `CursorMoved` is window
+/// pixels, libinput reports device-normalized coordinates, and each backend
+/// converts to the requested coordinate space here.
+fn absolute_location<B, E>(state: &DfState, event: &E) -> Option<Point<f64, Logical>>
+where
+    B: InputBackend,
+    E: backend_input::AbsolutePositionEvent<B>,
+{
+    let outputs = state.output_geometries();
+    let pointer = state
+        .seat
+        .get_pointer()
+        .map(|pointer| pointer.current_location());
+    let output =
+        output_input::absolute_output(&outputs, pointer, |size| event.position_transformed(size))
+            .or_else(|| state.focused_output().1)
+            .or_else(|| state.primary_output().1)?;
+    Some(output_input::map_into_output(output, |size| {
+        event.position_transformed(size)
+    }))
+}
+
+/// Map a touch/tablet event to a global-logical scene point.
+fn touch_location<B, E>(state: &DfState, event: &E) -> Point<f64, Logical>
+where
+    B: InputBackend,
+    E: backend_input::AbsolutePositionEvent<B>,
+{
+    absolute_location(state, event)
+        .map(|location| confine_to_outputs(state, magnified_location(state, location)))
+        .unwrap_or_else(|| Point::from((0.0, 0.0)))
 }
 
 #[cfg(test)]

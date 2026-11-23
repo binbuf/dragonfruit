@@ -6,7 +6,8 @@
 //! tested from `compositor/tests/` without spawning the binary. Right now it
 //! exposes the XDnD bridge model ([`xdnd`]), the DRM bring-up classification
 //! ([`drm_bringup`]), the hardware input validation matrix
-//! ([`input_validation`]), the multi-GPU import/fallback classification
+//! ([`input_validation`]), the output scoping for popups and absolute input
+//! ([`output_input`]), the multi-GPU import/fallback classification
 //! ([`multi_gpu`]), the per-output refresh model ([`refresh`]), the pure
 //! per-output presentation clock ([`presentation`]), the pure per-output
 //! frame scheduler ([`frame_scheduler`]), and the clock-injected idle timer
@@ -22,6 +23,7 @@ pub mod idle;
 pub mod input_validation;
 pub mod material_preset;
 pub mod multi_gpu;
+pub mod output_input;
 pub mod pointer_policy;
 pub mod presentation;
 pub mod refresh;

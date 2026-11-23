@@ -140,6 +140,7 @@ use crate::window::{
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
 use dragonfruit_compositor::frame_scheduler::FrameScheduler;
+use dragonfruit_compositor::output_input;
 use dragonfruit_compositor::presentation::{PresentationClocks, VrrRange};
 use dragonfruit_compositor::refresh::{
     ModeRefresh, OutputRefresh, RefreshSchedule, RefreshSource, VrrState, ENV_REFRESH_HZ,
@@ -2368,8 +2369,19 @@ impl DfState {
         self.pointer_center_pending = false;
     }
 
+    /// The logical geometry of every live output, in scene order.
+    ///
+    /// The pure output-scoping helpers (T324) take this slice: popups resolve
+    /// their parent's output from it, and absolute input maps across it.
+    pub(crate) fn output_geometries(&self) -> Vec<Rectangle<i32, Logical>> {
+        self.space
+            .outputs()
+            .filter_map(|output| self.space.output_geometry(output))
+            .collect()
+    }
+
     /// The logical geometry of the output named `name`.
-    fn output_geometry_named(&self, name: &str) -> Option<Rectangle<i32, Logical>> {
+    pub(crate) fn output_geometry_named(&self, name: &str) -> Option<Rectangle<i32, Logical>> {
         self.space
             .outputs()
             .find(|output| output.name() == name)
@@ -4688,18 +4700,25 @@ impl DfState {
     }
 
     /// Compute and store a popup's constrained geometry (FR-11).
+    ///
+    /// The popup is constrained to the output its **parent window** lives on
+    /// (T324), not the first output: a menu opened on the second monitor must
+    /// flip/slide against that monitor. The parent's geometry is the
+    /// protocol-correct anchor; focus can move while the popup is open. When
+    /// the parent is not a tracked window (a chrome-rooted popup) or its
+    /// geometry is unavailable, the focused output is the fallback, then the
+    /// primary output.
     fn set_popup_geometry(&mut self, surface: &PopupSurface, positioner: PositionerState) {
         let parent_geometry = surface
             .get_parent_surface()
             .and_then(|parent| self.window_for_surface(&parent))
             .and_then(|window| self.windows.geometry(&window))
             .unwrap_or_default();
-        let output_geometry = self
-            .space
-            .outputs()
-            .next()
-            .and_then(|output| self.space.output_geometry(output))
-            .unwrap_or(parent_geometry);
+        let output_geometry =
+            output_input::parent_output(&self.output_geometries(), parent_geometry)
+                .or_else(|| self.focused_output().1)
+                .or_else(|| self.primary_output().1)
+                .unwrap_or(parent_geometry);
         let geometry = constrained_popup_geometry(positioner, parent_geometry, output_geometry);
         surface.with_pending_state(|state| {
             state.geometry = geometry;
