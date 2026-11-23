@@ -19,6 +19,10 @@ namespace {
 // soon as the listing completes, so an idle window never polls.
 constexpr int kPollIntervalMs = 16;
 
+// How long an undo/redo waits for its worker outcome before letting the poll
+// timer deliver it (T331). One rename is a single `rename(2)`.
+constexpr int kReplayWaitMs = 2000;
+
 bool isImage(const QString &suffix)
 {
     static const QStringList kSuffixes = {
@@ -435,6 +439,8 @@ void FilesDirectoryModel::stop()
         m_session = nullptr;
     }
     setPendingOps(0);
+    // A new session has no history: the undo stacks are folder-scoped.
+    updateUndoState();
     // A new session starts with no paste history. The clipboard itself lives
     // in the shell and survives navigation.
     if (m_pasteTotal != 0 || m_pasteDone != 0 || m_pasteActive != 0
@@ -488,6 +494,7 @@ void FilesDirectoryModel::poll()
     const int pending = m_session ? int(df_files_pending_ops(m_session)) : 0;
     setPendingOps(pending);
     updatePasteProgress();
+    updateUndoState();
     // Stop the timer (never free the session) once the listing is settled and
     // no operation is pending, so an idle window does zero polling.
     if (pending == 0 && m_state != QStringLiteral("streaming"))
@@ -525,6 +532,94 @@ void FilesDirectoryModel::updatePasteProgress()
         m_pasteReported = true;
         emit pasteFinished(copied, skipped, failed);
     }
+}
+
+void FilesDirectoryModel::updateUndoState()
+{
+    int undoCount = 0;
+    int redoCount = 0;
+    QString undoLabel;
+    QString redoLabel;
+    QString message;
+    df_files_undo_state state = {};
+    if (m_session) {
+        state = df_files_undo_status(m_session);
+        // The C strings belong to the session; copy before the next call.
+        undoCount = int(state.undo_len);
+        redoCount = int(state.redo_len);
+        undoLabel = state.undo_label ? QString::fromUtf8(state.undo_label) : QString();
+        redoLabel = state.redo_label ? QString::fromUtf8(state.redo_label) : QString();
+        message = state.message ? QString::fromUtf8(state.message) : QString();
+        df_files_undo_state_free(state);
+    }
+    if (undoCount == m_undoCount && redoCount == m_redoCount
+        && undoLabel == m_undoLabel && redoLabel == m_redoLabel
+        && message == m_undoMessage) {
+        return;
+    }
+    m_undoCount = undoCount;
+    m_redoCount = redoCount;
+    m_undoLabel = undoLabel;
+    m_redoLabel = redoLabel;
+    m_undoMessage = message;
+    emit undoStateChanged();
+}
+
+bool FilesDirectoryModel::undo()
+{
+    return replay(false);
+}
+
+bool FilesDirectoryModel::redo()
+{
+    return replay(true);
+}
+
+bool FilesDirectoryModel::replay(bool redo)
+{
+    if (!m_session || m_state == QStringLiteral("streaming"))
+        return false;
+    if (df_files_undo(m_session, redo ? 1 : 0) == 0)
+        return false;
+    // The Rust session folds the replay's outcome into the model on this
+    // thread (the caller is the keyboard/menu handler) and hands back the
+    // rebuilt snapshot, so the undone rows are painted before the key returns.
+    df_files_await_ops(m_session, kReplayWaitMs);
+    // Fold the outcome first (it updates the undo copies and the message),
+    // then repaint from the rebuild: both land before the key returns.
+    repaint();
+    updateUndoState();
+    setPendingOps(m_session ? int(df_files_pending_ops(m_session)) : 0);
+    ensurePolling();
+    return true;
+}
+
+bool FilesDirectoryModel::putBack(quint64 nodeId)
+{
+    if (!m_session || df_files_put_back(m_session, nodeId) == 0) {
+        takeError();
+        return false;
+    }
+    updateUndoState();
+    repaint();
+    ensurePolling();
+    return true;
+}
+
+bool FilesDirectoryModel::noteTrash(quint64 nodeId, const QString &oldUri,
+                                    const QString &trashPath)
+{
+    if (!m_session || oldUri.isEmpty() || trashPath.isEmpty())
+        return false;
+    const QByteArray uriBytes = oldUri.toUtf8();
+    const QByteArray pathBytes = trashPath.toUtf8();
+    if (df_files_note_trash(m_session, nodeId, uriBytes.constData(),
+                            pathBytes.constData())
+        == 0) {
+        return false;
+    }
+    updateUndoState();
+    return true;
 }
 
 void FilesDirectoryModel::repaint()

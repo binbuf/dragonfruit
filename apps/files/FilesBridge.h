@@ -61,6 +61,7 @@ class FilesBridge : public QObject
     // (nested synthetic pointer events cannot hold a modifier or right-click a
     // Qt client surface reliably).
     Q_PROPERTY(QString startMenu READ startMenu CONSTANT)
+    // `item` | `background` | `edit` (the T331 Edit menu).
     // `DF_FILES_START_RENAME=1` enters inline rename on the first row once the
     // listing settles.
     Q_PROPERTY(bool startRename READ startRename CONSTANT)
@@ -106,6 +107,10 @@ public:
     // The location's own display name (the window title). `/` is "Computer",
     // `trash://` is "Trash".
     Q_INVOKABLE QString displayName(const QString &uri) const;
+    // Write a small text file at `uri` (the mutation fixture only; other
+    // locations return false). A test seam for the T331 conflict path, where
+    // another application takes an item's old name before an undo runs.
+    Q_INVOKABLE bool writeFixture(const QString &uri, const QString &contents) const;
     // True for a `file://` path or the `trash://` scheme (the two locations
     // this seam can open; other schemes are not advertised).
     Q_INVOKABLE bool isBrowsable(const QString &uri) const;

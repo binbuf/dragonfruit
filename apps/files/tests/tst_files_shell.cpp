@@ -105,6 +105,24 @@ int main(int argc, char **argv)
     writeFile(mutationRoot + QStringLiteral("/CaptureSrc/Folder/leaf.txt"), QByteArray("leaf"));
     writeFile(mutationRoot + QStringLiteral("/CaptureConflict/report.txt"), QByteArray("old"));
     writeFile(mutationRoot + QStringLiteral("/CaptureCut/move-me.txt"), QByteArray("move"));
+
+    // T331: undo fixtures. `UndoRename` starts with one file; `UndoConflict`
+    // lets the test take the old name back before it undoes, so the undo must
+    // refuse with a reason; `UndoCapture` is the stills' own tree.
+    for (const QString &folder : {QStringLiteral("UndoRename"),
+                                  QStringLiteral("UndoConflict"),
+                                  QStringLiteral("UndoFolder"),
+                                  QStringLiteral("UndoMenu"),
+                                  QStringLiteral("UndoPaste"),
+                                  QStringLiteral("UndoTrash"),
+                                  QStringLiteral("UndoCapture")}) {
+        QDir(mutationRoot).mkpath(folder);
+    }
+    writeFile(mutationRoot + QStringLiteral("/UndoRename/a.txt"), QByteArray("a"));
+    writeFile(mutationRoot + QStringLiteral("/UndoConflict/c.txt"), QByteArray("c"));
+    writeFile(mutationRoot + QStringLiteral("/UndoPaste/report.txt"), QByteArray("report"));
+    writeFile(mutationRoot + QStringLiteral("/UndoTrash/note.txt"), QByteArray("note"));
+    writeFile(mutationRoot + QStringLiteral("/UndoCapture/alpha.txt"), QByteArray("alpha"));
     qputenv("DF_FILES_MUTATION_FIXTURE", mutationRoot.toUtf8());
     // The capture runner records the temp trees in its manifest. QtTest's
     // message pattern filters qInfo, so write the paths beside the stills.
@@ -115,6 +133,14 @@ int main(int argc, char **argv)
         if (paths.open(QIODevice::WriteOnly | QIODevice::Text)) {
             paths.write("view fixture: " + root.toUtf8() + "\n");
             paths.write("mutation fixture: " + mutationRoot.toUtf8() + "\n");
+        }
+        // T331's own manifest, kept apart so a run that sets the capture
+        // directory serves both capture cases without overwriting either.
+        QFile undoPaths(QString::fromUtf8(captureDir)
+                        + QStringLiteral("/t331-files-paths.txt"));
+        if (undoPaths.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            undoPaths.write("t331 undo fixture: "
+                            + (mutationRoot + QStringLiteral("/UndoCapture")).toUtf8() + "\n");
         }
     }
 

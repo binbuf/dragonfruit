@@ -112,6 +112,25 @@ impl TrashedItem {
     pub fn info_path(&self) -> &Path {
         &self.info_path
     }
+
+    /// A placeholder with no store backing, used by undo when an entry was
+    /// recorded without its store item. [`Self::is_recorded`] is `false`, so
+    /// the undo reports a `trash-gone` conflict instead of touching the store.
+    pub fn unrecorded() -> Self {
+        Self {
+            name: OsString::new(),
+            original_path: PathBuf::new(),
+            deletion_date: String::new(),
+            file_path: PathBuf::new(),
+            info_path: PathBuf::new(),
+        }
+    }
+
+    /// Whether this item came from a real trash operation (and can be put
+    /// back); a placeholder from [`Self::unrecorded`] cannot.
+    pub fn is_recorded(&self) -> bool {
+        !self.file_path.as_os_str().is_empty()
+    }
 }
 
 /// The platform seam for trash ([09-files.md]).

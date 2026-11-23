@@ -20,7 +20,8 @@ import Dragonfruit
 // Keyboard: Up/Down/Home/End/Return on the sidebar; Alt+Left/Alt+Right step
 // history; Ctrl+F focuses search; Escape clears it; Cmd+A selects all;
 // Cmd+O/Cmd+Down opens the selection; Cmd+C/Cmd+X/Cmd+V copy/cut/paste;
-// Shift+Cmd+N makes a folder; Delete trashes; Return renames.
+// Cmd+Z undoes, Shift+Cmd+Z redoes (T331); Shift+Cmd+N makes a folder;
+// Delete trashes; Return renames.
 Item {
     id: root
 
@@ -568,6 +569,71 @@ Item {
         directory.newFolder(browser.currentUri);
     }
 
+    // -- Undo / redo (T331) --------------------------------------------------
+
+    // The stacks live in the files-core session (one folder visit): a
+    // location change clears them, and every completed rename, new folder,
+    // paste (move or copy), or Move to Trash pushes one bounded step.
+    readonly property bool canUndo: directory ? directory.canUndo : false
+    readonly property bool canRedo: directory ? directory.canRedo : false
+
+    function undo() {
+        if (!directory)
+            return false;
+        if (!directory.undo()) {
+            // Nothing to undo, or a replay is already running: the model's
+            // message says which; show it only when there is one.
+            if (directory.undoMessage.length > 0)
+                root.showUndoMessage(directory.undoMessage);
+            return false;
+        }
+        return true;
+    }
+
+    function redo() {
+        if (!directory)
+            return false;
+        if (!directory.redo()) {
+            if (directory.undoMessage.length > 0)
+                root.showUndoMessage(directory.undoMessage);
+            return false;
+        }
+        return true;
+    }
+
+    // A refusal keeps the current state intact and says why.
+    function showUndoMessage(message) {
+        if (message.length === 0)
+            return;
+        root.notice = message;
+        noticeTimer.restart();
+    }
+
+    // Put Back a Trash row (T331; also under Cmd+Z, through the recorded
+    // trash undo). The Trash listing's node ids are put-back ids recorded by
+    // the trash source, so the session can restore the exact store item.
+    function putBackSelection() {
+        if (!root.inTrash || !directory)
+            return false;
+        var ids = root.selectedIds.slice();
+        if (ids.length === 0 && root.selectedId > 0)
+            ids = [root.selectedId];
+        var restored = 0;
+        for (var i = 0; i < ids.length; ++i) {
+            if (directory.putBack(ids[i]))
+                ++restored;
+        }
+        if (restored > 0) {
+            root.clearSelection();
+            root.notice = restored === 1 ? qsTr("Put Back 1 item.")
+                                         : qsTr("Put Back %1 items.").arg(restored);
+            noticeTimer.restart();
+        } else if (directory.lastError.length > 0) {
+            root.showUndoMessage(directory.lastError);
+        }
+        return restored > 0;
+    }
+
     // -- Copy / cut / paste (T330) ------------------------------------------
 
     // The marked items, in selection order. A copy never changes the listing;
@@ -707,6 +773,19 @@ Item {
 
     // The Files rule: the menu depends on what is under the pointer.
     function nodeMenu(node) {
+        if (root.inTrash && node !== null) {
+            // A Trash row's verb is Put Back; it is the same undo the Edit
+            // menu offers, scoped to the selected items.
+            var trashRows = [
+                { label: qsTr("Open"), action: "open", enabled: node !== null },
+                { type: "separator" },
+                { label: qsTr("Put Back"), shortcut: "Cmd+Z",
+                  action: "putBack", enabled: node !== null },
+                { label: qsTr("Get Info"), shortcut: "Super+I",
+                  action: "getInfo", enabled: node !== null }
+            ];
+            return trashRows;
+        }
         if (root.selectedIds.length > 1) {
             return [
                 { label: qsTr("Get Info"), shortcut: "Super+I",
@@ -739,28 +818,84 @@ Item {
         return entries;
     }
 
+    // The Edit menu rows (T331). Undo/Redo name their next step so the row
+    // says what it will do; disabled is a real disabled row, not a dead one.
+    function undoMenuRows() {
+        var undoLabel = directory ? directory.undoLabel : "";
+        var redoLabel = directory ? directory.redoLabel : "";
+        return [
+            { label: undoLabel.length > 0
+                    ? qsTr("Undo %1").arg(undoLabel) : qsTr("Undo"),
+              shortcut: "Super+Z", action: "undo", enabled: root.canUndo },
+            { label: redoLabel.length > 0
+                    ? qsTr("Redo %1").arg(redoLabel) : qsTr("Redo"),
+              shortcut: "Shift+Super+Z", action: "redo", enabled: root.canRedo }
+        ];
+    }
+
+    // T331: the Edit menu's Edit section, shown as the small menu the
+    // window's context-menu surface draws at the toolbar's Edit position.
+    // The native window menu for Files is not published (G-04), so this is
+    // the menu the user opens for Undo/Redo beside Cmd+Z.
+    function openEditMenu(x, y) {
+        root.contextNode = null;
+        contextMenu.model = root.editMenuRows();
+        contextMenu.showAt(x, y);
+        return true;
+    }
+
+    function editMenuRows() {
+        return root.undoMenuRows().concat([
+            { type: "separator" },
+            { label: qsTr("Cut"), shortcut: "Super+X", action: "cut",
+              enabled: root.selectionClipboardItems().length > 0 },
+            { label: qsTr("Copy"), shortcut: "Super+C", action: "copy",
+              enabled: root.selectionClipboardItems().length > 0 },
+            { label: qsTr("Paste Item"), shortcut: "Super+V", action: "paste",
+              enabled: root.inTrash ? false : clipboard.count > 0 },
+            { type: "separator" },
+            { label: qsTr("Select All"), shortcut: "Super+A",
+              action: "selectAll" }
+        ]);
+    }
+
+    // The toolbar's Edit target: the edit menu opens under the search field's
+    // left edge, the measured position of the window's Edit control.
+    function openEditMenuAtToolbar() {
+        var point = searchField.mapToItem(root, 0, searchField.height);
+        root.openEditMenu(Math.max(0, point.x), point.y);
+    }
+
     function backgroundMenu() {
+        if (root.startMenu === "edit")
+            return root.editMenuRows();
         var toolbarRow = { label: root.toolbarVisible ? qsTr("Hide Toolbar")
                                                        : qsTr("Show Toolbar"),
                            shortcut: "Ctrl+Alt+T",
                            action: "toggleToolbar" };
+        var editRows = root.undoMenuRows();
         if (root.inTrash) {
-            return [
+            return editRows.concat([
+                { type: "separator" },
                 { label: qsTr("Empty Trash"), shortcut: "Shift+Super+Delete",
                   action: "emptyTrash", enabled: directory.count > 0 },
                 { type: "separator" },
                 toolbarRow,
                 { label: qsTr("Select All"), shortcut: "Super+A",
                   action: "selectAll" }
-            ];
+            ]);
         }
-        var rows = [
+        var rows = editRows.concat([
+            { label: qsTr("Cut"), shortcut: "Super+X", action: "cut",
+              enabled: root.selectionClipboardItems().length > 0 },
+            { label: qsTr("Copy"), shortcut: "Super+C", action: "copy",
+              enabled: root.selectionClipboardItems().length > 0 },
             { label: qsTr("Paste Item"), shortcut: "Super+V",
               action: "paste", enabled: clipboard.count > 0 },
             { type: "separator" },
             { label: qsTr("New Folder"), shortcut: "Shift+Super+N",
               action: "newFolder" }
-        ];
+        ]);
         // Free placement is an icon-view rule; a list has no icon slots to
         // clean up, so the row would be a dead affordance there.
         if (browser.currentView !== "list")
@@ -825,6 +960,15 @@ Item {
         case "emptyTrash":
             root.confirmEmptyTrash();
             break;
+        case "undo":
+            root.undo();
+            break;
+        case "redo":
+            root.redo();
+            break;
+        case "putBack":
+            root.putBackSelection();
+            break;
         }
     }
 
@@ -852,6 +996,8 @@ Item {
             root.openNodeMenu(ids[0], directory.uriAt(0), directory.isDirAt(0),
                               24, 140);
         } else if (root.startMenu === "background") {
+            root.openBackgroundMenu(320, 220);
+        } else if (root.startMenu === "edit") {
             root.openBackgroundMenu(320, 220);
         } else if (root.startEmptyTrash) {
             root.confirmEmptyTrash();
@@ -897,7 +1043,14 @@ Item {
             searchField.text = root.searchText;
     }
 
-    Keys.onPressed: (event) => {
+    Keys.onPressed: (event) => root.processShortcut(event)
+
+    // The shell's command keys. Folders-scoped: the view calls this for a key
+    // it did not use, and the shell's own Keys handler calls it directly.
+    function processShortcut(event) {
+        if (event.accepted)
+            return;
+
         var command = event.modifiers & root.commandMask;
         switch (event.key) {
         case Qt.Key_Left:
@@ -933,6 +1086,15 @@ Item {
         case Qt.Key_A:
             if (command) {
                 root.selectAll();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_Z:
+            if (command && !root.textEntryActive) {
+                if (event.modifiers & Qt.ShiftModifier)
+                    root.redo();
+                else
+                    root.undo();
                 event.accepted = true;
             }
             break;
@@ -1170,13 +1332,28 @@ Item {
                     }
                 }
             }
-            trailingData: SearchField {
+            trailingData: Row {
+                spacing: 0
+                // T331: the Edit menu's entry point (Undo/Redo/Cut/Copy/Paste/
+                // Select All). The text row names the next undo step, so the
+                // menu's promise is visible before it is opened.
+                Button {
+                    id: editMenuButton
+                    objectName: "editMenuButton"
+                    text: root.canUndo ? qsTr("Undo %1").arg(directory.undoLabel)
+                                       : qsTr("Edit")
+                    variant: "ghost"
+                    accessibleName: qsTr("Edit menu")
+                    onClicked: root.openEditMenuAtToolbar()
+                }
+                SearchField {
                 id: searchField
                 visible: root.toolbarVisible
                 width: 220
                 placeholderText: qsTr("Search")
                 onTextChanged: root.searchText = searchField.text
                 onCleared: root.searchText = ""
+                }
             }
             onCloseRequested: root.closeRequested()
             onMinimizeRequested: root.minimizeRequested()
@@ -1290,6 +1467,7 @@ Item {
                             onMarqueeSelected: (nodeIds, modifiers) => root.endMarquee(nodeIds, modifiers)
                             onRenameSubmitted: (nodeId, name) => root.commitRename(nodeId, name)
                             onRenameCancelled: root.cancelRename()
+                            Keys.onPressed: (event) => root.forwardKey(event)
                         }
 
                         FilesListView {
@@ -1312,6 +1490,7 @@ Item {
                             }
                             onRenameSubmitted: (nodeId, name) => root.commitRename(nodeId, name)
                             onRenameCancelled: root.cancelRename()
+                            Keys.onPressed: (event) => root.forwardKey(event)
                         }
 
                         Column {
@@ -1584,6 +1763,19 @@ Item {
                 onClicked: emptyTrashDialog.accept()
             }
         }
+    }
+
+    // T331: the shortcut chords a focused text field owns. While one runs,
+    // Cmd+Z edits the field's text, not the folder.
+    readonly property bool textEntryActive: root.renamingId !== 0
+            || (searchField && searchField.activeFocus)
+
+    // Forward a key the views did not use to the shell's command handler, so
+    // Cmd+Z / Cmd+C / … work while the content has the key focus (the views
+    // own arrow keys and typing; they leave commands unconsumed).
+    function forwardKey(event) {
+        if (!event.accepted)
+            root.processShortcut(event);
     }
 
     // The frameless window owns its edge input; the shared grips report the

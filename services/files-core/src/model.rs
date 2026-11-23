@@ -244,6 +244,17 @@ impl DirectoryModel {
     /// A URI is unique within one directory, so this is the watcher's identity
     /// key. Linear in the listing; watch events are infrequent, so no second
     /// index is maintained.
+    pub fn node_id_for_location(&self, location: &Location) -> Option<NodeId> {
+        self.nodes
+            .iter()
+            .find(|node| {
+                Location::parse(node.uri())
+                    .map(|uri| &uri == location)
+                    .unwrap_or(false)
+            })
+            .map(Node::id)
+    }
+
     pub fn node_id_for_uri(&self, uri: &str) -> Option<NodeId> {
         self.nodes
             .iter()

@@ -452,6 +452,57 @@ impl OptimisticModel {
         true
     }
 
+    /// Mutable access to the listing model, for an undo that retires the row
+    /// of a replayed create (T331). Every other edit goes through the
+    /// optimistic methods.
+    pub fn model_mut(&mut self) -> &mut DirectoryModel {
+        &mut self.model
+    }
+
+    /// The node a pending edit began on: the provisional row of a create, or
+    /// the row a rename/remove captured. `None` for an id that is not pending.
+    pub fn last_node_of(&self, op: OpId) -> NodeId {
+        self.pending
+            .iter()
+            .find(|pending| pending.id == op)
+            .map(|pending| match &pending.kind {
+                PendingKind::Rename { node, .. } | PendingKind::Create { node } => *node,
+                PendingKind::Remove { node, .. } => node.id(),
+                PendingKind::Empty { .. } => NodeId::UNSET,
+            })
+            .unwrap_or(NodeId::UNSET)
+    }
+
+    /// Rename a listed row in place without an operation, after an undo
+    /// replayed the rename on the filesystem (T331). The row keeps its id.
+    pub fn rename_row(&mut self, id: NodeId, location: &Location) -> bool {
+        let Some(name) = location_name(location) else {
+            return false;
+        };
+        self.model.rename_node(id, name)
+    }
+
+    /// Put a row back at `location` after an undo restored it from the trash
+    /// (T331). The row comes back under the original name at the end of the
+    /// arrival order, then sorts into place; an existing row for the same URI
+    /// is left as it is.
+    pub fn restore_row(&mut self, node: NodeId, location: &Location, kind: NodeKind) -> bool {
+        if self.model.node_id_for_location(location).is_some() {
+            return true;
+        }
+        let Some(name) = location_name(location) else {
+            return false;
+        };
+        let restored = Node::new(name, location.uri().to_owned(), kind);
+        if node.is_set() {
+            let position = self.model.len();
+            self.model.restore_node(restored, node, position);
+        } else {
+            self.model.insert_node(restored);
+        }
+        true
+    }
+
     /// Whether the current listing is complete.
     pub fn is_complete(&self) -> bool {
         self.model.is_complete()

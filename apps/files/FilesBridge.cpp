@@ -10,6 +10,7 @@
 #include <QMimeDatabase>
 #include <QStandardPaths>
 #include <QStorageInfo>
+#include <QFile>
 #include <QUrl>
 
 namespace {
@@ -101,7 +102,10 @@ FilesBridge::FilesBridge(QObject *parent)
                                                             : QString();
     m_captureDir = qEnvironmentVariable("DF_FILES_CAPTURE_DIR");
     m_startMenu = qEnvironmentVariable("DF_FILES_START_MENU");
-    if (m_startMenu != QStringLiteral("item") && m_startMenu != QStringLiteral("background"))
+    // `edit` opens the T331 Edit menu (a capture seam for the Undo rows).
+    if (m_startMenu != QStringLiteral("item")
+        && m_startMenu != QStringLiteral("background")
+        && m_startMenu != QStringLiteral("edit"))
         m_startMenu.clear();
     m_startRename = qEnvironmentVariableIsSet("DF_FILES_START_RENAME");
     m_startSelect = qEnvironmentVariableIntValue("DF_FILES_START_SELECT");
@@ -249,6 +253,22 @@ QString FilesBridge::displayName(const QString &uri) const
     if (url.scheme() == QStringLiteral("trash"))
         return QStringLiteral("Trash");
     return uri;
+}
+
+bool FilesBridge::writeFixture(const QString &uri, const QString &contents) const
+{
+    // Only inside the test's mutation tree, never the user's files.
+    if (m_mutationFixtureUri.isEmpty()
+        || !uri.startsWith(m_mutationFixtureUri + QLatin1Char('/'))) {
+        return false;
+    }
+    const QUrl url(uri);
+    if (!url.isLocalFile())
+        return false;
+    QFile file(url.toLocalFile());
+    if (!file.open(QIODevice::WriteOnly))
+        return false;
+    return file.write(QByteArray(contents.toUtf8())) >= 0;
 }
 
 bool FilesBridge::isBrowsable(const QString &uri) const

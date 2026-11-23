@@ -419,9 +419,33 @@ all-or-nothing rule inside `StdFsOps::move_as` (hidden destination sibling,
 copy, rename, then remove the source); symlinks are recreated as links and
 never followed, so a directory copy cannot escape its tree. See
 [ADR 0337](adr/0337-files-clipboard-paste-and-conflicts.md). **Deferred:**
-undo (T331), tabs/New Window (T333), Open With (T334), drag-and-drop inside
+tabs/New Window (T333), Open With (T334), drag-and-drop inside
 Files, Duplicate/Compress/Make Alias, merge, byte-level progress/cancel, and
-the native Files menu model.
+the native Files menu model. Undo landed next (T331, below).
+
+**Implementation status (T331).** Undo and Redo are real for rename, new
+folder, Move to Trash, copy/paste, and move/paste. `files-core::undo::UndoStack`
+keeps a bounded (20) stack of **recorded locations** — a rename's `from`/`to`,
+a move's both ends, a trash's `TrashedItem` — and replays each through the same
+`FileOps`/`TrashOps` engine, so undo cannot grow a second filesystem path. Every
+refusal (item gone, original spot taken, source folder gone, a new folder that
+has since gained contents, a Trash entry emptied) is checked before the first
+change, so a refused undo leaves the state untouched and reports a reason
+(`"report.txt" already exists`); the step stays on the stack for a retry. A
+filesystem failure part way through a multi-item step reverses the actions
+already replayed. One clipboard paste is one step; a new operation clears the
+redo tail; navigating clears both stacks (an undo is folder-scoped). `Cmd+Z` /
+`Shift+Cmd+Z` are command keys — the content views forward keys they do not use,
+and a focused text field keeps its own `Cmd+Z` — and the toolbar's **Edit**
+button opens the same Undo/Redo/Cut/Copy/Paste/Select All rows, with the Undo
+row naming its next step ("Undo Rename \"a.txt\""). The background menu leads
+with the same Edit section. A Trash row's menu leads with **Put Back**, which
+restores the store item. The C ABI adds `df_files_undo`, `df_files_await_ops`
+(the outcome is folded on the caller's thread so the repainted rows land before
+the handler returns), `df_files_undo_status`, and
+`df_files_note_trash`/`df_files_put_back`. See
+[ADR 0338](adr/0338-files-undo-recorded-locations.md). **Deferred:** the undo
+journal across restarts, and a redo of a paste's copied items.
 
 **Current status (2026-11) — what the Files MVP actually ships.** The browsing
 core is real: streaming listings, natural sorting, the C ABI delta path,
@@ -430,16 +454,18 @@ sidebar favorites/volumes/Computer/Trash, icon/list views, selection
 Trash, file opening, thumbnails, Trash browsing, path bar, back/forward
 history, local name search, the measured window anatomy, the status bar,
 toolbar-hidden mode, Get Info, copy/cut/paste with conflict policy and
-per-item progress, and the Dock/desktop integration. It is **not** the full
+per-item progress, undo/redo with a truthful refusal, and the
+Dock/desktop integration. It is **not** the full
 Files design:
 
 - **Not implemented:** tabs, New Window (the context row is disabled),
   drag-and-drop inside Files, duplicate, Make Alias, Compress, Open With,
-  undo/redo, merge, byte-level progress/cancel, column/gallery views, Preview,
+  merge, byte-level progress/cancel, column/gallery views, Preview,
   preview pane, tags, saved searches, batch rename, Connect to Server, and the
   Files menu model. T230d landed the measured 52/198/30/28 pt chrome, the
   status bar, the toolbar-hidden mode and the Get Info inspector; T330 landed
-  copy/cut/paste, the conflict sheet and per-item paste progress; T244a lands
+  copy/cut/paste, the conflict sheet and per-item paste progress; T331 landed
+  undo/redo and the Edit menu; T244a lands
   the column and gallery views. Tabs remain open.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a
   host helper exists; no archives/remote), search (current-location name
@@ -701,7 +727,12 @@ makes undo, progress, and conflict handling uniform.
 - **Undo/redo.** Move, rename, trash (Put Back), duplicate, new-folder, and
   paste are undoable; undoing a paste trashes the pasted copies,
   Files-correct. The journal persists across restarts at least for trash
-  restore.
+  restore. **Implemented (T331):** rename, new folder, Move to Trash, and
+  paste (copy and move) undo/redo from `Cmd+Z`/`Shift+Cmd+Z` and the Edit
+  menu, through a bounded stack of recorded locations; a refusal leaves the
+  state intact and says why; undoing a paste removes only the pasted copies.
+  The cross-restart journal stays the target (Put Back in the Trash store is
+  the durable half today).
 - **Crash consistency.** Single-file writes are temp-then-rename. In-flight
   copies write hidden partial files and are journaled; the next launch
   cleans orphans. A SIGKILL never leaves a half-written file under its final

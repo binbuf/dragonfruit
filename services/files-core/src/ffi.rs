@@ -33,6 +33,10 @@
 //! * [`df_files_pending_ops`] tells the facade whether it must keep polling
 //!   (there is an outcome still to fold), and [`df_files_take_error`] surfaces
 //!   the last snapped-back failure for an inline notice.
+//! * [`df_files_undo`] (T331) replays the bounded undo stack off the UI
+//!   thread (`redo != 0` replays the redo stack); the outcome is folded on
+//!   the next poll or by [`df_files_await_ops`], and a refusal lands in
+//!   [`df_files_undo_status`] with its reason.
 //! * [`df_files_set_sort`] changes the ordering in place, [`df_files_snapshot`]
 //!   returns the current order without waiting, and [`df_files_free`] retires
 //!   the session (cancelling its listing worker and op worker).
@@ -55,7 +59,8 @@ use crate::{
     paste_one, ClipboardMode, ConflictPolicy, DirectoryModel, DirectorySource, FileOps,
     FreedesktopTrash, ListingHandle, ListingState, Location, Node, NodeId, NodeKind, OpId,
     OperationError, OptimisticModel, PasteItemOutcome, PasteStatus, StdFsOps, StdFsSource,
-    SyntheticSource, TrashMonitor, TrashOps, TrashSource, TrashState,
+    SyntheticSource, TrashMonitor, TrashOps, TrashSource, TrashState, TrashedItem, UndoError,
+    UndoStack,
 };
 
 /// Event status: a batch (a fresh ordered snapshot follows).
@@ -186,14 +191,21 @@ enum OpRequest {
         op: OpId,
         location: Location,
         new_name: OsString,
+        /// The session row the rename edits, so the undo entry can name it.
+        node: NodeId,
     },
+    /// One item's `Move to Trash` is not here: see [`OpRequest::Trash`].
     NewFolder {
         op: OpId,
         parent: Location,
+        /// The session row of the provisional folder.
+        node: NodeId,
     },
     Trash {
         op: OpId,
         location: Location,
+        /// The session row being trashed.
+        node: NodeId,
     },
     EmptyTrash {
         op: OpId,
@@ -210,6 +222,16 @@ enum OpRequest {
         mode: ClipboardMode,
         policy: ConflictPolicy,
         skip: bool,
+        /// The session row the paste painted (its optimistic insert, or the
+        /// cut source's row when the item was moved out of this folder).
+        node: NodeId,
+    },
+    /// Undo or redo the one recorded step at the top of `entry`'s stack
+    /// (T331). The stack itself is moved over so the worker owns it for the
+    /// replay and hands it back with the result.
+    Replay {
+        stack: Option<Box<UndoStack>>,
+        redo: bool,
     },
 }
 
@@ -218,14 +240,24 @@ enum OpOutcome {
     Rename {
         op: OpId,
         result: Result<Location, OperationError>,
+        /// Where the node lived before the rename (the undo entry's `from`).
+        from: Location,
+        /// The session row the rename edited.
+        node: NodeId,
     },
     NewFolder {
         op: OpId,
         result: Result<Location, OperationError>,
+        /// The session row of the provisional folder.
+        node: NodeId,
     },
     Trash {
         op: OpId,
         result: Result<(), OperationError>,
+        /// The store item the trash produced (for undo's Put Back).
+        item: Option<TrashedItem>,
+        /// The session row the trash removed.
+        node: NodeId,
     },
     EmptyTrash {
         op: OpId,
@@ -234,8 +266,27 @@ enum OpOutcome {
     Paste {
         op: Option<OpId>,
         remove_op: Option<OpId>,
+        /// The session row of the pasted item (the optimistic insert, or the
+        /// cut source's row), so an undo names it.
+        node: NodeId,
         result: Result<PasteItemOutcome, OperationError>,
     },
+    Replay {
+        stack: Option<Box<UndoStack>>,
+        redo: bool,
+        result: Result<crate::UndoOutcome, UndoError>,
+    },
+}
+
+/// A replay's recorded end state, for the C ABI's [`df_files_undo_state`].
+#[derive(Debug, Clone, Copy, Default)]
+struct ReplayReport {
+    /// The last replay finished and succeeded.
+    ok: bool,
+    /// The last replay was refused; `undo_message` carries the reason.
+    refused: bool,
+    /// 1 for a replay that is still on the worker.
+    active: bool,
 }
 
 /// Spawn the one operations worker. It owns the [`StdFsOps`]/[`FreedesktopTrash`]
@@ -255,22 +306,48 @@ fn spawn_op_worker() -> (Sender<OpRequest>, Receiver<OpOutcome>) {
                         op,
                         location,
                         new_name,
+                        node,
                     } => OpOutcome::Rename {
                         op,
+                        from: location.clone(),
+                        node,
                         result: ops.rename(&location, &new_name),
                     },
-                    OpRequest::NewFolder { op, parent } => OpOutcome::NewFolder {
+                    OpRequest::NewFolder { op, parent, node } => OpOutcome::NewFolder {
                         op,
+                        node,
                         result: ops.new_folder(&parent),
                     },
-                    OpRequest::Trash { op, location } => OpOutcome::Trash {
-                        op,
-                        result: trash.trash(&location).map(|_| ()),
-                    },
+                    OpRequest::Trash { op, location, node } => {
+                        let result = trash.trash(&location);
+                        OpOutcome::Trash {
+                            op,
+                            node,
+                            item: result.as_ref().ok().cloned(),
+                            result: result.map(|_| ()),
+                        }
+                    }
                     OpRequest::EmptyTrash { op } => OpOutcome::EmptyTrash {
                         op,
                         result: trash.empty().map(|_| ()),
                     },
+                    OpRequest::Replay { mut stack, redo } => {
+                        let result = match stack.as_mut() {
+                            Some(stack) => {
+                                if redo {
+                                    stack.redo(&ops, &trash)
+                                } else {
+                                    stack.undo(&ops, &trash)
+                                }
+                            }
+                            None => Err(UndoError::Empty),
+                        };
+                        OpOutcome::Replay {
+                            stack,
+                            redo,
+                            result,
+                        }
+                    }
                     OpRequest::Paste {
                         op,
                         remove_op,
@@ -280,9 +357,11 @@ fn spawn_op_worker() -> (Sender<OpRequest>, Receiver<OpOutcome>) {
                         mode,
                         policy,
                         skip,
+                        node,
                     } => OpOutcome::Paste {
                         op,
                         remove_op,
+                        node,
                         result: if skip {
                             Ok(PasteItemOutcome {
                                 destination: target.child(&name),
@@ -323,6 +402,25 @@ pub struct FfiSession {
     paste_skipped: u32,
     paste_failed: u32,
     paste_mode: i32,
+    /// The T331 undo/redo stacks. They live in the session (one folder
+    /// visit) and are cleared on a location change.
+    undo: Option<Box<UndoStack>>,
+    /// The open paste batch token, so the items of one clipboard paste fold
+    /// into one undo step and the next paste starts a new one.
+    paste_batch: u64,
+    /// The session row the last queued paste painted (T331).
+    paste_row: Option<NodeId>,
+    /// The ids of the last successful trash, whatever this session listed:
+    /// `id -> TrashedItem` for Put Back and for an undo replay.
+    trash_record: std::collections::HashMap<u64, TrashedItem>,
+    /// The most recent replay's report (see [`df_files_undo_state`]).
+    replay: ReplayReport,
+    /// The last refusal's reason, already formatted for a notice.
+    undo_message: Option<String>,
+    /// The next undo/redo's label, mirrored locally (T331) so the Qt facade
+    /// reads the undo availability without borrowing a session-owned string.
+    undo_label: Option<String>,
+    redo_label: Option<String>,
     /// The node ids the receiver has already been told about, so an
     /// incremental poll can serialize only the newly arrived nodes (T-10.5).
     /// Seeded by every `reset` delta; grown by every insertion delta.
@@ -418,32 +516,68 @@ impl FfiSession {
         let mut changed = false;
         // `Err` is either Empty or Disconnected; both mean "nothing more now".
         while let Ok(outcome) = self.outcome_rx.try_recv() {
+            self.fold_one(outcome);
             changed = true;
+        }
+        changed
+    }
+
+    /// Fold one completed operation: confirm the painted result, or revert it
+    /// and remember the failure message. Shared by the poll and the bounded
+    /// [`df_files_await_ops`] wait.
+    fn fold_one(&mut self, outcome: OpOutcome) {
+        {
             self.pending = self.pending.saturating_sub(1);
             match outcome {
-                OpOutcome::Rename { op, result } => match result {
+                OpOutcome::Rename {
+                    op,
+                    from,
+                    node,
+                    result,
+                } => match result {
                     Ok(location) => {
                         self.model.retarget(op, &location);
                         self.model.confirm(op);
+                        if let Some(stack) = self.undo.as_mut() {
+                            stack.record_rename_of(node, from, location);
+                        }
                     }
                     Err(error) => {
                         self.model.revert(op);
                         self.last_error = Some(error.to_string());
                     }
                 },
-                OpOutcome::NewFolder { op, result } => match result {
+                OpOutcome::NewFolder { op, node, result } => match result {
                     Ok(location) => {
                         self.model.retarget(op, &location);
                         self.model.confirm(op);
+                        if let Some(stack) = self.undo.as_mut() {
+                            let row = self
+                                .model
+                                .model()
+                                .node_id_for_location(&location)
+                                .unwrap_or(node);
+                            stack.record_new_folder(location);
+                            stack.set_last_node(row);
+                        }
                     }
                     Err(error) => {
                         self.model.revert(op);
                         self.last_error = Some(error.to_string());
                     }
                 },
-                OpOutcome::Trash { op, result } => match result {
+                OpOutcome::Trash {
+                    op,
+                    result,
+                    item,
+                    node,
+                } => match result {
                     Ok(()) => {
                         self.model.confirm(op);
+                        if let (Some(stack), Some(item)) = (self.undo.as_mut(), item) {
+                            self.trash_record.insert(op.get(), item.clone());
+                            stack.record_trash_of(node, item);
+                        }
                     }
                     Err(error) => {
                         self.model.revert(op);
@@ -462,6 +596,7 @@ impl FfiSession {
                 OpOutcome::Paste {
                     op,
                     remove_op,
+                    node,
                     result,
                 } => {
                     self.paste_active = self.paste_active.saturating_sub(1);
@@ -489,6 +624,23 @@ impl FfiSession {
                                     if let Some(op) = remove_op {
                                         self.model.confirm(op);
                                     }
+                                    let moved = item.status == PasteStatus::Moved;
+                                    // Resolve the pasted row by its final URI:
+                                    // `retarget` may have retargeted the id.
+                                    let node = self
+                                        .model
+                                        .model()
+                                        .node_id_for_location(&item.destination)
+                                        .unwrap_or(node);
+                                    if let Some(stack) = self.undo.as_mut() {
+                                        stack.record_paste_of(
+                                            self.paste_batch,
+                                            node,
+                                            item.source.clone(),
+                                            item.destination.clone(),
+                                            moved,
+                                        );
+                                    }
                                 }
                             }
                         },
@@ -504,9 +656,108 @@ impl FfiSession {
                         }
                     }
                 }
+                OpOutcome::Replay {
+                    stack,
+                    redo,
+                    result,
+                } => {
+                    self.replay.active = false;
+                    if let Some(stack) = stack {
+                        self.undo = Some(stack);
+                    }
+                    match result {
+                        Ok(outcome) => {
+                            // The filesystem changed under the rows: apply the
+                            // same edit to the session's model so the listing
+                            // agrees without a re-list.
+                            // Rows are resolved by the recorded locations:
+                            // an id recorded at an operation's start may have
+                            // been retargeted since (a paste's insert), so the
+                            // name is the stable key.
+                            if let Some(location) = outcome.renamed.clone() {
+                                let current = outcome.renamed_from.as_ref();
+                                if let Some(row) = current
+                                    .and_then(|was| self.model.model().node_id_for_location(was))
+                                    .or_else(|| self.model.model().node_id_for_location(&location))
+                                {
+                                    self.model.rename_row(row, &location);
+                                }
+                            }
+                            if let Some(location) = outcome.removed.clone() {
+                                // The create is gone from the filesystem and
+                                // its optimistic record was retired: drop the
+                                // row, or the listing keeps painting it.
+                                if let Some(row) =
+                                    self.model.model().node_id_for_location(&location)
+                                {
+                                    self.model.model_mut().remove_node(row);
+                                }
+                            }
+                            if let Some(location) = outcome.restored.clone() {
+                                // The store records a path, not a kind: the
+                                // restored row is a directory when that path
+                                // is one now.
+                                let kind = if location
+                                    .to_file_path()
+                                    .map(|path| path.is_dir())
+                                    .unwrap_or(false)
+                                {
+                                    crate::NodeKind::Directory
+                                } else {
+                                    crate::NodeKind::File
+                                };
+                                let row = if outcome.node.is_set() {
+                                    outcome.node
+                                } else {
+                                    NodeId::UNSET
+                                };
+                                self.model.restore_row(row, &location, kind);
+                            }
+                            self.replay.ok = true;
+                            self.replay.refused = false;
+                            self.undo_message = Some(outcome.message(redo));
+                            // The replayed edit changed rows the receiver
+                            // already knows: the next delta must be a reset.
+                            self.reported.clear();
+                        }
+                        Err(error) => {
+                            self.replay.ok = false;
+                            self.replay.refused = true;
+                            let (reason, item) = match &error {
+                                UndoError::Empty => (error.reason(), None),
+                                UndoError::Conflict(conflict) => {
+                                    (conflict.reason.clone(), conflict.item.clone())
+                                }
+                                UndoError::Failed(failed) => (failed.to_string(), None),
+                            };
+                            self.undo_message = Some(reason.clone());
+                            if item.is_some() {
+                                self.last_error = Some(reason);
+                            }
+                            // A replayed trash changed the store slot, so a
+                            // recorded Put Back may be stale.
+                            self.trash_record.clear();
+                        }
+                    }
+                }
             }
+            // Every fold may push or reverse a step: mirror the labels.
+            self.refresh_undo_labels();
         }
-        changed
+    }
+
+    /// Mirror the stacks' next labels, so the ABI hands out stable strings
+    /// (T331).
+    fn refresh_undo_labels(&mut self) {
+        let (undo, redo) = match self.undo.as_ref() {
+            Some(stack) => (
+                stack.undo_label().map(str::to_owned),
+                stack.redo_label().map(str::to_owned),
+            ),
+            None => (None, None),
+        };
+        self.undo_label = undo;
+        self.redo_label = redo;
     }
 
     /// The current listing state.
@@ -681,6 +932,14 @@ unsafe fn begin_session(
         paste_skipped: 0,
         paste_failed: 0,
         paste_mode: -1,
+        undo: Some(Box::new(UndoStack::new())),
+        paste_batch: 0,
+        paste_row: None,
+        trash_record: std::collections::HashMap::new(),
+        replay: ReplayReport::default(),
+        undo_message: None,
+        undo_label: None,
+        redo_label: None,
         reported: HashSet::new(),
     }))
 }
@@ -916,6 +1175,7 @@ pub unsafe extern "C" fn df_files_begin_rename(
         op,
         location,
         new_name: name,
+        node: id,
     });
     session.pending += 1;
     op.get()
@@ -942,7 +1202,21 @@ pub unsafe extern "C" fn df_files_begin_new_folder(
         return 0;
     };
     let op = session.model.begin_new_folder(&parent);
-    let _ = session.op_tx.send(OpRequest::NewFolder { op, parent });
+    let node = session
+        .model
+        .model()
+        .nodes()
+        .iter()
+        .rev()
+        .find(|node| {
+            node.uri()
+                .starts_with(&format!("{}/", parent.uri().trim_end_matches('/')))
+        })
+        .map(Node::id)
+        .unwrap_or(NodeId::UNSET);
+    let _ = session
+        .op_tx
+        .send(OpRequest::NewFolder { op, parent, node });
     session.pending += 1;
     op.get()
 }
@@ -969,7 +1243,11 @@ pub unsafe extern "C" fn df_files_begin_trash(session: *mut FfiSession, node_id:
     let Some(op) = session.model.begin_delete(id) else {
         return 0;
     };
-    let _ = session.op_tx.send(OpRequest::Trash { op, location });
+    let _ = session.op_tx.send(OpRequest::Trash {
+        op,
+        location,
+        node: id,
+    });
     session.pending += 1;
     op.get()
 }
@@ -1137,15 +1415,27 @@ pub unsafe extern "C" fn df_files_begin_paste(
         }
     }
 
+    // The pasted item's row: the row the paste painted (a copy's insert or a
+    // cut source's hidden row). Read the pending record now — the worker's
+    // fold retires it.
+    let node = op
+        .or(remove_op)
+        .map(|op| session.model.last_node_of(op))
+        .filter(|node| node.is_set())
+        .or_else(|| session.model.model().node_id_for_location(&source))
+        .or(session.paste_row)
+        .unwrap_or(NodeId::UNSET);
+    session.paste_row = Some(node);
     let _ = session.op_tx.send(OpRequest::Paste {
         op,
         remove_op,
-        source,
+        source: source.clone(),
         target,
         name,
         mode,
         policy,
         skip,
+        node,
     });
     session.pending += 1;
     // `1` is a queued token for a paste with no model row to point at.
@@ -1177,6 +1467,314 @@ pub unsafe extern "C" fn df_files_paste_state(
             ..df_files_paste_progress::default()
         },
     }
+}
+
+/// The C ABI's undo availability and the last replay's report (T331). Every
+/// string is NUL-terminated and owned by `session` (copy it before the next
+/// call); `message` is the last undo/redo's sentence or its refusal reason,
+/// empty when nothing has been replayed.
+#[repr(C)]
+pub struct df_files_undo_state {
+    /// Undoable steps on the stack (bounded by `UNDO_LIMIT`, 20).
+    pub undo_len: u32,
+    /// Redoable steps.
+    pub redo_len: u32,
+    /// The next undo's label (`Rename “a.txt”`), or null.
+    pub undo_label: *const c_char,
+    /// The next redo's label, or null.
+    pub redo_label: *const c_char,
+    /// Non-zero while an undo/redo is on the worker.
+    pub active: i32,
+    /// Non-zero when the last replay succeeded.
+    pub ok: i32,
+    /// Non-zero when the last replay was refused (`message` says why).
+    pub refused: i32,
+    /// The last sentence or refusal reason, or null.
+    pub message: *const c_char,
+}
+
+/// The session's undo stacks and last replay (T331). Null is a no-undo state.
+///
+/// The struct type is also `df_files_undo_state`, so the function cannot
+/// share that name in C (the reason [`df_files_paste_state`] queries a
+/// `df_files_paste_progress` struct).
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`] or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_undo_status(session: *const FfiSession) -> df_files_undo_state {
+    let Some(session) = session.as_ref() else {
+        return df_files_undo_state {
+            undo_len: 0,
+            redo_len: 0,
+            undo_label: std::ptr::null(),
+            redo_label: std::ptr::null(),
+            active: 0,
+            ok: 0,
+            refused: 0,
+            message: std::ptr::null(),
+        };
+    };
+    // The label sizes outlive this call: they are held by the session's
+    // stacks, so they stay valid until the next replay.
+    df_files_undo_state {
+        undo_len: session.undo.as_ref().map_or(0, |stack| stack.undo_len()) as u32,
+        redo_len: session.undo.as_ref().map_or(0, |stack| stack.redo_len()) as u32,
+        undo_label: session
+            .undo_label
+            .as_ref()
+            .and_then(|label| CString::new(label.clone()).ok())
+            .map(|label| label.into_raw() as *const c_char)
+            .unwrap_or(std::ptr::null()),
+        redo_label: session
+            .redo_label
+            .as_ref()
+            .and_then(|label| CString::new(label.clone()).ok())
+            .map(|label| label.into_raw() as *const c_char)
+            .unwrap_or(std::ptr::null()),
+        active: i32::from(session.replay.active),
+        ok: i32::from(session.replay.ok),
+        refused: i32::from(session.replay.refused),
+        message: session
+            .undo_message
+            .as_ref()
+            .and_then(|message| CString::new(message.clone()).ok())
+            .map(|message| message.into_raw() as *const c_char)
+            .unwrap_or(std::ptr::null()),
+    }
+}
+
+/// Free the strings [`df_files_undo_status`] returned. Null pointers are
+/// ignored.
+///
+/// # Safety
+///
+/// `state` must be a struct returned by [`df_files_undo_state`] that has not
+/// already been freed.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_undo_state_free(state: df_files_undo_state) {
+    for field in [state.undo_label, state.redo_label, state.message] {
+        if !field.is_null() {
+            drop(CString::from_raw(field as *mut c_char));
+        }
+    }
+}
+
+/// Undo (`redo == 0`) or redo (`redo != 0`) the top step of the session's
+/// undo stack, on the operations worker (T331). Returns 1 when queued, 0 when
+/// there is nothing to replay or a replay is already running. Poll until
+/// `df_files_pending_ops` is 0 and read [`df_files_undo_state`] for the
+/// outcome; a refusal leaves the stack and the filesystem untouched.
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`] or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_undo(session: *mut FfiSession, redo: i32) -> i32 {
+    let Some(session) = session.as_mut() else {
+        return 0;
+    };
+    if session.replay.active {
+        return 0;
+    }
+    let redo = redo != 0;
+    let has_step = session
+        .undo
+        .as_ref()
+        .map(|stack| {
+            if redo {
+                stack.redo_len() > 0
+            } else {
+                stack.undo_len() > 0
+            }
+        })
+        .unwrap_or(false);
+    if !has_step {
+        // Nothing to replay: report the empty stack rather than a stale
+        // message from an earlier replay.
+        session.undo_message = Some(UndoError::Empty.reason());
+        session.replay = ReplayReport {
+            ok: false,
+            refused: true,
+            active: false,
+        };
+        return 0;
+    }
+    let stack = session.undo.take();
+    session.undo_label = None;
+    session.redo_label = None;
+    session.replay = ReplayReport {
+        ok: false,
+        refused: false,
+        active: true,
+    };
+    session.undo_message = None;
+    if session
+        .op_tx
+        .send(OpRequest::Replay { stack, redo })
+        .is_err()
+    {
+        session.replay.active = false;
+        return 0;
+    }
+    session.pending += 1;
+    1
+}
+
+/// Record a successful Move to Trash the Files shell ran through another path
+/// (the Dock's Trash bridge). `node_id` names it for [`df_files_put_back`];
+/// the entry is also pushed onto this session's undo stack, so `Cmd+Z` takes
+/// it back too. Returns 1 on success, 0 for a null session or a foreign
+/// scheme (neither is trashable here).
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`] or null;
+/// `uri` must be a valid NUL-terminated C string or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_note_trash(
+    session: *mut FfiSession,
+    node_id: u64,
+    uri: *const c_char,
+    path: *const c_char,
+) -> i32 {
+    let Some(session) = session.as_mut() else {
+        return 0;
+    };
+    let (Some(uri), Some(path)) = (read_str(uri), read_str(path)) else {
+        return 0;
+    };
+    let Ok(original) = Location::parse(&uri) else {
+        return 0;
+    };
+    // The store item is looked up by its recorded original path (and its
+    // stored file, when the shell names one): the store's `.trashinfo` is the
+    // truth; the shell only reports where the item was.
+    let stored = Location::file(path).to_file_path();
+    let inventory = FreedesktopTrash::new().entries().unwrap_or_default();
+    let Some(item) = inventory.into_iter().find(|entry| {
+        entry.original_location() == original
+            && stored
+                .as_ref()
+                .map(|stored| entry.file_path() == stored)
+                .unwrap_or(true)
+    }) else {
+        return 0;
+    };
+    session.trash_record.insert(node_id, item.clone());
+    if let Some(stack) = session.undo.as_mut() {
+        stack.record_trash(item);
+    }
+    session.refresh_undo_labels();
+    1
+}
+
+/// Put Back the item [`df_files_note_trash`] recorded under `node_id`. Runs
+/// synchronously on the caller's thread (the shell calls it from the action
+/// that owns the Trash view; it is one rename). Returns 1 on success, 0 when
+/// the id is unknown or the restore was refused; the reason then lands in
+/// [`df_files_take_error`].
+///
+/// A session listing `trash://` names its rows after the store item (the
+/// `trash:///<stored name>` URI), so its ids resolve by name instead. The
+/// restored row is put back at its recorded original location and removed
+/// from the Trash listing.
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`] or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_put_back(session: *mut FfiSession, node_id: u64) -> i32 {
+    let Some(session) = session.as_mut() else {
+        return 0;
+    };
+    let row = NodeId::from_raw(node_id);
+    let recorded = session.trash_record.get(&node_id).cloned();
+    let in_trash = session
+        .model
+        .model()
+        .location()
+        .map(|location| location.scheme() == "trash")
+        .unwrap_or(false);
+    let tab_item = if in_trash && recorded.is_none() {
+        let row = session.model.model().node(row);
+        let name = row.and_then(|row| {
+            row.uri().strip_prefix("trash:///").map(|name| {
+                // The store name is percent-encoded in the URI; the store's
+                // own entries carry the raw bytes.
+                crate::location::decode_path(name)
+                    .file_name()
+                    .map(|name| name.to_os_string())
+                    .unwrap_or_else(|| std::ffi::OsString::from(name))
+            })
+        });
+        name.and_then(|name| {
+            FreedesktopTrash::new()
+                .entries()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|item| item.name() == name)
+        })
+    } else {
+        None
+    };
+    let Some(item) = recorded.or(tab_item) else {
+        session.last_error = Some("Nothing was recorded to put back".to_owned());
+        return 0;
+    };
+    let trash = FreedesktopTrash::new();
+    match trash.restore(&item) {
+        Ok(location) => {
+            session.trash_record.remove(&node_id);
+            if in_trash {
+                session.model.model_mut().remove_node(row);
+                session.reported.clear();
+            } else {
+                session.model.restore_row(row, &location, NodeKind::File);
+            }
+            session.refresh_undo_labels();
+            1
+        }
+        Err(error) => {
+            session.last_error = Some(error.to_string());
+            0
+        }
+    }
+}
+
+/// Wait up to `timeout_ms` for every queued operation outcome and fold it into
+/// the model on the caller's thread (T331). An undo/redo calls this right after
+/// [`df_files_undo`] so the replayed rows are repainted before the key or menu
+/// handler returns; a paste batch normally stays on the poll timer. Returns the
+/// number of outcomes folded.
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`] or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_await_ops(session: *mut FfiSession, timeout_ms: u32) -> u32 {
+    let Some(session) = session.as_mut() else {
+        return 0;
+    };
+    let deadline = std::time::Instant::now() + Duration::from_millis(u64::from(timeout_ms));
+    let mut folded = 0;
+    while session.pending > 0 && std::time::Instant::now() < deadline {
+        match session.outcome_rx.recv_timeout(Duration::from_millis(5)) {
+            Ok(outcome) => {
+                session.fold_one(outcome);
+                folded += 1;
+            }
+            Err(_) => {
+                // The worker is still busy (a large directory copy): stop
+                // waiting and let the poll timer fold it.
+                if std::time::Instant::now() >= deadline {
+                    break;
+                }
+            }
+        }
+    }
+    folded
 }
 
 /// How many operations are still awaiting their worker outcome. The facade
@@ -1936,6 +2534,285 @@ mod tests {
             // is asserted here (the wake path is covered in `trash_source`).
             assert!(df_files_trash_monitor_wait(raw, 50) >= 0);
             df_files_trash_monitor_free(raw);
+        }
+    }
+
+    /// Read the undo state, copying its strings before freeing the struct.
+    unsafe fn undo_state(session: *mut FfiSession) -> (u32, u32, String, String, bool, String) {
+        let state = df_files_undo_status(session);
+        let text = |value: *const c_char| {
+            if value.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(value)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        };
+        let result = (
+            state.undo_len,
+            state.redo_len,
+            text(state.undo_label),
+            text(state.redo_label),
+            state.refused != 0,
+            text(state.message),
+        );
+        df_files_undo_state_free(state);
+        result
+    }
+
+    /// Poll until the queued replay has been folded.
+    unsafe fn await_replay(session: *mut FfiSession) -> (u32, u32, String, String, bool, String) {
+        for _ in 0..1000 {
+            let event = df_files_poll_delta(session, 5);
+            df_files_delta_free(event);
+            let state = df_files_undo_status(session);
+            let settled = state.active == 0 && (state.ok != 0 || state.refused != 0);
+            df_files_undo_state_free(state);
+            if df_files_pending_ops(session) == 0 && settled {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        undo_state(session)
+    }
+
+    #[test]
+    fn undo_abi_reverts_a_rename_and_redoes_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("alpha.txt"), b"alpha").expect("write");
+        let uri = Location::file(dir.path()).uri().to_owned();
+        unsafe {
+            let session = df_files_begin(c(&uri).as_ptr());
+            drain_listing(session);
+            assert_eq!(undo_state(session).0, 0, "a fresh session has no history");
+
+            let snapshot = df_files_snapshot(session);
+            let id = id_named(snapshot, "alpha.txt");
+            df_files_event_free(snapshot);
+            assert!(df_files_begin_rename(session, id, c("beta.txt").as_ptr()) > 0);
+            let final_event = await_ops(session);
+            df_files_event_free(final_event);
+            assert!(dir.path().join("beta.txt").exists());
+
+            let (undo_len, redo_len, label, _, refused, _) = undo_state(session);
+            assert_eq!(undo_len, 1);
+            assert_eq!(redo_len, 0);
+            assert_eq!(label, "Rename \"alpha.txt\"");
+            assert!(!refused);
+
+            assert_eq!(df_files_undo(session, 0), 1, "the undo is queued");
+            let (undo_len, redo_len, _, _, refused, message) = await_replay(session);
+            assert_eq!(undo_len, 0);
+            assert_eq!(redo_len, 1);
+            assert!(!refused);
+            assert!(message.starts_with("Undid"), "message: {message}");
+            assert!(dir.path().join("alpha.txt").exists());
+            assert!(!dir.path().join("beta.txt").exists());
+
+            assert_eq!(df_files_undo(session, 1), 1, "the redo is queued");
+            let (undo_len, redo_len, _, _, _, message) = await_replay(session);
+            assert_eq!(undo_len, 1);
+            assert_eq!(redo_len, 0);
+            assert!(message.starts_with("Redid"), "message: {message}");
+            assert!(dir.path().join("beta.txt").exists());
+            df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn undo_abi_reports_a_conflict_reason_and_keeps_the_entry() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("alpha.txt"), b"alpha").expect("write");
+        let uri = Location::file(dir.path()).uri().to_owned();
+        unsafe {
+            let session = df_files_begin(c(&uri).as_ptr());
+            drain_listing(session);
+            let snapshot = df_files_snapshot(session);
+            let id = id_named(snapshot, "alpha.txt");
+            df_files_event_free(snapshot);
+            assert!(df_files_begin_rename(session, id, c("beta.txt").as_ptr()) > 0);
+            let final_event = await_ops(session);
+            df_files_event_free(final_event);
+
+            // A newcomer takes the old name: the undo must refuse, not clobber.
+            std::fs::write(dir.path().join("alpha.txt"), b"newcomer").expect("squatter");
+            assert_eq!(df_files_undo(session, 0), 1);
+            let (undo_len, redo_len, _, _, refused, message) = await_replay(session);
+            assert!(refused, "a conflict is reported");
+            assert_eq!(message, "\"alpha.txt\" already exists");
+            assert_eq!(undo_len, 1, "the step stays undoable");
+            assert_eq!(redo_len, 0);
+            assert_eq!(
+                std::fs::read(dir.path().join("alpha.txt")).unwrap(),
+                b"newcomer"
+            );
+            assert_eq!(
+                std::fs::read(dir.path().join("beta.txt")).unwrap(),
+                b"alpha"
+            );
+            // The refusal is also the inline notice.
+            let error = df_files_take_error(session);
+            assert!(!error.is_null());
+            df_files_string_free(error);
+            df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn undo_abi_enables_an_empty_stack_truthfully() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let uri = Location::file(dir.path()).uri().to_owned();
+        unsafe {
+            let session = df_files_begin(c(&uri).as_ptr());
+            drain_listing(session);
+            assert_eq!(df_files_undo(session, 0), 0, "nothing to undo");
+            let (_, _, label, _, refused, message) = undo_state(session);
+            assert!(label.is_empty());
+            assert!(refused);
+            assert_eq!(message, UndoError::Empty.reason());
+            assert_eq!(df_files_pending_ops(session), 0);
+            df_files_free(session);
+        }
+    }
+
+    /// Serialises the tests that point `XDG_DATA_HOME` at their own trash
+    /// store: the environment is process-wide, so two of them setting it at
+    /// once would make each read the other's store.
+    static TRASH_STORE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn undo_abi_puts_a_trashed_item_back_and_keeps_the_entry() {
+        let _store = TRASH_STORE_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let dir = tempfile::tempdir().expect("tempdir");
+        // The trash store stays inside the temp dir, never the real one.
+        let data = tempfile::tempdir().expect("data home");
+        let previous = std::env::var_os("XDG_DATA_HOME");
+        std::env::set_var("XDG_DATA_HOME", data.path());
+        std::fs::write(dir.path().join("note.txt"), b"hi").expect("write");
+        let uri = Location::file(dir.path()).uri().to_owned();
+        unsafe {
+            let session = df_files_begin(c(&uri).as_ptr());
+            drain_listing(session);
+            let snapshot = df_files_snapshot(session);
+            let id = id_named(snapshot, "note.txt");
+            df_files_event_free(snapshot);
+
+            let op = df_files_begin_trash(session, id);
+            assert!(op > 0);
+            let final_event = await_ops(session);
+            df_files_event_free(final_event);
+            assert!(!dir.path().join("note.txt").exists());
+            assert_eq!(undo_state(session).0, 1);
+
+            assert_eq!(df_files_undo(session, 0), 1);
+            let (_, redo_len, _, _, refused, _) = await_replay(session);
+            assert!(!refused);
+            assert_eq!(redo_len, 1);
+            assert_eq!(std::fs::read(dir.path().join("note.txt")).unwrap(), b"hi");
+            df_files_free(session);
+        }
+        match previous {
+            Some(value) => std::env::set_var("XDG_DATA_HOME", value),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+    }
+
+    #[test]
+    fn put_back_abi_restores_a_trash_listing_row() {
+        let _store = TRASH_STORE_LOCK
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let data = tempfile::tempdir().expect("data home");
+        let previous = std::env::var_os("XDG_DATA_HOME");
+        std::env::set_var("XDG_DATA_HOME", data.path());
+        std::fs::write(dir.path().join("note.txt"), b"hi").expect("write");
+        let trash = FreedesktopTrash::new();
+        let item = trash
+            .trash(&Location::file(dir.path().join("note.txt")))
+            .expect("trash the fixture");
+        let stored_name = item.name().to_string_lossy().into_owned();
+        unsafe {
+            let session = df_files_begin(c("trash:///").as_ptr());
+            assert!(!session.is_null());
+            drain_listing(session);
+            let snapshot = df_files_snapshot(session);
+            assert_eq!(names(snapshot), vec![stored_name.clone()]);
+            let id = id_named(snapshot, &stored_name);
+            df_files_event_free(snapshot);
+            assert!(id > 0);
+
+            assert_eq!(df_files_put_back(session, id), 1, "Put Back restores it");
+            assert_eq!(std::fs::read(dir.path().join("note.txt")).unwrap(), b"hi");
+            let snapshot = df_files_snapshot(session);
+            assert!(names(snapshot).is_empty(), "the Trash row is gone");
+            df_files_event_free(snapshot);
+
+            // A second Put Back of the same row refuses with a reason.
+            assert_eq!(df_files_put_back(session, id), 0);
+            let error = df_files_take_error(session);
+            assert!(!error.is_null(), "a refused Put Back says why");
+            df_files_string_free(error);
+            df_files_free(session);
+        }
+        match previous {
+            Some(value) => std::env::set_var("XDG_DATA_HOME", value),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+    }
+
+    #[test]
+    fn undo_abi_new_folder_and_paste_records_fold() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("source")).expect("source");
+        std::fs::write(dir.path().join("source/report.txt"), b"report").expect("file");
+        let uri = Location::file(dir.path()).uri().to_owned();
+        let source_uri = Location::file(dir.path().join("source/report.txt"))
+            .uri()
+            .to_owned();
+        unsafe {
+            let session = df_files_begin(c(&uri).as_ptr());
+            drain_listing(session);
+
+            assert!(df_files_begin_new_folder(session, c(&uri).as_ptr()) > 0);
+            let final_event = await_ops(session);
+            df_files_event_free(final_event);
+            assert_eq!(undo_state(session).2, "New Folder \"untitled folder\"");
+
+            assert_eq!(df_files_undo(session, 0), 1);
+            let (undo_len, _, _, _, _, _) = await_replay(session);
+            assert_eq!(undo_len, 0);
+            assert!(!dir.path().join("untitled folder").exists());
+
+            // Two items of one clipboard paste are one undo step.
+            for name in ["report.txt", "report.txt"] {
+                assert_ne!(
+                    df_files_begin_paste(
+                        session,
+                        c(&uri).as_ptr(),
+                        c(&source_uri).as_ptr(),
+                        c(name).as_ptr(),
+                        DF_NODE_FILE,
+                        DF_FILES_CLIPBOARD_COPY,
+                        DF_FILES_CONFLICT_KEEP_BOTH,
+                    ),
+                    0
+                );
+            }
+            let final_event = await_ops(session);
+            df_files_event_free(final_event);
+            assert!(dir.path().join("report.txt").exists());
+            assert!(dir.path().join("report.txt 2").exists());
+            assert_eq!(undo_state(session).0, 1, "one paste, one step");
+
+            assert_eq!(df_files_undo(session, 0), 1);
+            await_replay(session);
+            assert!(!dir.path().join("report.txt").exists());
+            assert!(!dir.path().join("report.txt 2").exists());
+            df_files_free(session);
         }
     }
 }

@@ -67,6 +67,18 @@ class FilesDirectoryModel : public QAbstractListModel
     Q_PROPERTY(int pasteFailed READ pasteFailed NOTIFY pasteProgressChanged)
     Q_PROPERTY(QString pasteMode READ pasteMode NOTIFY pasteProgressChanged)
     Q_PROPERTY(QString pasteProgressText READ pasteProgressText NOTIFY pasteProgressChanged)
+    // T331: the undo/redo stacks. `undoLabel`/`redoLabel` name the next step
+    // ("Rename “a.txt”") or are empty; `canUndo`/`canRedo` drive the Edit menu
+    // rows and the keyboard path. The stacks clear on a location change.
+    Q_PROPERTY(int undoCount READ undoCount NOTIFY undoStateChanged)
+    Q_PROPERTY(int redoCount READ redoCount NOTIFY undoStateChanged)
+    Q_PROPERTY(QString undoLabel READ undoLabel NOTIFY undoStateChanged)
+    Q_PROPERTY(QString redoLabel READ redoLabel NOTIFY undoStateChanged)
+    Q_PROPERTY(bool canUndo READ canUndo NOTIFY undoStateChanged)
+    Q_PROPERTY(bool canRedo READ canRedo NOTIFY undoStateChanged)
+    // The last undo/redo sentence ("Undid “Rename a.txt”") or refusal reason;
+    // empty before the first replay.
+    Q_PROPERTY(QString undoMessage READ undoMessage NOTIFY undoStateChanged)
 
 public:
     enum Roles {
@@ -114,6 +126,13 @@ public:
     int pasteFailed() const { return m_pasteFailed; }
     QString pasteMode() const { return m_pasteMode; }
     QString pasteProgressText() const;
+    int undoCount() const { return m_undoCount; }
+    int redoCount() const { return m_redoCount; }
+    QString undoLabel() const { return m_undoLabel; }
+    QString redoLabel() const { return m_redoLabel; }
+    bool canUndo() const { return m_undoCount > 0; }
+    bool canRedo() const { return m_redoCount > 0; }
+    QString undoMessage() const { return m_undoMessage; }
 
     // Sort by `key`, flipping direction when it is already active.
     Q_INVOKABLE void sortBy(const QString &key);
@@ -139,6 +158,21 @@ public:
     // The names currently painted, for the shell's pre-flight conflict check
     // (the clipboard model lives in QML and survives navigation).
     Q_INVOKABLE QStringList names() const;
+    // Undo / redo the last operation (T331). Returns false when there is
+    // nothing to replay or a replay is still running; the outcome lands in
+    // `undoMessage` (a refusal leaves the filesystem untouched and says why).
+    Q_INVOKABLE bool undo();
+    Q_INVOKABLE bool redo();
+    // Put Back the item the shell trashed through another path (the Dock's
+    // Trash bridge) and that this session recorded. Returns false with
+    // `lastError` set when the id is unknown or the store refused.
+    Q_INVOKABLE bool putBack(quint64 nodeId);
+    // Record a successful trash the window's Trash bridge performed (T331):
+    // the files-core session then offers it from `canUndo` and `putBack`.
+    // `oldUri` is where the item was, `trashPath` its store path. Returns
+    // false when the store could not confirm the entry.
+    Q_INVOKABLE bool noteTrash(quint64 nodeId, const QString &oldUri,
+                               const QString &trashPath);
     // The row currently painting `nodeId`, or -1. The shell uses it to
     // translate an anchor + a clicked id into a contiguous range.
     Q_INVOKABLE int rowForNodeId(quint64 nodeId) const;
@@ -169,6 +203,8 @@ signals:
     // Emitted once when a paste batch settles; the shell clears a cut
     // clipboard and shows the summary.
     void pasteFinished(int copied, int skipped, int failed);
+    // The undo/redo availability, labels, or last message changed (T331).
+    void undoStateChanged();
 
 private slots:
     void poll();
@@ -214,6 +250,10 @@ private:
     // Fold the Rust session's paste counters into the properties and emit
     // `pasteFinished` once when a batch settles.
     void updatePasteProgress();
+    // Fold the Rust session's undo stacks into the properties (T331).
+    void updateUndoState();
+    // Queue an undo/redo; `redo` picks the stack (T331).
+    bool replay(bool redo);
     static QString iconFor(int kind, const QString &name);
     static QString thumbnailFor(int kind, const QString &uri, const QString &name);
     static QString kindTextFor(int kind);
@@ -242,4 +282,9 @@ private:
     int m_pasteFailed = 0;
     QString m_pasteMode;
     bool m_pasteReported = false;
+    int m_undoCount = 0;
+    int m_redoCount = 0;
+    QString m_undoLabel;
+    QString m_redoLabel;
+    QString m_undoMessage;
 };

@@ -98,6 +98,18 @@
 //! * The C ABI's `df_files_begin_paste` / `df_files_paste_state` expose the
 //!   per-item paste and its progress counters to the Qt facade.
 //!
+//! # What T331 owns
+//!
+//! * [`UndoStack`] — a bounded (20) undo/redo stack for rename, new folder,
+//!   Move to Trash, and paste. It records the **locations** each operation
+//!   produced and consumed (and a trash's `TrashedItem`), and replays them
+//!   through the same [`FileOps`]/[`TrashOps`] seams, so undo is never a
+//!   second filesystem engine. Every refusal is checked before the first
+//!   change and reported as an [`UndoConflict`] with a reason.
+//! * The C ABI's `df_files_undo`/`df_files_await_ops`/`df_files_undo_status`
+//!   expose the stacks to the Files facade, which maps them onto `Cmd+Z`,
+//!   `Shift+Cmd+Z`, and the Edit menu.
+//!
 //! # Sorting is incremental and stable
 //!
 //! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
@@ -159,6 +171,7 @@ pub mod sort;
 mod source;
 mod trash;
 mod trash_source;
+mod undo;
 mod watch;
 
 pub use clipboard::{
@@ -180,6 +193,7 @@ pub use trash::{
     TrashedItem, SANCTIONED_TRASH_FALLBACK_MARKER,
 };
 pub use trash_source::{TrashMonitor, TrashSource, TrashState};
+pub use undo::{UndoConflict, UndoError, UndoOutcome, UndoStack, UNDO_LIMIT};
 #[cfg(target_os = "linux")]
 pub use watch::InotifyWatcher;
 pub use watch::{

@@ -161,6 +161,51 @@ typedef struct df_files_paste_progress {
 
 df_files_paste_progress df_files_paste_state(const void *session);
 
+// Undo (redo == 0) or redo (redo != 0) the top step of the session's undo
+// stack, on the operations worker (T331). Returns 1 when queued, 0 when there
+// is nothing to replay or a replay is already running. Poll until
+// df_files_pending_ops is 0, then read df_files_undo_state.
+int32_t df_files_undo(void *session, int32_t redo);
+
+// The undo stack's availability and the last replay's sentence or refusal.
+// Every string is NUL-terminated and owned by `session`; copy it (or pass the
+// struct to df_files_undo_state_free) before the next session call.
+//
+// The function is `df_files_undo_status` because C cannot give the struct
+// typedef and a function the same name (the same reason
+// `df_files_paste_state` queries `df_files_paste_progress`).
+typedef struct df_files_undo_state {
+    uint32_t undo_len;
+    uint32_t redo_len;
+    const char *undo_label;  // next undo's label, or null
+    const char *redo_label;  // next redo's label, or null
+    int32_t active;          // non-zero while a replay is on the worker
+    int32_t ok;              // non-zero when the last replay succeeded
+    int32_t refused;         // non-zero when the last replay was refused
+    const char *message;     // last sentence or refusal reason, or null
+} df_files_undo_state;
+
+df_files_undo_state df_files_undo_status(const void *session);
+
+// Free the strings a df_files_undo_state returned. Null pointers are ignored.
+void df_files_undo_state_free(df_files_undo_state state);
+
+// Record a Move to Trash the shell ran through another path (the Dock's Trash
+// bridge): `uri` is the item's old URI, `path` its store path. Returns 1 when
+// recorded, 0 otherwise.
+int32_t df_files_note_trash(void *session, uint64_t node_id, const char *uri,
+                            const char *path);
+
+// Put Back the item df_files_note_trash recorded under `node_id`. Synchronous;
+// returns 1 on success, 0 on refusal (df_files_take_error says why).
+int32_t df_files_put_back(void *session, uint64_t node_id);
+
+// Wait up to `timeout_ms` for every queued operation outcome and fold it into
+// the model on the calling thread (T331). An undo/redo calls this right after
+// df_files_undo so the replayed rows are painted before the handler returns;
+// a slow replay keeps the poll timer. Returns the outcomes folded.
+uint32_t df_files_await_ops(void *session, uint32_t timeout_ms);
+
 // How many operations are still awaiting their worker outcome. The facade
 // keeps polling while this is non-zero.
 uint32_t df_files_pending_ops(const void *session);

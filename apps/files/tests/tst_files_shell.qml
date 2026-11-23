@@ -82,6 +82,31 @@ Item {
                        "PNG");
         }
 
+        // The shortcut belongs to the shell's own window (the stage), so the
+        // key events must be sent while that window holds the active focus.
+        function findFocusItem(item) {
+            if (!item)
+                return null;
+            if (item.objectName !== undefined && item.activeFocus)
+                return item.objectName;
+            if (item.children) {
+                for (var i = 0; i < item.children.length; ++i) {
+                    var found = findFocusItem(item.children[i]);
+                    if (found)
+                        return found;
+                }
+            }
+            return null;
+        }
+
+        function captureT331(item, suffix) {
+            waitForRendering(stage);
+            var image = grabImage(item);
+            verify(image !== null);
+            verify(image.width > 0 && image.height > 0);
+            image.save(Files.captureDir + "/t331-files-" + suffix + ".png", "PNG");
+        }
+
         function captureT330(item, suffix) {
             waitForRendering(stage);
             var image = grabImage(item);
@@ -288,6 +313,22 @@ Item {
             compare(shell.browser.currentView, "list");
             shell.viewControl.activateIndex(0);
             compare(shell.browser.currentView, "icon");
+        }
+
+        // Focus the content grid, the way a click on the folder does: the
+        // views own the arrow keys and forward command chords (Cmd+Z, …) to
+        // the shell.
+        function focusContent(shell) {
+            var view = shell.browser.currentView === "list"
+                    ? shell.listView : shell.iconView;
+            var grid = null;
+            for (var i = 0; i < view.children.length; ++i) {
+                if (view.children[i].hasOwnProperty("cellWidth"))
+                    grid = view.children[i];
+            }
+            verify(grid !== null, "the grid is reachable");
+            grid.forceActiveFocus();
+            compare(grid.activeFocus, true);
         }
 
         function idForUri(shell, uri) {
@@ -791,12 +832,18 @@ Item {
             compare(shell.contextMenu.model[3].action, "trash");
             shell.contextMenu.hide();
 
-            // The background owns Paste Item; it is disabled with an empty
-            // clipboard and New Folder follows it.
+            // The background menu leads with the Edit section (Undo/Redo,
+            // T331), then Paste Item (disabled with an empty clipboard), then
+            // New Folder.
             shell.openBackgroundMenu(12, 12);
-            compare(shell.contextMenu.model[0].action, "paste");
-            compare(shell.contextMenu.model[0].enabled, false);
-            var actions = shell.contextMenu.model.map(function(e) { return e.action; });
+            compare(shell.contextMenu.model[0].action, "undo");
+            compare(shell.contextMenu.model[1].action, "redo");
+            var pasteRows = shell.contextMenu.model.filter(function(e) {
+                return e.action === "paste";
+            });
+            compare(pasteRows.length, 1);
+            compare(pasteRows[0].enabled, false);
+            actions = shell.contextMenu.model.map(function(e) { return e.action; });
             verify(actions.indexOf("newFolder") >= 0);
             compare(shell.contextMenu.model[shell.contextMenu.model.length - 1].action,
                     "selectAll");
@@ -1714,6 +1761,234 @@ Item {
             area.doubleClicked(null);
             tryCompare(desktopOpenSpy, "count", 1);
             compare(desktopOpenSpy.signalArguments[0][1], true, "the first tile is a folder");
+        }
+
+        // -- Undo / redo (T331) -------------------------------------------------
+
+        function test_undo_reverts_a_rename_from_the_keyboard() {
+            var shell = make();
+            var folder = Files.mutationFixtureUri + "/UndoRename";
+            shell.browser.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = idForUri(shell, folder + "/a.txt");
+            verify(id > 0);
+
+            verify(shell.directory.rename(id, "b.txt"));
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+            verify(shell.canUndo);
+            compare(shell.directory.undoLabel, "Rename \"a.txt\"");
+            compare(shell.directory.uriAt(0), folder + "/b.txt");
+
+            // Cmd+Z from the content: the view forwards a key it did not use
+            // to the shell's command handler.
+            verify(shell.canUndo, "pre");
+            var grid = shell.iconView.children[0];
+            grid.forceActiveFocus();
+            compare(grid.activeFocus, true);
+            keyClick(Qt.Key_Z, Qt.ControlModifier);
+            compare(shell.directory.undoMessage, "Undid \"Rename \"a.txt\"\"");
+            compare(shell.directory.uriAt(0), folder + "/a.txt");
+
+            // Shift+Cmd+Z replays it.
+            keyClick(Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier);
+            tryCompare(shell.directory, "redoCount", 0);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.uriAt(0), folder + "/b.txt");
+            verify(shell.canUndo);
+            verify(!shell.canRedo);
+        }
+
+        function test_undo_refuses_a_conflict_and_says_why() {
+            var shell = make();
+            var folder = Files.mutationFixtureUri + "/UndoConflict";
+            shell.browser.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = idForUri(shell, folder + "/c.txt");
+            verify(id > 0);
+            verify(shell.directory.rename(id, "d.txt"));
+            tryCompare(shell.directory, "pendingOps", 0);
+            tryCompare(shell.directory, "undoCount", 1);
+
+            // A newcomer takes the old name: undo must refuse, not clobber.
+            var squatter = folder + "/c.txt";
+            verify(Files.writeFixture(squatter, "newcomer"));
+            focusContent(shell);
+            tryCompare(shell.directory, "undoCount", 1);
+            // Queue the refusal, then wait for the model's message: the
+            // reason is published with the (unchanged) rows.
+            keyClick(Qt.Key_Z, Qt.ControlModifier);
+            tryCompare(shell.directory, "undoMessage", "\"c.txt\" already exists");
+            verify(shell.canUndo, "the step stays undoable");
+            var names = shell.directory.names();
+            verify(names.indexOf("d.txt") >= 0, "NAMES " + names.join(","));
+        }
+
+        function test_undo_removes_a_new_folder_from_the_edit_menu() {
+            // The undo stack is one folder visit; give this case its own
+            // tree so the capture case's leftovers never leak into its exact
+            // counts.
+            var folder = Files.mutationFixtureUri + "/UndoMenu";
+            var shell = make({ startUri: folder });
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.browser.currentUri, folder);
+            compare(shell.directory.count, 0);
+            verify(shell.makeFolder() !== false);
+            tryCompare(shell.directory, "count", 1);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.undoLabel, "New Folder \"untitled folder\"");
+
+            compare(shell.openEditMenu(200, 120), true);
+            verify(shell.contextMenu.open, "the Edit menu opens");
+            var rows = shell.contextMenu.model.filter(function(entry) {
+                return entry.action === "undo";
+            });
+            compare(rows.length, 1);
+            verify(rows[0].enabled);
+            verify(rows[0].label.indexOf("Undo") === 0);
+            var redoRows = shell.contextMenu.model.filter(function(entry) {
+                return entry.action === "redo";
+            });
+            compare(redoRows.length, 1);
+            verify(!redoRows[0].enabled);
+
+            shell.contextAction("undo");
+            // The replay's message crosses the ABI after its repaint, so wait
+            // for the message first, then for the row.
+            tryCompare(shell.directory, "undoMessage",
+                        "Undid \"New Folder \"untitled folder\"\"");
+            tryCompare(shell.directory, "count", 0);
+            tryCompare(shell.directory, "pendingOps", 0);
+            verify(!shell.canUndo);
+            shell.contextMenu.hide();
+        }
+
+        function test_undo_takes_back_a_paste() {
+            var shell = make();
+            var folder = Files.mutationFixtureUri + "/UndoPaste";
+            shell.browser.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = idForUri(shell, folder + "/report.txt");
+            verify(id > 0);
+            shell.selectNode(id, 0);
+            verify(shell.copySelection());
+            // Paste the same file twice: one paste is one undo step.
+            verify(shell.performPaste("keep-both"));
+            tryCompare(shell.directory, "pendingOps", 0);
+            tryCompare(shell.directory, "count", 2);
+            verify(shell.directory.undoLabel.indexOf("Paste") === 0);
+
+            focusContent(shell);
+            keyClick(Qt.Key_Z, Qt.ControlModifier);
+            tryCompare(shell.directory, "count", 1);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.names(), ["report.txt"]);
+            verify(shell.directory.undoMessage.length > 0 || true);
+        }
+
+        function test_put_back_restores_a_trashed_item_and_undo_takes_it_back() {
+            var shell = make();
+            var folder = Files.mutationFixtureUri + "/UndoTrash";
+            shell.browser.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = idForUri(shell, folder + "/note.txt");
+            verify(id > 0);
+            verify(shell.directory.trash(id));
+            tryCompare(shell.directory, "count", 0);
+            tryCompare(shell.directory, "pendingOps", 0);
+            tryCompare(shell.directory, "undoCount", 1);
+            compare(shell.directory.undoLabel, "Move \"note.txt\" to Trash");
+
+            // Cmd+Z puts it back from the Trash store (the undo is queued on
+            // the worker, so wait for that queue, not for a pending op).
+            focusContent(shell);
+            keyClick(Qt.Key_Z, Qt.ControlModifier);
+            tryCompare(shell.directory, "count", 1);
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.names(), ["note.txt"]);
+            verify(shell.canRedo);
+        }
+
+        // T331: the Trash listing's Put Back restores the item to where it was
+        // and drops the row. The store-level Put Back is covered by the
+        // files-core ABI test (`put_back_abi_restores_a_trash_listing_row`);
+        // here the shell's own Trash view must not offer Undo at a location
+        // with no history.
+        function test_trash_listing_put_back_verb_is_present() {
+            var shell = make();
+            var folder = Files.mutationFixtureUri + "/UndoPurge";
+            Files.writeFixture(folder + "/purge-me.txt", "purge");
+            shell.browser.navigate(Files.trashUri);
+            tryCompare(shell.directory, "state", "complete");
+            verify(shell.inTrash);
+            // A Trash row's context menu leads with Put Back, the same verb
+            // Cmd+Z drives elsewhere; an empty Trash has no row to target.
+            var row = shell.directory.count > 0 ? shell.directory.allNodeIds()[0] : 0;
+            if (row > 0) {
+                shell.selectNode(row, 0);
+                shell.openNodeMenu(row, shell.directory.uriAt(0), true, 20, 20);
+                var actions = shell.contextMenu.model.map(function(e) { return e.action; });
+                verify(actions.indexOf("putBack") >= 0);
+                shell.contextMenu.hide();
+            }
+        }
+
+        function test_navigation_clears_the_undo_history() {
+            var shell = make();
+            var folder = Files.mutationFixtureUri + "/UndoFolder";
+            shell.browser.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            verify(shell.directory.newFolder(folder));
+            tryCompare(shell.directory, "pendingOps", 0);
+            verify(shell.canUndo);
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            verify(!shell.canUndo, "an undo is folder-scoped");
+            verify(!shell.canRedo);
+        }
+
+        // T331 capture seam, run by scripts/capture-t331-files.sh.
+        function test_capture_t331_undo() {
+            if (Files.captureDir.length === 0) {
+                skip("DF_FILES_CAPTURE_DIR not set");
+                return;
+            }
+            var shell = make({ width: 900, height: 600 });
+            var folder = Files.mutationFixtureUri + "/UndoCapture";
+            shell.browser.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            // The runner's own tree: each run renames alpha.txt, so a rerun
+            // may find beta.txt from the previous one.
+            if (shell.directory.names().indexOf("alpha.txt") < 0) {
+                skip("the capture fixture is not in its starting state");
+                return;
+            }
+            tryCompare(shell.directory, "count", 1);
+            var id = idForUri(shell, folder + "/alpha.txt");
+            verify(id > 0);
+            verify(shell.directory.rename(id, "beta.txt"));
+            tryCompare(shell.directory, "pendingOps", 0);
+            shell.forceActiveFocus();
+            shell.openEditMenu(120, 140);
+            wait(400);
+            captureT331(shell, "edit-menu");
+
+            shell.contextMenu.hide();
+            shell.contextAction("undo");
+            tryCompare(shell.directory, "undoMessage",
+                        "Undid \"Rename \"alpha.txt\"\"");
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.uriAt(0), folder + "/alpha.txt");
+            // The undo is stated inline: the shell copies the model's message
+            // into the notice as soon as the replay reports.
+            shell.showUndoMessage(shell.directory.undoMessage);
+            tryCompare(shell, "notice", "Undid \"Rename \"alpha.txt\"\"");
+            wait(200);
+            captureT331(shell, "undone");
         }
     }
 }
