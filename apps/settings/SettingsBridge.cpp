@@ -18,6 +18,7 @@
 #include "VpnClient.h"
 #include "WifiClient.h"
 #include "displaycapabilities.h"
+#include "backlight.h"
 #include "settingsclient.h"
 
 #include <QColor>
@@ -1143,6 +1144,17 @@ QVariantMap SettingsBridge::schemaFor(const QString &key) const
 QVariantList SettingsBridge::displayAdvancedRows() const
 {
     return displayAdvancedRowsVariant();
+}
+
+bool SettingsBridge::displayBacklightAvailable() const
+{
+    const QString fixture =
+        qEnvironmentVariable("DF_BACKLIGHT_FIXTURE").trimmed().toLower();
+    if (fixture == QLatin1String("present"))
+        return true;
+    if (fixture == QLatin1String("absent"))
+        return false;
+    return resolveBacklightDevice().isValid();
 }
 
 void SettingsBridge::watchDisplayScreen(QScreen *screen)

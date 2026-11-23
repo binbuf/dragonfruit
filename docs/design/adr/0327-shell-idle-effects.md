@@ -4,7 +4,10 @@
 
 Accepted (2026-11-23). Implements the shell half of
 [ADR 0313](0313-idle-dpms-ownership.md); the timer/DPMS ownership and policy
-keys are unchanged.
+keys are unchanged. The dim-overlay decision is superseded in part by
+[ADR 0329](0329-panel-brightness-through-logind.md): with a real backlight the
+panel write is the dim effect and the overlay is only the nested/headless
+fallback.
 
 ## Context
 

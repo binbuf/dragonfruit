@@ -8,6 +8,8 @@
 # second schema-default table). See ADR 0036.
 
 add_library(dragonfruit-settings-client STATIC
+    backlight.cpp
+    backlight.h
     displaycapabilities.cpp
     displaycapabilities.h
     settingsclient.cpp

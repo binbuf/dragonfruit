@@ -965,7 +965,7 @@ controls live on defaults; output rows show `No display`/`Unavailable`.
 | Display role | Use as | Popup | compositor | Main/extend/mirror; disabled with the one-layout reason (Advanced sheet) |
 | Resolution scaling tiles | Resolution | Radios | existing: `display.scale` + compositor | Five real scale steps labelled with their logical size; Show all resolutions filters the list |
 | — | Show all resolutions | Toggle | `display.scale` | View filter over the five steps; not persisted |
-| Brightness | Brightness | Slider | existing: `display.brightness` | Live; the compositor owns the applied level |
+| Brightness | Brightness | Slider | existing: `display.brightness` | Live; the shell writes the effective level through logind `Session.SetBrightness` |
 | Automatically adjust brightness | Automatically adjust brightness | Toggle | `display.autoBrightness` | Disabled: no ambient-light sensor input |
 | Adaptive Color | Ambient color | Toggle | `display.adaptiveColor` | Disabled: no white-point sensor |
 | Preset | Preset | Popup | colord | Disabled: colord not integrated |

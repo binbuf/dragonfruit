@@ -1375,7 +1375,8 @@ action) opens a top-right `control-center` overlay surface rendered from
 Wi-Fi (state + network, `Wi-Fi Settings…` link), Sound (volume slider + mute,
 through the T-07 bridge host), and Display (the brightness slider, written to
 settingsd `display.brightness` and forwarded to the compositor as
-`df_output.set_brightness`). Escape and click-away dismiss it. The Wi-Fi radio
+`df_output.set_brightness`; the physical panel write is the T319 logind
+`Session.SetBrightness` path). Escape and click-away dismiss it. The Wi-Fi radio
 is still read-only in the panel (`wifiWritable: false`); the NetworkManager
 adapter has a join path, but the Quick Settings radio toggle is not wired to it
 yet ([STATUS.md](STATUS.md) G-10). Focus/DND, dark mode, and the a11y pass are

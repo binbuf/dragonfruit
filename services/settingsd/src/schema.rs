@@ -1059,11 +1059,11 @@ pub const KEYS: &[KeySpec] = &[
         min: Some(0.0),
         max: Some(1.0),
         owner: "shell/control-center",
-        consumer: "shell/display forwarder, compositor/output",
+        consumer: "shell/brightness backend, logind Session.SetBrightness",
         semantic: KeySemantic::None,
         stored_only: false,
         since: 4,
-        summary: "Output brightness level; 1.0 is full brightness.",
+        summary: "Output brightness level; 1.0 is full brightness. Applied to the panel through logind.",
     },
     // ── Animation policy ────────────────────────────────────────────────
     KeySpec {

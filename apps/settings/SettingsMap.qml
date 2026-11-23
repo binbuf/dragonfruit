@@ -1222,7 +1222,7 @@ QtObject {
                          "compositor", "display.resolution", "disabled-with-reason", "shipped",
                          false, "compositor/output (pixel-mode list not advertised)"),
                 root.row("brightness", qsTr("Displays"), qsTr("Brightness"), "slider",
-                         "settingsd -> compositor", "display.brightness", "live-on-defaults", "shipped"),
+                         "settingsd -> logind", "display.brightness", "live-on-defaults", "shipped"),
                 root.row("autoBrightness", qsTr("Displays"), qsTr("Auto-brightness"), "toggle",
                          "compositor sensor", "display.autoBrightness", "disabled-with-reason", "shipped"),
                 root.row("adaptiveColor", qsTr("Displays"), qsTr("Ambient color"), "toggle",

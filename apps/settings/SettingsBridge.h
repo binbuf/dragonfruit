@@ -523,6 +523,10 @@ public:
     // T227: the Displays advanced capability table. Supported rows write the
     // real `display.*` keys; unsupported rows carry the OPEN reason.
     Q_INVOKABLE QVariantList displayAdvancedRows() const;
+    // T319: the host exposes a panel backlight. The Displays pane shows its
+    // absence note when false. Live reads `/sys/class/backlight`;
+    // `DF_BACKLIGHT_FIXTURE=present|absent` makes tests deterministic.
+    Q_INVOKABLE bool displayBacklightAvailable() const;
     // T273: the real outputs the Displays pane lists. Live reads
     // `QGuiApplication::screens()`; `DF_DISPLAY_FIXTURE` selects a
     // deterministic one/two-output (or absent) list for tests and captures.

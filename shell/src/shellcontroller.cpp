@@ -52,6 +52,7 @@
 #include "appindexclient.h"
 #include "apppicker.h"
 #include "appsdrawer.h"
+#include "brightnessbackend.h"
 #include "chromedmabuf.h"
 #include "chromeframeproducer.h"
 #include "chromescale.h"
@@ -635,6 +636,20 @@ ShellController::ShellController(QObject *parent)
                 m_protocol->setDpms(true);
         },
     });
+    // T319: the physical panel brightness. The compositor keeps the effective
+    // value for state/OSD; this backend writes the same level through logind's
+    // `Session.SetBrightness` (or a writable sysfs fallback). The probe runs
+    // once at startup so the idle dim effect knows whether the panel itself
+    // can dim, or whether the overlay fallback is still needed.
+    m_brightnessBackend = new BrightnessBackend(this);
+    connect(m_brightnessBackend, &BrightnessBackend::failed, this,
+            [](const QString &reason) {
+                qWarning() << "shell: brightness:" << reason;
+            });
+    if (!m_brightnessBackend->probe()) {
+        qInfo() << "shell: brightness unavailable:"
+                << m_brightnessBackend->absenceReason();
+    }
 }
 
 ShellController::~ShellController()
@@ -9177,11 +9192,20 @@ void ShellController::applyDisplayPolicy()
     if (m_displaySent && settings == m_displaySettings
             && qFuzzyCompare(brightness, m_displayBrightness))
         return;
+    // Only re-send the physical level when it actually changed; a scale or
+    // rotation edit with the same brightness must not touch the panel.
+    const bool brightnessChanged =
+        !m_displaySent || !qFuzzyCompare(brightness, m_displayBrightness);
     m_displaySettings = settings;
     m_displayBrightness = brightness;
     m_displaySent = true;
     m_protocol->setDisplayPolicy(settings.scale, outputTransformFromName(settings.rotation),
                                  brightness);
+    // T319: the compositor's value is the state/OSD source; the backlight
+    // backend is the physical write. Both see the same effective level
+    // (including the battery and idle-dim factors).
+    if (brightnessChanged && m_brightnessBackend)
+        m_brightnessBackend->setLevel(brightness);
     fprintf(stderr, "dragonfruit-shell: display applied (scale=%.3f rotation=%s brightness=%.3f%s)\n",
             settings.scale, qPrintable(settings.rotation), brightness,
             m_idleDimActive ? " idle-dim" : "");
@@ -9243,10 +9267,22 @@ void ShellController::setIdleDimmed(bool dimmed)
     if (m_idleDimActive == dimmed)
         return;
     m_idleDimActive = dimmed;
-    // The dim overlay is the visible effect until T319 owns the panel
-    // backlight; the forwarded brightness also drops so the value the OSD and
-    // a future backlight writer see matches the stage.
+    // The effective brightness (including the dim factor) goes to the
+    // compositor for state/OSD and to the panel through the T319 backend.
     applyDisplayPolicy();
+    // When the panel has a real backlight write path, the backlight is the dim
+    // effect. Keep the overlay only as the nested/headless fallback, or the
+    // screen would dim twice (ADR 0329).
+    const bool physical =
+        m_brightnessBackend && m_brightnessBackend->available();
+    if (physical) {
+        if (m_protocol)
+            m_protocol->hideIdleDim();
+        qInfo() << "shell: idle-dim"
+                << (dimmed ? "through the panel backlight"
+                           : "panel backlight restored");
+        return;
+    }
     if (!m_protocol)
         return;
     if (dimmed) {

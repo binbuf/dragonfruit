@@ -57,3 +57,7 @@ and an exclusive-keyboard panel (it would steal input from windows).
   changing the protocol or the shell.
 - The `brightness` event is `fixed` (24.8), so consumers compare with
   fixed-point tolerance.
+- **Superseded in part by [ADR 0329](0329-panel-brightness-through-logind.md).**
+  The physical write is the shell’s logind `Session.SetBrightness` path, not a
+  compositor DRM handler. The compositor still stores the value and reports it
+  for state/OSD; the protocol is unchanged.

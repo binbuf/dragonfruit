@@ -84,6 +84,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     appindexclient.cpp
     apppicker.cpp
     appsdrawer.cpp
+    brightnessbackend.cpp
+    brightnessbackend.h
     chooserbridge.cpp
     chromebufferpool.cpp
     chromebufferpool.h

@@ -132,6 +132,14 @@ Item {
             compare(pane.resolutionVisibleOptions[0].value, 1.5);
         }
 
+        function test_brightness_absence_note_is_visible_without_a_backlight() {
+            var shell = make();
+            var pane = paneOf(shell);
+            compare(pane.backlightAvailable, false);
+            verify(pane.brightnessAbsenceNote.visible);
+            verify(pane.brightnessAbsenceNote.text.indexOf("No backlight") >= 0);
+        }
+
         function test_brightness_applies_live_and_converges() {
             var shell = make();
             var pane = paneOf(shell);

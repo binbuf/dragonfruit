@@ -68,7 +68,7 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `wallpaper.builtinDefault` | s | `` (empty) | | wallpaperd | shell/wallpaper forwarder, apps/settings | Resolved path of the shipped original Default.jpg; the out-of-box background. |
 | `display.scale` | d | 1.0 | 0.5–2.0 | apps/settings | shell/display forwarder, compositor/output | Output scale / scaled-resolution factor; 1.0 is the native mode. |
 | `display.rotation` | s | `normal` | `normal`/`90`/`180`/`270` | apps/settings | shell/display forwarder, compositor/output | Output rotation as clock-wise degrees. |
-| `display.brightness` | d | 1.0 | 0.0–1.0 | shell/control-center | shell/display forwarder, compositor/output | Output brightness level; 1.0 is full brightness. |
+| `display.brightness` | d | 1.0 | 0.0–1.0 | shell/control-center | shell/brightness backend, logind Session.SetBrightness | Output brightness level; 1.0 is full brightness. Applied to the panel through logind. |
 | `accessibility.reduceMotion` | b | false | | settingsd | shell/design-system Theme, compositor/window motion | Global animation policy: collapse motion to instant transitions. |
 | `accessibility.reduceTransparency` | b | false | | apps/settings | shell/design-system Glass, compositor/material | Replace sampled glass with a scheme-appropriate opaque plate; wins over the transparency slider. |
 | `accessibility.increaseContrast` | b | false | | apps/settings | shell/design-system Glass, compositor/material | Strengthen glass edges and foreground contrast, including when Reduce Transparency is active. |

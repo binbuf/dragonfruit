@@ -1619,6 +1619,15 @@ large preview art was removed. The ownership table above is unchanged; see
 [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md)
 §5.3.
 
+**T319 brightness.** The Brightness slider still writes the one
+`display.brightness` key. The shell now applies the effective level to the
+panel through logind’s `Session.SetBrightness`, while the compositor keeps the
+value for state and the OSD. A host without a backlight keeps the stored level
+and the Brightness group shows “No backlight device is present…” rather than
+implying the panel changed. The note comes from the shared
+`libs/settings-client/backlight.*` resolver; `DF_BACKLIGHT_FIXTURE` makes the
+headless Settings tests deterministic.
+
 ### 4.23 Wallpaper — T278
 
 Owner: settingsd + wallpaperd + compositor. Absence: shipped default always

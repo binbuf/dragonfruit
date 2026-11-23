@@ -59,6 +59,7 @@
 class SystemStatusClient;
 class ThemeBinding;
 class SuspendLock;
+class BrightnessBackend;
 class QDBusServiceWatcher;
 class QQmlEngine;
 class QQuickWindow;
@@ -1458,6 +1459,10 @@ private:
     // subscription and the sleep delay inhibitor; the effects below map to the
     // existing lock, DPMS, and display paths.
     std::unique_ptr<SuspendLock> m_suspendLock;
+    // T319: the panel-backlight writer. The compositor keeps the brightness
+    // value for state/OSD; this object is the hardware half (logind
+    // `Session.SetBrightness`, or a writable sysfs fallback).
+    BrightnessBackend *m_brightnessBackend = nullptr;
     // Paths requested by the idle capture seam, so the normal screenshot
     // delivery does not rename or delete them.
     QSet<QString> m_idleCapturePaths;

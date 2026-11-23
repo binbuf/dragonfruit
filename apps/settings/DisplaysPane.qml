@@ -42,6 +42,10 @@ Item {
         var v = Settings.values["display.brightness"];
         return v === undefined ? 1.0 : Number(v);
     }
+    // T319: the shell writes the effective level to the panel through logind.
+    // A host without a backlight keeps the settingsd level and shows the note
+    // in the Brightness group instead of pretending the panel changed.
+    readonly property bool backlightAvailable: Settings.displayBacklightAvailable()
 
     // The real platform outputs, from the Settings bridge.
     readonly property var outputs:
@@ -216,6 +220,7 @@ Item {
     property alias footer: scalingNote
     property alias brightnessGroup: brightnessGroup
     property alias brightnessSlider: brightnessSlider
+    property alias brightnessAbsenceNote: brightnessAbsenceNote
     property alias autoBrightnessToggle: autoBrightnessToggle
     property alias ambientColorRow: ambientColorRow
     property alias ambientColorToggle: ambientColorToggle
@@ -361,14 +366,30 @@ Item {
             width: parent.width
             title: qsTr("Brightness")
 
+            Text {
+                id: brightnessAbsenceNote
+                objectName: "displaysBrightnessAbsence"
+                width: parent.width
+                visible: !root.backlightAvailable
+                text: qsTr("No backlight device is present. The brightness "
+                           + "level is stored, but the panel cannot change.")
+                color: Theme.color.textSecondary
+                font.pixelSize: Theme.primitive.font.sizeSm
+                wrapMode: Text.WordWrap
+                leftPadding: Theme.controls.settingsRow.paddingH
+                rightPadding: Theme.controls.settingsRow.paddingH
+                topPadding: Theme.primitive.spacing.xs
+            }
+
             SettingsKeyRow {
                 width: parent.width
                 label: qsTr("Brightness")
                 settingsId: "brightness"
-                owner: "settingsd -> compositor"
+                owner: "settingsd -> logind"
                 settingsKey: "display.brightness"
-                description: qsTr("The brightness level applies to the display "
-                                  + "and is reported back.")
+                description: qsTr("Applied to the panel through logind. The "
+                                  + "level is still stored when no backlight "
+                                  + "is available.")
                 showSeparator: true
 
                 controlData: Slider {

@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -165,7 +165,7 @@ effect. The 2026-11-22 review found live-marked keys with no consumer:
 
 - `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend`, `power.preventSleep`
   (no production idle service);
-- `display.brightness` (stored, never written to the panel);
+- `display.brightness` (stored, never written to the panel; closed by T319);
 - `input.pointerSpeed`, `input.naturalScroll`, `input.tapToClick`,
   `input.leftHanded`, `input.scrollMethod`, `input.secondaryClick`,
   `input.scrollSpeed`, `input.doubleClickSpeed`, `input.haptics` (stored in
@@ -386,6 +386,25 @@ wakes DPMS. `services/session/tests/suspend_resume.rs` proves the cycle accepts
 the same external hook without an idle-chain request. The decision is frozen in
 [ADR 0328](adr/0328-lock-before-sleep.md).
 
+T319 lands the panel-brightness half. `libs/settings-client/backlight.*` is the
+one device resolver: it picks a `raw` device over `platform` over `firmware`
+under `/sys/class/backlight`, reads `max_brightness`, and maps the 0..1 setting
+onto the device range. `shell/src/brightnessbackend.*` calls logind’s
+`Session.SetBrightness("backlight", name, value)` asynchronously with a short
+timeout, so a slow or absent logind never blocks the GUI thread. The shell
+forwards the same effective level it already sends the compositor (including
+the battery and idle-dim factors); the compositor keeps the value for state and
+the OSD, while the backend is the physical write. When logind is absent the
+backend writes the sysfs `brightness` file only if it is writable; otherwise it
+logs and reports a visible absence reason instead of claiming success. With a
+real backlight the idle dim stage is the panel write; the T317 translucent
+overlay remains only as the nested/headless fallback, so the screen is never
+dimmed twice. `tst_brightness` drives a fake logind session and a temporary
+sysfs tree and asserts the preferred device, the mapped value, the sysfs
+fallback, the absent no-op, and the non-blocking dispatch. The Displays pane
+shows a “no backlight” note from the same resolver. The decision is frozen in
+[ADR 0329](adr/0329-panel-brightness-through-logind.md).
+
 ## 4. Defect register and task map
 
 Severity is product risk, not effort. P0 items are the release blockers; P1
@@ -401,7 +420,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-04 | No idle/DPMS/auto-lock/suspend; no lock on lid close | T315–T318 |
 | S-05 | X11 apps launch without `DISPLAY` | T309 |
 | S-06 | Mouse/trackpad settings never reach libinput | T320 |
-| S-07 | Brightness never reaches the panel | T319 |
+| S-07 | Brightness never reaches the panel (closed by T319) | T319 |
 | S-08 | Log Out terminates the session through logind (closed by T313) | T313 |
 | S-09 | A hung shell is never recovered (closed by T314) | T314 |
 | S-10 | Clipboard-history serving can block the shell forever (closed by T310) | T310 |

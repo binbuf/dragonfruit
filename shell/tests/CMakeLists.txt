@@ -517,6 +517,32 @@ set_tests_properties(tst_locksuspend PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Brightness tests (T319): the backlight resolver, the 0..1 -> device range
+# mapping, the logind `Session.SetBrightness` request, the writable-sysfs
+# fallback, the absent no-op, and the asynchronous (non-blocking) call. A fake
+# logind session runs on a private bus and the sysfs tree is a temporary
+# directory; `DBUS_SYSTEM_BUS_ADDRESS` points at a dead path so a bug can never
+# reach the developer's real logind.
+qt_add_executable(tst_brightness
+    tst_brightness.cpp
+)
+target_link_libraries(tst_brightness PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_brightness
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_brightness>
+    )
+else()
+    add_test(NAME tst_brightness COMMAND tst_brightness)
+endif()
+set_tests_properties(tst_brightness PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;DBUS_SYSTEM_BUS_ADDRESS=unix:path=/nonexistent-dragonfruit-test-bus"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Theme-binding tests (T-08.2b): a settingsd key change (through the same
 # SettingsClient the Dock uses) flips the design-system Theme, and the gallery
 # variant renders the new scheme. Needs a QML engine plus a real scene graph

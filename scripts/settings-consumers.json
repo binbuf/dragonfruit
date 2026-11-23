@@ -190,9 +190,9 @@
       "task": "T304"
     },
     "display.brightness": {
-      "consumer": "shell/display forwarder, compositor/output",
-      "test": "shell/tests/tst_displayspolicy.cpp",
-      "state": "known-gap",
+      "consumer": "shell/brightness backend, logind Session.SetBrightness",
+      "test": "shell/tests/tst_brightness.cpp",
+      "state": "verified",
       "task": "T319"
     },
     "accessibility.reduceMotion": {
