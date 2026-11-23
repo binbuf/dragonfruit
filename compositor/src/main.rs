@@ -18,6 +18,7 @@ mod backend;
 mod cursor_theme;
 mod design_tokens;
 mod gpu_timer;
+mod idle;
 mod input;
 mod instrument;
 mod lock;

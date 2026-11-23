@@ -305,6 +305,28 @@ The pure `services/session/src/idle.rs` engine remains the unit-test oracle
 for the stage rules; ADR 0313 records why the live timer is in the compositor
 for this gate.
 
+T315 lands the compositor half as `compositor/src/idle.rs`: a clock-injected
+`IdleTimer` that normalizes the four delays exactly as the session oracle does,
+tracks `last_activity` in `notify_activity`, and is frozen by an
+`idle-inhibit` surface or the suspended state. `DfState` arms one calloop timer
+at the next enabled deadline and emits the stable `idle-dim`, `idle-blank`,
+`idle-lock`, `idle-suspend`, and `idle-awake` strings through the existing
+`input_action` event. A late tick emits every crossed stage in order, so the
+shell still dims, blanks, and locks before it suspends. A disabled stage (`0`)
+is skipped and does not constrain a later stage. The shell-side forwarding of
+the `idle.*` values with `df_toplevel_manager.set_idle_policy` (private protocol
+v14) and the dim/blank/lock/suspend effects are T317; older compositors ignore
+the additive request. T315 ships the request and the compositor timer; the
+compositor already applies its shipped defaults until the shell sends a
+policy.
+
+The compositor deliberately duplicates the normalized stage rules rather than
+adding a dependency edge to `dragonfruit-session`. `idle_policy_conformance`
+drives the duplicate with a fake clock (the four stages, skipped stages,
+inhibitor suppression, a live policy change, and a wake), and the session
+engine's own tests stay the oracle. If the rules grow beyond this shape, the
+shared crate ADR 0313 mentions is the extraction point.
+
 ## 4. Defect register and task map
 
 Severity is product risk, not effort. P0 items are the release blockers; P1

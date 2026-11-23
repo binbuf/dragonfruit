@@ -30,6 +30,7 @@ use smithay::desktop::{
     find_popup_root_surface, PopupKeyboardGrab, PopupKind, PopupManager,
     PopupPointerGrab, Space, Window, WindowSurfaceType,
 };
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{LoopHandle, LoopSignal, RegistrationToken};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -99,6 +100,7 @@ use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
 use crate::app_switcher::{AppSwitcher, SwitchStep, SwitcherApp};
 use crate::backend::present::PresentFault;
 use crate::gpu_timer::{GpuPass, GpuSample, GpuStats};
+use crate::idle::{IdlePolicy, IdleStage, IdleTimer};
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::GestureRecognizer;
@@ -1638,6 +1640,16 @@ pub struct DfState {
     pub pending_activation: Vec<Window>,
     /// Surfaces currently inhibiting idle.
     pub idle_inhibitors: Vec<WlSurface>,
+    /// The compositor-owned idle chain (T315): the normalized `idle.*` policy,
+    /// the last-activity instant, the current stage, and the inhibitor/suspend
+    /// freeze. It is pure and clock-injected; [`Self::notify_activity`] feeds
+    /// it every input event and the calloop timer polls it at the next
+    /// deadline.
+    pub idle: IdleTimer,
+    /// The one calloop timer armed at [`IdleTimer::next_deadline`] (T315).
+    /// Disarmed when no stage is enabled or the chain is inhibited/suspended,
+    /// so an idle desktop has no self-inflicted wakeup except the next stage.
+    pub idle_timer: Option<RegistrationToken>,
     pub cursor_image: smithay::input::pointer::CursorImageStatus,
     /// Cursor icon forced while the pointer is over an SSD resize border.
     /// The client's own cursor is kept aside in `client_cursor_image` so it
@@ -1967,6 +1979,10 @@ impl DfState {
         let hot_corners = HotCornerDetector::new(input_settings.hot_corners);
         let shell = ShellProtocolState::new(display_handle);
         let refresh_override = refresh_override_from_env();
+        let clock = Clock::new();
+        // The idle chain's clock shares the compositor's monotonic clock, so a
+        // fake-clock test can drive the pure engine with the same `Duration`.
+        let idle_now = Duration::from(clock.now());
 
         DfState {
             running: true,
@@ -1979,7 +1995,7 @@ impl DfState {
             display_handle: display_handle.clone(),
             loop_handle,
             loop_signal,
-            clock: Clock::new(),
+            clock,
             socket_name: String::new(),
             compositor_state,
             shm_state,
@@ -2021,6 +2037,8 @@ impl DfState {
             pending_windows: Vec::new(),
             pending_activation: Vec::new(),
             idle_inhibitors: Vec::new(),
+            idle: IdleTimer::new(IdlePolicy::new(), idle_now),
+            idle_timer: None,
             cursor_image: smithay::input::pointer::CursorImageStatus::default_named(),
             resize_cursor: None,
             client_cursor_image: smithay::input::pointer::CursorImageStatus::default_named(),
@@ -4555,9 +4573,125 @@ impl DfState {
         });
     }
 
+    /// The compositor's monotonic clock as the idle engine's opaque time.
+    fn idle_now(&self) -> Duration {
+        Duration::from(self.clock.now())
+    }
+
+    /// Apply the `idle.*` policy forwarded by the shell (T315).
+    ///
+    /// Values are whole seconds, `0` disables a stage, and each is clamped to
+    /// the schema's 0..86400 range. The policy is normalized to chain order
+    /// by [`IdleTimer::set_policy`]; a shortened delay that is already due
+    /// fires immediately, while a lengthened one keeps the current stage.
+    pub fn set_idle_policy(&mut self, dim: u32, blank: u32, lock: u32, suspend: u32) {
+        let policy = IdlePolicy::from_seconds(dim, blank, lock, suspend);
+        let now = self.idle_now();
+        let before = self.idle.stage();
+        if let Some(after) = self.idle.set_policy(policy, now) {
+            self.emit_idle_stages(before, after);
+        }
+        self.schedule_idle_timer();
+    }
+
+    /// Whether an `idle-inhibit` surface currently freezes the chain.
+    fn idle_inhibited(&self) -> bool {
+        self.idle_inhibitors
+            .iter()
+            .any(|surface| surface.is_alive())
+    }
+
+    /// Ensure exactly one idle timer is pending while the chain has a
+    /// deadline. Input calls this on every event; an existing timer is left
+    /// alone because it fires at its earlier deadline, finds the stage is not
+    /// due after the activity, and re-arms. That keeps pointer motion from
+    /// churning the calloop source while still landing on the next deadline.
+    fn ensure_idle_timer(&mut self) {
+        if self.idle_timer.is_none() {
+            self.schedule_idle_timer();
+        }
+    }
+
+    /// (Re)arm the one idle timer at [`IdleTimer::next_deadline`].
+    ///
+    /// A frozen chain (inhibited or suspended) and a policy with no enabled
+    /// stage both leave the timer disarmed, so an idle desktop is woken only
+    /// at the next real stage.
+    pub fn schedule_idle_timer(&mut self) {
+        if let Some(token) = self.idle_timer.take() {
+            self.loop_handle.remove(token);
+        }
+        if self.suspend.is_suspended() || self.idle_inhibited() {
+            return;
+        }
+        let Some(deadline) = self.idle.next_deadline() else {
+            return;
+        };
+        let now = self.idle_now();
+        // A deadline already in the past (an inhibitor was just released, or
+        // the loop was blocked) fires promptly; the 1 ms floor avoids a busy
+        // zero-duration timer.
+        let remaining = deadline.saturating_sub(now).max(Duration::from_millis(1));
+        match self
+            .loop_handle
+            .insert_source(Timer::from_duration(remaining), |_, _, state| {
+                state.idle_timer = None;
+                state.poll_idle();
+                TimeoutAction::Drop
+            }) {
+            Ok(token) => self.idle_timer = Some(token),
+            Err(err) => eprintln!("dragonfruit-compositor: failed to arm idle timer: {err}"),
+        }
+    }
+
+    /// Poll the idle chain at the current time and emit every crossed stage.
+    fn poll_idle(&mut self) {
+        let now = self.idle_now();
+        let before = self.idle.stage();
+        if let Some(after) = self.idle.poll(now) {
+            self.emit_idle_stages(before, after);
+        }
+        self.schedule_idle_timer();
+    }
+
+    /// Emit one `input_action` per stage crossed by a late tick.
+    ///
+    /// A timer that missed intermediate deadlines still dims, blanks, and
+    /// locks before it suspends; the shell never has to infer the order.
+    fn emit_idle_stages(&mut self, before: IdleStage, after: IdleStage) {
+        for stage in IdleStage::crossed(before, after) {
+            let action = match stage {
+                IdleStage::Active => InputAction::IdleAwake,
+                IdleStage::Dim => InputAction::IdleDim,
+                IdleStage::Blank => InputAction::IdleBlank,
+                IdleStage::Lock => InputAction::IdleLock,
+                IdleStage::Suspend => InputAction::IdleSuspend,
+            };
+            self.dispatch_input_action(
+                action,
+                TriggerKind::Idle,
+                SERIAL_COUNTER.next_serial().into(),
+            );
+        }
+    }
+
     /// Update idle notification activity state after seat/input activity.
+    ///
+    /// This is the one activity seam: it feeds the `ext-idle-notify` protocol,
+    /// resets the compositor's own idle chain, emits `idle-awake` only when a
+    /// stage was active, and keeps the next-deadline timer armed. Input while
+    /// already active restarts the clock without an action.
     pub fn notify_activity(&mut self) {
         self.idle_notifier_state.notify_activity(&self.seat);
+        let now = self.idle_now();
+        if self.idle.activity(now).is_some() {
+            self.dispatch_input_action(
+                InputAction::IdleAwake,
+                TriggerKind::Idle,
+                SERIAL_COUNTER.next_serial().into(),
+            );
+        }
+        self.ensure_idle_timer();
         // Input implies a client may soon want to repaint; give it a frame
         // cadence window to receive its pending frame callback (see
         // `frame_cadence_active`).
@@ -4586,6 +4720,10 @@ impl DfState {
         if !self.suspend.suspend() {
             return false;
         }
+        // T315: the idle chain must not fire while the machine sleeps. Freeze
+        // it and disarm the one deadline timer; `resume_session` wakes it.
+        self.idle.set_suspended(true);
+        self.schedule_idle_timer();
         // T305: a drag or popup grab must not survive the sleep. The pointer
         // grab would resume moving or resizing a window the user did not
         // press, and a popup's keyboard grab would keep receiving keys after
@@ -4622,6 +4760,9 @@ impl DfState {
         if !self.suspend.resume() {
             return false;
         }
+        // T315: release the idle freeze before recording the wake activity, so
+        // `notify_activity` emits `idle-awake` when the chain was at a stage.
+        self.idle.set_suspended(false);
         self.needs_redraw = true;
         self.notify_activity();
         // Modes may have changed while the machine slept; recompute the
@@ -7554,14 +7695,32 @@ impl SecurityContextHandler for DfState {
 impl IdleInhibitHandler for DfState {
     fn inhibit(&mut self, surface: WlSurface) {
         self.idle_inhibitors.push(surface);
-        let inhibited = self.idle_inhibitors.iter().any(|s| s.is_alive());
+        let inhibited = self.idle_inhibited();
         self.idle_notifier_state.set_is_inhibited(inhibited);
+        // T315: a fresh inhibitor freezes the compositor's chain and wakes it
+        // back to active, exactly like the session controller (ADR 0071). A
+        // second inhibitor while already frozen is a no-op.
+        let now = self.idle_now();
+        if self.idle.set_inhibited(true, now).is_some() {
+            self.dispatch_input_action(
+                InputAction::IdleAwake,
+                TriggerKind::Idle,
+                SERIAL_COUNTER.next_serial().into(),
+            );
+        }
+        self.schedule_idle_timer();
     }
 
     fn uninhibit(&mut self, surface: WlSurface) {
         self.idle_inhibitors.retain(|s| s != &surface);
-        let inhibited = self.idle_inhibitors.iter().any(|s| s.is_alive());
+        let inhibited = self.idle_inhibited();
         self.idle_notifier_state.set_is_inhibited(inhibited);
+        if !inhibited {
+            // Releasing the last inhibitor does not reset the inactivity
+            // clock; the next poll catches up to the stage already due.
+            self.idle.set_inhibited(false, self.idle_now());
+            self.schedule_idle_timer();
+        }
     }
 }
 

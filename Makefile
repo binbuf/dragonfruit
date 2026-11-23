@@ -342,6 +342,7 @@ e2e: build
 	    --test shell_protocol_conformance \
 	    --test shell_idle_trace \
 	    --test idle_trace \
+	    --test idle_policy_conformance \
 	    --test latency_trace \
 	    --test animation_clock \
 	    --test reduced_motion_sweep \

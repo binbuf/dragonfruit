@@ -8,15 +8,16 @@
 //! ([`drm_bringup`]), the hardware input validation matrix
 //! ([`input_validation`]), the multi-GPU import/fallback classification
 //! ([`multi_gpu`]), the per-output refresh model ([`refresh`]), the pure
-//! per-output presentation clock ([`presentation`]), and the pure per-output
-//! frame scheduler ([`frame_scheduler`]); the T-14.5 conformance test drives
-//! the first's codec against a real Xwayland server, and the
-//! T-03.2/T-03.3/T-03.4/T-21.2 tests pin the others' decisions without
-//! hardware.
+//! per-output presentation clock ([`presentation`]), the pure per-output
+//! frame scheduler ([`frame_scheduler`]), and the clock-injected idle timer
+//! ([`idle`]); the T-14.5 conformance test drives the first's codec against a
+//! real Xwayland server, and the T-03.2/T-03.3/T-03.4/T-21.2/T315 tests pin
+//! the others' decisions without hardware.
 
 pub mod design_tokens;
 pub mod drm_bringup;
 pub mod frame_scheduler;
+pub mod idle;
 pub mod input_validation;
 pub mod material_preset;
 pub mod multi_gpu;

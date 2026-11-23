@@ -3421,6 +3421,25 @@ void ShellProtocol::setOverviewPolicy(const QString &hotCornerTopLeft,
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setIdlePolicy(int dimSeconds, int blankSeconds, int lockSeconds,
+                                  int suspendSeconds)
+{
+    // T315: the four `idle.*` delays in whole seconds, forwarded from the one
+    // settingsd owner. Additive in v14; older compositors ignore the request
+    // and keep their built-in defaults. The compositor clamps and normalizes
+    // the stages; the shell still owns the dim/blank/lock/suspend effects.
+    if (m_manager && m_managerVersion >= 14) {
+        const auto seconds = [](int value) {
+            return static_cast<uint32_t>(qBound(0, value, 86400));
+        };
+        df_toplevel_manager_set_idle_policy(m_manager, seconds(dimSeconds),
+                                            seconds(blankSeconds), seconds(lockSeconds),
+                                            seconds(suspendSeconds));
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
                                    bool gestureSpaceSwitch, bool gestureMissionControl)
 {

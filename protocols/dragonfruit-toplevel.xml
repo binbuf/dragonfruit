@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="13">
+  <interface name="df_toplevel_manager" version="14">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -448,6 +448,26 @@
       <arg name="hot_corner_bottom_right_modifier" type="string" allow-null="true"/>
       <arg name="workspace_count" type="uint"/>
       <arg name="switch_to_app_space" type="uint"/>
+    </request>
+
+    <!-- T315: the compositor's live idle policy. Appended after the v13
+         messages so every pre-existing opcode stays put (append-only).
+         Additive in v14. Values are whole seconds; `0` disables that stage.
+         The compositor normalizes the enabled stages into chain order and
+         clamps each value to the schema's 0..86400 range. -->
+    <request name="set_idle_policy" since="14">
+      <description summary="set the live dim/blank/lock/suspend idle policy">
+        One coherent snapshot of the four `idle.*` delays in whole seconds.
+        The shell forwards the settingsd values on startup and on change;
+        the compositor owns the live inactivity timer and emits
+        `idle-dim`/`idle-blank`/`idle-lock`/`idle-suspend`/`idle-awake`
+        through `input_action`. `0` disables a stage, and a disabled stage
+        does not constrain later ones.
+      </description>
+      <arg name="dim" type="uint" summary="seconds before dim; 0 disables"/>
+      <arg name="blank" type="uint" summary="seconds before blank; 0 disables"/>
+      <arg name="lock" type="uint" summary="seconds before lock; 0 disables"/>
+      <arg name="suspend" type="uint" summary="seconds before suspend; 0 disables"/>
     </request>
 
     <enum name="hot_corner">

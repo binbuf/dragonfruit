@@ -68,6 +68,18 @@ pub enum InputAction {
     /// chord from `accessibility.shortcut`; the compositor binds it to this
     /// action and the shell opens the Accessibility pane.
     AccessibilityShortcut,
+    /// T315: the idle chain dimmed the screen. The shell applies the effect.
+    IdleDim,
+    /// T315: the idle chain blanked the screen. The shell applies the effect.
+    IdleBlank,
+    /// T315: the idle chain locked the session. The shell applies the effect.
+    IdleLock,
+    /// T315: the idle chain suspended the session. The shell applies the
+    /// effect; the compositor only owns the timer.
+    IdleSuspend,
+    /// T315: input (or a new inhibitor) woke the chain from a stage. The shell
+    /// restores the stage's effect.
+    IdleAwake,
 }
 
 impl InputAction {
@@ -105,6 +117,11 @@ impl InputAction {
             InputAction::ControlCenter => "control-center",
             InputAction::ShowApps => "show-apps",
             InputAction::AccessibilityShortcut => "accessibility-shortcut",
+            InputAction::IdleDim => "idle-dim",
+            InputAction::IdleBlank => "idle-blank",
+            InputAction::IdleLock => "idle-lock",
+            InputAction::IdleSuspend => "idle-suspend",
+            InputAction::IdleAwake => "idle-awake",
         }
     }
 }
@@ -167,6 +184,8 @@ pub enum TriggerKind {
     Shell,
     /// A sandboxed application registration (portal, T-27).
     Portal,
+    /// The compositor's own idle timer (T315), not a user trigger.
+    Idle,
 }
 
 impl TriggerKind {
@@ -178,6 +197,33 @@ impl TriggerKind {
             TriggerKind::HotCorner(_) => "hot-corner",
             TriggerKind::Shell => "shell",
             TriggerKind::Portal => "portal",
+            TriggerKind::Idle => "idle",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::idle::IdleStage;
+
+    #[test]
+    fn idle_actions_use_the_stage_action_strings() {
+        assert_eq!(InputAction::IdleDim.name(), IdleStage::Dim.action_name());
+        assert_eq!(
+            InputAction::IdleBlank.name(),
+            IdleStage::Blank.action_name()
+        );
+        assert_eq!(InputAction::IdleLock.name(), IdleStage::Lock.action_name());
+        assert_eq!(
+            InputAction::IdleSuspend.name(),
+            IdleStage::Suspend.action_name()
+        );
+        assert_eq!(
+            InputAction::IdleAwake.name(),
+            IdleStage::Active.action_name()
+        );
+        assert_eq!(TriggerKind::Idle.name(), "idle");
+        assert!(!InputAction::IdleDim.is_progress_driven());
     }
 }

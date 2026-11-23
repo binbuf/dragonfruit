@@ -56,17 +56,18 @@ const INTERFACE_VERSION: u32 = 1;
 /// bumps in tandem with its child interface.
 const SHELL_INTERFACE_VERSION: u32 = 4;
 
-/// `df_toplevel_manager` is version 12 since the T275 accessibility
-/// accommodations request was added; version 11 added `set_minimize_target`
-/// (T237); `set_appearance_policy` was the v9 addition (T196);
-/// `activation_result` was the v8 addition (T-14.7g),
+/// `df_toplevel_manager` is version 14 since the T315 `set_idle_policy`
+/// request was added; version 13 added the T276 Overview/hot-corner policy;
+/// version 12 added the T275 accessibility accommodations; version 11 added
+/// `set_minimize_target` (T237); `set_appearance_policy` was the v9 addition
+/// (T196); `activation_result` was the v8 addition (T-14.7g),
 /// `set_app_accelerators` v7 (T-14.2b), `capture_screenshot` and the
 /// `screenshot_saved`/`screenshot_failed` events were the v6 additions
 /// (T-13.3b), `set_motion_policy`/`set_input_policy` were the v5 additions
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 13;
+const MANAGER_INTERFACE_VERSION: u32 = 14;
 
 /// `df_output` is version 4 since the role-keyed `material_role_state` event
 /// was added (T-21.2c); v3 added the global effective `material_state` event
@@ -2695,6 +2696,17 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     workspace_count,
                     switch_to_app_space != 0,
                 );
+            }
+            df_toplevel_manager::Request::SetIdlePolicy {
+                dim,
+                blank,
+                lock,
+                suspend,
+            } => {
+                // T315: the shell forwards the settingsd `idle.*` values. The
+                // compositor owns the live timer; the values are clamped and
+                // normalized by its idle engine.
+                state.set_idle_policy(dim, blank, lock, suspend);
             }
             df_toplevel_manager::Request::SetInputPolicy {
                 repeat_delay_ms,

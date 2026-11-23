@@ -181,8 +181,9 @@ is acked with `done` after the scene applies it (FR-3).
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,
   `release_keyboard_focus` (v2), `set_reduced_motion` (v3),
   `set_launch_origin` (v4), `set_motion_policy`/`set_input_policy` (v5),
-  `capture_screenshot` (v6), `set_app_accelerators` (v7), and
-  `set_minimize_target` (v11). The capture
+  `capture_screenshot` (v6), `set_app_accelerators` (v7),
+  `set_minimize_target` (v11), the accessibility accommodations and
+  Overview/hot-corner policy (v12/v13), and `set_idle_policy` (v14). The capture
   request is the portal presenter's
   still-frame path (T-13.3b): the trusted shell supplies a rectangle, a
   `fullscreen`/`region`/`window` mode, and a path; the compositor renders an
@@ -211,6 +212,10 @@ is acked with `done` after the scene applies it (FR-3).
   `input.repeatDelay`/`input.repeatRate` and the `gestures.*` switches
   (T-08.2c). The shell is the forwarder from the one settingsd owner; the
   compositor is the applier (ADR 0034).
+  `set_idle_policy` (v14) forwards the four `idle.*` delays in whole seconds;
+  the compositor owns the live inactivity timer, normalizes the stages, and
+  emits `idle-dim`/`idle-blank`/`idle-lock`/`idle-suspend`/`idle-awake` through
+  `input_action` (T315, [ADR 0313](adr/0313-idle-dpms-ownership.md)).
 - **Manager events** carry the cross-cutting broadcasts: `workspace_activated`,
   `focused`, `attention` (xdg-activation / demands-attention → Dock bounce),
   `hot_corner` (the same event whether triggered by pointer, gesture, or

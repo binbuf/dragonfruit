@@ -5036,8 +5036,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 13,
-        "the manager must advertise the additive requests through v13"
+        manager_version, 14,
+        "the manager must advertise the additive requests through v14"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -5118,8 +5118,8 @@ fn motion_and_input_policy_requests_apply_live() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 13,
-        "the manager must advertise the additive requests through v13"
+        manager_version, 14,
+        "the manager must advertise the additive requests through v14"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -5260,7 +5260,7 @@ fn overview_policy_resizes_the_workspace_list() {
         |state| state.authenticated.is_some(),
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
-    assert_eq!(manager_version, 13);
+    assert_eq!(manager_version, 14);
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
         &conn,
@@ -5340,8 +5340,8 @@ fn appearance_policy_round_trips_and_invalidates_only_on_change() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 13,
-        "the manager must advertise the additive requests through v13"
+        manager_version, 14,
+        "the manager must advertise the additive requests through v14"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -9318,6 +9318,79 @@ fn fractional_scale_reconfigures_chrome_to_the_logical_output() {
     drop(surface);
     drop(manager);
     drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T315: the shell's additive `set_idle_policy` request reaches the
+/// compositor's live inactivity timer, which emits the four stage actions in
+/// order through the existing `input_action` event. The pure stage rules are
+/// pinned by `idle_policy_conformance` with a fake clock; this test proves the
+/// private-protocol wiring and the real timer arm/fire path.
+#[test]
+fn idle_policy_request_emits_the_stage_actions() {
+    let token = "e2".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-idle-policy", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    assert!(
+        manager_version >= 14,
+        "the manager must advertise set_idle_policy (v14), got {manager_version}"
+    );
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // Short stages so the test does not sleep for minutes. The compositor
+    // normalizes them and arms the one timer at the next deadline.
+    manager.set_idle_policy(1, 2, 3, 4);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(8),
+        |state| {
+            ["idle-dim", "idle-blank", "idle-lock", "idle-suspend"]
+                .iter()
+                .all(|name| {
+                    state
+                        .input_actions
+                        .iter()
+                        .any(|(action, source, _)| action == name && source == "idle")
+                })
+        },
+    );
+
+    let actions: Vec<&str> = state
+        .input_actions
+        .iter()
+        .filter(|(action, source, _)| source == "idle" && action.starts_with("idle-"))
+        .map(|(action, _, _)| action.as_str())
+        .collect();
+    assert_eq!(
+        actions,
+        ["idle-dim", "idle-blank", "idle-lock", "idle-suspend"],
+        "the four stages must arrive in chain order through input_action"
+    );
+
+    manager.destroy();
     let _ = conn.flush();
     proc.shutdown();
 }

@@ -675,6 +675,13 @@ public:
                            const QString &hotCornerBottomRightModifier,
                            int workspaceCount, bool switchToAppSpace);
 
+    // Mirror the idle policy into the compositor (T315,
+    // `df_toplevel_manager.set_idle_policy`, additive in v14): the four
+    // `idle.*` delays in whole seconds; 0 disables a stage. The compositor
+    // owns the live inactivity timer and emits idle-dim/blank/lock/suspend/
+    // awake through `input_action`; the shell owns the effects.
+    void setIdlePolicy(int dimSeconds, int blankSeconds, int lockSeconds, int suspendSeconds);
+
     // Mirror the active keyboard layout into the compositor (T229,
     // `df_toplevel_manager.set_keyboard_layout`, additive in v10). An empty
     // layout keeps the host `XKB_DEFAULT_*` configuration.

@@ -119,6 +119,11 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     // Backend-specific setup (outputs, renderer, input devices).
     (hooks.init)(&mut state)?;
 
+    // T315: arm the idle chain's first deadline. The shipped default policy is
+    // active from login; the shell replaces it with the settingsd values via
+    // `df_toplevel_manager.set_idle_policy` on startup and on change.
+    state.schedule_idle_timer();
+
     // Login starts from the middle of the primary display. The backend hook
     // has now created the outputs and the seat pointer; the global origin
     // would otherwise put the cursor in a corner (possibly on a secondary

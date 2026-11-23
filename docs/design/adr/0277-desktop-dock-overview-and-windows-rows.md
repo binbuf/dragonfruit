@@ -58,8 +58,9 @@ only persisted a key with no compositor consumer.
 
 ## Consequences
 
-- The compositor manager interface is v13; older shells/compositors ignore the
-  request and keep their built-in corners.
+- The compositor manager interface is v13 at this task; older
+  shells/compositors ignore the request and keep their built-in corners.
+  Later additive requests bump it (T315's `set_idle_policy` makes it v14).
 - `workspaces.count` gains a live owner. A window on a removed Space moves to
   the nearest remaining normal Space instead of pointing at a deleted id.
 - The pane tests assert every row either applies live or is disabled with a
