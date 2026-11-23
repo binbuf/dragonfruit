@@ -174,6 +174,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 // frame callback / swap completion. Physical vblank feedback
                 // is not reachable through winit's Rust Wayland backend.
                 state.stats.presentation_provenance = PresentationProvenance::NestedSwapCompletion;
+                // T316: the nested window cannot control the host panel; DPMS
+                // keeps the state and reports the nested fallback.
+                state.set_dpms_backend(crate::dpms::DpmsBackend::Nested);
                 let window_size = backend.window_size();
                 // T-16.3b: the nested output's scale. Fractional values let a
                 // live session exercise chrome sizing and the per-surface

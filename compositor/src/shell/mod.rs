@@ -28,6 +28,7 @@ use wayland_server::protocol::wl_surface::WlSurface;
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use crate::app_switcher::SwitchStep;
+use crate::dpms::DpmsReport;
 use crate::input::action::{HotCorner, TriggerKind};
 use crate::input::gestures::ProgressPhase;
 use crate::input::ShellInputEvent;
@@ -69,11 +70,12 @@ const SHELL_INTERFACE_VERSION: u32 = 4;
 /// at [`INTERFACE_VERSION`].
 const MANAGER_INTERFACE_VERSION: u32 = 14;
 
-/// `df_output` is version 4 since the role-keyed `material_role_state` event
-/// was added (T-21.2c); v3 added the global effective `material_state` event
-/// (P1), and `set_brightness`/`brightness` were the v2 additions (T-11.3a).
+/// `df_output` is version 5 since `set_dpms` and the `dpms` state/fallback
+/// event were added (T316); v4 added the role-keyed `material_role_state`
+/// event (T-21.2c), v3 the global effective `material_state` event (P1), and
+/// `set_brightness`/`brightness` were the v2 additions (T-11.3a).
 /// The other private interfaces stay at [`INTERFACE_VERSION`].
-const DF_OUTPUT_INTERFACE_VERSION: u32 = 4;
+const DF_OUTPUT_INTERFACE_VERSION: u32 = 5;
 
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
@@ -1308,6 +1310,12 @@ impl DfState {
             resource.id().protocol_id(),
             materials.map(|(_, material)| Some(material)),
         );
+        // T316: the initial panel state (on, plus the backend fallback) rides
+        // the same property replay; later changes use `broadcast_output_dpms`.
+        if resource.version() >= 5 {
+            let dpms = self.output_dpms_report(&output_name);
+            resource.dpms(u32::from(dpms.on), dpms.fallback.wire());
+        }
     }
 
     /// Announce every workspace to one manager.
@@ -1557,6 +1565,17 @@ impl DfState {
                     material.fallback.wire(),
                 );
                 cache[role.wire() as usize] = Some(material);
+            }
+        }
+    }
+
+    /// Push one output's applied DPMS state to every trusted shell session
+    /// (T316). Used by the idle blank/wake path and resume; a direct
+    /// `set_dpms` request is acked by its own `send_output_properties`.
+    pub fn broadcast_output_dpms(&mut self, name: &str, report: DpmsReport) {
+        for (output_name, output) in self.output_sessions() {
+            if output_name == name && output.version() >= 5 {
+                output.dpms(u32::from(report.on), report.fallback.wire());
             }
         }
     }
@@ -3016,6 +3035,14 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
             df_output::Request::SetVrr { .. } | df_output::Request::SetNightLight { .. } => {
                 // VRR and night-light plumbing is a T-16 displays-pane item
                 // (see PROGRESS.md, T-02); accepted and acked here.
+            }
+            df_output::Request::SetDpms { on } => {
+                // T316: panel power is a per-connector property. The request
+                // names one output, so blanking one monitor never disables
+                // every connector on the device. The ack below re-sends the
+                // applied state (and the backend fallback) before `done`.
+                let name = output.name();
+                state.set_output_dpms(&name, on != 0);
             }
             df_output::Request::SetBrightness { level } => {
                 // T-11.3a: the compositor owns the output brightness. Reject a

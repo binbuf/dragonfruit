@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -319,6 +319,22 @@ v14) and the dim/blank/lock/suspend effects are T317; older compositors ignore
 the additive request. T315 ships the request and the compositor timer; the
 compositor already applies its shipped defaults until the shell sends a
 policy.
+
+T316 lands the panel-power half as a per-output connector property
+([ADR 0326](adr/0326-per-output-dpms.md)). `SurfaceData` keeps the connector
+handle from `connector_connected`, and `df_output.set_dpms` (v5) resolves one
+output and writes that connector's `DPMS` property with `SETPROPERTY`; it never
+uses `DrmDevice::activate(false)`, so blanking one monitor cannot disable every
+connector on the device. The idle chain applies the stage on the compositor
+side: `idle-blank` blanks every on output, while `idle-awake` and
+`resume_session` wake every off output and request a repaint. A blanked output
+is render-gated because an atomic commit would set the CRTC active and turn the
+panel back on; `frame_finish` also reapplies DPMS off once for a frame that was
+queued just before the blank. Nested and headless keep the state and report a
+named fallback through `df_output.dpms` (`none|nested|headless|failed`); a
+failed DRM write is logged, leaves the previous state live, and never ends the
+session. The actual panel-off remains hardware-open for the T347 DRM pass;
+headless conformance proves the request/ack and the fallback.
 
 The compositor deliberately duplicates the normalized stage rules rather than
 adding a dependency edge to `dragonfruit-session`. `idle_policy_conformance`

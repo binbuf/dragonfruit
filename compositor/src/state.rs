@@ -99,6 +99,7 @@ use std::time::{Duration, Instant};
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
 use crate::app_switcher::{AppSwitcher, SwitchStep, SwitcherApp};
 use crate::backend::present::PresentFault;
+use crate::dpms::{DpmsBackend, DpmsFallback, DpmsModel, DpmsReport};
 use crate::gpu_timer::{GpuPass, GpuSample, GpuStats};
 use crate::idle::{IdlePolicy, IdleStage, IdleTimer};
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
@@ -1773,6 +1774,12 @@ pub struct DfState {
     /// VRR-capable); nested/headless stay `Unknown`, which is reported as
     /// `vrr=unsupported` and keeps the fixed period.
     pub output_vrr: HashMap<String, VrrState>,
+    /// Per-output panel power (T316). The DRM rail applies the connector's
+    /// `DPMS` property; nested/headless keep the state and report the named
+    /// fallback. The idle chain blanks every output on `idle-blank` and
+    /// wakes them on `idle-awake`/resume; the shell may also request one
+    /// output directly with `df_output.set_dpms`.
+    pub dpms: DpmsModel,
     /// Per-output frame requests (T-21.2b, T188b): urgent work (input,
     /// client/chrome commit, resize, global scene change) is separate from
     /// animation work, which is gated by the output's own presentation clock.
@@ -2072,6 +2079,9 @@ impl DfState {
             refresh_override,
             presentation_clocks: PresentationClocks::new(),
             output_vrr: HashMap::new(),
+            // The backend replaces this at init; a bare `DfState` (unit
+            // tests, early startup) reports the headless fallback.
+            dpms: DpmsModel::new(DpmsBackend::Headless),
             frame_scheduler: FrameScheduler::new(),
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
@@ -2724,6 +2734,86 @@ impl DfState {
         }
     }
 
+    /// Install the backend's DPMS capability once at startup (T316).
+    ///
+    /// The DRM rail replaces the default headless fallback before any output
+    /// is announced, so the first property replay already names the real
+    /// backend.
+    pub fn set_dpms_backend(&mut self, backend: DpmsBackend) {
+        self.dpms.set_backend(backend);
+    }
+
+    /// The current DPMS report for one output.
+    pub fn output_dpms_report(&self, output: &str) -> DpmsReport {
+        self.dpms.report(output)
+    }
+
+    /// Whether the output's panel is currently blanked.
+    pub fn output_dpms_is_off(&self, output: &str) -> bool {
+        self.dpms.is_off(output)
+    }
+
+    /// Apply one output's panel power request (T316).
+    ///
+    /// The DRM rail writes that connector's `DPMS` property; nested and
+    /// headless keep the state and report their fallback. A failed write is
+    /// logged, reported as [`DpmsFallback::Failed`], and leaves the session
+    /// running. Turning a panel on requests a repaint so the last scene is
+    /// visible immediately; turning it off deliberately leaves the render
+    /// gate closed until the wake.
+    pub fn set_output_dpms(&mut self, output: &str, on: bool) -> DpmsReport {
+        let outcome = self.dpms.set(output, on, |on| {
+            crate::backend::drm::set_output_dpms(output, on)
+        });
+        if let Some(error) = &outcome.error {
+            eprintln!(
+                "dragonfruit-compositor: DPMS {} failed on {output}: {error}; \
+                 keeping the previous panel state",
+                if on { "on" } else { "off" }
+            );
+        } else if outcome.report.fallback != DpmsFallback::None {
+            println!(
+                "dragonfruit-compositor: DPMS {} on {output} is state-only ({} fallback)",
+                if on { "on" } else { "off" },
+                outcome.report.fallback.name()
+            );
+        }
+        if outcome.report.on {
+            self.needs_redraw = true;
+        }
+        outcome.report
+    }
+
+    /// Blank every output that is still on (the `idle-blank` effect).
+    pub(crate) fn blank_all_outputs(&mut self) {
+        let outputs: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
+        for output in outputs {
+            if self.dpms.is_off(&output) {
+                continue;
+            }
+            let report = self.set_output_dpms(&output, false);
+            self.broadcast_output_dpms(&output, report);
+        }
+    }
+
+    /// Wake every output that is blanked or whose last write failed.
+    ///
+    /// Called for `idle-awake` and on resume. An already-on output is left
+    /// untouched, so a plain input event on an awake desktop does not touch
+    /// the hardware. A failed write is retried because the resume path may be
+    /// the first moment DRM master is available again.
+    pub(crate) fn wake_all_outputs(&mut self) {
+        let outputs: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
+        for output in outputs {
+            let report = self.dpms.report(&output);
+            if report.on && report.fallback != DpmsFallback::Failed {
+                continue;
+            }
+            let report = self.set_output_dpms(&output, true);
+            self.broadcast_output_dpms(&output, report);
+        }
+    }
+
     /// Reinstall the presentation clock's VRR range from the backend state.
     /// A clock whose output is `On` gets the mode-to-24 Hz range; every other
     /// state clears the range and returns to the fixed period.
@@ -2977,6 +3067,7 @@ impl DfState {
         self.refresh_schedule.remove(&removed);
         self.presentation_clocks.remove(&removed);
         self.output_vrr.remove(&removed);
+        self.dpms.forget(&removed);
         self.frame_scheduler.clear(&removed);
         let primary = self
             .space
@@ -4763,6 +4854,11 @@ impl DfState {
         // T315: release the idle freeze before recording the wake activity, so
         // `notify_activity` emits `idle-awake` when the chain was at a stage.
         self.idle.set_suspended(false);
+        // T316: a resume always wakes every panel, even when the session was
+        // blanked by an explicit shell request rather than the idle chain.
+        // The DRM backend retries after re-acquiring master; nested/headless
+        // only update the reported state.
+        self.wake_all_outputs();
         self.needs_redraw = true;
         self.notify_activity();
         // Modes may have changed while the machine slept; recompute the
@@ -5691,6 +5787,16 @@ impl DfState {
         // reissues the launch token and systemd's Restart=always starts it.
         if matches!(action, InputAction::RestartShell) {
             self.restart_shell();
+        }
+        // T316: the idle chain owns panel power on the compositor side. The
+        // blank stage turns every panel off; the wake restores them and asks
+        // for a repaint. The shell may also request one output directly
+        // through `df_output.set_dpms`; the two paths share the same model.
+        if matches!(action, InputAction::IdleBlank) {
+            self.blank_all_outputs();
+        }
+        if matches!(action, InputAction::IdleAwake) {
+            self.wake_all_outputs();
         }
         self.needs_redraw = true;
     }

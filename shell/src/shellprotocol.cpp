@@ -3566,6 +3566,20 @@ void ShellProtocol::applyDisplayPolicy()
     wl_display_flush(m_display);
 }
 
+void ShellProtocol::setDpms(bool on)
+{
+    // T316: remember the request and forward it to every announced output.
+    // The compositor applies the connector property per output; the `dpms`
+    // event reports the applied state and the backend fallback. Outputs
+    // announced later receive the request in `onManagerOutput`.
+    m_displayDpmsKnown = true;
+    m_displayDpmsOn = on;
+    for (df_output *output : std::as_const(m_outputs))
+        df_output_set_dpms(output, on ? 1u : 0u);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::setLaunchOrigin(const QString &appId, int x, int y, int width, int height)
 {
     // T-02.1b: hand the Dock entry's tile rectangle to the compositor so a
@@ -5367,7 +5381,7 @@ void ShellProtocol::onManagerOutput(void *data, df_toplevel_manager *, df_output
         onOutputName,       onOutputGeometry, onOutputMode,        onOutputScale,
         onOutputTransform,  onOutputVrr,      onOutputNightLight,  onOutputReservedZone,
         onOutputDone,       onOutputRemoved,  onOutputBrightness,  onOutputMaterialState,
-        onOutputMaterialRoleState,
+        onOutputMaterialRoleState, onOutputDpms,
     };
     df_output_add_listener(id, &listener, self);
     // Remember the output so a display policy can reach it (T-09.5). A policy
@@ -5375,6 +5389,9 @@ void ShellProtocol::onManagerOutput(void *data, df_toplevel_manager *, df_output
     self->m_outputs.append(id);
     if (self->m_displayKnown)
         self->applyDisplayPolicy();
+    // T316: an output announced after a DPMS request still receives it.
+    if (self->m_displayDpmsKnown)
+        df_output_set_dpms(id, self->m_displayDpmsOn ? 1u : 0u);
 }
 
 void ShellProtocol::onManagerWorkspace(void *data, df_toplevel_manager *, df_workspace *id)
@@ -5953,6 +5970,20 @@ void ShellProtocol::onOutputMaterialRoleState(void *data, df_output *, uint32_t 
     state.blurActive = active;
     state.fallback = fallback;
     emit self->materialRoleStateChanged(role, tier, active, fallback);
+}
+void ShellProtocol::onOutputDpms(void *data, df_output *, uint32_t on, uint32_t fallback)
+{
+    // T316: the compositor reports the applied panel state and, when the
+    // hardware cannot apply it, the named fallback. Keep the last value for
+    // the idle effect owner and name the fallback in the session log.
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_displayDpmsOn = on != 0;
+    self->m_displayDpmsFallback = fallback;
+    if (fallback != 0) {
+        static const char *const names[] = {"none", "nested", "headless", "failed"};
+        const char *name = fallback < 4 ? names[fallback] : "unknown";
+        fprintf(stderr, "dragonfruit-shell: DPMS is state-only (%s fallback)\n", name);
+    }
 }
 void ShellProtocol::onOutputDone(void *, df_output *) {}
 void ShellProtocol::onOutputRemoved(void *data, df_output *output)

@@ -60,6 +60,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 // readback. This is a quality fallback, not a correctness one —
                 // it resolves the same `MaterialRole`/`BackdropSpec` inputs.
                 state.material_path = crate::window::MaterialPath::Software;
+                // T316: no panel exists on the headless rail; DPMS keeps the
+                // state and reports the headless fallback.
+                state.set_dpms_backend(crate::dpms::DpmsBackend::Headless);
                 if let Some(path) = &install_path {
                     crate::input::synthetic::install(state, path)?;
                 }

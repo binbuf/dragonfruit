@@ -595,7 +595,7 @@
     </enum>
   </interface>
 
-  <interface name="df_output" version="4">
+  <interface name="df_output" version="5">
     <description summary="one display">
       Follows wlr-output-management: modes, scale, transform, plus VRR and
       night-light/color controls, brightness, and reserved zones. `set_*`
@@ -733,6 +733,26 @@
       <arg name="tier" type="uint" summary="0=full,1=reduced,2=minimal"/>
       <arg name="blur_active" type="uint"/>
       <arg name="fallback" type="uint"/>
+    </event>
+
+    <!-- Additive in v5 (T316): per-output panel power. DPMS is a connector
+         property, so one output can blank while another stays on. The
+         compositor applies the DRM connector's `DPMS` property; nested and
+         headless keep the state and report the named fallback. A failed
+         write is reported as fallback=3 and never ends the session. -->
+    <request name="set_dpms" since="5">
+      <description summary="set this output's panel power">
+        `on` is 1 to wake the panel and 0 to blank it. The request is acked
+        with a `dpms` event and `done`. It never disables every connector on
+        the device.
+      </description>
+      <arg name="on" type="uint" summary="1=on, 0=off"/>
+    </request>
+
+    <event name="dpms" since="5">
+      <description summary="this output's applied panel power"/>
+      <arg name="on" type="uint" summary="1=on, 0=off"/>
+      <arg name="fallback" type="uint" summary="0=applied,1=nested,2=headless,3=write-failed"/>
     </event>
   </interface>
 

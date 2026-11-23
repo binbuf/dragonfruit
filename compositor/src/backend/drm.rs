@@ -391,6 +391,10 @@ struct SurfaceData {
     global: GlobalId,
     drm_output:
         DrmOutput<GbmAllocatorDrm, GbmExporterDrm, Option<OutputPresentationFeedback>, DrmDeviceFd>,
+    /// The connector this surface drives. DPMS is a connector property, so
+    /// the panel-power path needs the handle rather than the CRTC alone
+    /// (T316).
+    connector: connector::Handle,
     last_presentation_time: Option<Time<smithay::utils::Monotonic>>,
     /// The compositor frame id of the last queued scanout, so the vblank
     /// presentation trace can name the exact frame (T238 follow-up).
@@ -533,6 +537,8 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
     // feather stack and the shell's milky plate.
     state.material_blur_supported = env_flag_default_true(ENV_DRM_MATERIAL);
     state.stats.presentation_provenance = PresentationProvenance::DrmVblank;
+    // T316: this rail applies DPMS through the connector property.
+    state.set_dpms_backend(crate::dpms::DpmsBackend::Drm);
     // Session: logind/libseat takes the VT and device access. On a host with
     // no *free* seat (a workstation already running a desktop) this is where
     // bring-up stops: report it as OPEN — the T-03.2 unit is marked open, not
@@ -811,38 +817,46 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
                     // user may have docked/undocked while asleep), then repaint
                     // every surviving output.
                     state.resume_session();
-                    let mut guard = shared.borrow_mut();
-                    let Some(data) = guard.as_mut() else { return };
-                    if let Some(libinput) = data.libinput.as_mut() {
-                        if let Err(err) = libinput.resume() {
-                            eprintln!("dragonfruit-compositor: failed to resume libinput: {err:?}");
-                        }
-                    }
-                    let nodes: Vec<DrmNode> = data.devices.keys().copied().collect();
-                    for node in &nodes {
-                        if let Some(device) = data.devices.get_mut(node) {
-                            // Optimistic re-activation: if connectors were
-                            // re-bound by a foreign master, the queued render
-                            // resets the state instead (see render_surface).
-                            if let Err(err) = device.drm_output_manager.activate(false) {
+                    {
+                        let mut guard = shared.borrow_mut();
+                        let Some(data) = guard.as_mut() else { return };
+                        if let Some(libinput) = data.libinput.as_mut() {
+                            if let Err(err) = libinput.resume() {
                                 eprintln!(
-                                    "dragonfruit-compositor: failed to reactivate {node:?}: {err}"
+                                    "dragonfruit-compositor: failed to resume libinput: {err:?}"
                                 );
                             }
                         }
-                    }
-                    for node in &nodes {
-                        device_changed(state, data, *node);
-                    }
-                    for (node, device) in data.devices.iter() {
-                        let node = *node;
-                        for crtc in device.surfaces.keys().copied() {
-                            let shared = shared.clone();
-                            let _ = state.loop_handle.insert_idle(move |state| {
-                                render_surface(state, &shared, node, crtc, true);
-                            });
+                        let nodes: Vec<DrmNode> = data.devices.keys().copied().collect();
+                        for node in &nodes {
+                            if let Some(device) = data.devices.get_mut(node) {
+                                // Optimistic re-activation: if connectors were
+                                // re-bound by a foreign master, the queued render
+                                // resets the state instead (see render_surface).
+                                if let Err(err) = device.drm_output_manager.activate(false) {
+                                    eprintln!(
+                                        "dragonfruit-compositor: failed to reactivate {node:?}: \
+                                         {err}"
+                                    );
+                                }
+                            }
+                        }
+                        for node in &nodes {
+                            device_changed(state, data, *node);
+                        }
+                        for (node, device) in data.devices.iter() {
+                            let node = *node;
+                            for crtc in device.surfaces.keys().copied() {
+                                let shared = shared.clone();
+                                let _ = state.loop_handle.insert_idle(move |state| {
+                                    render_surface(state, &shared, node, crtc, true);
+                                });
+                            }
                         }
                     }
+                    // T316: master is back after `activate`, so retry any
+                    // panel-on write that failed while the session was paused.
+                    state.wake_all_outputs();
                 }
             })
             .map_err(|e| format!("failed to register session source: {e}"))?;
@@ -1186,6 +1200,7 @@ fn connector_connected(
             output,
             global,
             drm_output,
+            connector: connector.handle(),
             last_presentation_time: None,
             last_queued_frame: 0,
             vblank_throttle_timer: None,
@@ -1220,6 +1235,64 @@ fn connector_disconnected(
         state.on_output_removed(&surface.output);
         state.space.unmap_output(&surface.output);
     }
+}
+
+/// Apply DPMS to one output's connector (T316).
+///
+/// The output name is the stable `wl_output` name; only the surface whose
+/// connector matches is touched. A missing output or connector property is
+/// reported to the caller, which logs it and keeps the session running. The
+/// caller must not hold a borrow of the shared DRM slot.
+pub fn set_output_dpms(output_name: &str, on: bool) -> Result<(), String> {
+    let Some(shared) = drm_shared_slot() else {
+        return Err("the DRM backend is not initialised".to_string());
+    };
+    let mut guard = shared.borrow_mut();
+    let Some(data) = guard.as_mut() else {
+        return Err("the DRM backend has no data slot".to_string());
+    };
+    let mut matched = false;
+    for device in data.devices.values() {
+        let drm_device = device.drm_output_manager.device();
+        for surface in device.surfaces.values() {
+            if surface.output.name() != output_name {
+                continue;
+            }
+            matched = true;
+            set_connector_dpms(drm_device, surface.connector, on)
+                .map_err(|err| format!("{output_name}: {err}"))?;
+        }
+    }
+    if matched {
+        Ok(())
+    } else {
+        Err(format!("output {output_name} has no DRM connector"))
+    }
+}
+
+/// Write one connector's `DPMS` property.
+///
+/// `SETPROPERTY` is the per-connector path wlroots-style compositors use for
+/// DPMS; it affects only the named connector. The property is resolved by
+/// name because its handle is driver-assigned.
+fn set_connector_dpms(
+    device: &DrmDevice,
+    connector: connector::Handle,
+    on: bool,
+) -> Result<(), String> {
+    let properties = device
+        .get_properties(connector)
+        .map_err(|err| format!("read connector properties: {err}"))?;
+    let dpms = properties
+        .into_iter()
+        .find_map(|(handle, _)| {
+            let info = device.get_property(handle).ok()?;
+            (info.name().to_str() == Ok("DPMS")).then_some(handle)
+        })
+        .ok_or_else(|| "connector has no DPMS property".to_string())?;
+    device
+        .set_property(connector, dpms, u64::from(on))
+        .map_err(|err| format!("set DPMS {}: {err}", if on { "on" } else { "off" }))
 }
 
 fn device_removed(state: &mut crate::state::DfState, data: &mut DrmData, node: DrmNode) {
@@ -1357,6 +1430,25 @@ fn frame_finish(
         )
     };
 
+    // T316: a frame queued just before the blank can complete its atomic
+    // commit after the DPMS-off write and briefly re-enable the panel. Reapply
+    // the off state at the vblank that finishes that frame; the render gate
+    // then keeps new commits away until the wake.
+    if state.output_dpms_is_off(&output_name) {
+        if let Some(device) = data.devices.get(&dev_id) {
+            if let Some(surface) = device.surfaces.get(&crtc) {
+                if let Err(err) =
+                    set_connector_dpms(device.drm_output_manager.device(), surface.connector, false)
+                {
+                    eprintln!(
+                        "dragonfruit-compositor: re-applying DPMS off on {output_name} failed: \
+                         {err}"
+                    );
+                }
+            }
+        }
+    }
+
     let retry = match submit_result {
         Ok(user_data) => {
             // `Some` means a queued frame reached this vblank. Record the
@@ -1478,6 +1570,13 @@ fn render_surface(
     // queued on this output is not queued again. `force` is only for the
     // initial/resume/retry paths that are not scheduler requests.
     let output_name = surface.output.name();
+    // T316: a blanked connector must not receive a frame commit. An atomic
+    // commit sets the CRTC active, which would turn the panel back on, so the
+    // render path is the gate that keeps an idle blank genuinely off. The
+    // wake path clears the state and requests this repaint.
+    if state.output_dpms_is_off(&output_name) {
+        return;
+    }
     let now = Duration::from(state.clock.now());
     if !force && !state.output_should_render(&output_name, now) {
         return;

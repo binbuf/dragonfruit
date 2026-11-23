@@ -17,6 +17,7 @@ mod app_switcher;
 mod backend;
 mod cursor_theme;
 mod design_tokens;
+mod dpms;
 mod gpu_timer;
 mod idle;
 mod input;

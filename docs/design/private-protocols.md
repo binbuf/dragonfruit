@@ -172,10 +172,18 @@ is acked with `done` after the scene applies it (FR-3).
   `wallpaper`, `removed`, `done`.
 - **`df_output`** follows `wlr-output-management`: `name`, `geometry`,
   `mode`, `scale`, `transform`, `vrr`, `night_light`, `reserved_zone`,
-  `done`, `removed`. Requests set mode/scale/transform (applied through
-  Smithay's `Output::change_current_state`); VRR and night light are accepted
-  and acked but their backend plumbing is a T-16 displays-pane item (see
-  `tasks/legacy/PROGRESS.md`, T-02 (legacy)).
+  `brightness`, `dpms`, `done`, `removed`. Requests set mode/scale/transform
+  (applied through Smithay's `Output::change_current_state`) and brightness;
+  VRR and night light are accepted and acked but their backend plumbing is a
+  T-16 displays-pane item (see `tasks/legacy/PROGRESS.md`, T-02 (legacy)).
+  `set_dpms` (v5, T316) is the per-output panel-power request: the compositor
+  writes that DRM connector's `DPMS` property, never
+  `DrmDevice::activate(false)`, and acks with `dpms { on, fallback }` before
+  `done`. `fallback` is `0=none, 1=nested, 2=headless, 3=write-failed`;
+  nested/headless keep the state and report their name, and a failed write
+  leaves the previous state live ([ADR 0326](adr/0326-per-output-dpms.md)).
+  The idle chain applies `idle-blank`/`idle-awake` on the same model, so the
+  event also arrives without a shell request.
 - **Manager requests** include the cross-cutting controls: workspace
   create/remove/reorder/activate, `enter`/`exit_mission_control`,
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,

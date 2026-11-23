@@ -121,6 +121,8 @@ struct TestClient {
     output_modes: Vec<(u32, u32, u32)>,
     output_transforms: Vec<u32>,
     output_brightness: Vec<f64>,
+    /// `df_output.dpms` events: `(on, fallback)` in arrival order (T316).
+    output_dpms: Vec<(u32, u32)>,
     /// Legacy v3 `df_output.material_state` events: `(tier, blur, fallback)`.
     output_material_states: Vec<(u32, u32, u32)>,
     /// v4 `df_output.material_role_state` events:
@@ -431,6 +433,7 @@ impl Dispatch<df_output::DfOutput, ()> for TestClient {
                     .push((resource.id().protocol_id(), edge, thickness));
             }
             df_output::Event::Brightness { level } => state.output_brightness.push(level),
+            df_output::Event::Dpms { on, fallback } => state.output_dpms.push((on, fallback)),
             df_output::Event::MaterialState {
                 tier,
                 blur_active,
@@ -9388,6 +9391,84 @@ fn idle_policy_request_emits_the_stage_actions() {
         actions,
         ["idle-dim", "idle-blank", "idle-lock", "idle-suspend"],
         "the four stages must arrive in chain order through input_action"
+    );
+
+    // T316: the blank stage turns the panel off on the compositor side, so
+    // the shell observes the new DPMS state even though it did not request it.
+    // Headless keeps the state and names its fallback (`2`).
+    assert!(
+        state.output_dpms.contains(&(0, 2)),
+        "idle-blank must report DPMS off with the headless fallback: {:?}",
+        state.output_dpms
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T316: `df_output.set_dpms` is a per-output request acked with the applied
+/// state. The headless rail has no panel, so it keeps the state and names the
+/// `headless` fallback (`fallback=2`); the initial property replay already
+/// reports on/headless before any request.
+#[test]
+fn dpms_request_acks_state_and_names_the_headless_fallback() {
+    let token = "d3".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-dpms", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.done_count > 0,
+    );
+
+    // The output property replay reports the initial state: on, with the
+    // headless fallback (0=none, 1=nested, 2=headless, 3=write-failed).
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_dpms.contains(&(1, 2)),
+    );
+
+    // Blanking this output is a request/ack round-trip; the headless state is
+    // kept even though no hardware panel exists.
+    state.output_dpms.clear();
+    state.outputs[0].set_dpms(0);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_dpms.contains(&(0, 2)),
+    );
+
+    // Waking it reports on again, still naming the headless fallback.
+    state.output_dpms.clear();
+    state.outputs[0].set_dpms(1);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_dpms.contains(&(1, 2)),
     );
 
     manager.destroy();

@@ -15,6 +15,7 @@
 //! the others' decisions without hardware.
 
 pub mod design_tokens;
+pub mod dpms;
 pub mod drm_bringup;
 pub mod frame_scheduler;
 pub mod idle;

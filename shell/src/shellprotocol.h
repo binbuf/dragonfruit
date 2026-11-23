@@ -711,6 +711,18 @@ public:
     // list is not lost.
     void setDisplayPolicy(double scale, uint32_t transform, double brightness);
 
+    // Ask the compositor to blank or wake every announced output (T316,
+    // `df_output.set_dpms`, additive in v5). The compositor applies the DRM
+    // connector property per output; nested/headless keep the state and
+    // report the named fallback. The shell is the effect owner; T317 calls
+    // this from the idle stage handlers.
+    void setDpms(bool on);
+
+    // The last `df_output.dpms` state and fallback reported by the compositor.
+    // `fallback` is 0=none, 1=nested, 2=headless, 3=write-failed.
+    bool outputDpmsOn() const { return m_displayDpmsOn; }
+    uint32_t outputDpmsFallback() const { return m_displayDpmsFallback; }
+
     // Hand the Dock entry's tile rectangle (logical global pixels) to the
     // compositor so the launching app's window appears from it (T-02.1b,
     // `df_toplevel_manager.set_launch_origin`, additive in v4).
@@ -1415,6 +1427,7 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     static void onOutputMaterialRoleState(void *data, df_output *output, uint32_t role,
                                           uint32_t tier, uint32_t blurActive,
                                           uint32_t fallback);
+    static void onOutputDpms(void *data, df_output *output, uint32_t on, uint32_t fallback);
     static void onOutputDone(void *data, df_output *output);
     static void onOutputRemoved(void *data, df_output *output);
     static void onWorkspaceName(void *data, df_workspace *workspace, const char *name);
@@ -1771,6 +1784,12 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // The last brightness forwarded (T-11.3a), re-sent with the scale/transform
     // once outputs are announced.
     double m_displayBrightness = 1.0;
+    // The last DPMS request and the compositor's applied state (T316). The
+    // request is remembered so an output announced after it still receives
+    // the policy; `m_displayDpmsKnown` gates the replay.
+    bool m_displayDpmsKnown = false;
+    bool m_displayDpmsOn = true;
+    uint32_t m_displayDpmsFallback = 0;
     // Effective chrome material from `df_output.material_state` (P1). The
     // default is the safe translucent-glass assumption for an older
     // compositor; the first event corrects it (DRM reports blurActive=false).
