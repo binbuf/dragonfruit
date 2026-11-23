@@ -4,6 +4,11 @@
 
 accepted
 
+Related: [ADR 0317](0317-lock-and-suspend-tear-down-client-grabs.md) records
+the T305 grab teardown that makes the capture invariant hold when a client
+holds a popup or drag grab. The lock surface's pointer routing is described in
+design 27 §3.1.
+
 ## Context
 
 T-12.3a shipped the fail-secure lock by dropping *all* user input while locked,

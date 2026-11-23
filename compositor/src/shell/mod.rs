@@ -21,7 +21,7 @@ pub mod trust;
 use std::collections::HashMap;
 
 use smithay::output::{Mode, Output, Scale as OutputScale};
-use smithay::utils::{Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
+use smithay::utils::{IsAlive, Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus as _;
 use wayland_server::backend::{ClientId, GlobalId};
 use wayland_server::protocol::wl_surface::WlSurface;
@@ -206,6 +206,19 @@ impl ShellProtocolState {
             .iter()
             .find(|entry| entry.surface == *surface)
             .map(|entry| entry.state.namespace.as_str())
+    }
+
+    /// The live chrome layer surfaces.
+    ///
+    /// The lock and suspend paths dismiss any `xdg_popup` rooted at a chrome
+    /// surface (T305). Those popups belong to the shell client and are not
+    /// window popups, so [`DfState::dismiss_popups_for`] cannot reach them.
+    pub fn chrome_layer_surfaces(&self) -> Vec<WlSurface> {
+        self.layers
+            .iter()
+            .filter(|entry| entry.surface.alive())
+            .map(|entry| entry.surface.clone())
+            .collect()
     }
 
     /// Register the private globals. `df_core` is advertised to everyone;

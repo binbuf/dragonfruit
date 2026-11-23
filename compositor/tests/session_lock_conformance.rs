@@ -39,6 +39,12 @@ use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1 as lock_mgr, ext_session_lock_surface_v1 as lock_surface,
     ext_session_lock_v1 as lock,
 };
+use wayland_protocols::xdg::decoration::zv1::client::{
+    zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
+};
+use wayland_protocols::xdg::shell::client::{
+    xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
+};
 
 mod common;
 
@@ -61,6 +67,12 @@ use core_client::df_core;
 /// The headless backend's default mode (`backend::HEADLESS_MODE_SIZE`).
 const OUTPUT_W: u32 = 1280;
 const OUTPUT_H: u32 = 720;
+
+/// The normal client's toplevel and popup sizes (smaller than the output).
+const APP_W: i32 = 360;
+const APP_H: i32 = 260;
+const POPUP_W: i32 = 120;
+const POPUP_H: i32 = 80;
 
 /// One connected lock client (the trusted shell stand-in).
 #[derive(Default)]
@@ -254,6 +266,201 @@ impl Dispatch<lock_surface::ExtSessionLockSurfaceV1, ()> for LockTest {
     }
 }
 
+/// A normal (untrusted) client with a toplevel and an optional popup.
+///
+/// T305 needs a second client so the test can prove that the lock excludes a
+/// popup's keyboard grab and a held pointer drag while the trusted lock client
+/// still receives input.
+#[derive(Default)]
+struct AppClient {
+    compositor: Option<wl_compositor::WlCompositor>,
+    shm: Option<wl_shm::WlShm>,
+    seat: Option<wl_seat::WlSeat>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
+    pointer: Option<wl_pointer::WlPointer>,
+    wm_base: Option<xdg_wm_base::XdgWmBase>,
+    decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    outputs: usize,
+    toplevel_surface: Option<wl_surface::WlSurface>,
+    popup_surface: Option<wl_surface::WlSurface>,
+    keyboard_enters: Vec<u32>,
+    keyboard_leaves: Vec<u32>,
+    keys: Vec<u32>,
+    pointer_enters: Vec<u32>,
+    pointer_leaves: usize,
+    pointer_motions: usize,
+    pointer_buttons: Vec<u32>,
+    popup_configure: Option<(i32, i32)>,
+    popup_done: bool,
+}
+
+impl Dispatch<wl_registry::WlRegistry, ()> for AppClient {
+    fn event(
+        state: &mut Self,
+        registry: &wl_registry::WlRegistry,
+        event: wl_registry::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_registry::Event::Global {
+            name,
+            interface,
+            version,
+        } = event
+        {
+            match interface.as_str() {
+                "wl_compositor" => {
+                    state.compositor = Some(registry.bind(name, version.min(4), qh, ()));
+                }
+                "wl_shm" => {
+                    state.shm = Some(registry.bind(name, version.min(1), qh, ()));
+                }
+                "wl_seat" => {
+                    state.seat = Some(registry.bind(name, version.min(1), qh, ()));
+                }
+                "xdg_wm_base" => {
+                    state.wm_base = Some(registry.bind(name, version.min(2), qh, ()));
+                }
+                "zxdg_decoration_manager_v1" => {
+                    state.decoration_manager = Some(registry.bind(name, version.min(1), qh, ()));
+                }
+                "wl_output" => {
+                    let _: wl_output::WlOutput = registry.bind(name, version.min(4), qh, ());
+                    state.outputs += 1;
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+delegate_noop!(AppClient: ignore wl_compositor::WlCompositor);
+delegate_noop!(AppClient: ignore wl_shm::WlShm);
+delegate_noop!(AppClient: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(AppClient: ignore wl_buffer::WlBuffer);
+delegate_noop!(AppClient: ignore wl_surface::WlSurface);
+delegate_noop!(AppClient: ignore wl_output::WlOutput);
+delegate_noop!(AppClient: ignore xdg_toplevel::XdgToplevel);
+delegate_noop!(AppClient: ignore xdg_positioner::XdgPositioner);
+delegate_noop!(AppClient: ignore zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
+delegate_noop!(AppClient: ignore zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1);
+
+impl Dispatch<wl_seat::WlSeat, ()> for AppClient {
+    fn event(
+        state: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities { capabilities } = event {
+            let Ok(caps) = capabilities.into_result() else {
+                return;
+            };
+            if caps.contains(wl_seat::Capability::Keyboard) && state.keyboard.is_none() {
+                state.keyboard = Some(seat.get_keyboard(qh, ()));
+            }
+            if caps.contains(wl_seat::Capability::Pointer) && state.pointer.is_none() {
+                state.pointer = Some(seat.get_pointer(qh, ()));
+            }
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_keyboard::Event::Enter { surface, .. } => {
+                state.keyboard_enters.push(surface.id().protocol_id());
+            }
+            wl_keyboard::Event::Leave { surface, .. } => {
+                state.keyboard_leaves.push(surface.id().protocol_id());
+            }
+            wl_keyboard::Event::Key { key, .. } => state.keys.push(key),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for AppClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_pointer::Event::Enter { surface, .. } => {
+                state.pointer_enters.push(surface.id().protocol_id());
+            }
+            wl_pointer::Event::Leave { .. } => state.pointer_leaves += 1,
+            wl_pointer::Event::Motion { .. } => state.pointer_motions += 1,
+            wl_pointer::Event::Button { button, .. } => state.pointer_buttons.push(button),
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<xdg_wm_base::XdgWmBase, ()> for AppClient {
+    fn event(
+        _: &mut Self,
+        wm_base: &xdg_wm_base::XdgWmBase,
+        event: xdg_wm_base::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_wm_base::Event::Ping { serial } = event {
+            wm_base.pong(serial);
+        }
+    }
+}
+
+impl Dispatch<xdg_surface::XdgSurface, ()> for AppClient {
+    fn event(
+        _: &mut Self,
+        surface: &xdg_surface::XdgSurface,
+        event: xdg_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_surface::Event::Configure { serial } = event {
+            surface.ack_configure(serial);
+        }
+    }
+}
+
+impl Dispatch<xdg_popup::XdgPopup, ()> for AppClient {
+    fn event(
+        state: &mut Self,
+        _: &xdg_popup::XdgPopup,
+        event: xdg_popup::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            xdg_popup::Event::Configure { width, height, .. } => {
+                state.popup_configure = Some((width, height));
+            }
+            xdg_popup::Event::PopupDone => state.popup_done = true,
+            _ => {}
+        }
+    }
+}
+
 struct CompositorProcess {
     child: Child,
     socket_path: PathBuf,
@@ -386,18 +593,21 @@ impl Drop for SyntheticInput {
     }
 }
 
-fn wait_for(
-    queue: &mut EventQueue<LockTest>,
-    state: &mut LockTest,
+fn wait_for<T>(
+    queue: &mut EventQueue<T>,
+    state: &mut T,
     timeout: Duration,
     what: &str,
-    predicate: impl Fn(&LockTest) -> bool,
+    predicate: impl Fn(&T) -> bool,
 ) {
     let deadline = Instant::now() + timeout;
     while !predicate(state) {
         assert!(Instant::now() < deadline, "timed out waiting for {what}");
+        // A roundtrip always returns (the compositor answers `wl_display.sync`)
+        // and flushes every event queued before it, so a regression that sends
+        // no event fails at the deadline instead of blocking forever.
         queue
-            .blocking_dispatch(state)
+            .roundtrip(state)
             .expect("dispatch failed while waiting");
     }
 }
@@ -427,6 +637,33 @@ fn connect(socket_path: &Path) -> (Connection, EventQueue<LockTest>, LockTest) {
         registry: Some(registry),
         ..Default::default()
     };
+    queue.roundtrip(&mut state).expect("roundtrip failed");
+    (conn, queue, state)
+}
+
+/// Connect one normal client (a toplevel/popup owner, not the trusted shell).
+fn connect_app(socket_path: &Path) -> (Connection, EventQueue<AppClient>, AppClient) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let stream = loop {
+        match UnixStream::connect(socket_path) {
+            Ok(stream) => break stream,
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+                ) =>
+            {
+                assert!(Instant::now() < deadline, "connect failed: {err}");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("connect failed: {err}"),
+        }
+    };
+    let conn = Connection::from_socket(stream).expect("failed to create connection");
+    let mut queue = conn.new_event_queue();
+    let qh = queue.handle();
+    let _registry = conn.display().get_registry(&qh, ());
+    let mut state = AppClient::default();
     queue.roundtrip(&mut state).expect("roundtrip failed");
     (conn, queue, state)
 }
@@ -473,6 +710,186 @@ fn shm_buffer(
     let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, qh, ());
     pool.destroy();
     (buffer, file)
+}
+
+fn app_shm_buffer(
+    state: &AppClient,
+    qh: &QueueHandle<AppClient>,
+    width: i32,
+    height: i32,
+) -> (wl_buffer::WlBuffer, std::fs::File) {
+    let shm = state.shm.clone().expect("wl_shm bound");
+    let stride = width * 4;
+    let size = (stride * height) as usize;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SHM_SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SHM_SEQ.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "dragonfruit-lock-app-{}-{seq}.shm",
+        std::process::id()
+    ));
+    let file = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .expect("failed to create shm backing file");
+    file.set_len(size as u64).expect("failed to size shm file");
+    let pool = shm.create_pool(file.as_fd(), size as i32, qh, ());
+    let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, qh, ());
+    pool.destroy();
+    (buffer, file)
+}
+
+/// Map a decorated toplevel and return the objects a popup needs.
+fn map_app_toplevel(
+    client: &mut AppClient,
+    queue: &mut EventQueue<AppClient>,
+) -> (
+    wl_surface::WlSurface,
+    xdg_surface::XdgSurface,
+    xdg_toplevel::XdgToplevel,
+    std::fs::File,
+) {
+    let qh = queue.handle();
+    let compositor = client.compositor.clone().expect("wl_compositor bound");
+    let wm_base = client.wm_base.clone().expect("xdg_wm_base bound");
+
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_title("Lock grab test".into());
+    // The compositor draws the titlebar only for a server-decorated toplevel;
+    // the drag case presses that titlebar.
+    if let Some(manager) = client.decoration_manager.clone() {
+        let decoration = manager.get_toplevel_decoration(&toplevel, &qh, ());
+        decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+    }
+    surface.commit();
+    queue.roundtrip(client).expect("initial configure");
+
+    let (buffer, file) = app_shm_buffer(client, &qh, APP_W, APP_H);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, APP_W, APP_H);
+    surface.commit();
+    queue.roundtrip(client).expect("map commit");
+
+    client.toplevel_surface = Some(surface.clone());
+    (surface, xdg_surface, toplevel, file)
+}
+
+/// Map a grabbing `xdg_popup` rooted at `parent`.
+fn map_app_popup(
+    client: &mut AppClient,
+    queue: &mut EventQueue<AppClient>,
+    parent: &xdg_surface::XdgSurface,
+) -> (wl_surface::WlSurface, xdg_popup::XdgPopup, std::fs::File) {
+    let qh = queue.handle();
+    let compositor = client.compositor.clone().expect("wl_compositor bound");
+    let wm_base = client.wm_base.clone().expect("xdg_wm_base bound");
+    let seat = client.seat.clone().expect("wl_seat bound");
+
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let positioner = wm_base.create_positioner(&qh, ());
+    positioner.set_size(POPUP_W, POPUP_H);
+    positioner.set_anchor_rect(0, 0, 1, 1);
+    positioner.set_anchor(xdg_positioner::Anchor::BottomRight);
+    positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+    let popup = xdg_surface.get_popup(Some(parent), &positioner, &qh, ());
+    // The grab must be requested before the popup is mapped (`committed`).
+    popup.grab(&seat, 1);
+    positioner.destroy();
+    surface.commit();
+    queue.roundtrip(client).expect("popup configure");
+
+    let (buffer, file) = app_shm_buffer(client, &qh, POPUP_W, POPUP_H);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, POPUP_W, POPUP_H);
+    surface.commit();
+    queue.roundtrip(client).expect("popup map commit");
+
+    client.popup_surface = Some(surface.clone());
+    (surface, popup, file)
+}
+
+/// One parsed `query decorations` line (the fields T305 needs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Decoration {
+    titlebar: (i32, i32, i32, i32),
+    content: (i32, i32, i32, i32),
+}
+
+fn first_decoration(report: &str) -> Option<Decoration> {
+    report.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        if parts.next()? != "decoration" {
+            return None;
+        }
+        let n =
+            |parts: &mut std::str::SplitWhitespace| -> Option<i32> { parts.next()?.parse().ok() };
+        let _window: u64 = parts.next()?.parse().ok()?;
+        let _server_side = parts.next()?;
+        let titlebar = (
+            n(&mut parts)?,
+            n(&mut parts)?,
+            n(&mut parts)?,
+            n(&mut parts)?,
+        );
+        let content = (
+            n(&mut parts)?,
+            n(&mut parts)?,
+            n(&mut parts)?,
+            n(&mut parts)?,
+        );
+        Some(Decoration { titlebar, content })
+    })
+}
+
+/// Read the first window's decoration report, waiting for the map to settle.
+#[track_caller]
+fn wait_for_decoration(input: &SyntheticInput) -> Decoration {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let report = input.query("query decorations");
+        if let Some(decoration) = first_decoration(&report) {
+            return decoration;
+        }
+        assert!(Instant::now() < deadline, "window never appeared: {report}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Move the synthetic pointer to a global logical point.
+fn motion_abs(input: &SyntheticInput, x: i32, y: i32) {
+    let nx = f64::from(x) / f64::from(OUTPUT_W);
+    let ny = f64::from(y) / f64::from(OUTPUT_H);
+    input.send(&format!("motion-abs {nx} {ny}"));
+}
+
+/// Start a titlebar move grab and prove it is live by moving the window.
+#[track_caller]
+fn start_titlebar_drag(input: &SyntheticInput) -> (i32, i32) {
+    let decoration = wait_for_decoration(input);
+    let (tx, ty, tw, th) = decoration.titlebar;
+    assert!(tw > 0 && th > 0, "expected an SSD titlebar: {decoration:?}");
+    motion_abs(input, tx + tw / 2, ty + th / 2);
+    input.send("button 272 down");
+
+    let before = decoration.content;
+    input.send("motion 40 25");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let now = wait_for_decoration(input).content;
+        if now != before {
+            return (now.0, now.1);
+        }
+        assert!(
+            Instant::now() < deadline,
+            "titlebar drag never moved the window"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[test]
@@ -862,4 +1279,294 @@ fn locked_input_targets_the_lock_ui_and_survives_its_death() {
         after.contains("lock locked=1"),
         "session left locked after the lock UI died: {after}"
     );
+}
+
+/// A mapped lock UI: the protocol objects must outlive the assertions.
+struct LockedUi {
+    _lock: lock::ExtSessionLockV1,
+    _surface: wl_surface::WlSurface,
+    _lock_surface: lock_surface::ExtSessionLockSurfaceV1,
+    _buffer: wl_buffer::WlBuffer,
+    _file: std::fs::File,
+}
+
+/// Request the lock as the trusted shell and map a full-output lock surface.
+fn lock_and_map(lock_state: &mut LockTest, lock_queue: &mut EventQueue<LockTest>) -> LockedUi {
+    wait_for(
+        lock_queue,
+        lock_state,
+        Duration::from_secs(5),
+        "seat keyboard",
+        |s| s.keyboard.is_some(),
+    );
+    wait_for(
+        lock_queue,
+        lock_state,
+        Duration::from_secs(5),
+        "seat pointer",
+        |s| s.pointer.is_some(),
+    );
+    let compositor = lock_state.compositor.clone().expect("wl_compositor bound");
+    let manager = lock_state
+        .lock_manager
+        .clone()
+        .expect("ext_session_lock_manager_v1 advertised");
+    let lock = manager.lock(&lock_queue.handle(), ());
+    let surface = compositor.create_surface(&lock_queue.handle(), ());
+    let lock_surface =
+        lock.get_lock_surface(&surface, &lock_state.outputs[0], &lock_queue.handle(), ());
+    lock_state.lock_surface_id = surface.id().protocol_id();
+    wait_for(
+        lock_queue,
+        lock_state,
+        Duration::from_secs(5),
+        "locked",
+        |s| s.locked,
+    );
+    wait_for(
+        lock_queue,
+        lock_state,
+        Duration::from_secs(5),
+        "lock-surface configure",
+        |s| !s.configures.is_empty(),
+    );
+    let (_, width, height) = lock_state.configures[0];
+    let (buffer, file) = shm_buffer(
+        lock_state,
+        &lock_queue.handle(),
+        width as i32,
+        height as i32,
+    );
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, width as i32, height as i32);
+    surface.commit();
+    let lock_id = lock_state.lock_surface_id;
+    wait_for(
+        lock_queue,
+        lock_state,
+        Duration::from_secs(5),
+        "keyboard enter on the lock surface",
+        |s| s.keyboard_enters.contains(&lock_id),
+    );
+    LockedUi {
+        _lock: lock,
+        _surface: surface,
+        _lock_surface: lock_surface,
+        _buffer: buffer,
+        _file: file,
+    }
+}
+
+#[test]
+fn locked_popup_grab_never_receives_lock_screen_keys() {
+    let socket_name = format!("dragonfruit-test-lock-popup-{}", std::process::id());
+    let synthetic_path = std::env::temp_dir().join(format!("{socket_name}-synth"));
+    let _ = std::fs::remove_file(&synthetic_path);
+    let token = "5a".repeat(32);
+    let proc = CompositorProcess::start_with_synthetic(
+        &socket_name,
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // The trusted shell owns the lock; a second client owns the popup.
+    let (_lock_conn, mut lock_queue, mut lock_state) = connect(&proc.socket_path);
+    authenticate(&mut lock_state, &mut lock_queue, proc.read_token());
+    let (_app_conn, mut app_queue, mut app) = connect_app(&proc.socket_path);
+    wait_for(
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        "app seat keyboard",
+        |s| s.keyboard.is_some(),
+    );
+
+    let (toplevel_surface, parent_xdg, _toplevel, _toplevel_file) =
+        map_app_toplevel(&mut app, &mut app_queue);
+    let toplevel_id = toplevel_surface.id().protocol_id();
+
+    // Activate the window so its popup is the active window's popup. A popup
+    // grab belongs to a window that was clicked, so this matches the real
+    // path (and makes `release_client_grabs` find it).
+    let decoration = wait_for_decoration(&input);
+    let (cx, cy, cw, ch) = decoration.content;
+    motion_abs(&input, cx + cw / 2, cy + ch / 2);
+    input.send("button 272 down");
+    input.send("button 272 up");
+    wait_for(
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        "app toplevel keyboard focus",
+        |s| s.keyboard_enters.contains(&toplevel_id),
+    );
+
+    // A grabbing popup: while unlocked its keyboard grab wins, which proves
+    // the defect the lock path must clear.
+    let (_popup_surface, _popup, _popup_file) =
+        map_app_popup(&mut app, &mut app_queue, &parent_xdg);
+    input.send("key 30 down");
+    input.send("key 30 up");
+    wait_for(
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        "popup grab received the pre-lock key",
+        |s| s.keys.contains(&30),
+    );
+
+    // Lock: the compositor must unset the keyboard grab, dismiss the popup,
+    // and focus the lock surface.
+    let _locked = lock_and_map(&mut lock_state, &mut lock_queue);
+    wait_for(
+        &mut app_queue,
+        &mut app,
+        Duration::from_secs(5),
+        "popup dismissed by the lock",
+        |s| s.popup_done,
+    );
+
+    let app_keys_before = app.keys.len();
+    input.send("key 31 down");
+    input.send("key 31 up");
+    wait_for(
+        &mut lock_queue,
+        &mut lock_state,
+        Duration::from_secs(5),
+        "locked key delivered to the lock surface",
+        |s| s.keys.contains(&31),
+    );
+
+    // Flush anything the compositor might have sent the app before the lock
+    // surface's key arrived. A leaked key would already be queued here.
+    app_queue.roundtrip(&mut app).expect("app roundtrip failed");
+    assert_eq!(
+        app.keys.len(),
+        app_keys_before,
+        "a locked key reached the popup client: {:?}",
+        app.keys
+    );
+    assert!(
+        !app.keys.contains(&31),
+        "the popup client received the lock-screen key"
+    );
+
+    let report = input.query("query lock");
+    assert!(
+        report.contains("lock locked=1 surfaces=1 lock-focus=1"),
+        "the lock surface did not own the keyboard: {report}"
+    );
+}
+
+#[test]
+fn lock_releases_a_held_pointer_drag() {
+    let socket_name = format!("dragonfruit-test-lock-drag-{}", std::process::id());
+    let synthetic_path = std::env::temp_dir().join(format!("{socket_name}-synth"));
+    let _ = std::fs::remove_file(&synthetic_path);
+    let token = "5b".repeat(32);
+    let proc = CompositorProcess::start_with_synthetic(
+        &socket_name,
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    let (_lock_conn, mut lock_queue, mut lock_state) = connect(&proc.socket_path);
+    authenticate(&mut lock_state, &mut lock_queue, proc.read_token());
+    let (_app_conn, mut app_queue, mut app) = connect_app(&proc.socket_path);
+    let (_surface, _parent, _toplevel, _file) = map_app_toplevel(&mut app, &mut app_queue);
+
+    // A held titlebar move is the strongest pointer grab: it consumes motion
+    // and moves the window.
+    start_titlebar_drag(&input);
+
+    let _locked = lock_and_map(&mut lock_state, &mut lock_queue);
+    // The lock sends the app a pointer leave; drain it before counting.
+    app_queue.roundtrip(&mut app).expect("app roundtrip failed");
+    let motions_before = app.pointer_motions;
+    let buttons_before = app.pointer_buttons.len();
+    let lock_buttons_before = lock_state.pointer_buttons.len();
+    let location_before = wait_for_decoration(&input).content;
+
+    // Motion and buttons while locked must go to the lock surface only; the
+    // held drag must not continue moving the window.
+    input.send("motion 70 60");
+    input.send("button 272 up");
+    input.send("button 272 down");
+    input.send("button 272 up");
+    wait_for(
+        &mut lock_queue,
+        &mut lock_state,
+        Duration::from_secs(5),
+        "locked pointer buttons on the lock surface",
+        |s| s.pointer_buttons.len() > lock_buttons_before,
+    );
+
+    app_queue.roundtrip(&mut app).expect("app roundtrip failed");
+    assert_eq!(
+        app.pointer_motions, motions_before,
+        "a locked pointer motion reached the dragged client"
+    );
+    assert_eq!(
+        app.pointer_buttons.len(),
+        buttons_before,
+        "a locked pointer button reached the dragged client"
+    );
+    let location_after = wait_for_decoration(&input).content;
+    assert_eq!(
+        location_after, location_before,
+        "the held drag survived the lock and moved the window"
+    );
+}
+
+#[test]
+fn suspend_resume_releases_a_held_pointer_drag() {
+    let socket_name = format!("dragonfruit-test-suspend-drag-{}", std::process::id());
+    let synthetic_path = std::env::temp_dir().join(format!("{socket_name}-synth"));
+    let _ = std::fs::remove_file(&synthetic_path);
+    let token = "5c".repeat(32);
+    let proc = CompositorProcess::start_with_synthetic(
+        &socket_name,
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    let (_app_conn, mut app_queue, mut app) = connect_app(&proc.socket_path);
+    let (_surface, _parent, _toplevel, _file) = map_app_toplevel(&mut app, &mut app_queue);
+    start_titlebar_drag(&input);
+
+    input.send("suspend");
+    wait_for_session(&input, 1);
+    input.send("resume");
+    wait_for_session(&input, 0);
+
+    // The grab was torn down by the suspend. A motion after resume must not
+    // keep moving the window.
+    let location_before = wait_for_decoration(&input).content;
+    input.send("motion 60 45");
+    let location_after = wait_for_decoration(&input).content;
+    assert_eq!(
+        location_after, location_before,
+        "a held drag survived suspend/resume and moved the window"
+    );
+    input.send("button 272 up");
+}
+
+/// Wait until `query session` reports the requested suspend flag.
+#[track_caller]
+fn wait_for_session(input: &SyntheticInput, suspended: u32) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let report = input.query("query session");
+        if report.contains(&format!("session suspended={suspended} ")) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "session never reached suspended={suspended}: {report}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }

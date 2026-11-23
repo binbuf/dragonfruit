@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -82,12 +82,21 @@ The compositor owns the lock state. While `LockModel::locked` is true:
 - no client can raise or focus a window;
 - a dead lock surface drops input but never clears `locked`.
 
-Two defects break this today:
+Clearing focus is not enough on its own: an active `xdg_popup` keyboard grab
+ignores `set_focus` and forwards keys through the grab, and a move/resize/drag
+pointer grab keeps consuming motion. `SessionLockHandler::lock` therefore
+tears down every client grab (`keyboard.unset_grab`, `pointer.unset_grab`),
+dismisses the active window's popups and any chrome popup, and closes the
+compositor-owned window menu before it clears focus and before it confirms the
+lock (T305, [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md)).
+The same teardown runs in `suspend_session`, so a drag or popup grab does not
+survive a sleep/resume. The lock surface is the only focus target when the
+lock is confirmed, so the first key after the teardown reaches the lock UI and
+no client sees it.
 
-1. An active `xdg_popup` keyboard grab ignores `set_focus(None)` and forwards
-   keys through the grab. The lock path must unset keyboard and pointer grabs
-   and dismiss popups before it clears focus.
-2. A shell crash while locked leaves the session locked with no lock surface,
+One defect remains:
+
+1. A shell crash while locked leaves the session locked with no lock surface,
    and Smithay’s `locked_outputs` prevents a restarted shell from re-creating
    one. The safe MVP is: the trusted shell disconnect while locked ends the
    session cleanly (ADR 0312). Re-lock needs a separate lock process or a
@@ -206,7 +215,7 @@ items are the first-week friction; P2 items are deferred in §7.
 
 | ID | Defect | Task |
 |---|---|---|
-| S-01 | Lock does not clear keyboard/pointer grabs; a popup can receive lock-screen keys | T305 |
+| S-01 | Lock did not clear keyboard/pointer grabs; a popup could receive lock-screen keys (closed by T305) | T305 |
 | S-02 | A shell crash while locked leaves a frozen, inputless session | T306 |
 | S-03 | Focus is lost after a Space round-trip, minimize, client crash, or shell crash | T307, T308 |
 | S-04 | No idle/DPMS/auto-lock/suspend; no lock on lid close | T315–T318 |

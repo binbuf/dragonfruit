@@ -6,7 +6,8 @@ Accepted (2026-11-22). Supersedes the “a locked session returns to a lock UI�
 claim in [ADR 0158](0158-compositor-death-ends-the-session.md) and narrows the
 “no in-session recovery” consequence in
 [ADR 0069](0069-locked-input-capture-and-kill-resistance.md). The fail-secure
-lock state itself is unchanged.
+lock state itself is unchanged. [ADR 0317](0317-lock-and-suspend-tear-down-client-grabs.md)
+covers the input-grab teardown that happens before the lock is confirmed.
 
 ## Context
 

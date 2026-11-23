@@ -4349,19 +4349,94 @@ impl DfState {
     }
 
     /// Dismiss every popup rooted at `window`'s toplevel surface (FR-11).
-    pub(crate) fn dismiss_popups_for(&mut self, window: &Window) {
+    /// Returns how many were told `popup_done`.
+    pub(crate) fn dismiss_popups_for(&mut self, window: &Window) -> usize {
         if !window.alive() {
-            return;
+            return 0;
         }
         let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) else {
-            return;
+            return 0;
         };
-        let popups: Vec<PopupKind> = PopupManager::popups_for_surface(&surface)
+        self.dismiss_popups_at(&surface)
+    }
+
+    /// Dismiss every popup rooted at one surface and return how many were
+    /// told `popup_done`.
+    fn dismiss_popups_at(&mut self, surface: &WlSurface) -> usize {
+        let popups: Vec<PopupKind> = PopupManager::popups_for_surface(surface)
             .map(|(popup, _)| popup)
             .collect();
+        let count = popups.len();
         for popup in popups {
-            let _ = PopupManager::dismiss_popup(&surface, &popup);
+            let _ = PopupManager::dismiss_popup(surface, &popup);
         }
+        count
+    }
+
+    /// Drop every client input grab and dismiss the popups that own them
+    /// (T305).
+    ///
+    /// A popup's keyboard grab forwards keys to the popup and ignores
+    /// `set_focus`, so clearing focus cannot exclude it. The lock and suspend
+    /// paths are the only places the compositor may take a grab away without
+    /// a client request, so both call this before they change focus. Returns
+    /// whether a keyboard grab was released: the caller may need to
+    /// re-establish focus because the grab's focus was the popup.
+    ///
+    /// Popups are dismissed for the active window and for every chrome layer
+    /// surface (the shell can root an `xdg_popup` at a chrome surface, and it
+    /// is not a [`Window`]). The compositor-owned window menu is a chrome
+    /// popup too; it is closed here so a lock or suspend never leaves it as
+    /// the only focusable overlay.
+    fn release_client_grabs(&mut self) -> bool {
+        let serial = SERIAL_COUNTER.next_serial();
+        let keyboard_released = self
+            .seat
+            .get_keyboard()
+            .is_some_and(|keyboard| keyboard.is_grabbed());
+        let pointer_released = self
+            .seat
+            .get_pointer()
+            .is_some_and(|pointer| pointer.is_grabbed());
+        if keyboard_released {
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.unset_grab(self);
+            }
+        }
+        if pointer_released {
+            if let Some(pointer) = self.seat.get_pointer() {
+                // `unset_grab` restores the pointer's pending focus, which is
+                // the popup or drag target being torn down. Clear it: the next
+                // motion (or the lock surface) chooses the target.
+                pointer.unset_grab(self, serial, 0);
+                let location = pointer.current_location();
+                pointer.motion(
+                    self,
+                    None,
+                    &smithay::input::pointer::MotionEvent {
+                        location,
+                        serial,
+                        time: 0,
+                    },
+                );
+                pointer.frame(self);
+            }
+        }
+
+        let mut dismissed = 0;
+        if let Some(window) = self.active_window.clone() {
+            dismissed += self.dismiss_popups_for(&window);
+        }
+        for surface in self.shell.chrome_layer_surfaces() {
+            dismissed += self.dismiss_popups_at(&surface);
+        }
+        if self.window_menu.take().is_some() {
+            dismissed += 1;
+        }
+        if keyboard_released || pointer_released || dismissed > 0 {
+            self.mark_scene_dirty();
+        }
+        keyboard_released
     }
 
     /// Remove `window` from the model and the scene, broadcasting `kind`.
@@ -4461,6 +4536,23 @@ impl DfState {
     pub fn suspend_session(&mut self) -> bool {
         if !self.suspend.suspend() {
             return false;
+        }
+        // T305: a drag or popup grab must not survive the sleep. The pointer
+        // grab would resume moving or resizing a window the user did not
+        // press, and a popup's keyboard grab would keep receiving keys after
+        // the wake. Tear both down before the frame loop stops.
+        let keyboard_was_grabbed = self.release_client_grabs();
+        if keyboard_was_grabbed {
+            // The grab's focus was the popup, now dismissed. Return the
+            // keyboard to the window the user was working in so resume does
+            // not type into a popup that no longer exists.
+            let focus = self
+                .active_window
+                .as_ref()
+                .and_then(|window| window.wl_surface().map(|surface| surface.into_owned()));
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
+            }
         }
         self.frame_cadence_until = None;
         self.needs_redraw = false;
@@ -7430,6 +7522,13 @@ impl SessionLockHandler for DfState {
         // clear client focus so no key can reach a client.
         let focused = self.active_window.clone();
         self.lock.lock(focused);
+        // T305: an active popup keyboard grab ignores `set_focus(None)` and
+        // would keep receiving the keys typed into the lock UI. Drop every
+        // client grab and dismiss the popups (and chrome menu) that own them
+        // before clearing focus. This must happen before `confirmation.lock()`
+        // so the lock surface is the only possible focus when the lock is
+        // confirmed.
+        self.release_client_grabs();
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
         }
