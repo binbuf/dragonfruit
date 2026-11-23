@@ -52,6 +52,9 @@ no-focus-steal rule.
   dismissal path headlessly.
 - `DF_OSD_FIXTURE` remains a capture-only seam; hardware media keys are still
   not wired (a later task routes them into `ShellController::showOsd`).
+  *(Update, T321: the XF86 keys are bound in the compositor and route into
+  `ShellController::handleMediaKeyAction` → `showOsd`; the fixture seam is
+  unchanged. [ADR 0331](0331-media-keys-input-action-steps.md).)*
 - The `Icon.qml` `volume` change affects the Quick Settings Sound tile too; the
   gallery icon snapshot only renders the titlebar/utility glyphs, so it is
   unaffected.

@@ -118,6 +118,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     lockauth.cpp
     lockinput.cpp
     materialpolicy.cpp
+    mediakeys.cpp
+    mediakeys.h
     menubrokerclient.cpp
     menubrokerpolicy.cpp
     notificationcenter.cpp

@@ -70,6 +70,7 @@
 #include "launchfailure.h"
 #include "lockinput.h"
 #include "menubrokerpolicy.h"
+#include "mediakeys.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "popuptarget.h"
@@ -8452,6 +8453,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // accommodations live. The compositor owns the binding; the shell owns
         // the surface.
         openSettingsDeepLink(QStringLiteral("settings://pane/accessibility"));
+    } else if (MediaKeys::handles(action)) {
+        // T321: the XF86 volume/mute/brightness keys. One 5% step or a mute
+        // toggle, then the existing OSD; an absent audio/brightness path is a
+        // silent no-op.
+        handleMediaKeyAction(action);
     }
 }
 
@@ -9233,6 +9239,50 @@ void ShellController::applyIdlePolicy()
     if (m_settingsClient->isAvailable() && !m_settingsSnapshotReceived)
         return;
     m_idleController->setSettings(idleSettingsFromValues(m_settingsClient->values()));
+}
+
+void ShellController::handleMediaKeyAction(const QString &action)
+{
+    // T321: the compositor routes the XF86 keys through the same
+    // `input_action` stream as every other shortcut. The pure policy owns the
+    // 5% step and the absent-path decision; this method performs exactly one
+    // write and presents the existing OSD (no second audio/brightness state).
+    const bool audioAvailable = m_statusClient && m_statusClient->isAvailable()
+        && m_statusModel && m_statusModel->audioVisible();
+    const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
+    // The brightness consumer is the T319 panel writer. With no backlight
+    // device (or no logind/sysfs write path) the key is a silent no-op rather
+    // than a 220x220 window over nothing.
+    const bool brightnessAvailable =
+        m_settingsClient && m_brightnessBackend && m_brightnessBackend->available();
+    const double brightness = m_settingsClient
+        ? m_settingsClient->real(QStringLiteral("display.brightness"), 1.0)
+        : 1.0;
+    const MediaKeys::Plan plan = MediaKeys::plan(
+        action, audioAvailable, audio.value(QStringLiteral("volume")).toDouble(),
+        audio.value(QStringLiteral("muted")).toBool(), brightnessAvailable,
+        brightness);
+    switch (plan.write) {
+    case MediaKeys::Write::None:
+        return;
+    case MediaKeys::Write::SetVolume:
+        m_statusClient->setVolume(plan.value);
+        showOsd(OsdModel::Kind::Volume, plan.value, plan.muted);
+        break;
+    case MediaKeys::Write::SetMute:
+        m_statusClient->setMute(plan.muted);
+        showOsd(OsdModel::Kind::Volume, plan.value, plan.muted);
+        break;
+    case MediaKeys::Write::SetBrightness:
+        // settingsd is the single owner (T-08); the `changed` connection
+        // forwards the new value through applyDisplayPolicy, which writes the
+        // panel through the T319 backend. The OSD shows the stored level, not
+        // the battery/idle-dim effective level, matching the Settings slider.
+        if (!m_settingsClient->set(QStringLiteral("display.brightness"), plan.value))
+            return;
+        showOsd(OsdModel::Kind::Brightness, plan.value, false);
+        break;
+    }
 }
 
 void ShellController::handleIdleAction(const QString &action)

@@ -380,6 +380,37 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
         // T-19.2: open the Applications drawer. F4 is the macOS Applications
         // chord; the Settings Keyboard pane rebinds it in T-16.
         Shortcut::new(RoleMods::EMPTY, keysyms::KEY_F4, InputAction::ShowApps),
+        // T321: the XF86 volume/mute/brightness keys are ordinary key presses
+        // with no modifier chord. They resolve here before the focused client,
+        // and the shell turns each action into one 5% step (or a mute toggle)
+        // plus the existing OSD (ADR 0331). The input filter ignores
+        // auto-repeat of an intercepted shortcut, so holding a key does not
+        // ramp; each press is one step.
+        Shortcut::new(
+            RoleMods::EMPTY,
+            keysyms::KEY_XF86AudioRaiseVolume,
+            InputAction::VolumeUp,
+        ),
+        Shortcut::new(
+            RoleMods::EMPTY,
+            keysyms::KEY_XF86AudioLowerVolume,
+            InputAction::VolumeDown,
+        ),
+        Shortcut::new(
+            RoleMods::EMPTY,
+            keysyms::KEY_XF86AudioMute,
+            InputAction::Mute,
+        ),
+        Shortcut::new(
+            RoleMods::EMPTY,
+            keysyms::KEY_XF86MonBrightnessUp,
+            InputAction::BrightnessUp,
+        ),
+        Shortcut::new(
+            RoleMods::EMPTY,
+            keysyms::KEY_XF86MonBrightnessDown,
+            InputAction::BrightnessDown,
+        ),
     ];
     for (i, key) in [
         keysyms::KEY_1,
@@ -510,6 +541,77 @@ mod tests {
         assert_eq!(
             engine.resolve(&mods(false, true, false, false), keysyms::KEY_Escape),
             None
+        );
+    }
+
+    #[test]
+    fn media_keys_resolve_with_no_modifiers() {
+        // T321: the XF86 volume/mute/brightness keys are normal keyboard
+        // input with an empty modifier chord. Each resolves to its own action
+        // before the focused client, and a held modifier makes the chord
+        // exact-miss (so Ctrl+XF86 still reaches the application).
+        let engine = ShortcutEngine::default();
+        let none = mods(false, false, false, false);
+        let cases = [
+            (
+                keysyms::KEY_XF86AudioRaiseVolume,
+                InputAction::VolumeUp,
+                "volume-up",
+            ),
+            (
+                keysyms::KEY_XF86AudioLowerVolume,
+                InputAction::VolumeDown,
+                "volume-down",
+            ),
+            (keysyms::KEY_XF86AudioMute, InputAction::Mute, "mute"),
+            (
+                keysyms::KEY_XF86MonBrightnessUp,
+                InputAction::BrightnessUp,
+                "brightness-up",
+            ),
+            (
+                keysyms::KEY_XF86MonBrightnessDown,
+                InputAction::BrightnessDown,
+                "brightness-down",
+            ),
+        ];
+        for (key, action, name) in cases {
+            assert_eq!(
+                engine.resolve(&none, key),
+                Some(ShortcutOutcome::System(action)),
+                "{name} resolves without a chord"
+            );
+            assert_eq!(action.name(), name);
+            assert!(!action.is_progress_driven());
+            for held in [
+                mods(false, false, true, false),
+                mods(false, false, false, true),
+                mods(true, false, false, false),
+                mods(false, true, false, false),
+            ] {
+                assert_eq!(engine.resolve(&held, key), None, "{name} is exact");
+            }
+        }
+    }
+
+    #[test]
+    fn media_keys_win_over_a_focused_client_binding() {
+        // The system shortcut table is the first arbiter: even an app that
+        // registers the bare media key cannot take it while focused.
+        let mut engine = ShortcutEngine::default();
+        engine.set_focused_app(Some("org.example.Player".into()));
+        engine.register_app_accelerator(AppAccelerator {
+            app_id: "org.example.Player".into(),
+            mods: RoleMods::EMPTY,
+            key: keysyms::KEY_XF86AudioRaiseVolume,
+            accelerator_id: "player.volume-up".into(),
+        });
+        assert_eq!(
+            engine.resolve(
+                &mods(false, false, false, false),
+                keysyms::KEY_XF86AudioRaiseVolume
+            ),
+            Some(ShortcutOutcome::System(InputAction::VolumeUp))
         );
     }
 

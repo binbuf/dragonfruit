@@ -138,7 +138,8 @@ ladder.
   settings surfaced through the Settings input panes (see
   [08-settings.md](08-settings.md)).
 - The global shortcut engine owns system shortcuts (workspace switching,
-  Overview, app switcher, screenshots). Application accelerators are
+  Overview, app switcher, screenshots, and the XF86 volume/mute/brightness
+  keys). Application accelerators are
   admitted only through the menu-broker while the owning window is focused
   (see [06-global-menu.md](06-global-menu.md)), and sandboxed applications
   register shortcuts through the portal's GlobalShortcuts interface — no

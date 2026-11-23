@@ -68,5 +68,7 @@ path).
   (there is no compositor input action yet); the Quick Settings and the menu-bar
   gestures are the triggers. A later task can route media keys into the same
   `showOsd` seam.
+  *(Update, T321: the XF86 keys now route through `input_action` into this same
+  `showOsd` seam; [ADR 0331](0331-media-keys-input-action-steps.md).)*
 - T-11.4b adds the keyboard/AT-SPI pass and commits the OSD/DND capture set;
   the view already carries an `Accessible.Alert` name for it to build on.

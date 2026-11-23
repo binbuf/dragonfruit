@@ -65,6 +65,44 @@ Item {
             compare(osd.accessibleName, "Volume muted");
         }
 
+        function test_media_key_volume_step_presents_the_new_level() {
+            // T321: the media-key policy steps the live volume by 5% and
+            // presents this same OSD. 50% + one raise is 55%.
+            var osd = make({ kind: "volume", value: 0.55, muted: false, fade: 1.0 });
+            compare(osd.accessibleName, "Volume 55%");
+            var label = findChild(osd, "osdLabel");
+            verify(label !== null);
+            compare(label.text, "55%");
+            var track = findChild(osd, "osdTrack");
+            var fill = findChild(osd, "osdFill");
+            verify(track !== null && fill !== null);
+            verify(Math.abs(fill.width - track.width * 0.55) < 0.5);
+        }
+
+        function test_media_key_brightness_step_presents_the_new_level() {
+            // T321: 50% - one brightness step is 45%, using the brightness
+            // glyph and the same auto-dismissing card.
+            var osd = make({ kind: "brightness", value: 0.45, fade: 1.0 });
+            compare(osd.isBrightness, true);
+            compare(osd.accessibleName, "Brightness 45%");
+            var label = findChild(osd, "osdLabel");
+            verify(label !== null);
+            compare(label.text, "45%");
+        }
+
+        function test_media_key_mute_toggle_presents_muted() {
+            // T321: the mute key toggles to muted at the current level; the
+            // card reports the muted state without inventing a second level.
+            var osd = make({ kind: "volume", value: 0.55, muted: true, fade: 1.0 });
+            compare(osd.accessibleName, "Volume muted");
+            var label = findChild(osd, "osdLabel");
+            verify(label !== null);
+            compare(label.text, "Muted");
+            var fill = findChild(osd, "osdFill");
+            verify(fill !== null);
+            compare(fill.width, 0);
+        }
+
         function test_fade_drives_the_opacity() {
             var osd = make({ kind: "volume", value: 0.5, fade: 0.0 });
             compare(osd.opacity, 0.0);

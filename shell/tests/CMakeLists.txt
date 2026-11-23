@@ -354,6 +354,26 @@ set_tests_properties(tst_controlcenterpolicy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Media-key step policy (T321): the XF86 volume/mute/brightness actions map to
+# one 5% step (or a mute toggle) and a silent no-op when the audio or
+# brightness path is absent. Pure: no bus, Wayland, or QML.
+qt_add_executable(tst_mediakeys
+    tst_mediakeys.cpp
+)
+target_link_libraries(tst_mediakeys PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_mediakeys
+    COMMAND tst_mediakeys
+)
+set_tests_properties(tst_mediakeys PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Wallpaper-policy tests (T-09.3): the pure settingsd -> compositor wallpaper
 # mapping the shell forwards as `df_workspace.set_wallpaper`. No bus, Wayland,
 # or QML.

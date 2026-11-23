@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -421,6 +421,23 @@ fallback, the absent no-op, and the non-blocking dispatch. The Displays pane
 shows a “no backlight” note from the same resolver. The decision is frozen in
 [ADR 0329](adr/0329-panel-brightness-through-logind.md).
 
+T321 lands the media keys. The five XF86 volume/mute/brightness keysyms are
+bound in the compositor's default system table with no modifier chord, so they
+resolve before the focused client and travel over the existing `input_action`
+event as `volume-up`, `volume-down`, `mute`, `brightness-up`, and
+`brightness-down`. The pure `shell/src/mediakeys.*` policy maps one action to
+one write: volume and brightness move by 5% and clamp to `[0, 1]`, mute toggles
+without changing the level, and the volume keys preserve the mute state. The
+existing audio client and settingsd `display.brightness` path perform the
+write, and the existing `showOsd` presents the result; there is no second audio,
+brightness, or OSD state. The shortcut filter already ignores auto-repeat of an
+intercepted key, so holding a media key does not ramp: one press is one step.
+An absent audio view or panel writer is a silent no-op, never a window over
+nothing. `input::shortcuts`, `tst_mediakeys`, and `tst_osd` cover the binding,
+the step/absence policy, and the presentation. The reference-keyboard check is
+hardware-open in the T347 report. The decision is frozen in
+[ADR 0331](adr/0331-media-keys-input-action-steps.md).
+
 ## 4. Defect register and task map
 
 Severity is product risk, not effort. P0 items are the release blockers; P1
@@ -447,7 +464,7 @@ items are the first-week friction; P2 items are deferred in §7.
 
 | ID | Defect | Task |
 |---|---|---|
-| S-13 | Media keys do nothing | T321 |
+| S-13 | Media keys do nothing (closed by T321) | T321 |
 | S-14 | The titlebar window menu is unlabeled | T329 |
 | S-15 | Files lacks copy/move/paste, undo, watcher, tabs, New Window, Open With | T330–T334 |
 | S-16 | Screen sharing is stills-only | T335a, T335b |

@@ -56,6 +56,15 @@ are listed here for reference.
 | `Super+Shift+3` / `Super+Shift+4` | Screenshot (fullscreen to Desktop / region overlay) |
 | `Super+Ctrl+Q` | Lock screen |
 | `Ctrl+Shift+N` | Notifications |
+| `XF86AudioRaiseVolume` / `XF86AudioLowerVolume` | Volume +/− 5% and OSD |
+| `XF86AudioMute` | Mute toggle and OSD |
+| `XF86MonBrightnessUp` / `XF86MonBrightnessDown` | Brightness +/− 5% and OSD |
+
+The XF86 media keys have no modifier chord and are matched by the same
+filter before the focused client. One press is one 5% step: the filter
+ignores auto-repeat of an intercepted key, so holding a key does not ramp.
+An absent audio view or panel writer is a silent no-op
+([ADR 0331](adr/0331-media-keys-input-action-steps.md)).
 
 ## Gestures and hot corners
 

@@ -1126,7 +1126,9 @@ signals:
     void dockExternalDragPayload(bool payloadIsApp, const QString &desktopId,
                                  const QStringList &paths);
     // A compositor input action broadcast (`df_toplevel_manager.input_action`,
-    // T-07). The Dock uses `focus-dock` and `toggle-dock` (T-10 section 20).
+    // T-07). The Dock uses `focus-dock` and `toggle-dock` (T-10 section 20);
+    // T321 routes `volume-up`/`volume-down`/`mute`/`brightness-up`/
+    // `brightness-down` here for the shell's audio/brightness write and OSD.
     void inputAction(const QString &action, const QString &source);
     // The compositor's reply to `activateApp` (T-14.7g): `found` is false when
     // the app had no window to activate. The controller then launches the

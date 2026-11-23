@@ -1008,6 +1008,10 @@ private:
     void applyIdlePolicy();
     // T317: one compositor idle action (`idle-dim`, `idle-blank`, ...).
     void handleIdleAction(const QString &action);
+    // T321: one XF86 volume/mute/brightness action. The pure `MediaKeys` policy
+    // decides the 5% step (or mute toggle) and the absent-path no-op; this
+    // method performs the single write and presents the existing OSD.
+    void handleMediaKeyAction(const QString &action);
     // T317 capture seam (`DF_IDLE_CAPTURE_DIR`): ask the compositor for a
     // full-output still at a stage transition. Dev/evidence only; never set in
     // a normal session.

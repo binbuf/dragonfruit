@@ -68,6 +68,18 @@ pub enum InputAction {
     /// chord from `accessibility.shortcut`; the compositor binds it to this
     /// action and the shell opens the Accessibility pane.
     AccessibilityShortcut,
+    /// T321: raise the output volume by one 5% step and show the OSD. The
+    /// shell owns the audio write and the presentation; the compositor only
+    /// routes the XF86 key before the focused client sees it.
+    VolumeUp,
+    /// T321: lower the output volume by one 5% step and show the OSD.
+    VolumeDown,
+    /// T321: toggle output mute and show the OSD.
+    Mute,
+    /// T321: raise the panel brightness by one 5% step and show the OSD.
+    BrightnessUp,
+    /// T321: lower the panel brightness by one 5% step and show the OSD.
+    BrightnessDown,
     /// T315: the idle chain dimmed the screen. The shell applies the effect.
     IdleDim,
     /// T315: the idle chain blanked the screen. The shell applies the effect.
@@ -117,6 +129,11 @@ impl InputAction {
             InputAction::ControlCenter => "control-center",
             InputAction::ShowApps => "show-apps",
             InputAction::AccessibilityShortcut => "accessibility-shortcut",
+            InputAction::VolumeUp => "volume-up",
+            InputAction::VolumeDown => "volume-down",
+            InputAction::Mute => "mute",
+            InputAction::BrightnessUp => "brightness-up",
+            InputAction::BrightnessDown => "brightness-down",
             InputAction::IdleDim => "idle-dim",
             InputAction::IdleBlank => "idle-blank",
             InputAction::IdleLock => "idle-lock",
