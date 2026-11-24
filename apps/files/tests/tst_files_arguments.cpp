@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
-// The Files command-line location argument (T-10.6b). The Dock launches Files
-// with `trash://` as a positional argument, which main.cpp maps onto the
-// `DF_FILES_START_URI` seam; this checks the parser independently of QML.
+// The Files command-line location argument (T-10.6b) and T333's launch forms.
+// The Dock launches Files with `trash://` as a positional argument, which
+// main.cpp maps onto the `DF_FILES_START_URI` seam; the window menu's New
+// Window / New Tab lines and the D-Bus hand-off are checked here
+// independently of QML. (The tab bar's pure rules are covered by
+// `tst_files_shell`'s tab cases, which run the real bar.)
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -200,7 +203,7 @@ private slots:
         QCOMPARE(target.revealUri, QUrl::fromLocalFile(file).toString());
     }
 
-    void a_directory_resolves_to_itself_without_a_reveal()
+    void a_directory_resolves_to_itself()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -209,11 +212,13 @@ private slots:
         QVERIFY(target.revealUri.isEmpty());
     }
 
-    void a_non_file_scheme_resolves_to_itself()
+    void a_non_file_scheme_browses_itself()
     {
         const FilesOpenTarget target = filesOpenTarget(QStringLiteral("trash://"));
         QCOMPARE(target.location, QStringLiteral("trash://"));
         QVERIFY(target.revealUri.isEmpty());
+
+        QVERIFY(filesOpenTarget(QString()).location.isEmpty());
     }
 };
 

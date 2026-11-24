@@ -31,29 +31,14 @@ QtObject {
     readonly property var current: root.validIndex(currentIndex)
                                         ? tabs[currentIndex] : null
     readonly property bool isValid: current !== null
-    // The active tab's location, or empty when the window has no tab. Read
-    // `current` directly rather than through `currentHistory`: dependent
-    // bindings can re-evaluate in either order when the tab changes, and the
-    // other binding may still hold the previous tab's empty stack.
-    readonly property string currentUri: {
-        var tab = root.current;
-        if (!tab || !tab.history)
-            return "";
-        var uri = tab.history[tab.historyIndex];
-        return uri === undefined ? "" : uri;
-    }
-
-    // The one tab's history stack and its cursor. A single-tab window reads
-    // these directly, so the existing back/forward controls have one source.
+    // The active tab's history stack and its cursor. The window's location,
+    // back/forward, and every tab-derived binding read these.
     readonly property var currentHistory: current ? (current.history || [])
                                                    : []
     readonly property int currentHistoryIndex: current ? current.historyIndex : -1
-    readonly property bool canGoBack: current ? current.historyIndex > 0 : false
-    readonly property bool canGoForward: current
-                                         ? (current.historyIndex >= 0
-                                            && current.historyIndex
-                                               < (current.history || []).length - 1)
-                                         : false
+    readonly property bool canGoBack: currentHistoryIndex > 0
+    readonly property bool canGoForward: currentHistoryIndex >= 0
+                                      && currentHistoryIndex < currentHistory.length - 1
 
     function validIndex(index) {
         return index >= 0 && index < tabs.length;
@@ -66,11 +51,33 @@ QtObject {
         return out;
     }
 
+    // The tab `index` with `changes` applied, as a new object: the id is kept,
+    // everything else a caller passes replaces the tab's.
+    function mergedTab(index, changes) {
+        var tab = tabs[index];
+        var next = { id: tab.id, title: tab.title, history: tab.history,
+                     historyIndex: tab.historyIndex };
+        for (var key in changes) {
+            if (key === "id")
+                continue;
+            next[key] = changes[key];
+        }
+        return next;
+    }
+
+    // A copy of `tabs` with tab `index` replaced by `mergedTab(index, changes)`.
+    function withTab(index, changes) {
+        if (!root.validIndex(index))
+            return root.copyTabs();
+        var list = root.copyTabs();
+        list[index] = root.mergedTab(index, changes);
+        return list;
+    }
+
     // Open `uri` as a new tab and make it current; returns the new index (or
     // -1). `at` inserts the tab at that slot; New Tab and the tab bar's
-    // disclosure button append at the end. `tab` is the caller's own
-    // `mergedTab` result when it updated the outgoing tab in the same change.
-    function openTab(uri, title, at, tab) {
+    // disclosure button append at the end.
+    function openTab(uri, title, at) {
         if (!uri)
             return -1;
         var list = root.copyTabs();
@@ -80,13 +87,6 @@ QtObject {
         var index = (at === undefined || at === null) ? list.length
                                                       : Math.max(0, Math.min(at, list.length));
         list.splice(index, 0, opened);
-        if (root.validIndex(at) && tab) {
-            list[at] = tab;
-            // The tab being opened moves down one slot when it is inserted at
-            // or before the tab that was just updated.
-            if (at < index)
-                index += 1;
-        }
         root.tabs = list;
         root.currentIndex = index;
         return index;
@@ -121,9 +121,9 @@ QtObject {
         return root.currentIndex;
     }
 
-    // Navigate the current tab (or the tab at `index`). Re-navigating the same
-    // location is a no-op so selection echo does not grow the stack. Only the
-    // addressed tab's history changes: two tabs keep independent stacks.
+    // Navigate the tab at `index` (default: the current). Re-navigating the
+    // same location is a no-op so selection echo does not grow the stack. Only
+    // the addressed tab's history changes: two tabs keep independent stacks.
     function navigate(uri, title, index) {
         var at = (index === undefined || index === null) ? root.currentIndex : index;
         if (!root.validIndex(at) || !uri)
@@ -168,29 +168,6 @@ QtObject {
             return false;
         root.tabs = root.withTab(index, changes);
         return true;
-    }
-
-    // The tab `index` with `changes` applied, as a new object: the id is kept,
-    // everything else a caller passes replaces the tab's.
-    function mergedTab(index, changes) {
-        var tab = tabs[index];
-        var next = { id: tab.id, title: tab.title, history: tab.history,
-                     historyIndex: tab.historyIndex };
-        for (var key in changes) {
-            if (key === "id")
-                continue;
-            next[key] = changes[key];
-        }
-        return next;
-    }
-
-    // A copy of `tabs` with tab `index` replaced by `mergedTab(index, changes)`.
-    function withTab(index, changes) {
-        if (!root.validIndex(index))
-            return root.copyTabs();
-        var list = root.copyTabs();
-        list[index] = root.mergedTab(index, changes);
-        return list;
     }
 
     // The location the tab at `index` is showing.

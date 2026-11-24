@@ -7,18 +7,21 @@ import Dragonfruit
 //
 // The bar owns no state. It paints `tabs` (`{ id, title }`) and reports intent:
 // `tabSelected(index)` on a click, `tabCloseRequested(index)` from a tab's
-// close affordance, and `newTabRequested()` from the disclosure button. The
-// shell's `FilesTabs` model is the source of truth, so the window title, the
-// breadcrumb and the contents always follow the active tab.
+// close affordance, `newTabRequested()` from the disclosure button, and
+// `contextRequested(index, x, y)` on a right-click. The shell's `FilesTabs`
+// model is the source of truth, so the window title, the breadcrumb and the
+// contents always follow the active tab. Every rule here is state-free
+// (entries, the width band, the wrapping step), so `tst_files_shell` tests it
+// through a real bar instance.
 //
 // Keyboard: the bar is one focus stop. Left/Right move the selection, and
 // Return/Space on a close affordance would need a second focus stop — the
 // shell's Cmd+1…9 / Ctrl+Tab / Cmd+W chords are the keyboard path instead.
 // Pointer: clicking a background tab selects it; clicking the active tab
 // closes it (a tab strip affordance, like a segmented control's re-click); the
-// x on each tab closes that tab. A right-click on a tab or on "New Tab..." opens
-// the shell's tab menu (index -1 for the strip's end).
-Item {
+// x on each tab closes that tab. A right-click on a tab or on "New Tab..."
+// opens the shell's tab menu (index -1 for the strip's end).
+Rectangle {
     id: root
 
     // `{ id, title }` per tab, left to right.
@@ -31,13 +34,11 @@ Item {
     signal tabSelected(int index)
     signal tabCloseRequested(int index)
     signal newTabRequested()
-    // A right-click on a tab (the tab menu) or on "New Tab..." at the end of
-    // the strip, in bar-local coordinates.
+    // A right-click on a tab (the tab menu) or on the trailing New Tab button,
+    // in bar-local coordinates.
     signal contextRequested(int index, real x, real y)
 
     readonly property real tabHeight: Theme.controls.accessoryBar.tab
-    readonly property real tabMaxWidth: 240
-    readonly property real tabMinWidth: 80
     // The tab model exposes the close affordance only when there is more than
     // one tab (closing the only tab would close the window).
     readonly property bool canClose: tabs.length > 1
@@ -46,15 +47,21 @@ Item {
     readonly property var entries: {
         var out = [];
         for (var i = 0; i < root.tabs.length; ++i) {
-            var tab = root.tabs[i];
-            out.push({ index: i, id: tab.id, title: tab.title,
-                       current: i === root.currentIndex });
+            out.push({ index: i, id: root.tabs[i].id,
+                       title: root.tabs[i].title, current: i === root.currentIndex });
         }
         return out;
     }
+    // The tabs share the strip's free width (the trailing New Tab button is
+    // one tab slot), between 80 pt and 240 pt: 240 keeps a long folder name
+    // readable, 80 keeps the close affordance tappable. No tabs is no width.
+    readonly property real tabWidth: root.tabs.length === 0 ? 0
+                                    : Math.max(80, Math.min(240,
+                                               Math.max(0, root.width - root.tabHeight)
+                                               / root.tabs.length))
 
     implicitHeight: root.tabHeight
-    implicitWidth: tabRow.implicitWidth
+    implicitWidth: tabRow.implicitWidth + tabHeight
 
     function select(index) {
         if (index < 0 || index >= root.tabs.length)
@@ -63,22 +70,21 @@ Item {
         return true;
     }
 
-    // Left/Right step to the neighbouring tab (wrapping), skipping nothing:
-    // Files has no disabled tab.
+    // Left/Right step to the neighbouring tab (wrapping): Files has no
+    // disabled tab.
     function step(delta) {
-        if (root.tabs.length === 0)
-            return;
         var count = root.tabs.length;
-        var next = ((root.currentIndex + delta) % count + count) % count;
+        if (count <= 1)
+            return false;
+        var from = root.currentIndex < 0 ? 0 : root.currentIndex;
+        var next = ((from + delta) % count + count) % count;
         root.select(next);
+        return true;
     }
 
     activeFocusOnTab: true
-
-    Rectangle {
-        anchors.fill: parent
-        color: Material.appChromeFill("filesTabBar", Theme.color.surfaceMuted)
-    }
+    color: Material.appChromeFill("filesTabBar", Theme.color.surfaceMuted)
+    antialiasing: true
 
     Row {
         id: tabRow
@@ -100,11 +106,7 @@ Item {
                 readonly property bool current: tabItem.modelData.current
                 readonly property bool hovered: tabHover.hovered
 
-                width: root.tabs.length === 0 ? 0
-                     : Math.max(root.tabMinWidth,
-                                Math.min(root.tabMaxWidth,
-                                         (Math.max(0, root.width - newTabButton.width))
-                                         / Math.max(1, root.tabs.length)))
+                width: root.tabWidth
                 height: root.tabHeight
 
                 Rectangle {
@@ -139,7 +141,7 @@ Item {
                     id: closeButton
                     objectName: "tabClose" + tabItem.index
                     visible: root.canClose
-                    name: "close"
+                    name: "x"
                     size: 10
                     anchors.right: parent.right
                     anchors.rightMargin: Theme.primitive.spacing.sm
@@ -201,6 +203,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         opacity: root.newTabEnabled ? 1.0 : 0.4
 
+        // Tabler has no bare plus in the vendored vocabulary; Phosphor does
+        // (the T163 rule: a glyph is a resource, the component styles it).
         PhosphorIcon {
             anchors.centerIn: parent
             name: "plus"

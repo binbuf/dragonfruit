@@ -1621,12 +1621,17 @@ Item {
             verify(tile !== null);
 
             surface.iconView.luminanceAt = function(nx, ny) { return 0.95; };
-            waitForRendering(surface);
-            compare(tile.labelColor, Theme.controls.menuBar.foregroundOnLight);
+            // The delegate follows the sampler through a binding, so let it
+            // settle before reading (one frame can still hold the previous
+            // value when the sampler is swapped in).
+            tryVerify(function() {
+                return tile.labelColor === Theme.controls.menuBar.foregroundOnLight;
+            }, 5000, "the label follows a light wallpaper");
 
             surface.iconView.luminanceAt = function(nx, ny) { return 0.1; };
-            waitForRendering(surface);
-            compare(tile.labelColor, Theme.controls.menuBar.foregroundOnDark);
+            tryVerify(function() {
+                return tile.labelColor === Theme.controls.menuBar.foregroundOnDark;
+            }, 5000, "the label follows a dark wallpaper");
         }
 
         function test_desktop_icons_start_below_the_menu_bar_veil() {
@@ -2025,6 +2030,69 @@ Item {
 
         // -- Tabs and New Window (T333) ---------------------------------------
 
+        // The tab bar's state-free rules, exercised through a real bar:
+        // entries, the width band, the wrapping step, and the reserved tab
+        // chords a later shortcut must never take.
+        function test_tab_bar_core_rules() {
+            var shell = make({ startUri: Files.viewFixtureUri });
+            var bar = makeBar({ tabs: [{ id: 7, title: "Home" },
+                                       { id: 8, title: "Documents" },
+                                       { id: 9, title: "Trash" }],
+                                currentIndex: 1 });
+            var rows = bar.entries;
+            compare(rows.length, 3);
+            compare(rows[0].id, 7);
+            compare(rows[1].title, "Documents");
+            compare(rows[1].current, true);
+            compare(rows[2].current, false);
+            compare(bar.canClose, true);
+
+            // The width band: two tabs in a 900 pt bar take the 240 pt cap; a
+            // cramped strip never goes under 80 pt.
+            compare(bar.tabWidth, 240);
+            var narrow = makeBar({ tabs: bar.tabs, currentIndex: 0 });
+            narrow.width = 160;
+            compare(narrow.tabWidth, 80);
+
+            // Left/Right wrap through the bar's step, reported as
+            // `tabSelected` (an external SignalSpy with its target assigned
+            // after creation).
+            var spy = createTemporaryObject(tabSelectSpyComponent, stage);
+            spy.target = bar;
+            bar.currentIndex = 2;
+            bar.step(1);
+            compare(spy.count, 1, "Right from the last tab selects the first");
+            compare(spy.signalArguments[0][0], 0);
+            bar.currentIndex = 0;
+            bar.step(-1);
+            compare(spy.count, 2);
+            compare(spy.signalArguments[1][0], 2);
+
+            var single = makeBar({ tabs: [{ id: 1, title: "Home" }],
+                                   currentIndex: 0 });
+            compare(single.canClose, false, "the last tab has no close affordance");
+
+            // The reserved tab chords a later shortcut must never take.
+            var chords = ["Super+T", "Super+W", "Ctrl+Tab", "Ctrl+Shift+Tab",
+                          "Super+1", "Super+9", "Shift+Super+N"];
+            for (var i = 0; i < chords.length; ++i)
+                verify(shell.tabChords.indexOf(chords[i]) >= 0, chords[i]);
+            verify(shell.tabChords.indexOf("Super+K") < 0);
+        }
+
+        function makeBar(props) {
+            var merged = { width: 900, height: 28 };
+            for (var key in (props || {}))
+                merged[key] = props[key];
+            var bar = createTemporaryObject(tabBarComponent, stage, merged);
+            verify(bar !== null);
+            waitForRendering(stage);
+            return bar;
+        }
+
+        Component { id: tabBarComponent; FilesTabBar { } }
+        Component { id: tabSelectSpyComponent; SignalSpy { signalName: "tabSelected" } }
+
         // The shell's `newWindow` seam: record the request instead of
         // launching a second process, which a test must never spawn. The
         // window host normally connects the signal to `Files.newWindow`; a
@@ -2235,7 +2303,8 @@ Item {
             tryCompare(shell.directory, "state", "complete");
 
             // Cmd+N from the content asks for a new window on the tab's
-            // location; Shift+Cmd+N still makes a folder.
+            // location (Shift+Cmd+N is still New Folder, which makes a folder
+            // here — that would also leave an extra entry in the fixture).
             shell.iconView.children[0].forceActiveFocus();
             keyClick(Qt.Key_N, Qt.ControlModifier);
             compare(Files.newWindowRequests().length, 1);
@@ -2251,6 +2320,33 @@ Item {
             verify(newTab[0].startsWith("--activation-handoff="));
             compare(newTab[1], "--location=" + Files.viewFixtureUri);
             compare(Files.hasNewWindowCallable(), true);
+
+            // Shift+Cmd+N is New Folder, not New Window. Run it in an empty
+            // mutation folder so the folder it creates is not an extra entry in
+            // the read-only view fixture (it once leaked there and broke later
+            // tests). It asks for no window.
+            var scratch = Files.mutationFixtureUri + "/WindowChord";
+            shell.navigate(scratch);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.directory.count, 0);
+            var requestsBefore = Files.newWindowRequests().length;
+            shell.iconView.children[0].forceActiveFocus();
+            keyClick(Qt.Key_N, Qt.ControlModifier | Qt.ShiftModifier);
+            compare(Files.newWindowRequests().length, requestsBefore,
+                    "Shift+Cmd+N makes a folder, not a window");
+            tryCompare(shell.directory, "count", 1);
+
+            // The menu rows advertise the chords that actually work: New
+            // Window is Super+N (the design's File row and the key handler),
+            // and New Folder alone owns Shift+Super+N. A refactor once relabelled
+            // New Window as Shift+Super+N, leaving both rows claiming one chord.
+            var menu = shell.backgroundMenu();
+            var newWindowRow = menu.filter(function(e) { return e.action === "newWindow"; })[0];
+            var newFolderRow = menu.filter(function(e) { return e.action === "newFolder"; })[0];
+            verify(newWindowRow !== undefined && newFolderRow !== undefined);
+            compare(newWindowRow.shortcut, "Super+N");
+            compare(newFolderRow.shortcut, "Shift+Super+N");
+            compare(shell.tabChords.indexOf("Super+N") >= 0, true);
         }
 
         function test_single_instance_hand_off_opens_a_tab() {
@@ -2281,7 +2377,10 @@ Item {
                 return;
             }
             var base = Files.mutationFixtureUri + "/TabsCapture";
-            var shell = make({ width: 900, height: 600, startUri: base + "/1" });
+            // Show the strip at one tab for the stills (the live rule shows it
+            // from the second tab).
+            var shell = make({ width: 900, height: 600, startUri: base + "/1",
+                               tabBarForced: true });
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             // Two tabs, each at its own folder: the first stays active.
@@ -2327,17 +2426,23 @@ Item {
                         wait(20);
                 }
                 verify(secondShell !== null, "the second window hosts a shell");
-                // The new window starts at Home; navigate its one tab to the
-                // tabbed capture's second folder (the headless test home does
-                // not exist, so wait for the initial tab before moving it).
+                // The new window opens on Home (the fixture does not redirect
+                // it, so it is a real, watched folder that may still be
+                // streaming). Move its one tab straight to the capture folder:
+                // `navigate` replaces any Home listing in flight, so the test
+                // never waits on Home's own state — a Home listing that was
+                // still settling used to race this step and leave the capture
+                // window on an `error` state.
                 tryCompare(secondShell.tabs, "count", 1);
                 verify(secondShell.navigate(base + "/2"));
                 tryCompare(secondShell, "currentUri", base + "/2");
-                tryCompare(secondShell.directory, "state", "complete");
+                tryCompare(secondShell.directory, "state", "complete", 30000);
+                compare(secondShell.directory.errorMessage, "");
                 // A second window is one tab of its own (it never inherits the
-                // first window's tabs); the bar shows because the capture
-                // seam keeps it visible, and its location is this window's.
+                // first window's tabs). The bar is hidden for a single tab
+                // unless it is shown, so the still shows it explicitly.
                 compare(secondShell.tabs.count, 1);
+                secondShell.tabBarForced = true;
                 waitForRendering(second.contentItem);
                 captureT333(second.contentItem, "second-window");
                 second.close();

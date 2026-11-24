@@ -549,7 +549,12 @@ void ChooserBridge::applyDelta(const df_files_delta *delta)
         // The gap is described by the next reset; this tick just repaints.
         return;
     }
-    if (delta->kind == DF_FILES_DELTA_RESET) {
+    // A reset and an insert both carry whole rows, each at its final rank
+    // (`total` counts them): rebuild from them rather than inserting into the
+    // rows the picker already painted, which would duplicate a resident row.
+    // Until T333 the insert path only appended, so a picker whose first delta
+    // was `INSERT` (the watcher's incremental C ABI) never showed a row.
+    if (delta->kind == DF_FILES_DELTA_RESET || delta->kind == DF_FILES_DELTA_INSERT) {
         m_entries.clear();
         for (uint32_t i = 0; i < delta->row_count; ++i)
             m_entries.append(rowFromNode(delta->rows[i].node));

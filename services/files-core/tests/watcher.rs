@@ -215,27 +215,71 @@ fn a_failing_watcher_open_reports_unsupported() {
     assert_eq!(error, SourceError::UnsupportedScheme("trash".to_owned()));
 }
 
+// T333: an in-place rename gives the folder a new inode; the reader's watch
+// is then stale. The parent watch makes the replacement visible (a reset is
+// requested) and the reader re-arms on the name, so a later change in the
+// folder is still noticed without a new session.
+#[test]
+fn an_in_place_rename_requests_a_reset_and_the_later_change_is_still_seen() {
+    // The listing sits one level below the temp root: the root itself is
+    // noisy on a shared host (other processes watch it), the folder below it
+    // is this test's own.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("root");
+    let folder = root.join("watched");
+    std::fs::create_dir_all(&folder).expect("mkdir");
+    let location = Location::file(&folder);
+    let source = Arc::new(StdFsSource::new());
+    let mut model = DirectoryModel::new();
+    let listing = model.begin(source.clone(), location.clone());
+    drain_listing(&mut model, &listing);
+
+    let watcher = Arc::new(InotifyWatcher::new());
+    let mut watch = Watch::begin(&mut model, watcher, &location);
+
+    // An external create lands first, so this session's own watch (opened by
+    // the worker at the previous event) is certainly in place.
+    std::fs::write(folder.join("before.txt"), b"x").expect("write");
+    let before = Location::file(folder.join("before.txt")).uri().to_owned();
+    wait_for(&mut model, &mut watch, |model| {
+        model.node_id_for_uri(&before).is_some()
+    });
+
+    // The folder is replaced by a new inode under the same name.
+    std::fs::rename(&folder, root.join("watched-old")).expect("rename out");
+    std::fs::create_dir(&folder).expect("mkdir again");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && !model.removal_pending() {
+        drain(&mut model, &mut watch);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(model.removal_pending(), "the replacement asks for a reset");
+
+    // A later change inside the folder is still noticed (T333): the reader
+    // re-armed on the new inode. The model keeps the same generation (the
+    // session re-lists on the reset); an update, not a new session.
+    std::fs::write(folder.join("later.txt"), b"y").expect("write");
+    let later = Location::file(folder.join("later.txt")).uri().to_owned();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        drain(&mut model, &mut watch);
+        if model.node_id_for_uri(&later).is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(model.node_id_for_uri(&later).is_some(),
+            "a folder that was replaced in place still reports changes");
+    model.check_consistent().expect("consistent");
+}
+
 // The real fallback, over the kernel. Linux-only, because inotify is.
 #[cfg(target_os = "linux")]
 mod inotify {
     use super::*;
     use dragonfruit_files_core::{InotifyWatcher, StdFsSource};
 
-    fn wait_for(
-        model: &mut DirectoryModel,
-        handle: &dragonfruit_files_core::WatchHandle,
-        mut predicate: impl FnMut(&DirectoryModel) -> bool,
-    ) {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while Instant::now() < deadline {
-            model.drain_watch(handle);
-            if predicate(model) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        panic!("the model never reflected the external change");
-    }
+    use crate::{drain, wait_for, Watch};
 
     #[test]
     fn external_create_and_delete_update_the_model_without_a_relist() {
@@ -248,13 +292,13 @@ mod inotify {
         assert!(model.is_empty());
 
         let watcher = Arc::new(InotifyWatcher::new());
-        let handle = model.begin_watch(watcher, &location).expect("watch");
+        let mut watch = Watch::begin(&mut model, watcher, &location);
 
         // An external create appears.
         let path = dir.path().join("external.txt");
         std::fs::write(&path, b"hello").expect("write");
         let uri = Location::file(&path).uri().to_owned();
-        wait_for(&mut model, &handle, |model| {
+        wait_for(&mut model, &mut watch, |model| {
             model.node_id_for_uri(&uri).is_some()
         });
         assert!(model.node_id_for_uri(&uri).is_some());
@@ -262,7 +306,7 @@ mod inotify {
 
         // An external delete vanishes, preserving no stale row.
         std::fs::remove_file(&path).expect("remove");
-        wait_for(&mut model, &handle, |model| {
+        wait_for(&mut model, &mut watch, |model| {
             model.node_id_for_uri(&uri).is_none()
         });
         assert!(model.node_id_for_uri(&uri).is_none());
@@ -284,11 +328,11 @@ mod inotify {
         let id = model.node_id_for_uri(&before_uri).expect("listed");
 
         let watcher = Arc::new(InotifyWatcher::new());
-        let handle = model.begin_watch(watcher, &location).expect("watch");
+        let mut watch = Watch::begin(&mut model, watcher, &location);
         let after = dir.path().join("after.txt");
         std::fs::rename(&before, &after).expect("rename");
         let after_uri = Location::file(&after).uri().to_owned();
-        wait_for(&mut model, &handle, |model| {
+        wait_for(&mut model, &mut watch, |model| {
             model.node_id_for_uri(&after_uri).is_some()
         });
         assert_eq!(
@@ -310,12 +354,12 @@ mod inotify {
         assert!(model.is_empty());
 
         let watcher = Arc::new(InotifyWatcher::new());
-        let handle = model.begin_watch(watcher, &location).expect("watch");
+        let mut watch = Watch::begin(&mut model, watcher, &location);
 
         std::fs::write(dir.path().join(".directory"), b"[Desktop Entry]\n").expect("write");
         let deadline = Instant::now() + Duration::from_millis(300);
         while Instant::now() < deadline {
-            model.drain_watch(&handle);
+            drain(&mut model, &mut watch);
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(model.is_empty(), "a hidden create must not add a row");
@@ -336,9 +380,9 @@ mod inotify {
         assert!(model.node_id_for_uri(&uri).is_some());
 
         let watcher = Arc::new(InotifyWatcher::new());
-        let handle = model.begin_watch(watcher, &location).expect("watch");
+        let mut watch = Watch::begin(&mut model, watcher, &location);
         std::fs::rename(&visible, dir.path().join(".visible.txt")).expect("rename");
-        wait_for(&mut model, &handle, |model| {
+        wait_for(&mut model, &mut watch, |model| {
             model.node_id_for_uri(&uri).is_none()
         });
         assert!(model.node_id_for_uri(&uri).is_none());
@@ -364,7 +408,10 @@ mod inotify {
         }
 
         let watcher = Arc::new(InotifyWatcher::new());
-        let handle = model.begin_watch(watcher, &location).expect("watch");
+        let (handle, batches) = model
+            .model_mut()
+            .begin_watch_batch(watcher, &location)
+            .expect("watch");
         let ops = StdFsOps::new();
         let op = model.new_folder_via(&ops, &location).expect("new folder");
         assert!(!model.is_pending(op));
@@ -372,6 +419,9 @@ mod inotify {
 
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline {
+            while let Ok(batch) = batches.try_recv() {
+                model.apply_watch_batch(batch);
+            }
             model.drain_watch(&handle);
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -381,12 +431,65 @@ mod inotify {
 }
 
 // T332: the model-side half of the Files watcher. A burst folds through one
+// batch and is described by one delta-worthy set of markers (the same drain
+// helper the inotify module uses). A burst folds through one
 // batch and is described by one delta-worthy set of markers; a rename keeps
 // the id the view selected by; and the C ABI session watches its own folder.
+/// The model's watcher, drained the way the FFI session does: the batch
+/// channel feeds the model (so a `Rescan` requests a reset), then the
+/// handle's per-event channel is drained for anything left. Defined before
+/// both users below (the scripted rescan case and the inotify module).
+struct Watch {
+    handle: dragonfruit_files_core::WatchHandle,
+    batches: std::sync::mpsc::Receiver<dragonfruit_files_core::WatchBatch>,
+}
+
+impl Watch {
+    fn begin(
+        model: &mut DirectoryModel,
+        watcher: Arc<dyn dragonfruit_files_core::FolderWatcher>,
+        location: &Location,
+    ) -> Self {
+        let (handle, batches) = model.begin_watch_batch(watcher, location).expect("watch");
+        Self { handle, batches }
+    }
+}
+
+fn drain(model: &mut DirectoryModel, watch: &mut Watch) {
+    let mut ready = Vec::new();
+    while let Ok(batch) = watch.batches.try_recv() {
+        ready.push(batch);
+    }
+    for batch in ready {
+        model.apply_watch_batch(batch);
+    }
+    model.drain_watch(&watch.handle);
+}
+
+fn wait_for(
+    model: &mut DirectoryModel,
+    watch: &mut Watch,
+    mut predicate: impl FnMut(&DirectoryModel) -> bool,
+) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        drain(model, watch);
+        if predicate(model) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("the model never reflected the external change");
+}
+
 #[test]
 fn a_coalesced_burst_is_one_model_update() {
+    // The listing is a folder of its own below the temp root: the root is a
+    // shared, noisy location on a developer host (T333).
     let dir = tempfile::tempdir().expect("temp dir");
-    let location = Location::file(dir.path());
+    let watched = dir.path().join("listing");
+    std::fs::create_dir(&watched).expect("mkdir");
+    let location = Location::file(&watched);
     let source = Arc::new(StdFsSource::new());
     let mut model = DirectoryModel::new();
     let listing = model.begin(source, location.clone());
@@ -398,27 +501,34 @@ fn a_coalesced_burst_is_one_model_update() {
     );
 
     let watcher = Arc::new(InotifyWatcher::new());
-    let handle = model.begin_watch(watcher, &location).expect("watch");
+    let mut watch = Watch::begin(&mut model, watcher, &location);
 
     // An extraction-sized burst: a folder and many files, written quickly.
-    std::fs::create_dir(dir.path().join("Extracted")).expect("dir");
+    std::fs::create_dir(watched.join("Extracted")).expect("dir");
     for index in 0..24 {
-        std::fs::write(dir.path().join(format!("file-{index:02}.txt")), b"payload").expect("write");
+        std::fs::write(watched.join(format!("file-{index:02}.txt")), b"payload").expect("write");
     }
 
-    // Wait until the burst settles: every entry is listed and no more batch
-    // is arriving. The creates stay additions however many batches the
-    // kernel split them into; no held row is ever "changed".
+    // Wait until the burst settles. The session's channel is the model's
+    // only batch stream (the handle's own batch receiver is a second consumer
+    // and must not be touched here, or its queue would grow to the channel's
+    // buffer and the worker would no longer block). A create and its
+    // `IN_CLOSE_WRITE` may land in two batches; once nothing more arrives,
+    // the settled model tells a held row (in place since its create) from a
+    // create that was refreshed.
     let deadline = Instant::now() + Duration::from_secs(5);
+    let mut last = 0;
     loop {
-        model.drain_watch_batches(&handle);
-        let quiet = model.len() >= 25
-            && handle
-                .recv_batch_timeout(Duration::from_millis(300))
-                .is_none();
-        if quiet || Instant::now() >= deadline {
+        drain(&mut model, &mut watch);
+        model.take_watch_changes();
+        if model.len() >= 25 && model.len() == last {
             break;
         }
+        last = model.len();
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(150));
     }
     assert_eq!(
         model.len(),
@@ -436,7 +546,7 @@ fn a_coalesced_burst_is_one_model_update() {
     );
     assert!(!model.take_removal());
     let folder = model
-        .node_id_for_uri(Location::file(dir.path().join("Extracted")).uri())
+        .node_id_for_uri(Location::file(watched.join("Extracted")).uri())
         .expect("the created folder is listed");
     assert!(
         model.node(folder).expect("node").is_dir(),
@@ -465,14 +575,14 @@ fn a_batch_rename_keeps_the_selected_id_and_marks_the_row() {
     model.selection_mut().select(id);
 
     let watcher = Arc::new(InotifyWatcher::new());
-    let handle = model.begin_watch(watcher, &location).expect("watch");
+    let mut watch = Watch::begin(model.model_mut(), watcher, &location);
     let after = dir.path().join("after.txt");
     std::fs::rename(&before, &after).expect("rename");
     let after_uri = Location::file(&after).uri().to_owned();
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while model.model().node_id_for_uri(&after_uri).is_none() && Instant::now() < deadline {
-        model.drain_watch_batches(&handle);
+        drain(model.model_mut(), &mut watch);
         if model.model().node_id_for_uri(&after_uri).is_none() {
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -519,7 +629,6 @@ fn the_ffi_session_watches_its_folder_and_skips_its_own_writes() {
             let status = (*delta).status;
             let kind = (*delta).kind;
             let total = (*delta).total;
-            eprintln!("DBG poll status={status} kind={kind} total={total}");
             df_files_delta_free(delta);
             assert_ne!(status, DF_FILES_STATUS_ERROR, "listing failed");
             if (status == DF_FILES_STATUS_BATCH && total >= 1)

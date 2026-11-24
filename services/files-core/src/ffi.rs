@@ -746,6 +746,8 @@ impl FfiSession {
                 }
                 WatchEventKind::Removed { .. } => woke |= self.quiet_writes > 0,
                 WatchEventKind::Renamed { .. } => woke |= !self.op_rows.is_empty(),
+                // The folder was replaced: the receiver must re-list.
+                WatchEventKind::Rescan => woke = true,
             }
         }
         woke

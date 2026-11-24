@@ -106,6 +106,12 @@ int main(int argc, char **argv)
     writeFile(mutationRoot + QStringLiteral("/CaptureConflict/report.txt"), QByteArray("old"));
     writeFile(mutationRoot + QStringLiteral("/CaptureCut/move-me.txt"), QByteArray("move"));
 
+    // T333: a folder for the New Window/New Folder chord test. New Folder
+    // creates an entry here, so it must not share the view fixture (a folder
+    // created there once leaked into later tests) or `/New` (whose own test
+    // expects it empty).
+    QDir(mutationRoot).mkpath(QStringLiteral("WindowChord"));
+
     // T331: undo fixtures. `UndoRename` starts with one file; `UndoConflict`
     // lets the test take the old name back before it undoes, so the undo must
     // refuse with a reason; `UndoCapture` is the stills' own tree.

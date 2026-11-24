@@ -94,9 +94,9 @@ Item {
                                           && (root.tabBarForced
                                               || root.tabs.count > 1
                                               || root.tabBarRevealedAt > 1)
-    // Capture seam: `DF_FILES_START_TABS=N` opens N tabs on the mutation
-    // fixture's `TabsCapture/<n>` folders once the first listing settles.
-    property int startTabs: Files.startTabs
+    // Capture seam: `DF_FILES_CAPTURE_TABS` pins the bar visible from the first
+    // tab (the T333 one-tab still). Nothing opens tabs from it; the capture
+    // builds them.
     // The history cursor, and therefore view/breadcrumb/title, changed with
     // the tab (or a back/forward in it, or the view kind of a location). A
     // plain counter bumped by every path that mutates the tab list without the
@@ -163,11 +163,15 @@ Item {
     readonly property var tabState: {
         var revision = root.tabRevision;
         var tab = root.tabs.current;
+        var rows = [];
+        for (var i = 0; i < root.tabs.count; ++i)
+            rows.push({ id: root.tabs.tabs[i].id, title: root.tabs.tabTitle(i) });
         return {
             uri: tab ? (tab.history[tab.historyIndex] || "") : "",
             canGoBack: root.tabs.canGoBack,
             canGoForward: root.tabs.canGoForward,
-            view: root.browser.viewFor(tab ? tab.history[tab.historyIndex] : "")
+            view: root.browser.viewFor(tab ? tab.history[tab.historyIndex] : ""),
+            tabRows: rows
         };
     }
     readonly property string currentUri: root.tabState.uri
@@ -588,6 +592,13 @@ Item {
         sidebar.currentIndex = root.entryIndexForUri(root.currentUri);
         root.syncing = false;
     }
+
+    // The window chords this window reserves (T333), for the shortcut
+    // reference and any later binding that must not shadow them. New Window
+    // takes `Super+N`; New Folder keeps `Shift+Super+N`.
+    readonly property var tabChords: ["Super+T", "Super+W", "Ctrl+Tab",
+                                      "Ctrl+Shift+Tab", "Super+1", "Super+9",
+                                      "Super+N", "Shift+Super+N"]
 
     function focusSearch() {
         searchField.forceActiveFocus();
@@ -1268,10 +1279,10 @@ Item {
             return root.editMenuRows();
         // T333: the File section leads with New Tab / New Window. Shift+Cmd+N
         // is New Window (the design's File menu row); New Folder keeps its
-        // T-10.4c chord on Alt+Cmd+N.
+        // T-10.4c chord on Shift+Cmd+N.
         var fileRows = [
             { label: qsTr("New Tab"), shortcut: "Super+T", action: "newTab" },
-            { label: qsTr("New Window"), shortcut: "Shift+Super+N",
+            { label: qsTr("New Window"), shortcut: "Super+N",
               action: "newWindow" },
             { type: "separator" }
         ];
@@ -1412,7 +1423,7 @@ Item {
             return;
         root.captureApplied = true;
         var ids = directory.allNodeIds();
-        if (root.startSelect > 1) {
+        if (root.startSelect >= 1) {
             var chosen = ids.slice(0, root.startSelect);
             root.selectedIds = chosen;
             root.selectedId = chosen[chosen.length - 1];
@@ -1904,16 +1915,10 @@ Item {
                         width: parent.width
                         visible: root.tabBarVisible
                         height: visible ? implicitHeight : 0
-                        tabs: {
-                            var revision = root.tabRevision;
-                            var out = [];
-                            for (var i = 0; i < root.tabs.count; ++i) {
-                                var tab = root.tabs.tabs[i];
-                                out.push({ id: tab.id,
-                                           title: root.tabs.tabTitle(i) });
-                            }
-                            return out;
-                        }
+                        // `{ id, title }` rows; `tabState` re-reads the model
+                        // on every tab-list change, so the labels track the
+                        // locations as the user navigates.
+                        tabs: root.tabState.tabRows
                         currentIndex: root.tabs.currentIndex
                         onTabSelected: (index) => root.activateTab(index)
                         onTabCloseRequested: (index) => root.closeTab(index)

@@ -52,6 +52,7 @@ Item {
     // Legacy name -> vendored Tabler outline name.
     readonly property var aliases: ({
         "close": "x",
+        "x": "x",
         "minimize": "minus",
         "restore": "arrow-up",
         "zoom": "maximize",

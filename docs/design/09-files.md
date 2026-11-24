@@ -478,6 +478,17 @@ writes) and `tst_files_shell`'s `test_external_changes_update_the_open_window`
 recursive watch, a remote (GVfs) watch, and the `trash://` live refresh (the
 Trash is re-listed on navigation).
 
+**Watcher follow-up (in T333).** An in-place rename gives a folder a new
+inode, and the inotify watch on the old inode goes stale: the session then
+never sees another change in that folder (a real defect the tab work's
+long-lived temp folders exposed). The inotify reader now watches the folder's
+canonical path and, for a listing, its parent; when the folder's own name
+reappears as a directory, the reader re-arms on the new inode and reports a
+`Rescan`, which drops the held rows and asks the receiver for a reset re-list
+(pending optimistic edits snap back). The handle also takes a batch receiver
+of its own (`DirectoryModel::begin_watch_batch`), so a model drain and the FFI
+session's batch channel are both fed and neither is skipped.
+
 **Implementation status (T333).** Tabs and New Window are real. One
 `FilesTabs` model per window owns each tab's `{id, title, history,
 historyIndex}`; the active tab supplies the window's location, breadcrumb,
@@ -488,7 +499,9 @@ unified toolbar and appears from the second tab (or via Show Tab Bar); it
 reports select/close/new-tab/context intent and paints `{id,title}` rows.
 `Cmd+T` opens a tab, `Cmd+W` closes the current one, `Ctrl+Tab` /
 `Ctrl+Shift+Tab` step tabs, `Cmd+1…Cmd+9` activate the nth (`Cmd+9` the last),
-`Cmd+N` opens a new window, and `Shift+Cmd+N` still makes a folder. Closing the
+`Cmd+N` opens a new window (the design's File menu row), and New Folder keeps
+its `Shift+Cmd+N` chord. **New Window** and **New Tab** also lead the
+background menu's File section, with Show/Hide Tab Bar below it. Closing the
 last tab closes the window: the model empties first, then the close request is
 emitted, so Files never paints an empty browser shell. **New Window is a
 second process** (`FilesBridge::newWindow`, detached like the desktop's folder

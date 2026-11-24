@@ -90,6 +90,11 @@ pub enum WatchEventKind {
         /// The entry under its new name.
         to: Node,
     },
+    /// The watched folder itself was replaced (an in-place rename gives it a
+    /// new inode) or came back under its name: the listing at the same
+    /// location is a different tree, so the model drops its rows and asks the
+    /// receiver for a reset re-list (T333).
+    Rescan,
 }
 
 /// One coalesced group of changes from a watcher worker (T332).
@@ -309,14 +314,40 @@ pub(crate) fn begin_entries(
     begin_with_hint(watcher, location, generation, true)
 }
 
+/// [`begin_entries`], also handing back the coalesced batch receiver: the FFI
+/// session wakes on the batch channel (T332), while the handle's per-event
+/// channel serves model users that fold events one at a time.
+pub(crate) fn begin_entries_split(
+    watcher: Arc<dyn FolderWatcher>,
+    location: &Location,
+    generation: u64,
+) -> Result<(WatchHandle, Receiver<WatchBatch>), SourceError> {
+    begin_with_hint_split(watcher, location, generation, true)
+}
+
 fn begin_with_hint(
     watcher: Arc<dyn FolderWatcher>,
     location: &Location,
     generation: u64,
     entries_only: bool,
 ) -> Result<WatchHandle, SourceError> {
+    begin_with_hint_split(watcher, location, generation, entries_only)
+        .map(|(handle, _batches)| handle)
+}
+
+/// [`begin_with_hint`], also returning the batch receiver the worker fills.
+fn begin_with_hint_split(
+    watcher: Arc<dyn FolderWatcher>,
+    location: &Location,
+    generation: u64,
+    entries_only: bool,
+) -> Result<(WatchHandle, Receiver<WatchBatch>), SourceError> {
     let mut reader = watcher.watch_entries(location, entries_only)?;
-    let (batch_sender, receiver) = mpsc::channel();
+    // Two batch consumers, each receiving every batch: the handle's own
+    // receiver (model users) and the caller's (the FFI session that wakes on
+    // batches). The worker stops only when both are gone.
+    let (batch_sender, handle_batches) = mpsc::channel();
+    let (handle_sender, batches) = mpsc::channel();
     let (event_sender, events) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let worker_cancel = Arc::clone(&cancel);
@@ -327,6 +358,10 @@ fn begin_with_hint(
             if worker_cancel.load(Ordering::SeqCst) {
                 break;
             }
+            // Never `continue` out of this arm with events pending: a backend
+            // that re-arms its watch (T333) reports that as its own event
+            // alongside the changes, so an empty batch is not a reason to skip
+            // forwarding.
             match reader.next_batch(WATCH_POLL_INTERVAL) {
                 Ok(kinds) if kinds.is_empty() => continue,
                 Ok(mut kinds) => {
@@ -349,10 +384,12 @@ fn begin_with_hint(
                             return;
                         }
                     }
-                    if batch_sender
-                        .send(WatchBatch::new(generation, kinds))
-                        .is_err()
-                    {
+                    let batch = WatchBatch::new(generation, kinds);
+                    // The handle's receiver is the model user's; the caller's
+                    // channel (if any) is the FFI session's wake-up and must
+                    // not keep a dropped handle's worker alive.
+                    let _ = handle_sender.send(batch.clone());
+                    if batch_sender.send(batch).is_err() {
                         return;
                     }
                 }
@@ -366,13 +403,16 @@ fn begin_with_hint(
         )));
     }
 
-    Ok(WatchHandle {
-        generation,
-        receiver,
-        front: std::sync::Mutex::new(Vec::new()),
-        events,
-        cancel,
-    })
+    Ok((
+        WatchHandle {
+            generation,
+            receiver: handle_batches,
+            front: std::sync::Mutex::new(Vec::new()),
+            events,
+            cancel,
+        },
+        batches,
+    ))
 }
 
 /// The kind of change a name-and-mask pair describes, before it is turned into
@@ -457,6 +497,14 @@ impl FolderWatcher for InotifyWatcher {
         let path = location
             .to_file_path()
             .ok_or_else(|| SourceError::UnsupportedScheme(location.scheme().to_owned()))?;
+        // Watch the folder's canonical path (T333): an in-place rename
+        // replaces the folder by a new inode, and a watch on the original path
+        // would be stale (`IN_DELETE_SELF`/`IN_MOVE_SELF`) while the listing
+        // at the same name keeps working. The worker's first read arms the
+        // parent too, so the folder's own name reappearing is visible; when it
+        // does, the watch re-arms on the name's new inode and the receiver is
+        // asked to re-list.
+        let watch_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
         let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC | libc::IN_NONBLOCK) };
         if fd < 0 {
             return Err(SourceError::from_io(
@@ -464,7 +512,7 @@ impl FolderWatcher for InotifyWatcher {
                 location.display(),
             ));
         }
-        let c_path = CString::new(path.as_os_str().as_bytes())
+        let c_path = CString::new(watch_path.as_os_str().as_bytes())
             .map_err(|_| SourceError::Io(format!("path contains NUL: {}", location.display())))?;
         let mask = libc::IN_CREATE
             | libc::IN_DELETE
@@ -481,9 +529,18 @@ impl FolderWatcher for InotifyWatcher {
             unsafe { libc::close(fd) };
             return Err(error);
         }
+        // The folder's own name, so the parent's report of it (armed by the
+        // worker before its first read) can be recognised.
+        let base_name = watch_path
+            .file_name()
+            .map(std::ffi::OsStr::to_os_string);
         Ok(Box::new(InotifyReader {
             fd,
+            wd,
             parent: location.clone(),
+            base_name,
+            parent_armed: false,
+            listening: entries_only,
             moved: std::collections::HashMap::new(),
             dot_hidden: crate::fallback::dot_hidden_names(&path),
             entries_only,
@@ -494,7 +551,19 @@ impl FolderWatcher for InotifyWatcher {
 #[cfg(target_os = "linux")]
 struct InotifyReader {
     fd: libc::c_int,
+    /// The folder inode's own descriptor: it reports the folder's entries and
+    /// is the one the owner may re-arm.
+    wd: libc::c_int,
     parent: Location,
+    /// The folder's own name, to recognise it in the parent's events.
+    base_name: Option<std::ffi::OsString>,
+    /// Whether the parent's replacement watch is armed (it is opened by the
+    /// worker before the first blocking read, T333).
+    parent_armed: bool,
+    /// The owning session lists this folder (`entries_only`, T332): only then
+    /// does the folder's replacement matter, so only then is its parent
+    /// watched (T333).
+    listening: bool,
     /// `IN_MOVED_FROM` names awaiting their `IN_MOVED_TO`, by cookie.
     moved: std::collections::HashMap<u32, std::ffi::OsString>,
     /// Names the folder's `.hidden` file marks hidden (GIO semantics).
@@ -529,10 +598,72 @@ impl InotifyReader {
         Some(node)
     }
 
+    /// Open the parent's replacement watch and return its descriptor (a
+    /// watch of a folder's parent sees its own name appear and disappear).
+    fn watch_parent(&mut self) -> Option<libc::c_int> {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let path = self.parent.to_file_path()?;
+        let parent = path.parent()?;
+        let c_parent = CString::new(parent.as_os_str().as_bytes()).ok()?;
+        let wd = unsafe {
+            libc::inotify_add_watch(self.fd, c_parent.as_ptr(), libc::IN_CREATE
+                | libc::IN_MOVED_TO | libc::IN_DELETE | libc::IN_MOVED_FROM)
+        };
+        (wd >= 0).then_some(wd)
+    }
+
     fn removed(&self, name: &std::ffi::OsStr) -> WatchEventKind {
         WatchEventKind::Removed {
             uri: self.parent.child(name).uri().to_owned(),
         }
+    }
+
+    /// Re-arm this reader on the folder's name after its inode changed (an
+    /// in-place rename, T333). `inotify_add_watch` on the path adds a fresh
+    /// descriptor for the new inode; the replaced tree's rows are unknown to
+    /// the receiver, so the caller also asks for a reset. Returns whether a
+    /// watch is now installed (a name that is briefly absent re-arms when it
+    /// comes back).
+    fn rearm(&mut self) -> bool {
+        let Some(name) = self.base_name.clone() else {
+            return false;
+        };
+        let Some(path) = self.parent.to_file_path() else {
+            return false;
+        };
+        let Some(path) = path.parent().map(|parent| parent.join(&name)) else {
+            return false;
+        };
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {
+            return false;
+        };
+        if !path.is_dir() {
+            return false;
+        }
+        let mask = libc::IN_CREATE
+            | libc::IN_DELETE
+            | libc::IN_MOVED_FROM
+            | libc::IN_MOVED_TO
+            | libc::IN_MODIFY
+            | libc::IN_ATTRIB
+            | libc::IN_CLOSE_WRITE
+            | libc::IN_DELETE_SELF
+            | libc::IN_MOVE_SELF;
+        // The folder's own descriptor must be refreshed first; the parent's
+        // `inotify_add_watch` would otherwise replace it and hand back a new
+        // number for the folder.
+        let folder_wd = unsafe { libc::inotify_add_watch(self.fd, c_path.as_ptr(), mask) };
+        if folder_wd < 0 {
+            return false;
+        }
+        self.wd = folder_wd;
+
+        self.moved.clear();
+        self.dot_hidden = crate::fallback::dot_hidden_names(&path);
+        true
     }
 
     fn drain_fd(&mut self) -> Result<Vec<WatchEventKind>, SourceError> {
@@ -558,6 +689,7 @@ impl InotifyReader {
             return Err(SourceError::from_io(&error, self.parent.display()));
         }
         let count = count as usize;
+        let mut rescan = false;
         let mut kinds = Vec::new();
         let header = std::mem::size_of::<libc::inotify_event>();
         let mut offset = 0usize;
@@ -576,10 +708,34 @@ impl InotifyReader {
             };
             offset = name_start + name_len;
 
+            // Events that name no entry (`IN_DELETE_SELF`, `IN_IGNORED`) are
+            // not listing changes.
             let (Some(name), Some(change)) = (name, classify(event.mask)) else {
                 continue;
             };
             let kernel_dir = is_directory_mask(event.mask);
+            // A directory appears or disappears under our own name: the
+            // folder was replaced (an in-place rename gives it a new inode)
+            // or came back. The watch re-arms on the name and the receiver
+            // re-lists, because the listing at this location is a new tree
+            // (T333).
+            let folder_event = self.base_name.as_ref() == Some(&name)
+                && event.mask & libc::IN_ISDIR != 0
+                && matches!(
+                    change,
+                    InotifyChange::Created
+                        | InotifyChange::MovedTo
+                        | InotifyChange::MovedFrom
+                        | InotifyChange::Removed
+                );
+            if folder_event {
+                let appeared = matches!(change, InotifyChange::Created | InotifyChange::MovedTo);
+                if appeared {
+                    let _ = self.rearm();
+                }
+                rescan = true;
+                continue;
+            }
             match change {
                 InotifyChange::MovedFrom => {
                     self.moved.insert(event.cookie, name);
@@ -622,6 +778,9 @@ impl InotifyReader {
         for name in moved_out {
             kinds.push(self.removed(&name));
         }
+        if rescan {
+            kinds.push(WatchEventKind::Rescan);
+        }
         Ok(kinds)
     }
 }
@@ -629,6 +788,15 @@ impl InotifyReader {
 #[cfg(target_os = "linux")]
 impl WatchReader for InotifyReader {
     fn next_batch(&mut self, timeout: Duration) -> Result<Vec<WatchEventKind>, SourceError> {
+        // Arm the parent's replacement watch once, before the first read, so
+        // the folder reporting itself is a real change (T333).
+        if !self.parent_armed {
+            self.parent_armed = true;
+            if self.listening {
+                let parent = self.watch_parent();
+                debug_assert!(parent.is_none() || parent != Some(self.wd));
+            }
+        }
         let millis = timeout.as_millis().min(i32::MAX as u128) as i32;
         let mut pollfd = libc::pollfd {
             fd: self.fd,
@@ -730,6 +898,14 @@ mod tests {
         let mut batches = Vec::new();
         while batches.len() < want_batches && Instant::now() < deadline {
             match handle.recv_batch_timeout(Duration::from_millis(20)) {
+                // A folder reports its parent's name once when the reader is
+                // armed (T333): that is not a listing change, so it does not
+                // count towards the wanted batch.
+                Some(batch)
+                    if batch
+                        .kinds
+                        .iter()
+                        .all(|kind| matches!(kind, WatchEventKind::Rescan)) => {}
                 Some(batch) => batches.push(batch),
                 None => continue,
             }
@@ -744,14 +920,16 @@ mod tests {
         // back — must reach the consumer as one coalesced batch, not one
         // batch per file. The per-event stream carries the same changes.
         let dir = tempfile::tempdir().expect("temp dir");
-        let location = Location::file(dir.path());
+        let watched = dir.path().join("listing");
+        std::fs::create_dir(&watched).expect("mkdir");
+        let location = Location::file(&watched);
         let handle = begin_entries(Arc::new(InotifyWatcher::new()), &location, 7).expect("watch");
         assert_eq!(handle.generation(), 7);
         // Let the kernel watch settle before the burst.
         std::thread::sleep(Duration::from_millis(100));
 
         for index in 0..24 {
-            std::fs::write(dir.path().join(format!("burst-{index:02}.txt")), b"x").expect("write");
+            std::fs::write(watched.join(format!("burst-{index:02}.txt")), b"x").expect("write");
         }
 
         let batches = batches_until(&handle, 1);
@@ -786,10 +964,12 @@ mod tests {
         // The listing's own watch honours IN_ISDIR, so a newly created (still
         // empty) folder reaches the model as a folder, not a file (T332).
         let dir = tempfile::tempdir().expect("temp dir");
-        let location = Location::file(dir.path());
+        let watched = dir.path().join("listing");
+        std::fs::create_dir(&watched).expect("mkdir");
+        let location = Location::file(&watched);
         let handle = begin_entries(Arc::new(InotifyWatcher::new()), &location, 1).expect("watch");
         std::thread::sleep(Duration::from_millis(100));
-        std::fs::create_dir(dir.path().join("New Folder")).expect("mkdir");
+        std::fs::create_dir(watched.join("New Folder")).expect("mkdir");
 
         let batches = batches_until(&handle, 1);
         let created = batches
@@ -810,15 +990,26 @@ mod tests {
     #[test]
     fn an_idle_watch_sends_nothing() {
         // The debounce must not turn the watcher into a poller: with no
-        // change, no batch is ever delivered.
+        // change, no batch is ever delivered. (The listing is a folder below
+        // the temp root: the root is shared and noisy on a developer host.)
         let dir = tempfile::tempdir().expect("temp dir");
-        let location = Location::file(dir.path());
+        let watched = dir.path().join("idle");
+        std::fs::create_dir(&watched).expect("mkdir");
+        let location = Location::file(&watched);
         let handle = begin_entries(Arc::new(InotifyWatcher::new()), &location, 1).expect("watch");
         for _ in 0..10 {
-            assert!(
-                handle.recv_batch_timeout(WATCH_COALESCE_WINDOW).is_none(),
-                "an idle folder produces no batch"
-            );
+            // A folder replaces itself under the same name (T333): that is a
+            // reset request, not a listing change.
+            if let Some(batch) = handle.recv_batch_timeout(WATCH_COALESCE_WINDOW) {
+                assert!(
+                    batch
+                        .kinds
+                        .iter()
+                        .all(|kind| matches!(kind, WatchEventKind::Rescan)),
+                    "an idle folder produces no change batch: {:?}",
+                    batch.kinds
+                );
+            }
         }
     }
 }

@@ -222,8 +222,9 @@ impl OptimisticModel {
             }
         }
         let removed = matches!(event.kind, WatchEventKind::Removed { .. });
+        let rescanned = matches!(event.kind, WatchEventKind::Rescan);
         let applied = self.model.apply_watch(event);
-        if removed && applied {
+        if (removed && applied) || rescanned {
             self.model.note_removal();
         }
         applied
@@ -260,7 +261,16 @@ impl OptimisticModel {
         for op in revert {
             self.revert(op);
         }
-        self.model.apply_watch_batch(batch)
+        // `Rescan` (the folder inode was replaced, T333): the old tree's rows
+        // are gone, so every pending edit in this folder snapped back above;
+        // the receiver must re-list.
+        let rescanned = batch.kinds.iter().any(|kind| matches!(kind, WatchEventKind::Rescan));
+        let applied = self.model.apply_watch_batch(batch);
+        if rescanned {
+            self.model.note_removal();
+            return true;
+        }
+        applied
     }
 
     /// Apply every ready watch event, as `DirectoryModel::drain_watch`. Returns
@@ -309,6 +319,11 @@ impl OptimisticModel {
                         PendingKind::Create { .. } if uri == target => Some(false),
                         _ => None,
                     },
+                    // The folder itself was replaced (T333): a create/rename
+                    // in this folder may or may not have landed in the new
+                    // tree, so its optimistic row must snap back rather than
+                    // claim a file nobody verified.
+                    WatchEventKind::Rescan => Some(false),
                 }
             }
             PendingKind::Remove { node, .. } => {
@@ -321,6 +336,10 @@ impl OptimisticModel {
                     WatchEventKind::Renamed { from_uri, .. } => {
                         (from_uri == target).then_some(false)
                     }
+                    // The folder was replaced (T333): the removed row may or
+                    // may not be gone from the new tree, so snap the pending
+                    // row back and let the reset re-list decide.
+                    WatchEventKind::Rescan => Some(false),
                 }
             }
             // An Empty Trash resolves through the operation worker's outcome,

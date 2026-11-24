@@ -34,7 +34,8 @@ expect a window even when Files is already running.
   shell owns the state; the bar owns no pixels beyond its own row.
 - **Chords:** `Cmd+T` new tab, `Cmd+W` close the current tab, `Ctrl+Tab` /
   `Ctrl+Shift+Tab` step tabs, `Cmd+1…Cmd+9` activate the nth tab (`Cmd+9` the
-  last), `Cmd+N` new window, `Shift+Cmd+N` new folder. `Ctrl+Tab` is kept off
+  last), `Cmd+N` new window, `Shift+Cmd+N` new folder (New Folder keeps its
+  T-10.4c chord; New Window takes the design's File menu row). `Ctrl+Tab` is kept off
   Super/Meta so the compositor's own switcher is never shadowed.
 - **Closing the last tab closes the window.** The model empties first, then
   the shell emits the close request; Files never shows an empty browser shell

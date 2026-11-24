@@ -25,6 +25,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
 use crate::listing::{self, ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
@@ -193,12 +194,24 @@ impl DirectoryModel {
         watcher: Arc<dyn FolderWatcher>,
         location: &Location,
     ) -> Result<WatchHandle, SourceError> {
+        self.begin_watch_batch(watcher, location)
+            .map(|(handle, _batches)| handle)
+    }
+
+    /// [`Self::begin_watch`], also handing back the batch receiver (T332/T333):
+    /// the FFI session drains coalesced batches, while a model user may keep
+    /// the per-event receiver. The handle is the same one in both channels.
+    pub fn begin_watch_batch(
+        &mut self,
+        watcher: Arc<dyn FolderWatcher>,
+        location: &Location,
+    ) -> Result<(WatchHandle, Receiver<WatchBatch>), SourceError> {
         if let Some(cancel) = self.active_watch.take() {
             cancel.store(true, AtomicOrdering::SeqCst);
         }
-        let handle = watch::begin_entries(watcher, location, self.generation)?;
+        let (handle, batches) = watch::begin_entries_split(watcher, location, self.generation)?;
         self.active_watch = Some(handle.cancel_flag());
-        Ok(handle)
+        Ok((handle, batches))
     }
 
     /// Fold one external change into the model incrementally.
@@ -246,6 +259,19 @@ impl DirectoryModel {
                 Some(id) => self.remove_node(id).is_some(),
                 None => false,
             },
+            // The folder inode was replaced (T333): the listing at this
+            // location is a different tree, so drop the held rows and let the
+            // page re-list. An empty model has nothing to drop.
+            WatchEventKind::Rescan => {
+                self.nodes.clear();
+                self.index.clear();
+                self.order.clear();
+                self.next_id = 0;
+                self.added.clear();
+                self.updated.clear();
+                self.resets += 1;
+                true
+            }
             WatchEventKind::Renamed { from_uri, to } => match self.node_id_for_uri(&from_uri) {
                 Some(id) => {
                     // A move inside the folder can land on the name of

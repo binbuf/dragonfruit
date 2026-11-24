@@ -57,10 +57,11 @@ scenarios:
               the tab bar sits below the unified toolbar
   second tab: the second tab is active and lists TabsCapture/2 (two.txt)
   new window: the second tab closed; one tab remains and the bar stays open
-  second window: a second Files window surface on TabsCapture/2. Production
-              New Window launches a second process; the offscreen harness
-              renders the same tabbed shell twice because it cannot photograph
-              another process's surface.
+  second window: a second Files window surface on TabsCapture/2 with its one
+              tab and the bar shown (a single tab hides the bar unless it is
+              shown). Production New Window launches a second process; the
+              offscreen harness renders the same tabbed shell twice because it
+              cannot photograph another process's surface.
 artifacts:
   docs/captures/t333-files-two-tabs.png
   docs/captures/t333-files-second-tab.png
