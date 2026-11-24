@@ -55,12 +55,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 use crate::sort::{SortDirection, SortKey, SortSpec};
+use crate::watch;
 use crate::{
     paste_one, ClipboardMode, ConflictPolicy, DirectoryModel, DirectorySource, FileOps,
-    FreedesktopTrash, ListingHandle, ListingState, Location, Node, NodeId, NodeKind, OpId,
-    OperationError, OptimisticModel, PasteItemOutcome, PasteStatus, StdFsOps, StdFsSource,
+    FolderWatcher, FreedesktopTrash, ListingHandle, ListingState, Location, Node, NodeId, NodeKind,
+    OpId, OperationError, OptimisticModel, PasteItemOutcome, PasteStatus, StdFsOps, StdFsSource,
     SyntheticSource, TrashMonitor, TrashOps, TrashSource, TrashState, TrashedItem, UndoError,
-    UndoStack,
+    UndoStack, WatchBatch, WatchEventKind, WatchHandle,
 };
 
 /// Event status: a batch (a fresh ordered snapshot follows).
@@ -71,6 +72,16 @@ pub const DF_FILES_STATUS_DONE: i32 = 1;
 pub const DF_FILES_STATUS_ERROR: i32 = 2;
 /// Event status: no event arrived within the timeout.
 pub const DF_FILES_STATUS_TIMEOUT: i32 = 3;
+
+/// Delta kind: `rows` is the full ordered model; replace every row.
+pub const DF_FILES_DELTA_RESET: i32 = 0;
+/// Delta kind: the rows named by `changes` were replaced in place; their ids
+/// are unchanged and their ranks come from `changes`.
+pub const DF_FILES_DELTA_CHANGED: i32 = 1;
+/// Delta kind: `rows` are new rows, at their final `rank`s (T332).
+pub const DF_FILES_DELTA_INSERT: i32 = 2;
+/// Delta kind: the rows named by `changes` were removed; repaint from a reset.
+pub const DF_FILES_DELTA_REMOVED: i32 = 3;
 
 /// A [`NodeKind`] mirror for the C ABI.
 pub const DF_NODE_DIRECTORY: i32 = 0;
@@ -160,27 +171,54 @@ pub struct df_files_row {
     pub node: df_files_node,
 }
 
-/// An incremental event (T-10.5, [adr/0051]).
+/// One in-place row change in a [`df_files_delta`] (T332): the node whose
+/// fields changed and its rank in the ordered projection after the change.
+#[repr(C)]
+pub struct df_files_change {
+    /// The node's rank after the change.
+    pub rank: u32,
+    /// The node (strings owned by the delta).
+    pub node: df_files_node,
+}
+
+/// An incremental event (T-10.5/T332, [adr/0051], [adr/0339]).
 ///
-/// `reset != 0` means "replace the whole model with `rows`, in order"; the
-/// caller clears its rows and rebuilds. `reset == 0` means "insert these `rows`
-/// at their final `rank`s" — the existing rows keep their relative order (the
-/// streaming merge only interleaves new nodes), so the receiver can apply them
-/// without a full snapshot. `total` is the model length after the event.
+/// `kind` says what the delta carries:
+///
+/// * [`DF_FILES_DELTA_RESET`] — replace the whole model with `rows`, in order
+///   (the first paint, a sort change, an operation outcome, a watch removal).
+/// * [`DF_FILES_DELTA_INSERT`] — insert `rows` at their final `rank`s; the
+///   existing rows keep their relative order (the streaming merge only
+///   interleaves new nodes; a watcher burst's creates are new rows).
+/// * [`DF_FILES_DELTA_CHANGED`] — rows the receiver already holds were
+///   replaced in place (a rename kept its id, a size changed). `changes`
+///   names them with their new ranks; the row set and order are otherwise
+///   what the receiver already paints.
+/// * [`DF_FILES_DELTA_REMOVED`] — rows were removed; `changes` names the old
+///   ids. The receiver repaints from a reset (a deletion shifts every later
+///   rank). A zero-row removal exists so a truthful operation can answer
+///   without a repaint.
+///
+/// `total` is the model length after the event.
 ///
 /// [adr/0051]: ../../../docs/design/adr/0051-files-core-incremental-delta-abi.md
+/// [adr/0339]: ../../../docs/design/adr/0339-files-watcher-delta-reconciliation.md
 #[repr(C)]
 pub struct df_files_delta {
     /// One of the `DF_FILES_STATUS_*` values.
     pub status: i32,
     /// The failure message for `ERROR`, else null.
     pub error: *const c_char,
-    /// Non-zero: `rows` is the full ordered model, not a set of insertions.
-    pub reset: i32,
-    /// The rows (owned by this delta).
+    /// One of the `DF_FILES_DELTA_*` kinds.
+    pub kind: i32,
+    /// The rows (owned by this delta): a reset/insert payload.
     pub rows: *mut df_files_row,
     /// The number of rows.
     pub row_count: u32,
+    /// The in-place changes (owned by this delta): a changed/removed payload.
+    pub changes: *mut df_files_change,
+    /// The number of changes.
+    pub change_count: u32,
     /// The model's ordered length after this event.
     pub total: u32,
 }
@@ -233,6 +271,20 @@ enum OpRequest {
         stack: Option<Box<UndoStack>>,
         redo: bool,
     },
+}
+
+impl OpRequest {
+    /// The session row this request edits, if it edits one. The C ABI uses it
+    /// to recognize an operation's own watcher echo (T332).
+    fn node(&self) -> Option<NodeId> {
+        match self {
+            OpRequest::Rename { node, .. }
+            | OpRequest::NewFolder { node, .. }
+            | OpRequest::Trash { node, .. }
+            | OpRequest::Paste { node, .. } => Some(*node),
+            OpRequest::EmptyTrash { .. } | OpRequest::Replay { .. } => None,
+        }
+    }
 }
 
 /// The worker's outcome for one [`OpRequest`].
@@ -423,11 +475,79 @@ pub struct FfiSession {
     redo_label: Option<String>,
     /// The node ids the receiver has already been told about, so an
     /// incremental poll can serialize only the newly arrived nodes (T-10.5).
-    /// Seeded by every `reset` delta; grown by every insertion delta.
+    /// Seeded by every `reset` delta; grown by every insertion/changed delta.
     reported: HashSet<NodeId>,
+    /// The live folder watch (T332). A local `file://` listing watches its own
+    /// directory; the Trash and synthetic listings have none (the Trash is
+    /// re-listed on navigation, the synthetic tree does not exist). Events are
+    /// folded off the UI thread and delivered as one delta per burst.
+    watch: Option<WatchHandle>,
+    /// Whether the last delta told the receiver about `watch` (false for a
+    /// session whose folder could not be watched). Reserved for the facade's
+    /// watch indicator.
+    #[allow(dead_code)]
+    watch_reported: bool,
+    /// Rows named by operations that have not finished yet. A watcher event
+    /// about one of them is the operation's own echo, so a dormant poll must
+    /// not treat it as external progress (the pending operation wakes it
+    /// anyway).
+    op_rows: std::collections::VecDeque<NodeId>,
+    /// The per-item paste calls whose worker work has not started. The
+    /// paste's own folder writes (a copy into the visible folder, a cut's
+    /// removal) arrive as watch events; they must wake the UI so the progress
+    /// counters and the confirmation keep moving.
+    quiet_writes: u32,
 }
 
 impl FfiSession {
+    /// Whether the session watches its folder (T332).
+    fn watching(&self) -> bool {
+        self.watch.is_some()
+    }
+
+    /// Block until a watch batch is ready (or `timeout` elapses) **without
+    /// consuming it**. `WatchHandle` has no peek, so the worker's gate is the
+    /// model side: a batch the handle still holds is polled by
+    /// [`Self::drain_watch`]. This only lets a dormant poll sleep on a
+    /// channel, never on a timer: the thread yields until the handle's
+    /// cancellation-free wait reports readiness. Implemented as a short
+    /// `recv_timeout` on a clone of the handle's readiness flag.
+    fn wait_for_watch(&self, timeout: Duration) -> bool {
+        let Some(handle) = self.watch.as_ref() else {
+            return false;
+        };
+        handle.wait_ready(timeout)
+    }
+
+    /// A delta for changes the receiver has not been told about, or `None`
+    /// when there are none. Used after a quiet wait so a burst that landed
+    /// between the waits is still described.
+    fn incremental_delta_if_pending(&mut self) -> Option<*mut df_files_delta> {
+        let len = self.model.model().len();
+        // A read-only probe: `incremental_delta` takes the markers itself.
+        let pending = !self.model.model().added_ids().is_empty()
+            || self.model.model().removal_pending()
+            || self.model.model().pending_changes()
+            || self.reported.len() != len;
+        if pending {
+            Some(self.incremental_delta())
+        } else {
+            None
+        }
+    }
+
+    /// Queue one operation and remember the row it edits, so its own watcher
+    /// echo is never mistaken for external progress (T332).
+    fn queue_op(&mut self, request: OpRequest) {
+        let row = request.node();
+        if self.op_tx.send(request).is_ok() {
+            self.pending += 1;
+            if let Some(node) = row {
+                self.op_rows.push_back(node);
+            }
+        }
+    }
+
     fn snapshot_event(&self) -> *mut df_files_event {
         let nodes: Vec<df_files_node> = self.model.model().ordered().map(to_ffi_node).collect();
         let count = nodes.len() as u32;
@@ -456,9 +576,10 @@ impl FfiSession {
         }))
     }
 
-    /// A delta carrying every row in order (`reset == 1`) and re-seeding the
-    /// reported id set. Used for the first paint, a sort change, and any
-    /// model edit whose effect on the ordering is not append-only.
+    /// A delta carrying every row in order ([`DF_FILES_DELTA_RESET`]) and
+    /// re-seeding the reported id set. Used for the first paint, a sort
+    /// change, and any model edit whose effect on the ordering is not
+    /// append-only.
     fn reset_delta(&mut self, status: i32) -> *mut df_files_delta {
         self.reported.clear();
         let mut rows: Vec<df_files_row> = Vec::with_capacity(self.model.model().len());
@@ -473,19 +594,42 @@ impl FfiSession {
         for id in ids {
             self.reported.insert(id);
         }
+        self.model.model_mut().mark_known();
+        self.model.model_mut().take_watch_changes();
+        self.model.model_mut().take_removal();
         let total = rows.len() as u32;
-        delta_from_rows(status, true, rows, total)
+        delta_from_rows(status, DF_FILES_DELTA_RESET, rows, total)
     }
 
-    /// A delta carrying only the nodes the receiver has not seen, at their
-    /// final ranks. Falls back to a full reset when a previously reported node
-    /// vanished (an optimistic edit or a watcher removal), which the streaming
-    /// append path never does.
+    /// A delta describing what changed since the receiver last painted its
+    /// rows (T-10.5/T332): insertions at their final ranks, in-place changes
+    /// for rows it already holds, or — when a row vanished — an instruction
+    /// to repaint from a reset. The streaming path sends each node exactly
+    /// once, so a burst that only touched metadata costs one small delta.
     fn incremental_delta(&mut self) -> *mut df_files_delta {
         let len = self.model.model().len();
-        if self.reported.len() > len {
+        let vanished = self.model.model_mut().take_removal();
+        let changed = self.model.model_mut().take_watch_changes();
+        // A vanished row is reported as a reset only when a row the receiver
+        // paints is gone; a removal that immediately re-created the row under
+        // its new name (a burst's rename) keeps every rank honest.
+        let vanished_reported = vanished
+            && (self.reported.len() > len
+                || self
+                    .reported
+                    .iter()
+                    .filter(|id| self.model.model().node(**id).is_none())
+                    .count()
+                    > 0);
+        if vanished_reported {
             return self.reset_delta(DF_FILES_STATUS_BATCH);
         }
+
+        // Rows the receiver has never been told about, at their final ranks.
+        // The streaming path and a watcher burst only interleave new rows, so
+        // the insertion delta applies directly; anything else (an optimistic
+        // insert landing between reported rows mid-stream) is a reset.
+        let total = len as u32;
         let mut rows: Vec<df_files_row> = Vec::new();
         let mut ids: Vec<NodeId> = Vec::new();
         let mut seen = 0usize;
@@ -500,14 +644,111 @@ impl FfiSession {
                 ids.push(node.id());
             }
         }
-        if seen != self.reported.len() || seen + rows.len() != len {
+        if seen + rows.len() != len {
             return self.reset_delta(DF_FILES_STATUS_BATCH);
         }
-        for id in ids {
-            self.reported.insert(id);
+        if !rows.is_empty() {
+            for id in ids {
+                self.reported.insert(id);
+            }
+            return delta_from_rows(DF_FILES_STATUS_BATCH, DF_FILES_DELTA_INSERT, rows, total);
         }
-        let total = len as u32;
-        delta_from_rows(DF_FILES_STATUS_BATCH, false, rows, total)
+
+        // In-place changes: rows the receiver paints already, at their new
+        // ranks. A changed row must never be one it has not been told about.
+        let changes: Vec<df_files_change> = changed
+            .iter()
+            .filter(|id| self.reported.contains(id))
+            .filter_map(|id| {
+                let rank = self.model.model().ordered_position_of(*id)?;
+                let node = self.model.model().node(*id)?;
+                Some(df_files_change {
+                    rank: rank as u32,
+                    node: to_ffi_node(node),
+                })
+            })
+            .collect();
+        if !changes.is_empty() {
+            return delta_from_changes(
+                DF_FILES_STATUS_BATCH,
+                DF_FILES_DELTA_CHANGED,
+                changes,
+                total,
+            );
+        }
+        // Nothing to repaint. A plain listing poll answers `TIMEOUT` (the
+        // facade keeps its timer); a settled session answers a zero-row
+        // removal so an `await` can return as soon as its operation is done.
+        if self.reported.len() == len {
+            delta_from_changes(
+                DF_FILES_STATUS_BATCH,
+                DF_FILES_DELTA_REMOVED,
+                Vec::new(),
+                total,
+            )
+        } else {
+            terminal_delta(DF_FILES_STATUS_TIMEOUT, None)
+        }
+    }
+
+    /// Fold the ready watch batches into the model (T332), so one burst is one
+    /// delta. Returns true when the model changed — a removal included, since
+    /// the receiver must repaint from a reset then. The op-echo rule keeps
+    /// pending operations' own writes quiet.
+    fn drain_watch(&mut self) -> bool {
+        loop {
+            let Some(handle) = self.watch.as_ref() else {
+                return false;
+            };
+            // Take a copy of the ready batches so the rest of this method can
+            // borrow the session mutably.
+            let mut ready = Vec::new();
+            while let Some(batch) = handle.try_recv_batch() {
+                ready.push(batch);
+            }
+            if ready.is_empty() {
+                return false;
+            }
+            let mut woke = false;
+            for batch in ready {
+                let progress = self.operation_progress(&batch);
+                let vanished = batch.kinds.iter().any(|kind| {
+                    matches!(kind, WatchEventKind::Removed { .. })
+                        || matches!(kind, WatchEventKind::Renamed { .. })
+                });
+                self.model.apply_watch_batch(batch);
+                woke |= progress || vanished;
+            }
+            // Probe, never consume: the delta reads the same markers.
+            // A burst that only reordered held rows (a rename) is described
+            // by the next delta, so it wakes the poll too.
+            let pending = self.model.model().removal_pending()
+                || !self.model.model().added_ids().is_empty()
+                || self.model.model().pending_changes()
+                || self.model.model().len() > self.reported.len();
+            if woke || pending {
+                return true;
+            }
+        }
+    }
+
+    /// Whether a dormant poll should wake for `batch`: the operation worker
+    /// has a request left for one of these rows (its own write, seen by the
+    /// watcher a moment after the queue call), so the UI must not sleep on
+    /// the operation's result. Every other change of a settled window is
+    /// described on the next delta request without a timer.
+    fn operation_progress(&mut self, batch: &WatchBatch) -> bool {
+        let mut woke = false;
+        for kind in &batch.kinds {
+            match kind {
+                WatchEventKind::Created(node) | WatchEventKind::Modified(node) => {
+                    woke |= self.op_rows.iter().any(|row| *row == node.id());
+                }
+                WatchEventKind::Removed { .. } => woke |= self.quiet_writes > 0,
+                WatchEventKind::Renamed { .. } => woke |= !self.op_rows.is_empty(),
+            }
+        }
+        woke
     }
 
     /// Fold every completed operation: confirm the painted result, or revert
@@ -516,6 +757,19 @@ impl FfiSession {
         let mut changed = false;
         // `Err` is either Empty or Disconnected; both mean "nothing more now".
         while let Ok(outcome) = self.outcome_rx.try_recv() {
+            // The row list shrinks; the watch queue may have advanced by the
+            // time this runs, so recount from the outcomes still queued.
+            self.pending = self.pending.saturating_sub(1);
+            if let Some(node) = outcome_node(&outcome) {
+                if self.pending == 0 {
+                    self.op_rows.clear();
+                } else if let Some(at) = self.op_rows.iter().position(|row| *row == node) {
+                    self.op_rows.remove(at);
+                }
+            }
+            if self.quiet_writes > 0 {
+                self.quiet_writes -= 1;
+            }
             self.fold_one(outcome);
             changed = true;
         }
@@ -766,6 +1020,17 @@ impl FfiSession {
     }
 }
 
+/// The session row an operation outcome names, for the op-echo bookkeeping.
+fn outcome_node(outcome: &OpOutcome) -> Option<NodeId> {
+    match outcome {
+        OpOutcome::Rename { node, .. }
+        | OpOutcome::NewFolder { node, .. }
+        | OpOutcome::Trash { node, .. }
+        | OpOutcome::Paste { node, .. } => Some(*node),
+        OpOutcome::EmptyTrash { .. } | OpOutcome::Replay { .. } => None,
+    }
+}
+
 fn to_ffi_node(node: &Node) -> df_files_node {
     let cstring = |value: &str| -> *const c_char {
         CString::new(value)
@@ -802,7 +1067,7 @@ fn to_ffi_node(node: &Node) -> df_files_node {
 /// owned by the caller and released with [`df_files_delta_free`].
 fn delta_from_rows(
     status: i32,
-    reset: bool,
+    kind: i32,
     rows: Vec<df_files_row>,
     total: u32,
 ) -> *mut df_files_delta {
@@ -813,14 +1078,39 @@ fn delta_from_rows(
     Box::into_raw(Box::new(df_files_delta {
         status,
         error: std::ptr::null(),
-        reset: i32::from(reset),
+        kind,
         rows: ptr,
         row_count,
+        changes: std::ptr::null_mut(),
+        change_count: 0,
         total,
     }))
 }
 
-/// A delta with no rows, for `DONE`/`ERROR`/`TIMEOUT`.
+/// Move a change vector (`CHANGED`) into a heap delta.
+fn delta_from_changes(
+    status: i32,
+    kind: i32,
+    changes: Vec<df_files_change>,
+    total: u32,
+) -> *mut df_files_delta {
+    let change_count = changes.len() as u32;
+    let mut boxed = changes.into_boxed_slice();
+    let ptr = boxed.as_mut_ptr();
+    std::mem::forget(boxed);
+    Box::into_raw(Box::new(df_files_delta {
+        status,
+        error: std::ptr::null(),
+        kind,
+        rows: std::ptr::null_mut(),
+        row_count: 0,
+        changes: ptr,
+        change_count,
+        total,
+    }))
+}
+
+/// A delta with no rows, for `DONE`/`ERROR`/`TIMEOUT`/`REMOVED`.
 fn terminal_delta(status: i32, error: Option<String>) -> *mut df_files_delta {
     let error = error.map(|message| {
         CString::new(message)
@@ -830,9 +1120,11 @@ fn terminal_delta(status: i32, error: Option<String>) -> *mut df_files_delta {
     Box::into_raw(Box::new(df_files_delta {
         status,
         error: error.unwrap_or(std::ptr::null_mut()),
-        reset: 0,
+        kind: DF_FILES_DELTA_RESET,
         rows: std::ptr::null_mut(),
         row_count: 0,
+        changes: std::ptr::null_mut(),
+        change_count: 0,
         total: 0,
     }))
 }
@@ -844,6 +1136,30 @@ unsafe fn free_node_strings(node: &mut df_files_node) {
             drop(CString::from_raw(field as *mut c_char));
         }
     }
+}
+
+/// Free a node row vector allocated by [`delta_from_rows`].
+unsafe fn free_rows(rows: *mut df_files_row, count: usize) {
+    if rows.is_null() {
+        return;
+    }
+    let slice = std::slice::from_raw_parts_mut(rows, count);
+    for row in slice.iter_mut() {
+        free_node_strings(&mut row.node);
+    }
+    drop(Vec::from_raw_parts(rows, count, count));
+}
+
+/// Free a change vector allocated by [`delta_from_changes`].
+unsafe fn free_changes(changes: *mut df_files_change, count: usize) {
+    if changes.is_null() {
+        return;
+    }
+    let slice = std::slice::from_raw_parts_mut(changes, count);
+    for change in slice.iter_mut() {
+        free_node_strings(&mut change.node);
+    }
+    drop(Vec::from_raw_parts(changes, count, count));
 }
 
 /// Start listing `uri` and return an opaque session, or null when the URI is
@@ -916,7 +1232,30 @@ unsafe fn begin_session(
         DirectoryModel::with_batch_size(batch)
     };
     let mut model = OptimisticModel::new(inner);
-    let handle = model.begin(source, location);
+    let handle = model.begin(source, location.clone());
+    // A local folder listing watches itself (T332); the Trash store and the
+    // synthetic fixture do not. A folder that cannot be watched is not an
+    // error: the listing works and the window simply does not auto-refresh.
+    //
+    // The watch shares the model's *current* generation, so it must begin
+    // after `begin` — a watch opened before it would carry generation 0 and
+    // every event it delivered would look retired.
+    let generation = model.model().generation();
+    let watch = if location.scheme() == "file" && batch == 0 {
+        #[cfg(target_os = "linux")]
+        {
+            let watcher: Arc<dyn FolderWatcher> = Arc::new(crate::InotifyWatcher::new());
+            watch::begin_entries(watcher, &location, generation).ok()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = generation;
+            None
+        }
+    } else {
+        let _ = generation;
+        None
+    };
     let (op_tx, outcome_rx) = spawn_op_worker();
     Box::into_raw(Box::new(FfiSession {
         model,
@@ -941,6 +1280,10 @@ unsafe fn begin_session(
         undo_label: None,
         redo_label: None,
         reported: HashSet::new(),
+        watch_reported: watch.is_some(),
+        watch,
+        op_rows: std::collections::VecDeque::new(),
+        quiet_writes: 0,
     }))
 }
 
@@ -1015,14 +1358,20 @@ pub unsafe extern "C" fn df_files_snapshot(session: *mut FfiSession) -> *mut df_
 }
 
 /// Block up to `timeout_ms` for the next listing event and return an
-/// **incremental** delta (T-10.5).
+/// **incremental** delta (T-10.5/T332).
 ///
-/// A completed operation is folded first, which always yields a reset delta
-/// (its outcome may change a node's name/uri or remove a row). A streaming
-/// batch yields only the nodes that arrived, at their final ranks, so the
-/// receiver's work per batch is proportional to the batch — not the whole
-/// listing. `DONE`/`ERROR`/`TIMEOUT` carry no rows. Returns null only for a
+/// A completed operation is folded first, which always yields a reset (its
+/// outcome may change a node's name/uri or remove a row). A watch burst that
+/// finished is folded next: one delta describes every change of the burst
+/// (insertions at their final ranks or in-place changes), and a burst that
+/// removed a row asks for a reset. A streaming batch yields only the nodes
+/// that arrived, at their final ranks, so the receiver's work per batch is
+/// proportional to the batch — not the whole listing. `DONE`/`ERROR` carry no
+/// rows; a quiet settled session answers `TIMEOUT`. Returns null only for a
 /// null session. Free the result with [`df_files_delta_free`].
+///
+/// The call blocks on a channel receive, so no directory I/O ever runs on the
+/// caller's (UI) thread.
 ///
 /// # Safety
 ///
@@ -1043,6 +1392,22 @@ pub unsafe extern "C" fn df_files_poll_delta(
             _ => session.reset_delta(DF_FILES_STATUS_BATCH),
         };
     }
+    if session.drain_watch() {
+        return session.incremental_delta();
+    }
+    if session.watching() && session.listing_state() == &ListingState::Complete {
+        // A settled watched session wakes on its own change, never on a timer
+        // (T332). The wait only arms the wake: `drain_watch` takes the batch,
+        // so the batch is never consumed by the wait itself. A streaming
+        // listing keeps its own wait below, so the watch never starves it.
+        if !session.wait_for_watch(Duration::from_millis(u64::from(timeout_ms))) {
+            return session
+                .incremental_delta_if_pending()
+                .unwrap_or_else(|| terminal_delta(DF_FILES_STATUS_TIMEOUT, None));
+        }
+        session.drain_watch();
+        return session.incremental_delta();
+    }
     match session
         .handle
         .recv_timeout(Duration::from_millis(u64::from(timeout_ms)))
@@ -1057,7 +1422,37 @@ pub unsafe extern "C" fn df_files_poll_delta(
                 _ => session.incremental_delta(),
             }
         }
-        None => terminal_delta(DF_FILES_STATUS_TIMEOUT, None),
+        None => {
+            // A burst can land between the two waits: describe it rather than
+            // answer a quiet timeout.
+            if session.drain_watch() {
+                return session.incremental_delta();
+            }
+            match session.listing_state() {
+                ListingState::Failed(error) => {
+                    terminal_delta(DF_FILES_STATUS_ERROR, Some(error.to_string()))
+                }
+                _ => session
+                    .incremental_delta_if_pending()
+                    .unwrap_or_else(|| terminal_delta(DF_FILES_STATUS_TIMEOUT, None)),
+            }
+        }
+    }
+}
+
+/// Whether the session watches its folder for external changes (T332).
+/// `1` when it does, `0` for the Trash, a synthetic listing, a folder that
+/// could not be watched, or a null session. QML reads it to decide whether a
+/// settled window may sleep; a watched window wakes on a change.
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`] or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_watching(session: *const FfiSession) -> i32 {
+    match session.as_ref() {
+        Some(session) => i32::from(session.watch.is_some()),
+        None => 0,
     }
 }
 
@@ -1088,17 +1483,8 @@ pub unsafe extern "C" fn df_files_delta_free(delta: *mut df_files_delta) {
         return;
     }
     let delta = Box::from_raw(delta);
-    if !delta.rows.is_null() {
-        let rows = std::slice::from_raw_parts_mut(delta.rows, delta.row_count as usize);
-        for row in rows {
-            free_node_strings(&mut row.node);
-        }
-        drop(Vec::from_raw_parts(
-            delta.rows,
-            delta.row_count as usize,
-            delta.row_count as usize,
-        ));
-    }
+    free_rows(delta.rows, delta.row_count as usize);
+    free_changes(delta.changes, delta.change_count as usize);
     if !delta.error.is_null() {
         drop(CString::from_raw(delta.error as *mut c_char));
     }
@@ -1171,13 +1557,12 @@ pub unsafe extern "C" fn df_files_begin_rename(
     let Some(op) = session.model.begin_rename(id, name.clone()) else {
         return 0;
     };
-    let _ = session.op_tx.send(OpRequest::Rename {
+    session.queue_op(OpRequest::Rename {
         op,
         location,
         new_name: name,
         node: id,
     });
-    session.pending += 1;
     op.get()
 }
 
@@ -1214,10 +1599,7 @@ pub unsafe extern "C" fn df_files_begin_new_folder(
         })
         .map(Node::id)
         .unwrap_or(NodeId::UNSET);
-    let _ = session
-        .op_tx
-        .send(OpRequest::NewFolder { op, parent, node });
-    session.pending += 1;
+    session.queue_op(OpRequest::NewFolder { op, parent, node });
     op.get()
 }
 
@@ -1243,12 +1625,11 @@ pub unsafe extern "C" fn df_files_begin_trash(session: *mut FfiSession, node_id:
     let Some(op) = session.model.begin_delete(id) else {
         return 0;
     };
-    let _ = session.op_tx.send(OpRequest::Trash {
+    session.queue_op(OpRequest::Trash {
         op,
         location,
         node: id,
     });
-    session.pending += 1;
     op.get()
 }
 
@@ -1275,8 +1656,7 @@ pub unsafe extern "C" fn df_files_begin_empty_trash(session: *mut FfiSession) ->
         return 0;
     }
     let op = session.model.begin_empty_trash();
-    let _ = session.op_tx.send(OpRequest::EmptyTrash { op });
-    session.pending += 1;
+    session.queue_op(OpRequest::EmptyTrash { op });
     op.get()
 }
 
@@ -1426,7 +1806,7 @@ pub unsafe extern "C" fn df_files_begin_paste(
         .or(session.paste_row)
         .unwrap_or(NodeId::UNSET);
     session.paste_row = Some(node);
-    let _ = session.op_tx.send(OpRequest::Paste {
+    session.queue_op(OpRequest::Paste {
         op,
         remove_op,
         source: source.clone(),
@@ -1437,7 +1817,12 @@ pub unsafe extern "C" fn df_files_begin_paste(
         skip,
         node,
     });
-    session.pending += 1;
+    // A copy into the visible folder is a new row (its id names it already);
+    // a cut's removal or a skipped item has no row before the worker runs, so
+    // its own watch echo is what tells a dormant window to ask again.
+    if skip || !target_is_current {
+        session.quiet_writes += 1;
+    }
     // `1` is a queued token for a paste with no model row to point at.
     op.or(remove_op).map(OpId::get).unwrap_or(1)
 }
@@ -1619,6 +2004,8 @@ pub unsafe extern "C" fn df_files_undo(session: *mut FfiSession, redo: i32) -> i
         return 0;
     }
     session.pending += 1;
+    // A replay's filesystem writes are external-looking to the watcher.
+    session.quiet_writes += 1;
     1
 }
 
@@ -2253,20 +2640,28 @@ mod tests {
     /// in delivered order and the total number of rows the poll sent. A
     /// streaming poll must send each node exactly once (no full snapshots).
     unsafe fn drain_incremental(session: *mut FfiSession) -> (Vec<u64>, u64, u32) {
-        let mut ids = Vec::new();
+        let mut ids: Vec<u64> = Vec::new();
         let mut rows_sent: u64 = 0;
         let mut resets = 0u32;
         loop {
             let delta = df_files_poll_delta(session, 2_000);
             assert!(!delta.is_null(), "poll returned null");
             let status = (*delta).status;
-            if (*delta).reset != 0 {
+            // The listing's `DONE` delta carries no kind of its own: it is
+            // not a model change, so it must not count as a reset.
+            if status != DF_FILES_STATUS_DONE && (*delta).kind == DF_FILES_DELTA_RESET {
                 resets += 1;
                 ids.clear();
             }
-            rows_sent += (*delta).row_count as u64;
+            // An insertion adds rows; the listing's `DONE` carries none.
+            if status != DF_FILES_STATUS_DONE {
+                rows_sent += (*delta).row_count as u64;
+            }
             for i in 0..(*delta).row_count as usize {
-                ids.push((*delta).rows.add(i).read().node.id);
+                unsafe {
+                    let row: df_files_row = std::ptr::read_unaligned((*delta).rows.add(i));
+                    ids.push(row.node.id);
+                }
             }
             df_files_delta_free(delta);
             if status == DF_FILES_STATUS_DONE {
@@ -2311,7 +2706,11 @@ mod tests {
             );
             let delta = df_files_snapshot_delta(session);
             assert!(!delta.is_null());
-            assert_eq!((*delta).reset, 1, "a sort change repaints every row");
+            assert_eq!(
+                (*delta).kind,
+                DF_FILES_DELTA_RESET,
+                "a sort change repaints every row"
+            );
             assert_eq!((*delta).row_count, 64);
             df_files_delta_free(delta);
             df_files_free(session);

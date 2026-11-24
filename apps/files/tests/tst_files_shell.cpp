@@ -123,6 +123,11 @@ int main(int argc, char **argv)
     writeFile(mutationRoot + QStringLiteral("/UndoPaste/report.txt"), QByteArray("report"));
     writeFile(mutationRoot + QStringLiteral("/UndoTrash/note.txt"), QByteArray("note"));
     writeFile(mutationRoot + QStringLiteral("/UndoCapture/alpha.txt"), QByteArray("alpha"));
+
+    // T332: the folder watched by the external-change test. The test itself
+    // creates, deletes and renames entries here after the window is open.
+    QDir(mutationRoot).mkpath(QStringLiteral("Watch"));
+    writeFile(mutationRoot + QStringLiteral("/Watch/seed.txt"), QByteArray("seed"));
     qputenv("DF_FILES_MUTATION_FIXTURE", mutationRoot.toUtf8());
     // The capture runner records the temp trees in its manifest. QtTest's
     // message pattern filters qInfo, so write the paths beside the stills.

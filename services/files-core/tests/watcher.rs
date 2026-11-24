@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use dragonfruit_files_core::{
-    DirectoryModel, ListingHandle, Location, MockSource, MockWatcher, Node, NodeKind,
-    OptimisticModel, SourceError, StdFsOps, WatchEvent, WatchEventKind,
+    DirectoryModel, InotifyWatcher, ListingHandle, Location, MockSource, MockWatcher, Node,
+    NodeKind, OptimisticModel, SourceError, StdFsOps, StdFsSource, WatchEvent, WatchEventKind,
 };
 
 fn file(name: &str) -> Node {
@@ -132,6 +132,8 @@ fn a_stale_watch_generation_is_ignored() {
     assert_eq!(model.len(), 1);
 }
 
+// A model with no listing yet (generation 0): the optimistic layer's own
+// inserts are the only rows, and they carry the current generation.
 #[test]
 fn a_watcher_event_confirms_a_pending_optimistic_create() {
     let mut model = OptimisticModel::new(DirectoryModel::new());
@@ -153,7 +155,6 @@ fn a_watcher_event_reverts_a_pending_create_that_vanished() {
     let parent = Location::file("/fixture");
     let op = model.begin_new_folder(&parent);
     let uri = model.model().nodes()[0].uri().to_owned();
-
     let generation = model.model().generation();
     model.apply_watch(WatchEvent::new(generation, WatchEventKind::Removed { uri }));
     assert!(!model.is_pending(op));
@@ -376,5 +377,238 @@ mod inotify {
         }
         assert_eq!(model.len(), 1, "the watcher must not duplicate the row");
         model.model().check_consistent().expect("consistent");
+    }
+}
+
+// T332: the model-side half of the Files watcher. A burst folds through one
+// batch and is described by one delta-worthy set of markers; a rename keeps
+// the id the view selected by; and the C ABI session watches its own folder.
+#[test]
+fn a_coalesced_burst_is_one_model_update() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let location = Location::file(dir.path());
+    let source = Arc::new(StdFsSource::new());
+    let mut model = DirectoryModel::new();
+    let listing = model.begin(source, location.clone());
+    drain_listing(&mut model, &listing);
+    assert_eq!(model.len(), 0);
+    assert!(
+        !model.take_removal(),
+        "a fresh listing has no removal marker"
+    );
+
+    let watcher = Arc::new(InotifyWatcher::new());
+    let handle = model.begin_watch(watcher, &location).expect("watch");
+
+    // An extraction-sized burst: a folder and many files, written quickly.
+    std::fs::create_dir(dir.path().join("Extracted")).expect("dir");
+    for index in 0..24 {
+        std::fs::write(dir.path().join(format!("file-{index:02}.txt")), b"payload").expect("write");
+    }
+
+    // Wait until the burst settles: every entry is listed and no more batch
+    // is arriving. The creates stay additions however many batches the
+    // kernel split them into; no held row is ever "changed".
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        model.drain_watch_batches(&handle);
+        let quiet = model.len() >= 25
+            && handle
+                .recv_batch_timeout(Duration::from_millis(300))
+                .is_none();
+        if quiet || Instant::now() >= deadline {
+            break;
+        }
+    }
+    assert_eq!(
+        model.len(),
+        25,
+        "every created entry is listed exactly once"
+    );
+    assert_eq!(
+        model.added_ids().len(),
+        25,
+        "the creates are additions, not changes"
+    );
+    assert!(
+        model.take_watch_changes().is_empty(),
+        "no held row was replaced by the burst"
+    );
+    assert!(!model.take_removal());
+    let folder = model
+        .node_id_for_uri(Location::file(dir.path().join("Extracted")).uri())
+        .expect("the created folder is listed");
+    assert!(
+        model.node(folder).expect("node").is_dir(),
+        "IN_ISDIR honoured"
+    );
+    model.check_consistent().expect("consistent");
+}
+
+#[test]
+fn a_batch_rename_keeps_the_selected_id_and_marks_the_row() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let before = dir.path().join("before.txt");
+    std::fs::write(&before, b"x").expect("write");
+    let location = Location::file(dir.path());
+    let source = Arc::new(StdFsSource::new());
+    let mut model = OptimisticModel::new(DirectoryModel::new());
+    let listing = model.begin(source, location.clone());
+    while !model.is_complete() {
+        let Some(event) = listing.recv_timeout(Duration::from_secs(5)) else {
+            break;
+        };
+        model.apply(event);
+    }
+    let before_uri = Location::file(&before).uri().to_owned();
+    let id = model.model().node_id_for_uri(&before_uri).expect("listed");
+    model.selection_mut().select(id);
+
+    let watcher = Arc::new(InotifyWatcher::new());
+    let handle = model.begin_watch(watcher, &location).expect("watch");
+    let after = dir.path().join("after.txt");
+    std::fs::rename(&before, &after).expect("rename");
+    let after_uri = Location::file(&after).uri().to_owned();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while model.model().node_id_for_uri(&after_uri).is_none() && Instant::now() < deadline {
+        model.drain_watch_batches(&handle);
+        if model.model().node_id_for_uri(&after_uri).is_none() {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    // A rename is a change of a held row: the same id, the same selection.
+    assert_eq!(model.model().node_id_for_uri(&after_uri), Some(id));
+    assert_eq!(model.selection().as_slice(), &[id], "selection survives");
+    assert_eq!(model.model_mut().take_watch_changes(), vec![id]);
+    assert!(
+        !model.model().pending_changes(),
+        "the change was taken once"
+    );
+    assert!(!model.model().removal_pending(), "nothing vanished");
+    model.model().check_consistent().expect("consistent");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_ffi_session_watches_its_folder_and_skips_its_own_writes() {
+    use dragonfruit_files_core::ffi::{
+        df_files_await_ops, df_files_begin, df_files_begin_new_folder, df_files_delta_free,
+        df_files_free, df_files_poll_delta, df_files_watching, DF_FILES_DELTA_CHANGED,
+        DF_FILES_DELTA_INSERT, DF_FILES_DELTA_REMOVED, DF_FILES_STATUS_BATCH, DF_FILES_STATUS_DONE,
+        DF_FILES_STATUS_ERROR, DF_FILES_STATUS_TIMEOUT,
+    };
+    use std::ffi::CString;
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(dir.path().join("seed.txt"), b"seed").expect("write");
+    let uri = Location::file(dir.path()).uri().to_owned();
+    let uri = CString::new(uri).expect("uri");
+    unsafe {
+        let session = df_files_begin(uri.as_ptr());
+        assert!(!session.is_null());
+        assert_eq!(df_files_watching(session), 1, "a local folder is watched");
+
+        // The listing has one file: keep asking until it is painted (a
+        // streaming batch may trail the first poll, and the watch can split
+        // a burst across polls).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let delta = df_files_poll_delta(session, 500);
+            assert!(!delta.is_null(), "poll returned null");
+            let status = (*delta).status;
+            let kind = (*delta).kind;
+            let total = (*delta).total;
+            eprintln!("DBG poll status={status} kind={kind} total={total}");
+            df_files_delta_free(delta);
+            assert_ne!(status, DF_FILES_STATUS_ERROR, "listing failed");
+            if (status == DF_FILES_STATUS_BATCH && total >= 1)
+                || std::time::Instant::now() > deadline
+            {
+                assert!(
+                    total >= 1,
+                    "the seed file is painted before the watch is exercised"
+                );
+                let _ = kind;
+                break;
+            }
+        }
+        // Drain anything still queued (the listing's `DONE`).
+        loop {
+            let delta = df_files_poll_delta(session, 50);
+            let status = (*delta).status;
+            df_files_delta_free(delta);
+            if status == DF_FILES_STATUS_DONE || status == DF_FILES_STATUS_TIMEOUT {
+                break;
+            }
+        }
+        // A settled watched session reports a quiet timeout, not a poll loop.
+        let delta = df_files_poll_delta(session, 50);
+        assert_eq!((*delta).status, DF_FILES_STATUS_TIMEOUT);
+        df_files_delta_free(delta);
+
+        // An external rename becomes in-place changes of the one held row
+        // (the kernel reports the pair; a burst may split across polls).
+        std::fs::rename(dir.path().join("seed.txt"), dir.path().join("renamed.txt"))
+            .expect("rename");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut saw_renamed = false;
+        let mut saw_removal = false;
+        while !saw_renamed && std::time::Instant::now() < deadline {
+            let delta = df_files_poll_delta(session, 2_000);
+            assert_eq!(
+                (*delta).status,
+                DF_FILES_STATUS_BATCH,
+                "a rename is a model change"
+            );
+            match (*delta).kind {
+                DF_FILES_DELTA_CHANGED => {
+                    // Every change is a held row: the receiver repaints it in
+                    // place, it never rebuilds the list.
+                    for index in 0..(*delta).change_count as usize {
+                        let change = (*delta).changes.add(index).read();
+                        let name = std::ffi::CStr::from_ptr(change.node.name).to_string_lossy();
+                        assert_ne!(name, "seed.txt");
+                        saw_renamed |= name == "renamed.txt";
+                    }
+                }
+                DF_FILES_DELTA_REMOVED => saw_removal = true,
+                other => panic!("an in-place rename must not reset/insert, got kind {other}"),
+            }
+            df_files_delta_free(delta);
+        }
+        assert!(saw_renamed, "the renamed row was reported");
+        assert!(!saw_removal, "a rename never looks like a removal");
+
+        // An external create is an insertion at its final rank.
+        std::fs::write(dir.path().join("created.txt"), b"new").expect("write");
+        let delta = df_files_poll_delta(session, 2_000);
+        assert_eq!((*delta).status, DF_FILES_STATUS_BATCH);
+        assert_eq!((*delta).kind, DF_FILES_DELTA_INSERT);
+        assert_eq!((*delta).row_count, 1);
+        df_files_delta_free(delta);
+
+        // The session's own New Folder paints its row optimistically (a
+        // reset) and its watcher echo folds into that same row: the listing
+        // never reports a second row for the folder.
+        assert!(df_files_begin_new_folder(session, uri.as_ptr()) > 0);
+        df_files_await_ops(session, 2_000);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let mut total = 0;
+        while std::time::Instant::now() < deadline {
+            let delta = df_files_poll_delta(session, 50);
+            let status = (*delta).status;
+            if status == DF_FILES_STATUS_BATCH {
+                total = (*delta).total;
+            }
+            df_files_delta_free(delta);
+            if status == DF_FILES_STATUS_TIMEOUT {
+                break;
+            }
+        }
+        // The seed, the external create and the folder — once each.
+        assert_eq!(total, 3, "the session's own write is not listed twice");
+        assert!(dir.path().join("untitled folder").is_dir());
+        df_files_free(session);
     }
 }

@@ -70,8 +70,8 @@ use std::sync::Arc;
 
 use crate::{
     generated_name, DirectoryModel, FileOps, FolderWatcher, ListingEvent, ListingHandle, Location,
-    Node, NodeId, NodeKind, OperationError, Selection, SourceError, TrashOps, WatchEvent,
-    WatchEventKind, WatchHandle, NEW_FOLDER_BASE,
+    Node, NodeId, NodeKind, OperationError, Selection, SourceError, TrashOps, WatchBatch,
+    WatchEvent, WatchEventKind, WatchHandle, NEW_FOLDER_BASE,
 };
 
 /// A token for one in-flight optimistic operation.
@@ -179,6 +179,9 @@ impl OptimisticModel {
     ) -> ListingHandle {
         self.pending.clear();
         self.selection.clear();
+        // The previous visit's creates/removal markers describe rows of the
+        // old listing; a new generation starts with none (T332).
+        self.model.clear_receiver_marks();
         self.model.begin(source, location)
     }
 
@@ -218,7 +221,46 @@ impl OptimisticModel {
                 self.revert(op);
             }
         }
-        self.model.apply_watch(event)
+        let removed = matches!(event.kind, WatchEventKind::Removed { .. });
+        let applied = self.model.apply_watch(event);
+        if removed && applied {
+            self.model.note_removal();
+        }
+        applied
+    }
+
+    /// Fold one coalesced burst (T332), reconciling pending optimistic edits
+    /// first, exactly as [`Self::apply_watch`] does per event.
+    ///
+    /// The burst is resolved as a whole: an edit is confirmed when the batch
+    /// agrees with its target and reverted when it says the item vanished, so
+    /// an extraction that creates a pending New Folder's directory and then
+    /// keeps writing inside it still confirms exactly once.
+    pub fn apply_watch_batch(&mut self, batch: WatchBatch) -> bool {
+        let mut confirm: Vec<OpId> = Vec::new();
+        let mut revert: Vec<OpId> = Vec::new();
+        for kind in &batch.kinds {
+            let probe = WatchEvent::new(batch.generation, kind.clone());
+            for (op, agrees) in self.pending_decisions(&probe) {
+                if agrees {
+                    confirm.push(op);
+                } else {
+                    revert.push(op);
+                }
+            }
+        }
+        // A contradicting change is authoritative for that row: revert wins
+        // over an agreeing change for the same edit (a create that appeared
+        // and vanished inside one burst is gone).
+        for op in confirm.iter() {
+            if !revert.contains(op) {
+                self.confirm(*op);
+            }
+        }
+        for op in revert {
+            self.revert(op);
+        }
+        self.model.apply_watch_batch(batch)
     }
 
     /// Apply every ready watch event, as `DirectoryModel::drain_watch`. Returns
@@ -231,6 +273,19 @@ impl OptimisticModel {
             }
         }
         applied
+    }
+
+    /// Apply every ready coalesced burst (T332). Returns the number of
+    /// batches that changed the model — never more than one per burst, so a
+    /// thousand external writes are one repaint.
+    pub fn drain_watch_batches(&mut self, handle: &WatchHandle) -> usize {
+        let mut batches = 0;
+        while let Some(batch) = handle.try_recv_batch() {
+            if self.apply_watch_batch(batch) {
+                batches += 1;
+            }
+        }
+        batches
     }
 
     /// Decide whether `event` resolves `pending`: `Some(true)` to confirm,
@@ -353,6 +408,8 @@ impl OptimisticModel {
     /// is unknown.
     pub fn begin_delete(&mut self, id: NodeId) -> Option<OpId> {
         let (node, position) = self.model.remove_node(id)?;
+        // The receiver must repaint from a reset: every later rank moved.
+        self.model.note_removal();
         let selection_index = self.selection.position_of(id);
         self.selection.deselect(id);
         Some(self.push(PendingKind::Remove {
@@ -389,6 +446,7 @@ impl OptimisticModel {
         for id in ids {
             self.model.remove_node(id);
         }
+        self.model.note_removal();
         self.push(PendingKind::Empty { removed: captured })
     }
 

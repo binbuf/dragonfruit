@@ -130,6 +130,13 @@ impl Node {
         self
     }
 
+    /// Builder: set the kind explicitly. The watcher uses it to honour
+    /// `IN_ISDIR` for a freshly created folder (T332).
+    pub fn with_kind(mut self, kind: NodeKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
     /// The stable per-session id. [`NodeId::UNSET`] before insertion.
     pub fn id(&self) -> NodeId {
         self.id

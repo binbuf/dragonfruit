@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use dragonfruit_files_core::ffi::{
     df_files_begin_synthetic, df_files_delta_free, df_files_free, df_files_poll_delta,
-    DF_FILES_STATUS_DONE, DF_FILES_STATUS_ERROR,
+    DF_FILES_DELTA_INSERT, DF_FILES_STATUS_DONE, DF_FILES_STATUS_ERROR,
 };
 use dragonfruit_files_core::{
     DirectoryModel, ListingHandle, Location, StdFsSource, SyntheticSource,
@@ -107,7 +107,8 @@ unsafe fn incremental_stream(count: u32, batch: u32) -> (u64, Duration) {
         assert!(!delta.is_null(), "poll returned null");
         let status = (*delta).status;
         assert_ne!(status, DF_FILES_STATUS_ERROR, "listing failed");
-        if (*delta).reset != 0 {
+        // The listing's `DONE` carries no rows and is not a model change.
+        if status != DF_FILES_STATUS_DONE && (*delta).kind != DF_FILES_DELTA_INSERT {
             // The synthetic listing never edits the model, so streaming delta
             // only; a reset here would mean the windowed contract regressed.
             panic!("synthetic streaming must not reset");

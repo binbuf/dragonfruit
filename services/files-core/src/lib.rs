@@ -197,6 +197,6 @@ pub use undo::{UndoConflict, UndoError, UndoOutcome, UndoStack, UNDO_LIMIT};
 #[cfg(target_os = "linux")]
 pub use watch::InotifyWatcher;
 pub use watch::{
-    FolderWatcher, WatchEvent, WatchEventKind, WatchHandle, WatchReader,
-    SANCTIONED_WATCHER_FALLBACK_MARKER, WATCH_POLL_INTERVAL,
+    FolderWatcher, WatchBatch, WatchEvent, WatchEventKind, WatchHandle, WatchReader,
+    SANCTIONED_WATCHER_FALLBACK_MARKER, WATCH_COALESCE_WINDOW, WATCH_POLL_INTERVAL,
 };

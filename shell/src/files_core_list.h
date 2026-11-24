@@ -18,6 +18,12 @@ extern "C" {
 #define DF_FILES_STATUS_ERROR 2
 #define DF_FILES_STATUS_TIMEOUT 3
 
+// Delta kinds (T332): what an incremental delta carries.
+#define DF_FILES_DELTA_RESET 0    // rows replace the whole model, in order
+#define DF_FILES_DELTA_CHANGED 1  // changes: held rows replaced in place
+#define DF_FILES_DELTA_INSERT 2   // rows: new rows at their final ranks
+#define DF_FILES_DELTA_REMOVED 3  // rows are gone; repaint from a reset
+
 // Node kinds.
 #define DF_NODE_DIRECTORY 0
 #define DF_NODE_FILE 1
@@ -53,15 +59,27 @@ typedef struct df_files_row {
     df_files_node node;
 } df_files_row;
 
-// An incremental event. `reset != 0` replaces the whole model with `rows`, in
-// order; otherwise `rows` are insertions at their final ranks and the existing
-// rows keep their relative order. `total` is the model length after the event.
+// One in-place row change (T332): the node whose fields changed and its rank
+// after the change. The id is unchanged.
+typedef struct df_files_change {
+    uint32_t rank;
+    df_files_node node;
+} df_files_change;
+
+// An incremental event. `kind` says what it carries (DF_FILES_DELTA_*):
+// RESET replaces the whole model with `rows`, in order; INSERT adds `rows` at
+// their final ranks (the existing rows keep their relative order); CHANGED
+// replaces the held rows named by `changes`; REMOVED means rows vanished and
+// the caller repaints from a reset. `total` is the model length after the
+// event.
 typedef struct df_files_delta {
     int32_t status;  // DF_FILES_STATUS_*
     const char *error;
-    int32_t reset;
+    int32_t kind;  // DF_FILES_DELTA_*
     df_files_row *rows;
     uint32_t row_count;
+    df_files_change *changes;
+    uint32_t change_count;
     uint32_t total;
 } df_files_delta;
 
@@ -82,11 +100,17 @@ void df_files_event_free(df_files_event *event);
 
 // Block up to `timeout_ms` for the next listing event as an incremental
 // delta. A zero timeout is a non-blocking poll: the picker drains ready
-// deltas from a Qt timer so a large folder never freezes the shell.
+// deltas from a Qt timer so a large folder never freezes the shell. A settled
+// watched session wakes on its folder's next change (T332).
 df_files_delta *df_files_poll_delta(void *session, uint32_t timeout_ms);
 
 // Free a delta (and the row strings it owns). Null is ignored.
 void df_files_delta_free(df_files_delta *delta);
+
+// Whether the session watches its folder for external changes (T332): 1 when
+// it does, 0 for the Trash, a synthetic listing or a null session. A watched
+// picker keeps its blocking poll armed so a folder change repaints it.
+int32_t df_files_watching(const void *session);
 
 // Optimistically insert the next `untitled folder` under `parent_uri` and
 // queue the real creation. Returns the operation id, or 0 for a null session

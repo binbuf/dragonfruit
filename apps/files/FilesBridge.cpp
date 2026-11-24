@@ -271,6 +271,35 @@ bool FilesBridge::writeFixture(const QString &uri, const QString &contents) cons
     return file.write(QByteArray(contents.toUtf8())) >= 0;
 }
 
+bool FilesBridge::externalChange(const QString &change, const QString &uri,
+                                 const QString &toUri, const QString &contents) const
+{
+    // Only inside the test's mutation tree, never the user's files.
+    if (m_mutationFixtureUri.isEmpty()
+        || !uri.startsWith(m_mutationFixtureUri + QLatin1Char('/'))) {
+        return false;
+    }
+    const QUrl url(uri);
+    if (!url.isLocalFile())
+        return false;
+    const QString path = url.toLocalFile();
+    if (change == QStringLiteral("create")) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly))
+            return false;
+        return file.write(contents.toUtf8()) >= 0;
+    }
+    if (change == QStringLiteral("delete"))
+        return QFile::remove(path);
+    if (change == QStringLiteral("rename")) {
+        if (!toUri.startsWith(m_mutationFixtureUri + QLatin1Char('/')))
+            return false;
+        const QUrl target(toUri);
+        return target.isLocalFile() && QFile::rename(path, target.toLocalFile());
+    }
+    return false;
+}
+
 bool FilesBridge::isBrowsable(const QString &uri) const
 {
     const QUrl url(uri);

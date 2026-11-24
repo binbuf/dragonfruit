@@ -111,6 +111,14 @@ public:
     // locations return false). A test seam for the T331 conflict path, where
     // another application takes an item's old name before an undo runs.
     Q_INVOKABLE bool writeFixture(const QString &uri, const QString &contents) const;
+    // T332: change the fixture folder the way another process would, so the
+    // watcher (not Files) is what updates the open window. `change` is
+    // `create` (`uri` is the new file, `contents` its body), `delete`
+    // (`uri` is removed) or `rename` (`uri` -> `toUri`). Restricted to the
+    // mutation fixture tree, like `writeFixture`.
+    Q_INVOKABLE bool externalChange(const QString &change, const QString &uri,
+                                    const QString &toUri = QString(),
+                                    const QString &contents = QString()) const;
     // True for a `file://` path or the `trash://` scheme (the two locations
     // this seam can open; other schemes are not advertised).
     Q_INVOKABLE bool isBrowsable(const QString &uri) const;

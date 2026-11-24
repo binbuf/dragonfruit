@@ -447,6 +447,35 @@ the handler returns), `df_files_undo_status`, and
 [ADR 0338](adr/0338-files-undo-recorded-locations.md). **Deferred:** the undo
 journal across restarts, and a redo of a paste's copied items.
 
+**Implementation status (T332).** The folder watcher is wired into the Files
+window. Every local `file://` listing opens one files-core `FolderWatcher` on
+the session's own generation (a `trash://` or synthetic listing watches
+nothing, and a folder that cannot be watched degrades to a static listing, not
+an error). The inotify worker coalesces: after the first change it keeps
+absorbing the backend's batches for `WATCH_COALESCE_WINDOW` (50 ms), so an
+extraction — hundreds of creates — reaches the model as **one** batch and one
+paint, never one per file. The worker blocks off the UI thread and the C ABI
+folds a burst into one delta: `DF_FILES_DELTA_INSERT` for new rows at their
+final ranks, `DF_FILES_DELTA_CHANGED` for held rows replaced in place (a
+rename keeps its node id, so the shell's selection — keyed by id — does not
+move), and `DF_FILES_DELTA_REMOVED` to ask the receiver for a reset when a row
+vanished. `FilesDirectoryModel.applyChanges` repaints only the named rows.
+`df_files_watching` tells the facade whether its folder is watched: a watched
+settled window keeps its poll armed (one blocking delta request per tick,
+woken by the watcher's channel), so a change paints by itself; an unwatched
+`trash://` listing still stops its timer. The watcher also honours `IN_ISDIR`,
+so a newly created empty folder arrives as a folder. The session never reports
+its own writes as external changes: an operation's row is remembered while it
+is pending, and the pending operation is what wakes the window. The picker
+(`ChooserBridge`) keeps its blocking poll armed for a watched folder too. Tests:
+`services/files-core/tests/watcher.rs` (burst coalescing, in-place rename with
+a stable id, a C ABI session watching its own folder and not echoing its
+writes) and `tst_files_shell`'s `test_external_changes_update_the_open_window`
+(create, rename, delete from outside a temp folder). See
+[ADR 0339](adr/0339-files-watcher-delta-reconciliation.md). **Deferred:** a
+recursive watch, a remote (GVfs) watch, and the `trash://` live refresh (the
+Trash is re-listed on navigation).
+
 **Current status (2026-11) — what the Files MVP actually ships.** The browsing
 core is real: streaming listings, natural sorting, the C ABI delta path,
 sidebar favorites/volumes/Computer/Trash, icon/list views, selection
@@ -454,8 +483,8 @@ sidebar favorites/volumes/Computer/Trash, icon/list views, selection
 Trash, file opening, thumbnails, Trash browsing, path bar, back/forward
 history, local name search, the measured window anatomy, the status bar,
 toolbar-hidden mode, Get Info, copy/cut/paste with conflict policy and
-per-item progress, undo/redo with a truthful refusal, and the
-Dock/desktop integration. It is **not** the full
+per-item progress, undo/redo with a truthful refusal, live folder watching,
+and the Dock/desktop integration. It is **not** the full
 Files design:
 
 - **Not implemented:** tabs, New Window (the context row is disabled),
@@ -469,8 +498,9 @@ Files design:
   the column and gallery views. Tabs remain open.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a
   host helper exists; no archives/remote), search (current-location name
-  filter, not the app-index Search), and the folder watcher (the
-  files-core seam exists but is not wired into the Files facade). Paste is
+  filter, not the app-index Search), and the folder watcher (a local folder is
+  watched and coalesced since T332; a recursive or remote/GVfs watch is not).
+  Paste is
   per-item (one files-core operation per clipboard entry) rather than one
   batched engine request; the progress counters still group a batch, but
   cancel and per-byte progress are deferred.
@@ -500,8 +530,10 @@ completeness track.
 - **One change monitor per visible directory** (GFileMonitor/inotify locally,
   GVfs change events remotely), fanned out to views. Idle windows do zero
   polling. The `FolderWatcher` seam and `InotifyWatcher` fallback exist
-  (T-10.3b), but the Files facade does not consume them yet; that wiring is
-  still open (G-14).
+  (T-10.3b) and the Files window consumes them (T332): a local folder is
+  watched on the session's generation, a burst is coalesced into one batch,
+  and a rename keeps its node id so selection survives. A remote (GVfs) watch
+  and a recursive watch are still open (G-14).
 - **One collation implementation** — locale-aware, numeric mode (`file2`
   sorts before `file10`) — so icon view, list view, and the chooser always
   agree. Shipped now as a dependency-free natural/numeric comparison in

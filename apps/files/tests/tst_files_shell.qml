@@ -1990,5 +1990,65 @@ Item {
             wait(200);
             captureT331(shell, "undone");
         }
+
+            // -- External changes (T332) -------------------------------------------
+
+            // A file created, deleted or renamed by another process reaches the
+            // model in a watched folder without a manual refresh, and a rename
+            // keeps the selection by node id.
+            function test_external_changes_update_the_open_window() {
+                var folder = Files.mutationFixtureUri + "/Watch";
+                var shell = make({ startUri: folder });
+                tryCompare(shell.directory, "state", "complete");
+                compare(shell.directory.watching, true, "a local folder is watched");
+                tryCompare(shell.directory, "count", 1);
+                compare(shell.directory.uriAt(0), folder + "/seed.txt");
+                var seedId = idForUri(shell, folder + "/seed.txt");
+                verify(seedId > 0);
+                shell.selectNode(seedId, 0);
+                compare(shell.selectedIds.length, 1);
+                var before = shell.directory.watchUpdates;
+
+                // Another process creates a file: the row appears by itself, and
+                // the selection is untouched.
+                verify(Files.externalChange("create", folder + "/external.txt", "", "hello"));
+                tryCompare(shell.directory, "count", 2);
+                tryCompare(shell, "selectedIds", [seedId]);
+                var externalId = idForUri(shell, folder + "/external.txt");
+                verify(externalId > 0);
+                var createdDelta = false;
+                for (var tick = 0; tick < 200 && !createdDelta; ++tick) {
+                    createdDelta = shell.directory.watchUpdates > before;
+                    if (!createdDelta)
+                        wait(10);
+                }
+                verify(createdDelta, "the create painted as one watch update");
+
+                // Another process renames the selected file: the selection follows
+                // its node id, not its row, and the row keeps the id.
+                verify(Files.externalChange("rename", folder + "/seed.txt",
+                                            folder + "/renamed.txt"));
+                // A rename is an in-place change: neither the count nor the
+                // slot moves, so poll the rows for a bounded moment (the
+                // change arrives on the next watch wake).
+                var renamed = false;
+                for (var tries = 0; tries < 200 && !renamed; ++tries) {
+                    renamed = idForUri(shell, folder + "/renamed.txt") === seedId;
+                    if (!renamed)
+                        wait(10);
+                }
+                verify(renamed, "the external rename reached the window");
+                verify(idForUri(shell, folder + "/seed.txt") === 0, "the old name is gone");
+                verify(idForUri(shell, folder + "/renamed.txt") === seedId,
+                       "the rename keeps the node id");
+                tryCompare(shell, "selectedIds", [seedId]);
+
+                // Another process deletes the other file: its row vanishes.
+                verify(Files.externalChange("delete", folder + "/external.txt"));
+                tryCompare(shell.directory, "count", 1);
+                verify(idForUri(shell, folder + "/external.txt") === 0);
+                compare(shell.directory.names().indexOf("renamed.txt") >= 0, true);
+                tryCompare(shell, "selectedIds", [seedId]);
+            }
     }
 }

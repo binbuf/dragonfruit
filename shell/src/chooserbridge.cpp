@@ -490,9 +490,12 @@ void ChooserBridge::onListTick()
         }
         if (status == DF_FILES_STATUS_TIMEOUT) {
             df_files_delta_free(delta);
-            // Idle again: stop once the listing is done and no optimistic
-            // operation (New Folder) is still awaiting its worker outcome.
-            if (m_listingComplete && df_files_pending_ops(m_session) == 0)
+            // A picker is short-lived and modal: while it is up, keep the
+            // blocking poll armed so a folder change repaints it (T332). The
+            // call sleeps on the watcher's channel, and it runs on this
+            // bridge's own thread, so the UI never blocks on directory I/O.
+            if (m_listingComplete && df_files_pending_ops(m_session) == 0
+                && !df_files_watching(m_session))
                 m_listTimer->stop();
             break;
         }
@@ -507,7 +510,7 @@ void ChooserBridge::onListTick()
         if (done) {
             m_loading = false;
             m_listingComplete = true;
-            if (df_files_pending_ops(m_session) == 0)
+            if (df_files_pending_ops(m_session) == 0 && !df_files_watching(m_session))
                 m_listTimer->stop();
             break;
         }
@@ -537,10 +540,26 @@ void ChooserBridge::applyDelta(const df_files_delta *delta)
             currentUri = entry.value(QStringLiteral("uri")).toString();
     }
 
-    if (delta->reset) {
+    // T332: a changed delta replaces held rows in place; a removal asks for
+    // a reset (the picker keeps its own selected URIs, so a removed row
+    // simply drops out). A `REMOVED` delta without rows is answered by the
+    // next poll's reset, because the picker always keeps its blocking poll
+    // armed while it is visible.
+    if (delta->kind == DF_FILES_DELTA_REMOVED && delta->row_count == 0) {
+        // The gap is described by the next reset; this tick just repaints.
+        return;
+    }
+    if (delta->kind == DF_FILES_DELTA_RESET) {
         m_entries.clear();
         for (uint32_t i = 0; i < delta->row_count; ++i)
             m_entries.append(rowFromNode(delta->rows[i].node));
+    } else if (delta->kind == DF_FILES_DELTA_CHANGED) {
+        for (uint32_t i = 0; i < delta->change_count; ++i) {
+            const df_files_change &change = delta->changes[i];
+            const int rank = int(change.rank);
+            if (rank >= 0 && rank < m_entries.size())
+                m_entries[rank] = rowFromNode(change.node);
+        }
     } else {
         for (uint32_t i = 0; i < delta->row_count; ++i) {
             const df_files_row &row = delta->rows[i];

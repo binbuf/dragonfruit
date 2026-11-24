@@ -10,6 +10,7 @@
 #include <QLocale>
 #include <QUrl>
 
+#include <algorithm>
 #include <utility>
 
 namespace {
@@ -17,6 +18,12 @@ namespace {
 // The polling cadence while a listing is in flight. The Rust worker does the
 // directory I/O on its own thread; this only drains ready events and stops as
 // soon as the listing completes, so an idle window never polls.
+//
+// T332: a settled *watched* window keeps this timer running. Each tick is one
+// blocking delta request in the Rust session (it wakes on the folder's change
+// or after the timeout), so the change paints without a manual refresh, bursts
+// arrive already coalesced by files-core, and an unwatched location (the
+// Trash) still stops the timer when it settles.
 constexpr int kPollIntervalMs = 16;
 
 // How long an undo/redo waits for its worker outcome before letting the poll
@@ -426,6 +433,12 @@ void FilesDirectoryModel::start()
         setState(QStringLiteral("error"), QStringLiteral("Not a browsable location"));
         return;
     }
+    const bool watching = df_files_watching(m_session) != 0;
+    if (watching != m_watching) {
+        m_watching = watching;
+        m_watchUpdates = 0;
+        emit watchChanged();
+    }
     setState(QStringLiteral("streaming"));
     m_timer.start();
     poll();
@@ -437,6 +450,11 @@ void FilesDirectoryModel::stop()
     if (m_session) {
         df_files_free(m_session);
         m_session = nullptr;
+    }
+    if (m_watching) {
+        m_watching = false;
+        m_watchUpdates = 0;
+        emit watchChanged();
     }
     setPendingOps(0);
     // A new session has no history: the undo stacks are folder-scoped.
@@ -462,20 +480,21 @@ void FilesDirectoryModel::poll()
 {
     if (!m_session)
         return;
-    df_files_delta *delta = df_files_poll_delta(m_session, 0);
+    df_files_delta *delta = df_files_poll_delta(m_session, kPollIntervalMs * 2);
     if (!delta) {
         stop();
         setState(QStringLiteral("error"), QStringLiteral("The listing session was lost"));
         return;
     }
+    bool painted = false;
     switch (delta->status) {
     case DF_FILES_STATUS_BATCH:
-        applyDelta(delta);
+        painted = applyDelta(delta);
         break;
     case DF_FILES_STATUS_DONE:
         // The listing finished, but the session stays alive: an optimistic
         // operation may still be in flight, and sorting/operating on a loaded
-        // folder must keep working. Polling just stops until there is work.
+        // folder must keep working.
         setState(QStringLiteral("complete"));
         break;
     case DF_FILES_STATUS_ERROR:
@@ -488,6 +507,8 @@ void FilesDirectoryModel::poll()
     default:
         break;
     }
+    const int kind = delta->kind;
+    const int status = delta->status;
     df_files_delta_free(delta);
 
     takeError();
@@ -495,9 +516,21 @@ void FilesDirectoryModel::poll()
     setPendingOps(pending);
     updatePasteProgress();
     updateUndoState();
-    // Stop the timer (never free the session) once the listing is settled and
-    // no operation is pending, so an idle window does zero polling.
-    if (pending == 0 && m_state != QStringLiteral("streaming"))
+    // T332: a change folded from the folder watcher (an insertion, an
+    // in-place rename, a removal) is a watch update; the counter lets the
+    // shell and the tests see that a burst painted without a reload.
+    if (painted && status == DF_FILES_STATUS_BATCH
+        && (kind == DF_FILES_DELTA_INSERT || kind == DF_FILES_DELTA_CHANGED
+            || kind == DF_FILES_DELTA_REMOVED)
+        && m_state == QStringLiteral("complete")) {
+        ++m_watchUpdates;
+        emit watchChanged();
+    }
+    // Stop the timer (never free the session) once the listing is settled,
+    // no operation is pending, and no watcher is armed. A watched folder
+    // keeps the timer: each tick is one blocking delta request that wakes on
+    // the folder's next change, so an external edit paints by itself.
+    if (pending == 0 && m_state != QStringLiteral("streaming") && !m_watching)
         m_timer.stop();
 }
 
@@ -683,15 +716,95 @@ FilesDirectoryModel::Node FilesDirectoryModel::nodeFromFfi(const df_files_node &
     return node;
 }
 
-void FilesDirectoryModel::applyDelta(const df_files_delta *delta)
+bool FilesDirectoryModel::applyDelta(const df_files_delta *delta)
 {
     if (!delta)
-        return;
-    if (delta->reset != 0) {
+        return false;
+    switch (delta->kind) {
+    case DF_FILES_DELTA_RESET:
         applyReset(delta);
-        return;
+        return true;
+    case DF_FILES_DELTA_INSERT:
+        applyInsertions(delta);
+        return true;
+    case DF_FILES_DELTA_CHANGED:
+        applyChanges(delta);
+        return true;
+    case DF_FILES_DELTA_REMOVED:
+        // A removal shifts every later rank and the delta carries no full
+        // order: re-read the session's ordered snapshot (a reset) so the rows
+        // stay truthful rather than guessing a gap (T332).
+        if (m_session) {
+            df_files_delta *full = df_files_snapshot_delta(m_session);
+            if (full) {
+                applyReset(full);
+                df_files_delta_free(full);
+                return true;
+            }
+        }
+        return false;
+    default:
+        return false;
     }
-    applyInsertions(delta);
+}
+
+void FilesDirectoryModel::dataChangedRows(int row, int count)
+{
+    if (count <= 0 || row < 0 || row >= int(m_nodes.size()))
+        return;
+    const int last = qMin(row + count - 1, int(m_nodes.size()) - 1);
+    emit dataChanged(index(row), index(last));
+}
+
+void FilesDirectoryModel::applyChanges(const df_files_delta *delta)
+{
+    // T332: the held rows were replaced in place — a rename kept its node id,
+    // a size changed. Only the named rows repaint; the row set and the
+    // receiver's selection (keyed by node id) stay exactly as they are.
+    if (!delta->changes || delta->change_count == 0)
+        return;
+    std::vector<quint32> changedIds;
+    changedIds.reserve(size_t(delta->change_count));
+    for (uint32_t i = 0; i < delta->change_count; ++i) {
+        const df_files_change &change = delta->changes[i];
+        const int row = int(change.rank);
+        if (row < 0 || row >= int(m_nodes.size()))
+            continue;
+        const Node incoming = nodeFromFfi(change.node);
+        Node &node = m_nodes[size_t(row)];
+        if (node.id != incoming.id)
+            continue;
+        node = incoming;
+        if (!changedIds.empty()) {
+            int lo = 0;
+            int hi = int(changedIds.size());
+            while (lo < hi) {
+                const int mid = (lo + hi) / 2;
+                if (changedIds[size_t(mid)] < change.rank)
+                    lo = mid + 1;
+                else
+                    hi = mid;
+            }
+            if (lo >= int(changedIds.size()) || changedIds[size_t(lo)] != change.rank)
+                changedIds.insert(changedIds.begin() + lo, change.rank);
+        } else {
+            changedIds.push_back(change.rank);
+        }
+    }
+    if (changedIds.empty())
+        return;
+    // One contiguous span covers a watch burst's changed rows; a sparse set
+    // reports each run separately.
+    size_t start = 0;
+    while (start < changedIds.size()) {
+        size_t end = start;
+        while (end + 1 < changedIds.size()
+               && changedIds[end + 1] == changedIds[end] + 1) {
+            ++end;
+        }
+        emit dataChanged(index(int(changedIds[start])), index(int(changedIds[end])));
+        start = end + 1;
+    }
 }
 
 void FilesDirectoryModel::applyReset(const df_files_delta *delta)

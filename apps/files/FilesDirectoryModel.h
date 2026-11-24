@@ -14,9 +14,16 @@
 // (`pendingOps`, `lastError`). The session outlives the completed listing so
 // sort and operations keep working; only polling stops.
 //
-// The C++ side is deliberately dump: every poll returns the whole ordered
-// snapshot, which the model mirrors and forwards. T-10.5 replaces the
-// whole-snapshot delivery with an incremental/windowed one (ADR 0049).
+// Since T332 a local folder is watched by files-core itself: an external
+// create, delete, rename or move reaches the model as one coalesced delta per
+// burst, and a settled window keeps a blocking poll armed so the change paints
+// without a manual refresh. The poll has always run on a worker thread, so a
+// burst never blocks the UI; the model only applies its delta on the UI
+// thread.
+//
+// The C++ side is deliberately dump: every poll returns the latest ordered
+// delta (a reset, an insertion set, an in-place change set, or a removal
+// request, ADR 0051/0339), which the model mirrors and forwards.
 #pragma once
 
 #include <QAbstractListModel>
@@ -79,6 +86,12 @@ class FilesDirectoryModel : public QAbstractListModel
     // The last undo/redo sentence ("Undid “Rename a.txt”") or refusal reason;
     // empty before the first replay.
     Q_PROPERTY(QString undoMessage READ undoMessage NOTIFY undoStateChanged)
+    // T332: whether files-core watches this folder for external changes, and
+    // how many bursts arrived and were folded into the painted rows. A
+    // watched folder repaints when another process creates, deletes,
+    // renames, or moves an entry; the selection follows its node id.
+    Q_PROPERTY(bool watching READ watching NOTIFY watchChanged)
+    Q_PROPERTY(int watchUpdates READ watchUpdates NOTIFY watchChanged)
 
 public:
     enum Roles {
@@ -133,6 +146,8 @@ public:
     bool canUndo() const { return m_undoCount > 0; }
     bool canRedo() const { return m_redoCount > 0; }
     QString undoMessage() const { return m_undoMessage; }
+    bool watching() const { return m_watching; }
+    int watchUpdates() const { return m_watchUpdates; }
 
     // Sort by `key`, flipping direction when it is already active.
     Q_INVOKABLE void sortBy(const QString &key);
@@ -205,6 +220,8 @@ signals:
     void pasteFinished(int copied, int skipped, int failed);
     // The undo/redo availability, labels, or last message changed (T331).
     void undoStateChanged();
+    // The folder's watcher state or its folded-burst count changed (T332).
+    void watchChanged();
 
 private slots:
     void poll();
@@ -233,10 +250,14 @@ private:
     void start();
     void stop();
     // Apply one incremental delta: a reset rebuilds the whole model, an
-    // insertion delta merges only the new rows (T-10.5).
-    void applyDelta(const struct df_files_delta *delta);
+    // insertion merges only the new rows, and a change/removal delta touches
+    // only the named rows (T-10.5/T332). Returns whether rows were painted.
+    bool applyDelta(const struct df_files_delta *delta);
     void applyReset(const struct df_files_delta *delta);
     void applyInsertions(const struct df_files_delta *delta);
+    void applyChanges(const struct df_files_delta *delta);
+    // Repaint `count` rows starting at `row` (a coalesced change set).
+    void dataChangedRows(int row, int count);
     static Node nodeFromFfi(const struct df_files_node &source);
     void setState(const QString &state, const QString &error = QString());
     void applySort();
@@ -287,4 +308,6 @@ private:
     QString m_undoLabel;
     QString m_redoLabel;
     QString m_undoMessage;
+    bool m_watching = false;
+    int m_watchUpdates = 0;
 };

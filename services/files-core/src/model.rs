@@ -30,7 +30,7 @@ use std::sync::Arc;
 use crate::listing::{self, ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
 use crate::sort::SortSpec;
 use crate::source::{DirectorySource, SourceError};
-use crate::watch::{self, FolderWatcher, WatchEvent, WatchEventKind, WatchHandle};
+use crate::watch::{self, FolderWatcher, WatchBatch, WatchEvent, WatchEventKind, WatchHandle};
 use crate::{Location, Node, NodeId};
 
 /// Where a listing is in its lifecycle.
@@ -59,6 +59,15 @@ pub struct DirectoryModel {
     active_watch: Option<Arc<AtomicBool>>,
     sort: SortSpec,
     order: Vec<usize>,
+    /// Node ids whose fields changed since the receiver last painted (T332).
+    /// A batch folds all of them once, so a burst costs one delta.
+    updated: Vec<NodeId>,
+    /// Ids of rows that appeared after the listing: watch creates and the
+    /// optimistic layer's inserts. Kept in arrival order.
+    added: Vec<NodeId>,
+    /// A row left the model since the receiver last painted; the incremental
+    /// delta must then be a reset (a deletion shifts every later rank).
+    resets: u32,
 }
 
 impl Default for DirectoryModel {
@@ -82,6 +91,9 @@ impl DirectoryModel {
             active_watch: None,
             sort: SortSpec::default(),
             order: Vec::new(),
+            updated: Vec::new(),
+            added: Vec::new(),
+            resets: 0,
         }
     }
 
@@ -111,6 +123,9 @@ impl DirectoryModel {
         self.nodes.clear();
         self.index.clear();
         self.order.clear();
+        self.updated.clear();
+        self.added.clear();
+        self.resets = 0;
         self.state = ListingState::Streaming;
         self.next_id = 0;
 
@@ -181,7 +196,7 @@ impl DirectoryModel {
         if let Some(cancel) = self.active_watch.take() {
             cancel.store(true, AtomicOrdering::SeqCst);
         }
-        let handle = watch::begin(watcher, location, self.generation)?;
+        let handle = watch::begin_entries(watcher, location, self.generation)?;
         self.active_watch = Some(handle.cancel_flag());
         Ok(handle)
     }
@@ -197,16 +212,29 @@ impl DirectoryModel {
         if event.generation != self.generation {
             return false;
         }
-        match event.kind {
+        let applied = self.apply_watch_kind(event.kind);
+        if !applied {
+            // The receiver already paints the row and the change left it as
+            // it was (an optimistic create's own echo): the change is still
+            // reported, so a model whose optimistic layer handled it is not
+            // mistaken for a model that dropped it.
+            return true;
+        }
+        applied
+    }
+
+    /// Fold one [`WatchEventKind`] from the current generation.
+    fn apply_watch_kind(&mut self, kind: WatchEventKind) -> bool {
+        match kind {
             WatchEventKind::Created(node) => match self.node_id_for_uri(node.uri()) {
-                Some(id) => self.replace_node(id, node),
+                Some(id) => self.refresh_node(id, node),
                 None => {
                     self.insert_node(node);
                     true
                 }
             },
             WatchEventKind::Modified(node) => match self.node_id_for_uri(node.uri()) {
-                Some(id) => self.replace_node(id, node),
+                Some(id) => self.refresh_node(id, node),
                 // A modify for an entry we never listed: list it rather than
                 // drop the change.
                 None => {
@@ -219,13 +247,149 @@ impl DirectoryModel {
                 None => false,
             },
             WatchEventKind::Renamed { from_uri, to } => match self.node_id_for_uri(&from_uri) {
-                Some(id) => self.replace_node(id, to),
-                None => {
-                    self.insert_node(to);
-                    true
+                Some(id) => {
+                    // A move inside the folder can land on the name of
+                    // another listed row that the batch already replaced; a
+                    // row still holding the destination URI is a ghost and is
+                    // dropped, while the moved row keeps its id.
+                    if let Some(ghost) = self.node_id_for_uri(to.uri()) {
+                        if ghost != id {
+                            self.remove_node(ghost);
+                        }
+                    }
+                    self.replace_node(id, to)
                 }
+                None => match self.node_id_for_uri(to.uri()) {
+                    Some(id) => self.refresh_node(id, to),
+                    None => {
+                        self.insert_node(to);
+                        true
+                    }
+                },
             },
         }
+    }
+
+    /// Fold one coalesced burst (T332).
+    ///
+    /// Every change of the burst is applied in kernel order. A row already in
+    /// the listing is only marked as changed and folded by the receiver's next
+    /// delta, so a burst of a thousand writes costs **one** repaint instead of
+    /// a thousand. Rows that appear or disappear are recorded immediately
+    /// (their final rank is only known at the end of the burst). Returns
+    /// `false` for a retired generation or a batch that changed nothing.
+    pub fn apply_watch_batch(&mut self, batch: WatchBatch) -> bool {
+        if batch.generation != self.generation {
+            return false;
+        }
+        let before = self.len();
+        let mut changed = false;
+        for kind in batch.kinds {
+            changed |= self.apply_watch_kind(kind);
+        }
+        self.sync_added();
+        if self.len() < before {
+            // Rows vanished: the ordered rank of every later row moved, so
+            // the receiver repaints from `ordered()` (a reset delta).
+            self.resets += 1;
+            self.updated.clear();
+        }
+        changed
+    }
+
+    /// Fold every coalesced batch the handle has ready. Returns the number of
+    /// batches that changed the model.
+    pub fn drain_watch_batches(&mut self, handle: &WatchHandle) -> usize {
+        let mut batches = 0;
+        while let Some(batch) = handle.try_recv_batch() {
+            if self.apply_watch_batch(batch) {
+                batches += 1;
+            }
+        }
+        batches
+    }
+
+    /// The nodes whose fields changed since the last take (a rename, a new
+    /// size). A receiver repaints exactly these rows.
+    pub fn take_watch_changes(&mut self) -> Vec<NodeId> {
+        std::mem::take(&mut self.updated)
+    }
+
+    /// The ids of rows that appeared since the listing (watch creates and
+    /// optimistic inserts). A receiver resolves their ranks from
+    /// [`Self::ordered_indices`].
+    pub fn added_ids(&self) -> &[NodeId] {
+        &self.added
+    }
+
+    /// Declare that the receiver now paints every added row: the list restarts
+    /// empty, so only later inserts are additions.
+    pub fn mark_known(&mut self) {
+        self.added.clear();
+    }
+
+    /// Forget every receiver marker (additions, in-place changes, removals):
+    /// the next delta is a reset for a fresh listing (T332).
+    pub fn clear_receiver_marks(&mut self) {
+        self.added.clear();
+        self.updated.clear();
+        self.resets = 0;
+    }
+
+    /// Note that a row left the model since the receiver last painted (a
+    /// watch removal or an optimistic delete). The next
+    /// [`crate::ffi`] incremental call then answers with a reset instead of
+    /// describing a gap it cannot.
+    pub fn note_removal(&mut self) {
+        self.resets += 1;
+    }
+
+    /// Take the removal marker: whether a row vanished since the last take.
+    pub fn take_removal(&mut self) -> bool {
+        let vanished = self.resets > 0;
+        self.resets = 0;
+        vanished
+    }
+
+    /// Whether a row vanished since the last take, without clearing it.
+    pub fn removal_pending(&self) -> bool {
+        self.resets > 0
+    }
+
+    /// Whether a held row changed since the last take, without clearing it.
+    pub fn pending_changes(&self) -> bool {
+        !self.updated.is_empty()
+    }
+
+    /// Reconcile the "added" list against what the model holds now: an id
+    /// that a watch removal (or an optimistic delete) dropped is not reported
+    /// as an addition later.
+    pub(crate) fn sync_added(&mut self) {
+        let index = &self.index;
+        self.added.retain(|id| index.contains_key(id));
+    }
+
+    /// Replace a listed row's fields **without** changing its id (T332).
+    ///
+    /// A rename from outside arrives as [`WatchEventKind::Renamed`] and keeps
+    /// the id, and a `Created`/`Modified` for a URI the listing already holds
+    /// refreshes in place. Unlike [`Self::replace_node`] this is the watcher's
+    /// own path: the id survives even though the incoming node is freshly
+    /// stat'd, so a selection or a drag that names the row never glitches.
+    pub fn refresh_node(&mut self, id: NodeId, mut node: Node) -> bool {
+        let Some(&position) = self.index.get(&id) else {
+            return false;
+        };
+        node.set_id(id);
+        if self.nodes[position] == node {
+            return false;
+        }
+        self.nodes[position] = node;
+        self.rebuild_order();
+        if !self.updated.contains(&id) {
+            self.updated.push(id);
+        }
+        true
     }
 
     /// Apply every ready watch event. Returns how many were applied.
@@ -380,6 +544,9 @@ impl DirectoryModel {
         self.index.insert(id, position);
         self.nodes.push(node);
         self.rebuild_order();
+        // A row that was not in the listing is an addition for the receiver
+        // until a reset tells it the whole order (T332).
+        self.added.push(id);
         id
     }
 
@@ -434,6 +601,13 @@ impl DirectoryModel {
         node.set_id(id);
         self.nodes[position] = node;
         self.rebuild_order();
+        // Replacing a held row is an in-place change, never a reset: the
+        // receiver repaints exactly this row (`added` is only a receiver hint
+        // and must not be cleared, or a row it has not painted would vanish
+        // from the next incremental delta).
+        if !self.updated.contains(&id) {
+            self.updated.push(id);
+        }
         true
     }
 

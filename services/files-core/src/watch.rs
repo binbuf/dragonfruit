@@ -49,6 +49,14 @@ use crate::{Location, Node};
 /// poll, and costs no I/O when the folder is idle.
 pub const WATCH_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
+/// How long the worker keeps absorbing further kernel batches into one
+/// [`WatchBatch`] once a change has arrived (T332). A burst — an archive
+/// extraction, a `cp -r`, a "save with three `mv`s" — collapses into one
+/// model update instead of one UI repaint per file. The backend stays
+/// event-driven: this only bounds how long one delivered group waits for its
+/// stragglers, so an idle folder still does zero I/O.
+pub const WATCH_COALESCE_WINDOW: Duration = Duration::from_millis(50);
+
 /// Marker documenting that [`InotifyWatcher`] is the sanctioned fallback and
 /// that GIO/GVfs has not replaced it. It is deliberately worded so a build
 /// that ships without the real backend is still visibly degraded: a
@@ -84,6 +92,37 @@ pub enum WatchEventKind {
     },
 }
 
+/// One coalesced group of changes from a watcher worker (T332).
+///
+/// The worker forwards one batch per burst; its [`kinds`](Self::kinds) are in
+/// kernel order and carry the real paths (renames already paired), so the
+/// consumer folds the whole burst through
+/// [`DirectoryModel::apply_watch_batch`] — one `dataChanged` for the UI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchBatch {
+    /// The model generation the batch belongs to.
+    pub generation: u64,
+    /// The changes, in the order the kernel reported them.
+    pub kinds: Vec<WatchEventKind>,
+}
+
+impl WatchBatch {
+    /// Construct a batch for `generation`.
+    pub fn new(generation: u64, kinds: Vec<WatchEventKind>) -> Self {
+        Self { generation, kinds }
+    }
+
+    /// The generation this batch belongs to.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Whether the batch carries no change.
+    pub fn is_empty(&self) -> bool {
+        self.kinds.is_empty()
+    }
+}
+
 /// One event from a watcher worker, tagged with the generation it belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WatchEvent {
@@ -113,7 +152,26 @@ impl WatchEvent {
 pub trait FolderWatcher: Send + Sync + 'static {
     /// Begin watching `location`, returning a reader whose
     /// [`WatchReader::next_batch`] blocks for changes.
-    fn watch(&self, location: &Location) -> Result<Box<dyn WatchReader>, SourceError>;
+    ///
+    /// `entries_only` tells the backend that the location is itself a folder
+    /// whose *listing* is watched (the Files window), so a directory entry is
+    /// reported as [`NodeKind::Directory`](crate::NodeKind::Directory) even
+    /// while it is empty (inotify's `IN_ISDIR`). A monitor of one subdirectory
+    /// inside a listing (the Dock's Trash `info/`) passes `false` and gets the
+    /// historical behaviour. Backends without an equivalent hint may ignore it.
+    fn watch(&self, location: &Location) -> Result<Box<dyn WatchReader>, SourceError> {
+        self.watch_entries(location, false)
+    }
+
+    /// Begin watching `location`, as [`Self::watch`], with the listing hint.
+    fn watch_entries(
+        &self,
+        location: &Location,
+        entries_only: bool,
+    ) -> Result<Box<dyn WatchReader>, SourceError> {
+        let _ = entries_only;
+        self.watch(location)
+    }
 }
 
 /// A blocking cursor over one folder's change events.
@@ -130,7 +188,14 @@ pub trait WatchReader: Send {
 /// Dropping the handle cancels the worker at the next poll.
 pub struct WatchHandle {
     generation: u64,
-    receiver: Receiver<WatchEvent>,
+    receiver: Receiver<WatchBatch>,
+    /// A batch that [`WatchHandle::wait_ready`] took and returned, so a peek
+    /// is not a consume (T332).
+    front: std::sync::Mutex<Vec<WatchBatch>>,
+    /// A flattened, generation-tagged event stream (T332). The per-event
+    /// surface is kept for callers that handle one change at a time; the
+    /// batch surface is the one that coalesces.
+    events: Receiver<WatchEvent>,
     cancel: Arc<AtomicBool>,
 }
 
@@ -145,6 +210,40 @@ impl WatchHandle {
         Arc::clone(&self.cancel)
     }
 
+    /// Block until a batch is ready or `timeout` elapses, **without taking
+    /// it**. Returns `true` when a batch is queued (the caller then
+    /// [`Self::try_recv_batch`]es); returns `false` if a batch was already
+    /// taken meanwhile by another probe. Used by the C ABI's dormant poll, so
+    /// a settled window sleeps on a channel rather than a timer.
+    pub(crate) fn wait_ready(&self, timeout: Duration) -> bool {
+        match self.receiver.recv_timeout(timeout) {
+            Ok(batch) => {
+                // Put it back so every consumer sees the same queue.
+                self.put_back(batch);
+                true
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => false,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => false,
+        }
+    }
+
+    /// Return a batch to the front of the queue. `mpsc` has no push-front, so
+    /// the worker's own forwarding cannot interleave here: the C ABI is the
+    /// only caller and it holds the session exclusively.
+    fn put_back(&self, batch: WatchBatch) {
+        self.front
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push(batch);
+    }
+
+    /// The next batch: a batch returned by [`Self::wait_ready`] first, then
+    /// the worker's queue.
+    fn next_batch(&self) -> Option<WatchBatch> {
+        let returned = self.front.lock().unwrap_or_else(|p| p.into_inner()).pop();
+        returned.or_else(|| self.receiver.try_recv().ok())
+    }
+
     /// Ask the worker to stop at the next poll.
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::SeqCst);
@@ -152,17 +251,30 @@ impl WatchHandle {
 
     /// The next ready event, without blocking.
     pub fn try_recv(&self) -> Option<WatchEvent> {
-        self.receiver.try_recv().ok()
+        self.events.try_recv().ok()
     }
 
     /// The next event, waiting up to `timeout`.
     pub fn recv_timeout(&self, timeout: Duration) -> Option<WatchEvent> {
-        self.receiver.recv_timeout(timeout).ok()
+        self.events.recv_timeout(timeout).ok()
     }
 
     /// The next event, blocking until one arrives or the worker ends.
     pub fn recv(&self) -> Option<WatchEvent> {
-        self.receiver.recv().ok()
+        self.events.recv().ok()
+    }
+
+    /// The next coalesced batch, without blocking (T332).
+    pub fn try_recv_batch(&self) -> Option<WatchBatch> {
+        self.next_batch()
+    }
+
+    /// The next coalesced batch, waiting up to `timeout`.
+    pub fn recv_batch_timeout(&self, timeout: Duration) -> Option<WatchBatch> {
+        if let Some(batch) = self.try_recv_batch() {
+            return Some(batch);
+        }
+        self.receiver.recv_timeout(timeout).ok()
     }
 }
 
@@ -176,13 +288,36 @@ impl Drop for WatchHandle {
 ///
 /// Opening runs here, synchronously, so a foreign scheme or a missing folder
 /// is an immediate `Err` rather than a silent background failure.
+///
+/// The worker coalesces: it blocks for a change, then keeps collecting the
+/// backend's next batches for [`WATCH_COALESCE_WINDOW`] so one burst reaches
+/// the consumer as one [`WatchBatch`].
 pub(crate) fn begin(
     watcher: Arc<dyn FolderWatcher>,
     location: &Location,
     generation: u64,
 ) -> Result<WatchHandle, SourceError> {
-    let mut reader = watcher.watch(location)?;
-    let (sender, receiver) = mpsc::channel();
+    begin_with_hint(watcher, location, generation, false)
+}
+
+/// [`begin`], stating whether `location` is itself a listing (T332).
+pub(crate) fn begin_entries(
+    watcher: Arc<dyn FolderWatcher>,
+    location: &Location,
+    generation: u64,
+) -> Result<WatchHandle, SourceError> {
+    begin_with_hint(watcher, location, generation, true)
+}
+
+fn begin_with_hint(
+    watcher: Arc<dyn FolderWatcher>,
+    location: &Location,
+    generation: u64,
+    entries_only: bool,
+) -> Result<WatchHandle, SourceError> {
+    let mut reader = watcher.watch_entries(location, entries_only)?;
+    let (batch_sender, receiver) = mpsc::channel();
+    let (event_sender, events) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let worker_cancel = Arc::clone(&cancel);
 
@@ -193,11 +328,32 @@ pub(crate) fn begin(
                 break;
             }
             match reader.next_batch(WATCH_POLL_INTERVAL) {
-                Ok(kinds) => {
-                    for kind in kinds {
-                        if sender.send(WatchEvent::new(generation, kind)).is_err() {
+                Ok(kinds) if kinds.is_empty() => continue,
+                Ok(mut kinds) => {
+                    // Absorb the rest of the burst. A backend that keeps
+                    // reporting changes back to back (an extraction) is
+                    // drained until a quiet window, so the consumer sees one
+                    // batch; an idle folder returns nothing here.
+                    loop {
+                        match reader.next_batch(WATCH_COALESCE_WINDOW) {
+                            Ok(more) if more.is_empty() => break,
+                            Ok(more) => kinds.extend(more),
+                            Err(_) => break,
+                        }
+                    }
+                    for kind in &kinds {
+                        if event_sender
+                            .send(WatchEvent::new(generation, kind.clone()))
+                            .is_err()
+                        {
                             return;
                         }
+                    }
+                    if batch_sender
+                        .send(WatchBatch::new(generation, kinds))
+                        .is_err()
+                    {
+                        return;
                     }
                 }
                 Err(_) => break,
@@ -213,6 +369,8 @@ pub(crate) fn begin(
     Ok(WatchHandle {
         generation,
         receiver,
+        front: std::sync::Mutex::new(Vec::new()),
+        events,
         cancel,
     })
 }
@@ -250,6 +408,12 @@ fn classify(mask: u32) -> Option<InotifyChange> {
     }
 }
 
+/// Whether a single inotify mask names a directory (`IN_ISDIR`, T332).
+#[cfg(target_os = "linux")]
+fn is_directory_mask(mask: u32) -> bool {
+    mask & libc::IN_ISDIR != 0
+}
+
 /// A [`FolderWatcher`] over Linux inotify, the local mechanism GIO's
 /// `GFileMonitor` wraps. This is the sanctioned fallback, marked for
 /// replacement ([`SANCTIONED_WATCHER_FALLBACK_MARKER`]); it watches exactly one
@@ -275,6 +439,14 @@ impl InotifyWatcher {
 #[cfg(target_os = "linux")]
 impl FolderWatcher for InotifyWatcher {
     fn watch(&self, location: &Location) -> Result<Box<dyn WatchReader>, SourceError> {
+        self.watch_entries(location, false)
+    }
+
+    fn watch_entries(
+        &self,
+        location: &Location,
+        entries_only: bool,
+    ) -> Result<Box<dyn WatchReader>, SourceError> {
         use std::ffi::CString;
         use std::io;
         use std::os::unix::ffi::OsStrExt;
@@ -314,6 +486,7 @@ impl FolderWatcher for InotifyWatcher {
             parent: location.clone(),
             moved: std::collections::HashMap::new(),
             dot_hidden: crate::fallback::dot_hidden_names(&path),
+            entries_only,
         }))
     }
 }
@@ -326,15 +499,22 @@ struct InotifyReader {
     moved: std::collections::HashMap<u32, std::ffi::OsString>,
     /// Names the folder's `.hidden` file marks hidden (GIO semantics).
     dot_hidden: std::collections::HashSet<std::ffi::OsString>,
+    /// Whether this watch is a folder's own listing (the model's watch), so a
+    /// directory entry is reported as [`crate::NodeKind::Directory`] from
+    /// `IN_ISDIR` even while it is empty (T332). A monitor of one subdirectory
+    /// inside a listing (the Trash monitor's `info/`) leaves this false.
+    entries_only: bool,
 }
 
 #[cfg(target_os = "linux")]
 impl InotifyReader {
-    /// Stat the one entry a kernel event named, if it still exists and is not
-    /// hidden. This is the whole point of the watcher: no directory is
-    /// re-listed. Hidden entries are not in the listing, so no event may add
-    /// one.
-    fn node(&self, name: &std::ffi::OsStr) -> Option<Node> {
+    /// Stat one entry the kernel named, if it still exists and is not hidden.
+    /// This is the whole point of the watcher: no directory is re-listed.
+    /// Hidden entries are not in the listing, so no event may add one.
+    ///
+    /// `kernel_dir` is `IN_ISDIR`: for a folder's own listing a directory is
+    /// reported as such even when it is empty (T332).
+    fn entry(&self, name: &std::ffi::OsStr, kernel_dir: bool) -> Option<Node> {
         if crate::fallback::is_hidden_name(name, &self.dot_hidden) {
             return None;
         }
@@ -342,11 +522,11 @@ impl InotifyReader {
         if std::fs::symlink_metadata(&path).is_err() {
             return None;
         }
-        Some(crate::fallback::node_for_path(
-            &self.parent,
-            name.to_os_string(),
-            &path,
-        ))
+        let mut node = crate::fallback::node_for_path(&self.parent, name.to_os_string(), &path);
+        if self.entries_only && kernel_dir && node.kind() != crate::NodeKind::Symlink {
+            node = node.with_kind(crate::NodeKind::Directory);
+        }
+        Some(node)
     }
 
     fn removed(&self, name: &std::ffi::OsStr) -> WatchEventKind {
@@ -399,13 +579,14 @@ impl InotifyReader {
             let (Some(name), Some(change)) = (name, classify(event.mask)) else {
                 continue;
             };
+            let kernel_dir = is_directory_mask(event.mask);
             match change {
                 InotifyChange::MovedFrom => {
                     self.moved.insert(event.cookie, name);
                 }
                 InotifyChange::MovedTo => match self.moved.remove(&event.cookie) {
                     Some(from) => {
-                        if let Some(to) = self.node(&name) {
+                        if let Some(to) = self.entry(&name, kernel_dir) {
                             kinds.push(WatchEventKind::Renamed {
                                 from_uri: self.parent.child(&from).uri().to_owned(),
                                 to,
@@ -417,19 +598,19 @@ impl InotifyReader {
                         }
                     }
                     None => {
-                        if let Some(node) = self.node(&name) {
+                        if let Some(node) = self.entry(&name, kernel_dir) {
                             kinds.push(WatchEventKind::Created(node));
                         }
                     }
                 },
                 InotifyChange::Created => {
-                    if let Some(node) = self.node(&name) {
+                    if let Some(node) = self.entry(&name, kernel_dir) {
                         kinds.push(WatchEventKind::Created(node));
                     }
                 }
                 InotifyChange::Removed => kinds.push(self.removed(&name)),
                 InotifyChange::Modified => {
-                    if let Some(node) = self.node(&name) {
+                    if let Some(node) = self.entry(&name, kernel_dir) {
                         kinds.push(WatchEventKind::Modified(node));
                     }
                 }
@@ -530,5 +711,114 @@ mod tests {
             .err()
             .expect("not found");
         assert!(matches!(error, SourceError::NotFound(_)), "got {error:?}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn masks_carry_the_directory_hint() {
+        assert!(is_directory_mask(libc::IN_CREATE | libc::IN_ISDIR));
+        assert!(!is_directory_mask(libc::IN_CREATE));
+        assert!(!is_directory_mask(libc::IN_MOVED_TO));
+    }
+
+    /// Drive the worker over a real temp folder until `want` batches arrived,
+    /// failing after a bounded wait.
+    #[cfg(target_os = "linux")]
+    fn batches_until(handle: &WatchHandle, want_batches: usize) -> Vec<WatchBatch> {
+        use std::time::Instant;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut batches = Vec::new();
+        while batches.len() < want_batches && Instant::now() < deadline {
+            match handle.recv_batch_timeout(Duration::from_millis(20)) {
+                Some(batch) => batches.push(batch),
+                None => continue,
+            }
+        }
+        batches
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_burst_arrives_as_one_batch() {
+        // T332: an extraction-sized burst — many creates written back to
+        // back — must reach the consumer as one coalesced batch, not one
+        // batch per file. The per-event stream carries the same changes.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let location = Location::file(dir.path());
+        let handle = begin_entries(Arc::new(InotifyWatcher::new()), &location, 7).expect("watch");
+        assert_eq!(handle.generation(), 7);
+        // Let the kernel watch settle before the burst.
+        std::thread::sleep(Duration::from_millis(100));
+
+        for index in 0..24 {
+            std::fs::write(dir.path().join(format!("burst-{index:02}.txt")), b"x").expect("write");
+        }
+
+        let batches = batches_until(&handle, 1);
+        assert!(!batches.is_empty(), "the burst never arrived");
+        let batch = &batches[0];
+        assert_eq!(batch.generation(), 7);
+        assert!(!batch.is_empty());
+        let created: Vec<String> = batch
+            .kinds
+            .iter()
+            .filter_map(|kind| match kind {
+                WatchEventKind::Created(node) => Some(node.display_name().into_owned()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            created.len() > 1,
+            "a burst must coalesce several creates into one batch, got {created:?}"
+        );
+        // The per-event stream still reports every change of the batch.
+        let mut events = batch.kinds.len();
+        while let Some(event) = handle.try_recv() {
+            assert_eq!(event.generation(), 7);
+            events -= 1;
+        }
+        assert_eq!(events, 0, "the event stream mirrors the batch");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_created_folder_is_reported_as_a_directory() {
+        // The listing's own watch honours IN_ISDIR, so a newly created (still
+        // empty) folder reaches the model as a folder, not a file (T332).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let location = Location::file(dir.path());
+        let handle = begin_entries(Arc::new(InotifyWatcher::new()), &location, 1).expect("watch");
+        std::thread::sleep(Duration::from_millis(100));
+        std::fs::create_dir(dir.path().join("New Folder")).expect("mkdir");
+
+        let batches = batches_until(&handle, 1);
+        let created = batches
+            .iter()
+            .flat_map(|batch| batch.kinds.iter())
+            .find_map(|kind| match kind {
+                WatchEventKind::Created(node) if node.display_name() == "New Folder" => {
+                    Some(node.clone())
+                }
+                _ => None,
+            })
+            .expect("the created folder arrived");
+        assert_eq!(created.kind(), crate::NodeKind::Directory);
+        assert!(created.is_dir());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_idle_watch_sends_nothing() {
+        // The debounce must not turn the watcher into a poller: with no
+        // change, no batch is ever delivered.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let location = Location::file(dir.path());
+        let handle = begin_entries(Arc::new(InotifyWatcher::new()), &location, 1).expect("watch");
+        for _ in 0..10 {
+            assert!(
+                handle.recv_batch_timeout(WATCH_COALESCE_WINDOW).is_none(),
+                "an idle folder produces no batch"
+            );
+        }
     }
 }
