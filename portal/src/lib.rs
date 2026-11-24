@@ -30,7 +30,9 @@
 //!   negotiation seam that turns a chosen source into a live PipeWire node or
 //!   names the stills-only fallback, and the [`stream::PipeWireTransport`]
 //!   that asks the compositor for a node through an injected
-//!   [`stream::CompositorWatch`].
+//!   [`stream::CompositorWatch`]. A session owns its live nodes (T335b): a
+//!   second `Start` replaces them, a close releases them, and the
+//!   presenter-loss watch releases every stream.
 //!
 //! Settings and GlobalShortcuts landed in T-13.1b; FileChooser in T-13.2a;
 //! Screenshot in T-13.3a, ScreenCast in T-13.4a, and the stream negotiation in
@@ -64,8 +66,8 @@ pub use data::{
     PORTALS_CONF, PORTALS_CONF_DIR, PORTALS_CONF_NAME, PORTALS_DIR, PORTAL_FILE, PORTAL_FILE_NAME,
 };
 pub use dbus::{
-    initialize, initialize_with_timeout, probe_frontend, probe_presenter, serve,
-    serve_with_timeout, Backend,
+    initialize, initialize_with_screencast, initialize_with_timeout, probe_frontend,
+    probe_presenter, serve, serve_with_screencast, serve_with_timeout, Backend,
 };
 pub use interfaces::{
     FileChooserPortal, GlobalShortcuts, ScreenCastPortal, ScreenCastSessionObject,

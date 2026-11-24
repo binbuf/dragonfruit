@@ -21,6 +21,16 @@
 //! one, or the named stills fallback otherwise. The picker and the session
 //! lifecycle do not change with the transport.
 //!
+//! ## Live streams are owned by their session (T335b)
+//!
+//! `Start` creates one node per chosen source and remembers it on the session.
+//! A session owns its nodes: a second `Start` on the same session releases the
+//! previous set first, `Close` (a client disconnect, an app exit, or a session
+//! reset) releases them, and the presenter-loss watch releases every live
+//! stream when the trusted shell goes away. A created node is never leaked,
+//! and a transport that refuses is still the named fallback, never a
+//! placeholder id.
+//!
 //! ## What is advertised
 //!
 //! The backend advertises version 3 of the interface: the `source_type`
@@ -528,6 +538,15 @@ struct PendingScreenCast {
     completer: ScreenCastCompleter<ScreenCastResponse>,
 }
 
+/// A live PipeWire node one session holds: the id a client links to and the
+/// source handle it streams, so a release and the diagnostic surface can name
+/// the same stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LiveNode {
+    node_id: u32,
+    source_id: String,
+}
+
 /// The bookkeeping for every live session and picker request.
 #[derive(Default)]
 pub struct ScreenCastRegistry {
@@ -535,8 +554,8 @@ pub struct ScreenCastRegistry {
     pending: BTreeMap<String, PendingScreenCast>,
     negotiator: StreamNegotiator,
     /// The live PipeWire nodes a session created through `Start`, so they can
-    /// be released when the session closes.
-    nodes: BTreeMap<String, Vec<u32>>,
+    /// be released when the session closes or starts again (T335b).
+    nodes: BTreeMap<String, Vec<LiveNode>>,
 }
 
 impl ScreenCastRegistry {
@@ -666,8 +685,14 @@ impl ScreenCastRegistry {
     }
 
     /// Build the `Start` response for a session's chosen sources, negotiating
-    /// each stream through the transport. Live nodes are remembered so
-    /// [`ScreenCastRegistry::close_session`] can release them.
+    /// each stream through the transport.
+    ///
+    /// A session owns its live nodes: a second `Start` releases the previous
+    /// set first, so a repeated `Start` (or a changed selection) never leaks a
+    /// node. The new set is remembered (with its source handle) so
+    /// [`ScreenCastRegistry::close_session`] and
+    /// [`ScreenCastRegistry::release_streams`] can release it and the shell
+    /// bridge can name it.
     pub fn start(&mut self, session_handle: &str) -> Result<ScreenCastResponse, ScreenCastError> {
         let session = self
             .sessions
@@ -677,27 +702,87 @@ impl ScreenCastRegistry {
             return Err(ScreenCastError::NoSelection(session_handle.to_owned()));
         }
         let streams = session.streams(&mut self.negotiator);
-        let nodes: Vec<u32> = streams
+        self.release_nodes(session_handle);
+        let nodes: Vec<LiveNode> = streams
             .iter()
             .filter(|stream| stream.mode == StreamMode::PipeWire)
-            .map(|stream| stream.node_id)
+            .map(|stream| LiveNode {
+                node_id: stream.node_id,
+                source_id: stream.source_id.clone(),
+            })
             .collect();
-        self.nodes.insert(session_handle.to_owned(), nodes);
+        if !nodes.is_empty() {
+            self.nodes.insert(session_handle.to_owned(), nodes);
+        }
         Ok(ScreenCastResponse::started(&streams))
     }
 
     /// Drop a session and any picker request that referenced it, releasing any
     /// live nodes the session created. Returns whether the session existed.
+    ///
+    /// This is the one session-close path: the portal's `Session.Close`, a
+    /// client disconnect, and an app restart all land here.
     pub fn close_session(&mut self, handle: &str) -> bool {
         let existed = self.sessions.remove(handle).is_some();
-        if let Some(nodes) = self.nodes.remove(handle) {
-            for node in nodes {
-                self.negotiator.destroy(node);
-            }
-        }
+        self.release_nodes(handle);
         self.pending
             .retain(|_, pending| pending.request.session_handle != handle);
         existed
+    }
+
+    /// Release every live stream, whichever session owns it, and answer every
+    /// waiting picker with `cancelled`. The trusted shell is the only party
+    /// that can create a node, so when it leaves (the presenter-loss watch) no
+    /// stream can survive it (T335b). Returns `(streams released, requests
+    /// cancelled)`.
+    pub fn release_streams(&mut self) -> (usize, usize) {
+        let live: Vec<String> = self
+            .nodes
+            .iter()
+            .filter(|(_, nodes)| !nodes.is_empty())
+            .map(|(handle, _)| handle.clone())
+            .collect();
+        let mut released = 0;
+        for handle in live {
+            released += self.release_nodes(&handle);
+        }
+        (released, self.cancel_all())
+    }
+
+    /// The live node ids one session holds (empty when it has none).
+    pub fn live_nodes(&self, session_handle: &str) -> Vec<u32> {
+        self.nodes
+            .get(session_handle)
+            .map(|nodes| nodes.iter().map(|node| node.node_id).collect())
+            .unwrap_or_default()
+    }
+
+    /// The live nodes one session holds with the source each streams, in
+    /// creation order (empty when it has none).
+    pub fn live_streams(&self, session_handle: &str) -> Vec<(u32, String)> {
+        self.nodes
+            .get(session_handle)
+            .map(|nodes| {
+                nodes
+                    .iter()
+                    .map(|node| (node.node_id, node.source_id.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The number of live nodes across every session.
+    pub fn live_node_count(&self) -> usize {
+        self.nodes.values().map(Vec::len).sum()
+    }
+
+    /// Release one session's nodes and forget them.
+    fn release_nodes(&mut self, session_handle: &str) -> usize {
+        let nodes = self.nodes.remove(session_handle).unwrap_or_default();
+        for node in &nodes {
+            self.negotiator.destroy(node.node_id);
+        }
+        nodes.len()
     }
 
     /// The number of live sessions.
@@ -720,7 +805,12 @@ impl ScreenCastRegistry {
 /// surface all read the same bookkeeping.
 pub type SharedScreenCast = Arc<Mutex<ScreenCastRegistry>>;
 
-/// A shared, empty registry.
+/// A shared, empty registry over the shipped stills transport.
+///
+/// The daemon serves this one: until the trusted shell's bridge answers a
+/// stream request, every `Start` is the named
+/// [`crate::stream::FallbackReason::ProducerUnavailable`] fallback, which is
+/// the honest state for a session with no shell or no PipeWire host.
 pub fn registry() -> SharedScreenCast {
     Arc::new(Mutex::new(ScreenCastRegistry::new()))
 }
@@ -914,6 +1004,167 @@ mod tests {
             vec![100],
             "the node is released"
         );
+    }
+
+    /// A registry with one started live session, returning the registry and
+    /// the release ledger the transport records into.
+    fn started_live_session(
+        session_handle: &str,
+        sources: &[ScreenCastSelection],
+        first_node: u32,
+    ) -> (ScreenCastRegistry, Arc<Mutex<Vec<u32>>>) {
+        let destroyed = Arc::new(Mutex::new(Vec::new()));
+        let mut registry = ScreenCastRegistry::with_transport(Box::new(RecordingTransport {
+            next_node: first_node,
+            destroyed: destroyed.clone(),
+        }));
+        registry.create_session("app", session_handle).unwrap();
+        let request = ScreenCastRequest::new(
+            format!("{session_handle}/req"),
+            session_handle,
+            "app",
+            &HashMap::new(),
+        );
+        registry.begin_select(request).expect("begin_select");
+        registry
+            .complete(&format!("{session_handle}/req"), sources.to_vec())
+            .expect("complete");
+        registry.start(session_handle).expect("start");
+        (registry, destroyed)
+    }
+
+    #[test]
+    fn a_second_start_on_one_session_releases_the_first_set_of_nodes() {
+        let (mut registry, destroyed) = started_live_session(
+            "/s",
+            &[
+                ScreenCastSelection::monitor("monitor:DP-1"),
+                ScreenCastSelection::window("window:7"),
+            ],
+            10,
+        );
+        assert_eq!(registry.live_streams("/s").len(), 2);
+        assert_eq!(registry.live_node_count(), 2);
+
+        // A repeated Start releases the previous set first: one live node set
+        // at a time, never two.
+        let streams = registry.start("/s").expect("second start").streams();
+        assert_eq!(streams.len(), 2);
+        assert_eq!(
+            *destroyed.lock().unwrap(),
+            vec![10, 11],
+            "the first Start's nodes are released before the second creates its own"
+        );
+        assert_eq!(
+            registry.live_nodes("/s"),
+            vec![streams[0].node_id, streams[1].node_id]
+        );
+
+        assert!(registry.close_session("/s"));
+        assert_eq!(*destroyed.lock().unwrap(), vec![10, 11, 12, 13]);
+        assert_eq!(registry.live_node_count(), 0);
+        assert!(registry.live_nodes("/s").is_empty());
+    }
+
+    #[test]
+    fn two_sessions_stream_independently_and_close_only_their_own_nodes() {
+        let destroyed = Arc::new(Mutex::new(Vec::new()));
+        let mut registry = ScreenCastRegistry::with_transport(Box::new(RecordingTransport {
+            next_node: 50,
+            destroyed: destroyed.clone(),
+        }));
+        for (session, source) in [
+            ("/s1", ScreenCastSelection::monitor("monitor:DP-1")),
+            ("/s2", ScreenCastSelection::window("window:3")),
+        ] {
+            registry.create_session("app", session).unwrap();
+            let request =
+                ScreenCastRequest::new(format!("{session}/r"), session, "app", &HashMap::new());
+            registry.begin_select(request).expect("begin_select");
+            registry
+                .complete(&format!("{session}/r"), vec![source])
+                .expect("complete");
+            registry.start(session).expect("start");
+        }
+        assert_eq!(registry.live_nodes("/s1"), vec![50]);
+        assert_eq!(registry.live_nodes("/s2"), vec![51]);
+        assert_eq!(
+            registry.live_streams("/s1"),
+            vec![(50, "monitor:DP-1".to_owned())]
+        );
+
+        // Closing one session leaves the other session's node running.
+        assert!(registry.close_session("/s1"));
+        assert_eq!(*destroyed.lock().unwrap(), vec![50]);
+        assert_eq!(registry.live_nodes("/s2"), vec![51]);
+
+        // Closing the unknown second time releases nothing again.
+        assert!(!registry.close_session("/s1"));
+        assert_eq!(*destroyed.lock().unwrap(), vec![50]);
+        assert!(registry.close_session("/s2"));
+        assert_eq!(*destroyed.lock().unwrap(), vec![50, 51]);
+        assert_eq!(registry.live_node_count(), 0);
+    }
+
+    #[test]
+    fn a_client_disconnect_and_the_presenter_loss_release_every_stream() {
+        let destroyed = Arc::new(Mutex::new(Vec::new()));
+        let mut registry = ScreenCastRegistry::with_transport(Box::new(RecordingTransport {
+            next_node: 70,
+            destroyed: destroyed.clone(),
+        }));
+        for session in ["/a", "/b"] {
+            registry.create_session("app", session).unwrap();
+            let request =
+                ScreenCastRequest::new(format!("{session}/r"), session, "app", &HashMap::new());
+            registry.begin_select(request).expect("begin_select");
+            registry
+                .complete(
+                    &format!("{session}/r"),
+                    vec![ScreenCastSelection::monitor("m")],
+                )
+                .expect("complete");
+            registry.start(session).expect("start");
+        }
+        // A picker waits when the shell leaves, too.
+        registry.create_session("app", "/c").unwrap();
+        let waiting = ScreenCastRequest::new("/c/r", "/c", "app", &HashMap::new());
+        let mut completion = registry.begin_select(waiting).expect("begin_select");
+
+        let (released, cancelled) = registry.release_streams();
+        assert_eq!(released, 2, "both live nodes are released");
+        assert_eq!(cancelled, 1, "the waiting picker is answered");
+        assert_eq!(*destroyed.lock().unwrap(), vec![70, 71]);
+        assert_eq!(registry.live_node_count(), 0);
+        assert!(matches!(
+            poll_once(&mut completion),
+            Poll::Ready(Some(ScreenCastResponse {
+                response: RESPONSE_CANCELLED,
+                ..
+            }))
+        ));
+
+        // Sessions survive the presenter loss, but their streams do not: a
+        // second loss with nothing live touches nothing.
+        assert_eq!(registry.len(), 3);
+        assert_eq!(registry.release_streams(), (0, 0));
+        assert_eq!(*destroyed.lock().unwrap(), vec![70, 71]);
+    }
+
+    #[test]
+    fn the_stills_fallback_owns_no_node() {
+        let mut registry = ScreenCastRegistry::new();
+        registry.create_session("app", "/s").unwrap();
+        let request = ScreenCastRequest::new("/r", "/s", "app", &HashMap::new());
+        registry.begin_select(request).expect("begin_select");
+        registry
+            .complete("/r", vec![ScreenCastSelection::monitor("monitor:DP-1")])
+            .expect("complete");
+        let streams = registry.start("/s").expect("start").streams();
+        assert_eq!(streams[0].mode, StreamMode::Stills);
+        assert_eq!(registry.live_node_count(), 0);
+        assert!(registry.close_session("/s"));
+        assert_eq!(registry.live_node_count(), 0);
     }
 
     #[test]

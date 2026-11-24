@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 //! T-13.4a acceptance: the ScreenCast portal creates a session, opens the
 //! source picker on `SelectSources`, returns the chosen source handle from
-//! `Start`, and degrades honestly on cancel/error paths.
+//! `Start`, and degrades honestly on cancel/error paths. T335b adds the live
+//! half: a session owns its PipeWire nodes (a second `Start` replaces them, a
+//! close releases them, a client that disconnects leaves none running), and
+//! the picker names the stills fallback when the producer is unavailable.
 //!
 //! Every test stands up a private `dbus-daemon` session bus and starts the
 //! backend with [`xdg_desktop_portal_dragonfruit::dbus::serve`] — the same
@@ -83,6 +86,21 @@ impl PrivateBus {
         xdg_desktop_portal_dragonfruit::dbus::serve(Some(self.address.as_str()))
             .expect("the backend serves on a private bus")
     }
+}
+
+/// Serve with `registry` as the ScreenCast registry (T335b), so a test can
+/// inject a live transport and observe the same code path the daemon uses.
+/// The returned connection must outlive the test body.
+fn serve_with_registry(
+    bus: &PrivateBus,
+    registry: xdg_desktop_portal_dragonfruit::screencast::SharedScreenCast,
+) -> (Connection, xdg_desktop_portal_dragonfruit::Backend) {
+    xdg_desktop_portal_dragonfruit::dbus::serve_with_screencast(
+        Some(bus.address.as_str()),
+        xdg_desktop_portal_dragonfruit::COMPLETION_TIMEOUT,
+        registry,
+    )
+    .expect("the backend serves on a private bus")
 }
 
 impl Drop for PrivateBus {
@@ -262,6 +280,17 @@ fn selection_options(types: u32, multiple: bool) -> HashMap<String, OwnedValue> 
 
 /// Run `Start` on a session and return the first stream's `(id, source_type)`.
 fn start_first_stream(client: &Connection, session_handle: &str) -> Option<(String, u32)> {
+    start_streams(client, session_handle)
+        .into_iter()
+        .next()
+        .map(|(_, id, source_type, _, _)| (id, source_type))
+}
+
+/// Run `Start` on a session and return its decoded streams.
+fn start_streams(
+    client: &Connection,
+    session_handle: &str,
+) -> Vec<(u32, String, u32, String, Option<String>)> {
     let (response, results): ScreenCastReply = call(
         client,
         SCREENCAST_INTERFACE,
@@ -278,9 +307,21 @@ fn start_first_stream(client: &Connection, session_handle: &str) -> Option<(Stri
     .expect("Start");
     assert_eq!(response, 0, "Start succeeds");
     streams_of(&results)
-        .into_iter()
-        .next()
-        .map(|(_, id, source_type, _, _)| (id, source_type))
+}
+
+/// Close a session through the standard `org.freedesktop.impl.portal.Session`
+/// contract, the way a client that disconnects or exits does.
+fn close_session(client: &Connection, session_handle: &str) {
+    let reply = client
+        .call_method(
+            Some(DBUS_NAME),
+            session_handle,
+            Some("org.freedesktop.impl.portal.Session"),
+            "Close",
+            &(),
+        )
+        .expect("Close");
+    assert_eq!(reply.message_type(), zbus::message::Type::MethodReturn);
 }
 
 #[test]
@@ -567,12 +608,13 @@ fn an_empty_selection_is_an_error_response() {
     ));
 }
 
-// --- T335a: the live transport --------------------------------------------
+// --- T335a/T335b: the live transport ---------------------------------------
 
-/// A live transport over a scripted compositor: it hands out node ids and
-/// records the tokens it released.
-fn live_transport(start: u32) -> Box<dyn StreamTransport> {
+/// A live transport over a scripted compositor that records the tokens it
+/// releases, so a test can prove every node is released.
+fn recording_live_transport(start: u32) -> (Box<dyn StreamTransport>, Arc<Mutex<Vec<String>>>) {
     let next = Arc::new(Mutex::new(start));
+    let destroyed = Arc::new(Mutex::new(Vec::new()));
     let create: CreateFn = {
         let next = next.clone();
         Arc::new(move |_source: &StreamSource| {
@@ -582,17 +624,19 @@ fn live_transport(start: u32) -> Box<dyn StreamTransport> {
             Ok(id)
         })
     };
-    Box::new(PipeWireTransport::new(Box::new(FnWatch::new(create))))
+    let watch = FnWatch::new(create).recording_destroys(destroyed.clone());
+    (Box::new(PipeWireTransport::new(Box::new(watch))), destroyed)
 }
 
-/// The registry path a portal `Start`/`Close` drives, over the live
-/// transport: `Start` returns a PipeWire node id and the mode, and closing the
-/// session releases the node. This is the T335a transport test at the
-/// acceptance level: the D-Bus backend serves the same registry, and the
-/// shipped backend without a shell bridge is covered by the fallback test.
+/// The registry path a portal `Start`/`Close` drives, over the live transport:
+/// `Start` returns a PipeWire node id and the mode, and closing the session
+/// releases the node. This is the T335a transport test at the acceptance level:
+/// the D-Bus backend serves the same registry, and the shipped backend without
+/// a shell bridge is covered by the fallback test.
 #[test]
 fn the_live_transport_fills_the_start_result_and_releases_the_node_on_close() {
-    let mut registry = ScreenCastRegistry::with_transport(live_transport(77));
+    let (transport, destroyed) = recording_live_transport(77);
+    let mut registry = ScreenCastRegistry::with_transport(transport);
     assert_eq!(registry.stream_mode(), StreamMode::PipeWire);
     registry.create_session("org.example.App", "/s").unwrap();
     let request = xdg_desktop_portal_dragonfruit::screencast::ScreenCastRequest::new(
@@ -611,7 +655,110 @@ fn the_live_transport_fills_the_start_result_and_releases_the_node_on_close() {
     assert_eq!(streams[0].node_id, 77, "the live node id reaches the wire");
     assert_eq!(streams[0].mode, StreamMode::PipeWire);
     assert_eq!(streams[0].fallback, None);
+    assert_eq!(registry.live_nodes("/s"), vec![77]);
     assert!(registry.close_session("/s"));
+    assert_eq!(
+        *destroyed.lock().unwrap(),
+        vec!["monitor-monitor:DP-1".to_owned()],
+        "the session close released the live node"
+    );
+    assert_eq!(registry.live_node_count(), 0);
+}
+
+/// T335b: over a private session bus, two client sessions each hold their own
+/// live stream, closing one (the `Session.Close` a client sends) releases only
+/// that session's node, and the diagnostic surface names the live node the
+/// other session still holds.
+#[test]
+fn a_d_bus_session_close_releases_only_its_own_live_node() {
+    let bus = PrivateBus::start();
+    let (transport, destroyed) = recording_live_transport(900);
+    let registry = Arc::new(Mutex::new(ScreenCastRegistry::with_transport(transport)));
+    let (_service, _backend) = serve_with_registry(&bus, registry);
+    let client = bus.connect();
+    assert_eq!(
+        diagnostic::<String>(&client, "ScreenCastStreamMode", ()),
+        "pipewire",
+        "the served registry has the live transport"
+    );
+
+    let sessions = [
+        (
+            "/org/freedesktop/portal/desktop/session/1_1/df_cast_first",
+            "/org/freedesktop/portal/desktop/request/1_1/df_cast_first_select",
+            "monitor:DP-1",
+        ),
+        (
+            "/org/freedesktop/portal/desktop/session/1_1/df_cast_second",
+            "/org/freedesktop/portal/desktop/request/1_1/df_cast_second_select",
+            "window:7",
+        ),
+    ];
+    let mut nodes = Vec::new();
+    for (session, request, source) in sessions {
+        create_session(&client, session);
+        let pending = select_sources_on_its_own_connection(
+            &bus,
+            request.to_owned(),
+            session.to_owned(),
+            selection_options(1 | 2, false),
+        );
+        wait_for(Duration::from_secs(5), || {
+            diagnostic::<Vec<(String, String)>>(&client, "PendingScreenCasts", ())
+                .iter()
+                .any(|(handle, _)| handle == request)
+                .then_some(())
+        });
+        assert!(diagnostic::<bool>(
+            &client,
+            "CompleteScreenCast",
+            (request.to_owned(), vec![(source.to_owned(), 1u32)]),
+        ));
+        assert_eq!(pending.join().unwrap().unwrap().0, 0);
+        let streams = start_streams(&client, session);
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0].3, "pipewire");
+        nodes.push(streams[0].0);
+    }
+    assert_eq!(nodes, vec![900, 901], "each session got its own node");
+    assert_eq!(
+        diagnostic::<u32>(&client, "ScreenCastLiveStreams", ()),
+        2,
+        "two live streams"
+    );
+    let first = sessions[0].0;
+    let second = sessions[1].0;
+    assert_eq!(
+        diagnostic::<Vec<(u32, String)>>(&client, "ScreenCastLiveNodes", (first,)),
+        vec![(900, "monitor:DP-1".to_owned())]
+    );
+
+    // The first client closes its session (what `Session.Close` is).
+    close_session(&client, first);
+    assert_eq!(
+        *destroyed.lock().unwrap(),
+        vec!["monitor-monitor:DP-1".to_owned()]
+    );
+    assert_eq!(
+        diagnostic::<u32>(&client, "ScreenCastLiveStreams", ()),
+        1,
+        "the second session's node is still live"
+    );
+    assert_eq!(
+        diagnostic::<Vec<(u32, String)>>(&client, "ScreenCastLiveNodes", (second,)),
+        vec![(901, "window:7".to_owned())]
+    );
+
+    // The remaining stream is released by the presenter-loss seam the shell
+    // bridge calls when it goes away; a client that disconnects never leaves a
+    // producer running.
+    assert_eq!(
+        diagnostic::<u32>(&client, "ReleaseScreenCasts", ()),
+        1,
+        "the release names the one remaining stream"
+    );
+    assert_eq!(destroyed.lock().unwrap().len(), 2);
+    assert_eq!(diagnostic::<u32>(&client, "ScreenCastLiveStreams", ()), 0);
 }
 
 /// A live transport whose compositor refuses still answers the D-Bus flow with

@@ -113,6 +113,9 @@ constexpr uint32_t kAnchorTop = 1;
 constexpr uint32_t kAnchorBottom = 2;
 constexpr uint32_t kAnchorLeft = 4;
 constexpr uint32_t kAnchorRight = 8;
+// The newest `df_toplevel_manager` version this shell requests.
+// `create_screencast` (v17) is not sent by the shell (ADR 0345).
+constexpr uint32_t kMaxManagerVersion = 16;
 
 // The banner card's inset from the output's right edge (T-11.1a).
 constexpr int kBannerMargin = 8;
@@ -287,12 +290,17 @@ void ShellProtocol::bindTrustedGlobals()
     }
     if (m_managerName) {
         // Bind through the generated interface's own version, so a lockstep
-    // protocol bump never needs a second hard-coded cap here (T-08.2c caught
-    // the v4 cap rejecting the v5 request at runtime).
-    m_manager = static_cast<df_toplevel_manager *>(
-        wl_registry_bind(m_registry, m_managerName, &df_toplevel_manager_interface,
-                         std::min(m_managerVersion,
-                                  static_cast<uint32_t>(df_toplevel_manager_interface.version))));
+        // protocol bump never needs a second hard-coded cap here (T-08.2c
+        // caught the v4 cap rejecting the v5 request at runtime). The shell's
+        // own cap stays 16: the v17 screen-share messages are not sent by any
+        // shipped bridge (ADR 0345), and the binding must not claim a version
+        // the shell does not use.
+        m_manager = static_cast<df_toplevel_manager *>(
+            wl_registry_bind(m_registry, m_managerName, &df_toplevel_manager_interface,
+                             std::min(m_managerVersion,
+                                      std::min(kMaxManagerVersion,
+                                               static_cast<uint32_t>(
+                                                   df_toplevel_manager_interface.version)))));
         static const df_toplevel_manager_listener managerListener = {
             onManagerOutput,
             onManagerWorkspace,
@@ -315,6 +323,8 @@ void ShellProtocol::bindTrustedGlobals()
             onManagerWindowMenuRow,
             onManagerWindowMenuSpace,
             onManagerWindowMenuClosed,
+            onManagerScreencastNode,
+            onManagerScreencastFailed,
         };
         df_toplevel_manager_add_listener(m_manager, &managerListener, this);
     }
@@ -1807,6 +1817,31 @@ bool ShellProtocol::captureScreenshot(const QString &path, int x, int y, int wid
     const QByteArray modeUtf8 = mode.toUtf8();
     df_toplevel_manager_capture_screenshot(m_manager, x, y, width, height, modeUtf8.constData(),
                                            pathUtf8.constData());
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::createScreencastStream(quint32 token, const QString &output, int width,
+                                           int height, int fps)
+{
+    if (!m_manager)
+        return false;
+    const QByteArray outputUtf8 = output.toUtf8();
+    df_toplevel_manager_create_screencast(m_manager, token, outputUtf8.constData(),
+                                          static_cast<uint32_t>(qMax(width, 0)),
+                                          static_cast<uint32_t>(qMax(height, 0)),
+                                          static_cast<uint32_t>(qMax(fps, 0)));
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::destroyScreencastStream(quint32 token)
+{
+    if (!m_manager)
+        return false;
+    df_toplevel_manager_destroy_screencast(m_manager, token);
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -5822,6 +5857,24 @@ void ShellProtocol::onManagerScreenshotFailed(void *data, df_toplevel_manager *,
 {
     auto *self = static_cast<ShellProtocol *>(data);
     emit self->screenshotFailed(QString::fromUtf8(reason ? reason : ""));
+}
+
+void ShellProtocol::onManagerScreencastNode(void *data, df_toplevel_manager *, uint32_t token,
+                                            uint32_t nodeId, const char *output,
+                                            uint32_t width, uint32_t height, uint32_t fps)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->screencastNode(token, nodeId, QString::fromUtf8(output ? output : ""), width,
+                              height, fps);
+}
+
+void ShellProtocol::onManagerScreencastFailed(void *data, df_toplevel_manager *,
+                                              uint32_t token, const char *fallback,
+                                              const char *reason)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->screencastFailed(token, QString::fromUtf8(fallback ? fallback : ""),
+                                QString::fromUtf8(reason ? reason : ""));
 }
 
 void ShellProtocol::onManagerActivationResult(void *data, df_toplevel_manager *,

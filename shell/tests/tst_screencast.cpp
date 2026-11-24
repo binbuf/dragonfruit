@@ -248,10 +248,12 @@ private slots:
     void withoutAPortalTheStillsFallbackIsNamed()
     {
         // No service and no producer: the bridge must not pretend streaming is
-        // live. The fallback is named in the picker note (T-13.4b).
+        // live. The fallback is named in the picker note (T-13.4b/T335b) and
+        // says the app receives stills, so the user is never surprised.
         ScreenCastBridge bridge;
         QCOMPARE(bridge.streamMode(), QStringLiteral("stills"));
         QVERIFY(!bridge.streamNote().isEmpty());
+        QVERIFY(bridge.streamNote().contains(QStringLiteral("still")));
     }
 
     void aSecondRequestCancelsTheFirstPortalHandle()

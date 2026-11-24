@@ -350,6 +350,13 @@ impl Backend {
     /// producer is available, `stills` when only the named fallback is. The
     /// shell reads it so the picker can say the fallback out loud before a
     /// source is chosen. Diagnostic only; the portal frontend never calls it.
+    ///
+    /// `pipewire` names the transport's *capability*, not a guarantee: whether
+    /// a given stream is live or the named fallback is decided per `Start` and
+    /// carried in each stream's `df_stream_mode`/`df_fallback` properties
+    /// (T335b). The shipped daemon serves the stills transport, so it reports
+    /// `stills`; the live client half is a documented gap
+    /// ([ADR 0345](../../docs/design/adr/0345-screencast-bridge-and-portal-ownership.md)).
     fn screen_cast_stream_mode(&self) -> String {
         screencast::lock(&self.screencast)
             .stream_mode()
@@ -386,6 +393,32 @@ impl Backend {
     /// whether a request was waiting at `handle`.
     fn cancel_screen_cast(&self, handle: &str) -> Result<bool, zbus::fdo::Error> {
         Ok(screencast::lock(&self.screencast).cancel(handle).is_some())
+    }
+
+    /// The live screen-share nodes one session holds, as `(node id, source
+    /// id)` pairs. Diagnostic only: the shell bridge uses it to reconcile a
+    /// restarted compositor's streams (T335b). Sessions are addressed by the
+    /// frontend's session handle path.
+    #[zbus(name = "ScreenCastLiveNodes")]
+    fn screen_cast_live_nodes(&self, session_handle: &str) -> Vec<(u32, String)> {
+        screencast::lock(&self.screencast).live_streams(session_handle)
+    }
+
+    /// The number of live screen-share nodes across every session. Diagnostic
+    /// only; the T335b release test reads it to prove nothing leaks.
+    #[zbus(name = "ScreenCastLiveStreams")]
+    fn screen_cast_live_streams(&self) -> u32 {
+        screencast::lock(&self.screencast).live_node_count() as u32
+    }
+
+    /// Release every live screen-share node and answer every waiting picker
+    /// as cancelled. This is what the presenter-loss watch does when the
+    /// trusted shell leaves; the shell bridge calls it on shutdown so a
+    /// reconnecting shell never adopts a stale node (T335b). Returns the
+    /// number of streams released.
+    #[zbus(name = "ReleaseScreenCasts")]
+    fn release_screen_casts(&self) -> u32 {
+        screencast::lock(&self.screencast).release_streams().0 as u32
     }
 
     /// List a local directory through files-core for the picker. Each row is
@@ -551,6 +584,17 @@ pub fn initialize(connection: &connection::Connection) -> Backend {
 /// [`initialize`] with an explicit completion deadline. Tests use a short
 /// bound to prove the timeout path without waiting 30 seconds.
 pub fn initialize_with_timeout(connection: &connection::Connection, timeout: Duration) -> Backend {
+    initialize_with_screencast(connection, timeout, screencast::registry())
+}
+
+/// [`initialize_with_timeout`] over a caller-supplied ScreenCast registry, so
+/// a test (or a future host with a live transport) can serve the same objects
+/// over an injected stream transport (T335b).
+pub fn initialize_with_screencast(
+    connection: &connection::Connection,
+    timeout: Duration,
+    screencast: SharedScreenCast,
+) -> Backend {
     let frontend = FrontendTracker::new();
     frontend.set(probe_frontend(connection));
     let presenter = FrontendTracker::new();
@@ -558,7 +602,6 @@ pub fn initialize_with_timeout(connection: &connection::Connection, timeout: Dur
     let registry = shortcuts::registry();
     let chooser = chooser::registry();
     let screenshot = screenshot::registry();
-    let screencast = screencast::registry();
     let backend = Backend::with_services_and_presenter(
         frontend.clone(),
         presenter.clone(),
@@ -683,8 +726,10 @@ fn frontend_watch_loop(connection: connection::Connection, tracker: FrontendTrac
 ///
 /// When the presenter's owner disappears — a crash, an exit, or a restart that
 /// transfers the name to a new connection — every pending FileChooser,
-/// Screenshot, and ScreenCast picker request is resolved as `cancelled`. That
-/// is the T311 rule: a caller never waits for a presenter that is gone.
+/// Screenshot, and ScreenCast picker request is resolved as `cancelled`, and
+/// every live ScreenCast stream is released (the shell is the only party that
+/// can create a node, T335b). That is the T311 rule: a caller never waits for
+/// a presenter that is gone.
 pub fn spawn_presenter_watch(
     connection: connection::Connection,
     tracker: FrontendTracker,
@@ -733,9 +778,20 @@ fn presenter_watch_loop(
             .map(|(_, old, new)| !old.is_empty() && old != new)
             .unwrap_or(false);
         if lost {
+            let screencast_cancelled = {
+                let mut registry = screencast::lock(&screencast);
+                let (released, cancelled) = registry.release_streams();
+                if released > 0 {
+                    eprintln!(
+                        "xdg-desktop-portal-dragonfruit: presenter left; released {released} \
+                         live screen cast stream(s)"
+                    );
+                }
+                cancelled
+            };
             let cancelled = chooser::lock(&chooser).cancel_all()
                 + screenshot::lock(&screenshot).cancel_all()
-                + screencast::lock(&screencast).cancel_all();
+                + screencast_cancelled;
             if cancelled > 0 {
                 eprintln!(
                     "xdg-desktop-portal-dragonfruit: presenter left; cancelled {cancelled} \
@@ -771,6 +827,23 @@ pub fn serve_with_timeout(
     };
     let connection = builder.name(DBUS_NAME)?.build()?;
     let backend = initialize_with_timeout(&connection, timeout);
+    Ok((connection, backend))
+}
+
+/// [`serve_with_timeout`] over a caller-supplied ScreenCast registry (T335b):
+/// the same served objects and watches, so a live transport can be exercised
+/// through the real D-Bus code path.
+pub fn serve_with_screencast(
+    address: Option<&str>,
+    timeout: Duration,
+    screencast: SharedScreenCast,
+) -> zbus::Result<(connection::Connection, Backend)> {
+    let builder = match address {
+        Some(address) => connection::Builder::address(address)?,
+        None => connection::Builder::session()?,
+    };
+    let connection = builder.name(DBUS_NAME)?.build()?;
+    let backend = initialize_with_screencast(&connection, timeout, screencast);
     Ok((connection, backend))
 }
 

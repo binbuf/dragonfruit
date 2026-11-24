@@ -58,8 +58,11 @@ const INTERFACE_VERSION: u32 = 1;
 /// bumps in tandem with its child interface.
 const SHELL_INTERFACE_VERSION: u32 = 4;
 
-/// `df_toplevel_manager` is version 16 since the T329 window-menu
-/// presentation and activation messages were added; version 15 added the T320
+/// `df_toplevel_manager` is version 17 since the T335b live screen-share
+/// messages (`create_screencast`/`destroy_screencast` and the
+/// `screencast_node`/`screencast_failed` replies) were added; version 16 added
+/// the T329 window-menu
+/// presentation and activation messages; version 15 added the T320
 /// `set_pointer_family_policy` request; version 14 added the T315
 /// idle policy; version 13 added the T276 Overview/hot-corner policy;
 /// version 12 added the T275 accessibility accommodations; version 11 added
@@ -71,7 +74,7 @@ const SHELL_INTERFACE_VERSION: u32 = 4;
 /// (T-08.2c), `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3
 /// (T-11), and `release_keyboard_focus` v2 (T-10). The other interfaces stay
 /// at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 16;
+const MANAGER_INTERFACE_VERSION: u32 = 17;
 
 /// `df_output` is version 5 since `set_dpms` and the `dpms` state/fallback
 /// event were added (T316); v4 added the role-keyed `material_role_state`
@@ -2281,6 +2284,9 @@ impl Dispatch<df_core::DfCore, CoreUserData> for DfState {
             // took focus. A dead surface must never keep the keyboard.
             state.restore_window_keyboard_focus();
         }
+        // T335b: the streams this client created end with it, even if its
+        // manager objects never reported their own destroy.
+        state.release_client_streams(&client);
         state.refresh_reserved_zones();
         state.needs_redraw = true;
     }
@@ -2630,7 +2636,7 @@ impl GlobalDispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
 impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
     fn request(
         state: &mut Self,
-        _client: &Client,
+        client: &Client,
         resource: &df_toplevel_manager::DfToplevelManager,
         request: df_toplevel_manager::Request,
         _data: &(),
@@ -2936,6 +2942,50 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
             df_toplevel_manager::Request::WindowMenuDismiss => {
                 state.close_window_menu();
             }
+            df_toplevel_manager::Request::CreateScreencast {
+                token,
+                output,
+                width,
+                height,
+                fps,
+            } => {
+                // T335b: the portal's live stream. The compositor owns the
+                // node's lifecycle; the shell bridge only carries the token
+                // the portal transport created.
+                match state.create_screencast_stream(
+                    token,
+                    &output,
+                    width,
+                    height,
+                    fps,
+                    client.id(),
+                ) {
+                    Ok(node_id) => {
+                        if let Some(stream) = state.screencast_streams.get(&token) {
+                            let (width, height, fps) = (
+                                stream.geometry.width,
+                                stream.geometry.height,
+                                stream.geometry.fps,
+                            );
+                            let output = stream.output.clone();
+                            resource.screencast_node(token, node_id, output, width, height, fps);
+                        }
+                    }
+                    Err(error) => {
+                        resource.screencast_failed(
+                            token,
+                            error.fallback_label().to_owned(),
+                            error.detail().to_owned(),
+                        );
+                    }
+                }
+                state.needs_redraw = true;
+            }
+            df_toplevel_manager::Request::DestroyScreencast { token } => {
+                if state.destroy_screencast_stream(token) {
+                    state.needs_redraw = true;
+                }
+            }
             df_toplevel_manager::Request::Destroy => {}
         }
     }
@@ -2949,6 +2999,16 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
         if let Some(session) = state.shell.sessions.get_mut(&client) {
             session.manager = None;
         }
+        // T335b: a client that disconnects (or rebinds the manager) takes every
+        // screen-share stream it created with it. A producer is never left
+        // running for a client that is gone.
+        let tokens: Vec<u32> = state
+            .screencast_streams
+            .iter()
+            .filter(|(_, stream)| stream.owner == client)
+            .map(|(token, _)| *token)
+            .collect();
+        state.release_screencast_streams(&tokens);
     }
 }
 

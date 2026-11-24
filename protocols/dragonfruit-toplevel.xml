@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="16">
+  <interface name="df_toplevel_manager" version="17">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -568,6 +568,72 @@
 
     <event name="window_menu_closed" since="16">
       <description summary="the window menu is no longer open"/>
+    </event>
+
+    <!-- T335b: the live ScreenCast node a portal stream links to. Appended
+         after the v16 messages so the scanner's `since` stays non-decreasing
+         and every pre-existing message keeps its opcode (append-only).
+         The `video/source` node itself is owned by the disposable host tool
+         (`dragonfruit-screencast-producer`); this request only asks the
+         compositor to create the stream and resolve its node id, and the
+         events name the one stream by `token` (see below). -->
+    <request name="create_screencast" since="17">
+      <description summary="create one live screen-share stream">
+        Ask the compositor for a live video node of `output` cropped to
+        `width` x `height` at `fps`. Every frame the output renders is
+        offered to the stream from the one offscreen capture pass the
+        screenshot path uses (T335a); there is no second capture path. The
+        compositor spawns one `dragonfruit-screencast-producer` host tool per
+        stream and names the stream `token` (the shell bridge serial).
+
+        The reply is `screencast_node` with the node id a portal client links
+        to, or `screencast_failed` with the portal's fallback label. It never
+        returns a placeholder id, and a failed creation leaves no stream.
+
+        Only the authenticated shell may call it. A manager object that goes
+        away (a shell restart or a client disconnect) destroys every stream
+        created through it, so a client disconnect never leaves a producer
+        running.
+      </description>
+      <arg name="token" type="uint" summary="caller-chosen stream id, echoed in the reply"/>
+      <arg name="output" type="string" summary="the output name to share; empty = primary"/>
+      <arg name="width" type="uint" summary="stream width in physical pixels; 0 = output width"/>
+      <arg name="height" type="uint" summary="stream height; 0 = the output's height"/>
+      <arg name="fps" type="uint" summary="frame rate; the compositor clamps 1-240"/>
+    </request>
+
+    <request name="destroy_screencast" since="17">
+      <description summary="release one live screen-share stream">
+        Release the stream created with `token`: the capture feed stops, the
+        host tool is stopped and its node leaves the graph. Idempotent.
+      </description>
+      <arg name="token" type="uint"/>
+    </request>
+
+    <event name="screencast_node" since="17">
+      <description summary="a live stream's node id, ready for a portal client">
+        `node_id` is the id in the live PipeWire graph. `output` is the output
+        whose capture pass feeds the stream; `width` x `height` at `fps` is
+        the geometry the node was created with. Additive in v17.
+      </description>
+      <arg name="token" type="uint" summary="the token from `create_screencast`"/>
+      <arg name="node_id" type="uint"/>
+      <arg name="output" type="string"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+      <arg name="fps" type="uint"/>
+    </event>
+
+    <event name="screencast_failed" since="17">
+      <description summary="a live stream could not be created">
+        Sent in reply to `create_screencast` when no PipeWire host, host tool,
+        or node exists, or the output cannot be captured. `fallback` is the
+        portal's stream property (`pipewire-producer-unavailable`); `reason`
+        is for logs only. No stream is left behind. Additive in v17.
+      </description>
+      <arg name="token" type="uint"/>
+      <arg name="fallback" type="string"/>
+      <arg name="reason" type="string"/>
     </event>
 
     <enum name="hot_corner">

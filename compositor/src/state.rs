@@ -1538,6 +1538,37 @@ pub struct PendingCapture {
     pub path: PathBuf,
 }
 
+/// One live ScreenCast stream the trusted shell created over the private
+/// protocol (T335b): the producer's stream token, the output whose capture
+/// pass feeds it, the fixed geometry it was created with, and the frame
+/// socket the host tool connected to.
+#[derive(Debug)]
+pub struct ScreencastStream {
+    /// The producer's stream token (the compositor's `screencast` ledger).
+    pub stream: u64,
+    /// The trusted client that created the stream; its manager object going
+    /// away releases the stream.
+    pub owner: wayland_server::backend::ClientId,
+    /// The output name whose capture pass offers frames.
+    pub output: String,
+    /// The clamped stream size and rate.
+    pub geometry: crate::screencast_producer::StreamGeometry,
+    /// The frame socket, removed when the stream is released.
+    pub socket: PathBuf,
+}
+
+/// A live ScreenCast stream's geometry, for the diagnostics projection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // read by the T335b conformance test and a future status line
+pub struct StreamGeometryReport {
+    /// Width in physical pixels.
+    pub width: u32,
+    /// Height in physical pixels.
+    pub height: u32,
+    /// Frames per second.
+    pub fps: u32,
+}
+
 /// The glass/accessibility preferences carried by the trusted shell bridge
 /// (T196). The resolved scheme stays in [`DfState::color_scheme`]; this is the
 /// slider plus the two overrides. The defaults mirror the settings schema so a
@@ -1857,6 +1888,12 @@ pub struct DfState {
     /// this compositor to publish as a PipeWire video node, fed from the same
     /// capture pass [`DfState::pending_capture`] uses.
     pub screencast: ScreencastProducer,
+    /// The live streams the trusted shell created over v17 `create_screencast`
+    /// (T335b), keyed by the shell's token. A stream lives exactly as long as
+    /// `destroy_screencast` or its manager object: a shell restart or a client
+    /// disconnect takes every stream it created (`Drop for DfState` is the
+    /// last resort).
+    pub screencast_streams: HashMap<u32, ScreencastStream>,
 
     // --- private shell protocols (T-07) -------------------------------------
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
@@ -2140,6 +2177,7 @@ impl DfState {
             minimize_targets: HashMap::new(),
             pending_capture: None,
             screencast: ScreencastProducer::new(),
+            screencast_streams: HashMap::new(),
             shell,
             material_pass: BackdropPass::new(),
             scene_pass: SceneTransformPass::new(),
@@ -5441,6 +5479,143 @@ impl DfState {
         let now = Instant::now();
         self.screencast
             .offer_image_to_output(output.name().as_str(), image, now)
+    }
+
+    /// The output a screen-share request names, or the primary output when it
+    /// names none. `None` when the session has no output.
+    pub fn screencast_output(&self, name: &str) -> Option<smithay::output::Output> {
+        if name.is_empty() {
+            return self.space.outputs().next().cloned();
+        }
+        self.space
+            .outputs()
+            .find(|output| output.name() == name)
+            .cloned()
+    }
+
+    /// Create one live ScreenCast stream from the trusted shell (T335b): the
+    /// output's capture pass feeds it, the producer spawns its host tool, and
+    /// the returned node id is the one a portal client links to. A failure is
+    /// named, never a placeholder id, and leaves no stream behind.
+    ///
+    /// The frame socket lives in the per-user runtime directory so one user's
+    /// streams are never in a shared location.
+    pub fn create_screencast_stream(
+        &mut self,
+        token: u32,
+        output_name: &str,
+        width: u32,
+        height: u32,
+        fps: u32,
+        owner: wayland_server::backend::ClientId,
+    ) -> Result<u32, crate::screencast_producer::ProducerError> {
+        use crate::screencast_producer::{ProducerError, StreamGeometry};
+        // A repeated token releases the earlier stream first: a shell that
+        // reuses a token must never leave the previous producer running.
+        self.destroy_screencast_stream(token);
+        let output = self
+            .screencast_output(output_name)
+            .ok_or_else(|| ProducerError::Unavailable("no such output".to_owned()))?;
+        let name = output.name();
+        let scale = output.current_scale().fractional_scale();
+        let logical = self
+            .space
+            .output_geometry(&output)
+            .map(|geometry| geometry.size)
+            .unwrap_or_default();
+        let (width, height) = (
+            if width == 0 {
+                (logical.w as f64 * scale).round() as u32
+            } else {
+                width
+            },
+            if height == 0 {
+                (logical.h as f64 * scale).round() as u32
+            } else {
+                height
+            },
+        );
+        let geometry = StreamGeometry::new(width, height, fps);
+        let socket = std::env::temp_dir().join(format!(
+            "dragonfruit-screencast-{}-{token}.sock",
+            std::process::id()
+        ));
+        let stream = self.screencast.create(&name, geometry, &socket)?;
+        let node_id = match self.screencast.export_node(stream) {
+            Ok(node_id) => node_id,
+            Err(error) => {
+                let _ = std::fs::remove_file(&socket);
+                return Err(error);
+            }
+        };
+        self.screencast_streams.insert(
+            token,
+            ScreencastStream {
+                stream,
+                owner,
+                output: name,
+                geometry,
+                socket,
+            },
+        );
+        Ok(node_id)
+    }
+
+    /// Release one live ScreenCast stream. Idempotent; returns whether it was
+    /// live.
+    pub fn destroy_screencast_stream(&mut self, token: u32) -> bool {
+        let Some(entry) = self.screencast_streams.remove(&token) else {
+            return false;
+        };
+        self.screencast.destroy(entry.stream);
+        let _ = std::fs::remove_file(&entry.socket);
+        self.needs_redraw = true;
+        true
+    }
+
+    /// Release every screen-share stream one client created. Both its manager
+    /// object going away and the client itself disconnecting land here; the
+    /// latter also covers a manager that never reported its own destroy.
+    pub fn release_client_streams(&mut self, client: &wayland_server::backend::ClientId) -> usize {
+        let tokens: Vec<u32> = self
+            .screencast_streams
+            .iter()
+            .filter(|(_, stream)| stream.owner == *client)
+            .map(|(token, _)| *token)
+            .collect();
+        self.release_screencast_streams(&tokens)
+    }
+
+    /// Release every stream one shell client created (its manager object went
+    /// away: a restart or a disconnect). A client that disconnects never
+    /// leaves a producer running.
+    pub fn release_screencast_streams(&mut self, tokens: &[u32]) -> usize {
+        tokens
+            .iter()
+            .filter(|token| self.destroy_screencast_stream(**token))
+            .count()
+    }
+
+    /// The live streams, as `(token, output, geometry)` for diagnostics.
+    #[allow(dead_code)] // the T335b conformance test and a future status line read it
+    pub fn screencast_streams(&self) -> Vec<(u32, String, StreamGeometryReport)> {
+        let mut streams: Vec<_> = self
+            .screencast_streams
+            .iter()
+            .map(|(token, entry)| {
+                (
+                    *token,
+                    entry.output.clone(),
+                    StreamGeometryReport {
+                        width: entry.geometry.width,
+                        height: entry.geometry.height,
+                        fps: entry.geometry.fps,
+                    },
+                )
+            })
+            .collect();
+        streams.sort_by_key(|(token, _, _)| *token);
+        streams
     }
 
     /// The material the compositor actually applies to chrome (P1). This is

@@ -593,6 +593,17 @@ public:
     bool captureScreenshot(const QString &path, int x, int y, int width, int height,
                            const QString &mode);
 
+    // Ask the compositor for a live ScreenCast video node (T335b, v17
+    // `create_screencast`): `output` (empty = primary) cropped to `width` x
+    // `height` at `fps`, fed from the one capture pass the screenshot uses.
+    // The compositor replies asynchronously with `screencastNode` or
+    // `screencastFailed`, both carrying `token`. Returns whether the request
+    // reached the compositor (a missing manager is not a live stream).
+    bool createScreencastStream(quint32 token, const QString &output, int width, int height,
+                                int fps);
+    // Release the stream `token` (v17 `destroy_screencast`). Idempotent.
+    bool destroyScreencastStream(quint32 token);
+
     // Forward a stored clipboard entry to the compositor (T-13.5b). The shell
     // becomes the selection owner temporarily by offering `payloads` under
     // `mimes` through `wlr-data-control`; this is the one place the history
@@ -1007,6 +1018,12 @@ signals:
     // (`screenshotFailed`, reason for logs).
     void screenshotSaved(const QString &path);
     void screenshotFailed(const QString &reason);
+    // Live ScreenCast stream replies (T335b): the compositor resolved a node
+    // id for `token`, or could not create the stream. `fallback` is the
+    // portal's stream property; `reason` is for logs.
+    void screencastNode(quint32 token, quint32 nodeId, const QString &output, uint width,
+                        uint height, uint fps);
+    void screencastFailed(quint32 token, const QString &fallback, const QString &reason);
     // Session lock (T-12.3a): the compositor confirmed the lock, the lock
     // object finished on its own (`finished`), and one lock surface was
     // configured to a full-output size. `lockSurfaceId` is opaque and echoes
@@ -1471,6 +1488,13 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
                                         const char *source, uint32_t serial);
     static void onManagerScreenshotSaved(void *data, df_toplevel_manager *manager, const char *path);
     static void onManagerScreenshotFailed(void *data, df_toplevel_manager *manager,
+                                          const char *reason);
+    // Live ScreenCast replies (T335b, v17).
+    static void onManagerScreencastNode(void *data, df_toplevel_manager *manager,
+                                        uint32_t token, uint32_t nodeId, const char *output,
+                                        uint32_t width, uint32_t height, uint32_t fps);
+    static void onManagerScreencastFailed(void *data, df_toplevel_manager *manager,
+                                          uint32_t token, const char *fallback,
                                           const char *reason);
     static void onManagerActivationResult(void *data, df_toplevel_manager *manager,
                                           const char *appId, uint32_t found);

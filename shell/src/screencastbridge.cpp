@@ -78,7 +78,9 @@ QString ScreenCastBridge::streamNote() const
 {
     if (m_streamMode == QLatin1String("pipewire"))
         return QString();
-    return tr("Live streaming is not available in this build — the app will receive still images.");
+    // The named stills fallback (T-13.4b/T335b): the app will receive still
+    // images, never a silent pretend-live stream.
+    return tr("Live streaming is not available in this session — the app will receive still images.");
 }
 
 void ScreenCastBridge::connectService()

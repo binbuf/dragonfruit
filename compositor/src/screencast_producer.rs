@@ -48,9 +48,12 @@
 //! T335a lands this producer, the compositor's per-output feed in the nested
 //! and DRM capture passes, the portal's live `PipeWireTransport`
 //! ([`crate::stream`]), the host tool, and the live proof
-//! (`make t335a-screencast`). The private-protocol command the trusted shell
-//! uses to reach [`ScreencastProducer::create`] for a portal session, and the
-//! shell bridge that answers the portal's `CompositorWatch`, are T335b.
+//! (`make t335a-screencast`). T335b adds the private-protocol command that
+//! creates and releases a stream by token (`create_screencast` /
+//! `destroy_screencast`, v17) and makes the stream a per-client resource of
+//! the compositor, and it makes the portal's registry own each session's
+//! nodes. The shell bridge that would answer the portal's `CompositorWatch` is
+//! still open ([ADR 0345](../../docs/design/adr/0345-screencast-bridge-and-portal-ownership.md)).
 
 use std::io::Write;
 use std::net::Shutdown;

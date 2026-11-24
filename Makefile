@@ -79,7 +79,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare t238-dock-popover-ab t238-dock-popover-ab-native t238-material-regions t238-material-workloads t238-shadow-capture t238-decoration-matrix t238-nested-responsiveness t238-presenter-lifecycle t238-native-acceptance t238-wake-swap-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
-        files-capture t230d-files-capture t330-files-capture t331-files-capture t333-files-capture t334-files-capture t334-files-live-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-glass-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture t329-window-menu-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture t335a-screencast glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
+        files-capture t230d-files-capture t330-files-capture t331-files-capture t333-files-capture t334-files-capture t334-files-live-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-glass-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture t329-window-menu-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture t335a-screencast t335b-screencast-client glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -210,6 +210,7 @@ help:
 	@echo "  make nested-acceptance-check — T207 evidence matrix and per-surface report gate"
 	@echo "  make nested-acceptance-capture — T207 nested legacy/replacement A/B and interaction captures"
 	@echo "  make t335a-screencast — T335a live ScreenCast producer node + frame check (OPEN without PipeWire)"
+	@echo "  make t335b-screencast-client — T335b standard-client live-frames check (OPEN until the shell bridge lands)"
 	@echo "  make glass-reference-verify — T-19.4 optional reference checkout hash/revision check"
 	@echo "  make glass-reference-manifest — regenerate docs/captures/glass-reference-manifest.json"
 	@echo "  make glass-baseline-capture — T-19.4 live baseline recapture (OPEN without a host)"
@@ -1394,6 +1395,11 @@ nested-acceptance-capture: build
 # Wayland session or PipeWire.
 t335a-screencast:
 	bash scripts/capture-t335a-screencast-live.sh
+
+# T335b: a standard portal client receiving several live frames. Records OPEN
+# while the shell bridge (create_screencast, v17) is not wired; ADR 0345.
+t335b-screencast-client:
+	bash scripts/capture-t335b-screencast-client.sh
 
 # T219: the experience/evidence contract. Validates the surface/state/axis
 # schema, the full inventory mapping (capture/test/OPEN), the capture hashes,

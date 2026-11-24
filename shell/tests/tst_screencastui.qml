@@ -95,12 +95,15 @@ Item {
         }
 
         function test_the_stills_fallback_is_named_not_silent() {
-            var picker = make({ sources: makeSources(),
-                                streamNote: "Live streaming is not available in this build." });
+            // The picker's note is the wording the bridge publishes; the QML
+            // half is pinned here and the C++ half in tst_screencast.
+            var stills = "Live streaming is not available in this session — the app will receive still images.";
+            var picker = make({ sources: makeSources(), streamNote: stills });
             var note = findChild(picker, "screencastStreamNote");
             verify(note !== null, "fallback note exists");
             verify(note.visible, "the fallback is named, not silent");
-            compare(note.text, "Live streaming is not available in this build.");
+            compare(note.text, stills);
+            verify(note.text.indexOf("still") >= 0, "the note names the stills fallback");
 
             var silent = make({ sources: makeSources() });
             var hidden = findChild(silent, "screencastStreamNote");

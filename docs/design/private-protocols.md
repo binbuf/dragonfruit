@@ -202,7 +202,8 @@ is acked with `done` after the scene applies it (FR-3).
   `set_launch_origin` (v4), `set_motion_policy`/`set_input_policy` (v5),
   `capture_screenshot` (v6), `set_app_accelerators` (v7),
   `set_minimize_target` (v11), the accessibility accommodations and
-  Overview/hot-corner policy (v12/v13), and `set_idle_policy` (v14). The capture
+  Overview/hot-corner policy (v12/v13), `set_idle_policy` (v14), and
+  `create_screencast`/`destroy_screencast` (v17, live screen share). The capture
   request is the portal presenter's
   still-frame path (T-13.3b): the trusted shell supplies a rectangle, a
   `fullscreen`/`region`/`window` mode, and a path; the compositor renders an
@@ -211,6 +212,18 @@ is acked with `done` after the scene applies it (FR-3).
   client-facing grab protocol exists
   ([02-compositor.md](02-compositor.md), ADR
   [0079](adr/0079-screenshot-capture-delivery-and-save-copy.md)).
+- **Live screen share** (v17, T335b) is the portal's stream path.
+  `create_screencast` (token, output, width, height, fps) asks the compositor
+  for a PipeWire video node fed by the same capture pass; it is answered by
+  `screencast_node` (token, node id, output, geometry) or `screencast_failed`
+  (token, the portal's `df_fallback` label, a log reason) — never a placeholder
+  id. `destroy_screencast` (token) is idempotent. A stream belongs to the
+  client that created it: its manager object going away, the `df_core`
+  disconnect, and compositor teardown all release it, and the failure path
+  stops the host tool before replying. The shell binds the manager at 16 and
+  does not send v17; wiring a bridge from the portal's `CompositorWatch` to
+  this request is a documented gap
+  ([ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md)).
   `set_launch_origin` hands the Dock entry's tile rectangle to the compositor
   so a launching app's window appears from it and minimize/restore scale into
   and out of it (T-02.1b/T-02.2); it is keyed by `app_id` and remembered for

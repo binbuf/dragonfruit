@@ -10,16 +10,21 @@
 //!
 //! ## Why the fallback is named, not silent
 //!
-//! This build ships no in-process PipeWire producer (the compositor renders on
-//! the private capture seam, and the portal crate deliberately does not link
-//! `libpipewire`; see
-//! [ADR 0081](../../docs/design/adr/0081-screencast-stream-negotiation-and-stills-fallback.md)).
-//! A standard client therefore cannot yet receive live frames. Rather than
-//! returning a placeholder node id with no explanation, every stream carries
-//! its mode (`df_stream_mode`: `pipewire` or `stills`) and, in fallback, the
-//! reason (`df_fallback`). The shell reads the same mode off the diagnostic
-//! surface and tells the user in the picker. When a real transport lands the
-//! fallback simply stops being selected; the contract does not change.
+//! The live producer is a disposable host tool the compositor spawns
+//! (`compositor/src/screencast_producer.rs`); the portal crate deliberately
+//! does not link `libpipewire` (see
+//! [ADR 0081](../../docs/design/adr/0081-screencast-stream-negotiation-and-stills-fallback.md)
+//! and [ADR 0344](../../docs/design/adr/0344-screencast-producer-process-boundary.md)).
+//! The transport asks for a node through [`CompositorWatch`]. The shipped
+//! daemon configures no watch endpoint, so every stream is the named
+//! [`FallbackReason::ProducerUnavailable`] fallback: a standard client cannot
+//! yet receive live frames because no shipped bridge answers the watch
+//! ([ADR 0345](../../docs/design/adr/0345-screencast-bridge-and-portal-ownership.md)).
+//! Rather than returning a placeholder node id with no explanation, every
+//! stream carries its mode (`df_stream_mode`: `pipewire` or `stills`) and, in
+//! fallback, the reason (`df_fallback`). The shell reads the same mode off the
+//! diagnostic surface and tells the user in the picker. A watch that answers
+//! simply stops selecting the fallback; the contract does not change.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -299,13 +304,30 @@ impl CompositorWatch for AbsentCompositor {
 /// The shipped watch: the trusted shell's private-protocol connection resolves
 /// `create_screencast` and the stream's events.
 ///
-/// T335a lands the transport and its seam; the shell-side bridge that answers
-/// this watch (and the private-protocol command it issues) is T335b. Until
-/// then a backend without the bridge is the named fallback, never a fake node.
-#[derive(Debug, Clone)]
+/// The shell bridge issues `create_screencast` on its existing private-protocol
+/// connection (v17) and publishes the answer here; the portal never opens a
+/// compositor connection itself. A backend without a shell bridge (or with a
+/// shell that has no compositor) is the named fallback, never a fake node.
+#[derive(Debug, Clone, Default)]
 pub struct ShellBridgeWatch {
-    /// The composer-produced watch the shell installs at startup.
-    pub endpoint: PathBuf,
+    /// The endpoint the shell bridge publishes at (the trusted shell's
+    /// stream-command socket). `None` when no bridge is configured: every
+    /// creation is the named fallback.
+    pub endpoint: Option<PathBuf>,
+}
+
+impl ShellBridgeWatch {
+    /// A watch over the shell bridge at `endpoint`.
+    pub fn new(endpoint: impl Into<PathBuf>) -> Self {
+        ShellBridgeWatch {
+            endpoint: Some(endpoint.into()),
+        }
+    }
+
+    /// A watch with no bridge configured: the named fallback.
+    pub fn absent() -> Self {
+        ShellBridgeWatch { endpoint: None }
+    }
 }
 
 impl CompositorWatch for ShellBridgeWatch {
@@ -315,9 +337,12 @@ impl CompositorWatch for ShellBridgeWatch {
         _source: &StreamSource,
         _fps: u32,
     ) -> Result<CreatedNode, WatchError> {
+        let endpoint = self.endpoint.as_ref().ok_or_else(|| {
+            WatchError("no shell screencast bridge: the stills fallback is in use".to_owned())
+        })?;
         Err(WatchError(format!(
             "the shell screencast bridge ({}) is not connected",
-            self.endpoint.display()
+            endpoint.display()
         )))
     }
 
@@ -349,6 +374,13 @@ impl FnWatch {
             .lock()
             .map(|tokens| tokens.clone())
             .unwrap_or_default()
+    }
+
+    /// Share `destroyed` as this watch's release ledger, so another party (an
+    /// integration test) can read every token a transport released.
+    pub fn recording_destroys(mut self, destroyed: Arc<Mutex<Vec<String>>>) -> Self {
+        self.destroyed = destroyed;
+        self
     }
 }
 
@@ -644,10 +676,14 @@ mod tests {
 
     #[test]
     fn the_shipped_watch_without_its_bridge_names_the_fallback() {
-        let watch = ShellBridgeWatch {
-            endpoint: PathBuf::from("/run/dragonfruit/screencast"),
-        };
-        let mut transport = PipeWireTransport::new(Box::new(watch));
+        let mut transport = PipeWireTransport::new(Box::new(ShellBridgeWatch::new(
+            "/run/dragonfruit/screencast",
+        )));
         assert!(transport.create(&source("monitor:DP-1")).is_err());
+        let mut transport = PipeWireTransport::new(Box::new(ShellBridgeWatch::absent()));
+        assert_eq!(
+            transport.create(&source("monitor:DP-1")),
+            Err(FallbackReason::ProducerUnavailable)
+        );
     }
 }

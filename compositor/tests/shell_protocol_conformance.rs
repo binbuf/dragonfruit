@@ -199,6 +199,11 @@ struct TestClient {
     /// reason a capture could not be produced.
     screenshot_saved: Vec<String>,
     screenshot_failed: Vec<String>,
+    /// Live ScreenCast replies (T335b): `(token, node id, output, width,
+    /// height, fps)` for a created stream, and `(token, fallback, reason)` for
+    /// one the compositor refused.
+    screencast_nodes: Vec<(u32, u32, String, u32, u32, u32)>,
+    screencast_failed: Vec<(u32, String, String)>,
     /// `activate_app` replies (T-14.7g): `(app_id, found)`; `found` false means
     /// the app had no window and the shell must fall back.
     activation_results: Vec<(String, bool)>,
@@ -420,6 +425,21 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
             df_toplevel_manager::Event::ScreenshotFailed { reason } => {
                 state.screenshot_failed.push(reason)
             }
+            df_toplevel_manager::Event::ScreencastNode {
+                token,
+                node_id,
+                output,
+                width,
+                height,
+                fps,
+            } => state
+                .screencast_nodes
+                .push((token, node_id, output, width, height, fps)),
+            df_toplevel_manager::Event::ScreencastFailed {
+                token,
+                fallback,
+                reason,
+            } => state.screencast_failed.push((token, fallback, reason)),
             df_toplevel_manager::Event::ActivationResult { app_id, found } => {
                 state.activation_results.push((app_id, found != 0))
             }
@@ -5478,8 +5498,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 16,
-        "the manager must advertise the additive requests through v16"
+        manager_version, 17,
+        "the manager must advertise the additive requests through v17"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -5560,8 +5580,8 @@ fn motion_and_input_policy_requests_apply_live() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 16,
-        "the manager must advertise the additive requests through v16"
+        manager_version, 17,
+        "the manager must advertise the additive requests through v17"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -5702,7 +5722,7 @@ fn overview_policy_resizes_the_workspace_list() {
         |state| state.authenticated.is_some(),
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
-    assert_eq!(manager_version, 16);
+    assert_eq!(manager_version, 17);
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
         &conn,
@@ -5782,8 +5802,8 @@ fn appearance_policy_round_trips_and_invalidates_only_on_change() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 16,
-        "the manager must advertise the additive requests through v16"
+        manager_version, 17,
+        "the manager must advertise the additive requests through v17"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -9666,6 +9686,113 @@ fn screenshot_capture_requests_are_answered_portal_only() {
 
     let _ = std::fs::remove_file(&path);
     drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T335b: the trusted shell asks the compositor for a live screen-share stream
+/// over the v17 `create_screencast`. The headless rail has no PipeWire host and
+/// no PID 1 system bus (the host tool cannot register a node), so the reply is
+/// the named `pipewire-producer-unavailable` fallback for that token — never a
+/// placeholder node id — and the stream does not outlive its manager object.
+#[test]
+fn screencast_create_is_answered_with_the_named_fallback() {
+    let token = "3b".repeat(32);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-screencast",
+        std::slice::from_ref(&token),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    assert_eq!(manager_version, 17, "create_screencast is the v17 addition");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && !state.output_names.is_empty(),
+    );
+    let output = state.output_names[0].clone();
+
+    manager.create_screencast(41, output.clone(), 64, 48, 30);
+    let _ = conn.flush();
+    // The create is bounded (host spawn and node resolution); wait past it so a
+    // late `screencast_node` would be caught too.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(20),
+        |state| !state.screencast_failed.is_empty() || !state.screencast_nodes.is_empty(),
+    );
+    assert!(
+        state.screencast_nodes.is_empty(),
+        "no PipeWire host: a node id must never be invented (got {:?})",
+        state.screencast_nodes
+    );
+    assert_eq!(state.screencast_failed.len(), 1);
+    assert_eq!(state.screencast_failed[0].0, 41);
+    assert_eq!(
+        state.screencast_failed[0].1, "pipewire-producer-unavailable",
+        "the reply names the portal's fallback property"
+    );
+
+    // A second create with the same token is answered again, then a destroy is
+    // accepted idempotently and produces no reply.
+    state.screencast_failed.clear();
+    manager.create_screencast(41, output.clone(), 64, 48, 30);
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(20),
+        |state| !state.screencast_failed.is_empty(),
+    );
+    manager.destroy_screencast(41);
+    manager.destroy_screencast(41);
+    let _ = conn.flush();
+
+    // A fresh manager on the same connection binds immediately; the create
+    // request is additive and non-blocking, so the compositor keeps answering.
+    let again = bind_manager(&mut state, &queue, manager_name, manager_version);
+    again.create_screencast(42, output, 64, 48, 30);
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(20),
+        |state| {
+            state
+                .screencast_failed
+                .iter()
+                .any(|(token, _, _)| *token == 42)
+        },
+    );
+
+    // Dropping the managers and then the whole connection is a shell restart
+    // or a client disconnect: it must release that client's streams and leave
+    // the session serving (`df_core` still holds the handshake).
+    drop(again);
+    drop(manager);
+    let _ = conn.flush();
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(state.authenticated.is_some());
     drop(core);
     let _ = conn.flush();
     proc.shutdown();
