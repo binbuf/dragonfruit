@@ -210,6 +210,258 @@ private slots:
         QVERIFY(!environment.contains(QStringLiteral("DISPLAY")));
     }
 
+    void lists_installed_handlers_with_the_default_first()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("gio")).isEmpty())
+            QSKIP("gio is not installed");
+
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString data = root.path() + QStringLiteral("/data");
+        const QString config = root.path() + QStringLiteral("/config");
+        const QString cache = root.path() + QStringLiteral("/cache");
+        QVERIFY(QDir().mkpath(data + QStringLiteral("/applications")));
+        QVERIFY(QDir().mkpath(config));
+        QVERIFY(QDir().mkpath(cache));
+
+        const QString script = root.path() + QStringLiteral("/handler.sh");
+        {
+            QFile handle(script);
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("#!/bin/sh\nexit 0\n");
+        }
+        QVERIFY(QFile::setPermissions(
+                script, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                | QFileDevice::ExeOwner));
+
+        const auto writeDesktop = [&](const QString &id, const QString &name) {
+            QFile handle(data + QStringLiteral("/applications/") + id);
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write(QStringLiteral("[Desktop Entry]\n"
+                                        "Type=Application\n"
+                                        "Name=%1\n"
+                                        "Exec=%2 %f\n"
+                                        "MimeType=text/plain;\n"
+                                        "NoDisplay=true\n")
+                                 .arg(name, script)
+                                 .toUtf8());
+        };
+        writeDesktop(QStringLiteral("df-test-handler.desktop"),
+                     QStringLiteral("Dragonfruit Test Handler"));
+        writeDesktop(QStringLiteral("df-test-other.desktop"),
+                     QStringLiteral("Dragonfruit Other Handler"));
+        {
+            QFile handle(data + QStringLiteral("/applications/mimeinfo.cache"));
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("[MIME Cache]\n"
+                         "text/plain=df-test-handler.desktop;"
+                         "df-test-other.desktop;\n");
+        }
+        {
+            QFile handle(data + QStringLiteral("/applications/mimeapps.list"));
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("[Default Applications]\n"
+                         "text/plain=df-test-other.desktop\n");
+        }
+
+        const QByteArray oldDataHome = qgetenv("XDG_DATA_HOME");
+        const QByteArray oldConfigHome = qgetenv("XDG_CONFIG_HOME");
+        const QByteArray oldCacheHome = qgetenv("XDG_CACHE_HOME");
+        qputenv("XDG_DATA_HOME", data.toUtf8());
+        qputenv("XDG_CONFIG_HOME", config.toUtf8());
+        qputenv("XDG_CACHE_HOME", cache.toUtf8());
+
+        const QList<FilesHandlerEntry> handlers =
+                filesHandlersForMime(QStringLiteral("text/plain"));
+        const QString defaultId =
+                filesDefaultDesktopId(QStringLiteral("text/plain"));
+
+        if (oldDataHome.isNull())
+            qunsetenv("XDG_DATA_HOME");
+        else
+            qputenv("XDG_DATA_HOME", oldDataHome);
+        if (oldConfigHome.isNull())
+            qunsetenv("XDG_CONFIG_HOME");
+        else
+            qputenv("XDG_CONFIG_HOME", oldConfigHome);
+        if (oldCacheHome.isNull())
+            qunsetenv("XDG_CACHE_HOME");
+        else
+            qputenv("XDG_CACHE_HOME", oldCacheHome);
+
+        QCOMPARE(defaultId, QStringLiteral("df-test-other.desktop"));
+        QVERIFY(!handlers.isEmpty());
+        QCOMPARE(handlers.first().id, defaultId);
+        QVERIFY(handlers.first().isDefault);
+        QCOMPARE(handlers.first().name, QStringLiteral("Dragonfruit Other Handler"));
+        bool foundHandler = false;
+        bool foundOther = false;
+        for (const FilesHandlerEntry &entry : handlers) {
+            foundHandler = foundHandler
+                    || entry.id == QStringLiteral("df-test-handler.desktop");
+            foundOther = foundOther
+                    || entry.id == QStringLiteral("df-test-other.desktop");
+        }
+        QVERIFY(foundHandler);
+        QVERIFY(foundOther);
+    }
+
+    void sets_the_default_handler_through_the_platform_tool()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("xdg-mime")).isEmpty()
+            && QStandardPaths::findExecutable(QStringLiteral("gio")).isEmpty()) {
+            QSKIP("neither xdg-mime nor gio is installed");
+        }
+
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString data = root.path() + QStringLiteral("/data");
+        const QString config = root.path() + QStringLiteral("/config");
+        const QString cache = root.path() + QStringLiteral("/cache");
+        QVERIFY(QDir().mkpath(data + QStringLiteral("/applications")));
+        QVERIFY(QDir().mkpath(config));
+        QVERIFY(QDir().mkpath(cache));
+
+        const QString script = root.path() + QStringLiteral("/handler.sh");
+        {
+            QFile handle(script);
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("#!/bin/sh\nexit 0\n");
+        }
+        QVERIFY(QFile::setPermissions(
+                script, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                | QFileDevice::ExeOwner));
+        {
+            QFile handle(data + QStringLiteral(
+                                 "/applications/df-test-default.desktop"));
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write(QStringLiteral("[Desktop Entry]\n"
+                                        "Type=Application\n"
+                                        "Name=Dragonfruit Default\n"
+                                        "Exec=%1 %f\n"
+                                        "MimeType=text/plain;\n"
+                                        "NoDisplay=true\n")
+                                 .arg(script)
+                                 .toUtf8());
+        }
+        {
+            QFile handle(data + QStringLiteral("/applications/mimeinfo.cache"));
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("[MIME Cache]\ntext/plain=df-test-default.desktop;\n");
+        }
+
+        const QByteArray oldDataHome = qgetenv("XDG_DATA_HOME");
+        const QByteArray oldConfigHome = qgetenv("XDG_CONFIG_HOME");
+        const QByteArray oldCacheHome = qgetenv("XDG_CACHE_HOME");
+        qputenv("XDG_DATA_HOME", data.toUtf8());
+        qputenv("XDG_CONFIG_HOME", config.toUtf8());
+        qputenv("XDG_CACHE_HOME", cache.toUtf8());
+
+        const bool written = filesSetDefaultDesktopId(
+                QStringLiteral("text/plain"),
+                QStringLiteral("df-test-default.desktop"));
+        QFile mimeapps(config + QStringLiteral("/mimeapps.list"));
+        QString configured;
+        if (mimeapps.open(QIODevice::ReadOnly))
+            configured = QString::fromUtf8(mimeapps.readAll());
+
+        if (oldDataHome.isNull())
+            qunsetenv("XDG_DATA_HOME");
+        else
+            qputenv("XDG_DATA_HOME", oldDataHome);
+        if (oldConfigHome.isNull())
+            qunsetenv("XDG_CONFIG_HOME");
+        else
+            qputenv("XDG_CONFIG_HOME", oldConfigHome);
+        if (oldCacheHome.isNull())
+            qunsetenv("XDG_CACHE_HOME");
+        else
+            qputenv("XDG_CACHE_HOME", oldCacheHome);
+
+        QVERIFY(written);
+        QVERIFY(configured.contains(QStringLiteral("df-test-default.desktop")));
+    }
+
+    void opens_with_the_chosen_handler()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("gtk-launch")).isEmpty()
+            && QStandardPaths::findExecutable(QStringLiteral("gio")).isEmpty()) {
+            QSKIP("neither gtk-launch nor gio is installed");
+        }
+
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString data = root.path() + QStringLiteral("/data");
+        const QString config = root.path() + QStringLiteral("/config");
+        const QString cache = root.path() + QStringLiteral("/cache");
+        QVERIFY(QDir().mkpath(data + QStringLiteral("/applications")));
+        QVERIFY(QDir().mkpath(config));
+        QVERIFY(QDir().mkpath(cache));
+
+        const QString marker = root.path() + QStringLiteral("/chosen");
+        const QString script = root.path() + QStringLiteral("/handler.sh");
+        {
+            QFile handle(script);
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write(QStringLiteral("#!/bin/sh\nprintf '%s\\n' \"$1\" > %1\n")
+                                 .arg(marker)
+                                 .toUtf8());
+        }
+        QVERIFY(QFile::setPermissions(
+                script, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                | QFileDevice::ExeOwner));
+        {
+            QFile handle(data + QStringLiteral(
+                                 "/applications/df-test-chosen.desktop"));
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write(QStringLiteral("[Desktop Entry]\n"
+                                        "Type=Application\n"
+                                        "Name=Dragonfruit Chosen\n"
+                                        "Exec=%1 %f\n"
+                                        "MimeType=text/plain;\n"
+                                        "NoDisplay=true\n")
+                                 .arg(script)
+                                 .toUtf8());
+        }
+
+        const QString file = root.path() + QStringLiteral("/chosen.txt");
+        {
+            QFile handle(file);
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("chosen");
+        }
+
+        const QByteArray oldDataHome = qgetenv("XDG_DATA_HOME");
+        const QByteArray oldConfigHome = qgetenv("XDG_CONFIG_HOME");
+        const QByteArray oldCacheHome = qgetenv("XDG_CACHE_HOME");
+        qputenv("XDG_DATA_HOME", data.toUtf8());
+        qputenv("XDG_CONFIG_HOME", config.toUtf8());
+        qputenv("XDG_CACHE_HOME", cache.toUtf8());
+
+        const bool opened = filesOpenWith(
+                QUrl::fromLocalFile(file).toString(),
+                QStringLiteral("df-test-chosen.desktop"));
+
+        if (oldDataHome.isNull())
+            qunsetenv("XDG_DATA_HOME");
+        else
+            qputenv("XDG_DATA_HOME", oldDataHome);
+        if (oldConfigHome.isNull())
+            qunsetenv("XDG_CONFIG_HOME");
+        else
+            qputenv("XDG_CONFIG_HOME", oldConfigHome);
+        if (oldCacheHome.isNull())
+            qunsetenv("XDG_CACHE_HOME");
+        else
+            qputenv("XDG_CACHE_HOME", oldCacheHome);
+
+        QVERIFY(opened);
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(marker), 5000);
+        QFile handle(marker);
+        QVERIFY(handle.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(handle.readAll()).trimmed(), file);
+    }
+
     void an_empty_target_is_rejected()
     {
         FilesBridge bridge;

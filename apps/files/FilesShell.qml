@@ -125,6 +125,7 @@ Item {
     property alias iconView: iconView
     property alias listView: listView
     property alias contextMenu: contextMenu
+    property alias openWithDialog: openWithDialog
     property alias emptyTrashDialog: emptyTrashDialog
     property alias pasteConflictDialog: pasteConflictDialog
     property alias clipboard: clipboard
@@ -236,6 +237,26 @@ Item {
         var handler = Files.defaultHandler(info.uri);
         return handler.length > 0 ? handler : qsTr("Not available");
     }
+    // T334: the one selected file (not a folder, not a multi-selection). The
+    // File ▸ Open With submenu and the picker both use this target.
+    readonly property string selectedFileUri: {
+        var info = root.infoSummary;
+        if (root.infoSelectionIds.length !== 1 || !info.uri || info.isDir)
+            return "";
+        return info.uri;
+    }
+    // The window's published menu model (T334). It is the same singleton the
+    // menu-broker receives; there is no second list in this file.
+    readonly property var menuModel: FilesMenu.publishedModel
+    // The Open With picker's live state. `openWithUri` is the context row a
+    // right-click targets, or the single selected file when the global menu
+    // invokes the action.
+    property string openWithUri: ""
+    property string openWithName: ""
+    property string openWithMime: ""
+    property var openWithHandlers: []
+    property string openWithSelectedId: ""
+    property string openWithNotice: ""
     // Cmd is Super/Mod4 system-wide, but Qt desktop tests and muscle memory
     // both use Control; accept either as "command".
     readonly property int commandMask: Qt.ControlModifier | Qt.MetaModifier
@@ -885,7 +906,8 @@ Item {
             rows: [{
                 label: qsTr("Open with"),
                 value: root.defaultHandlerText,
-                reason: qsTr("Choosing a default application is not implemented.")
+                reason: single ? qsTr("Use File \u25b8 Open With to choose another application or change the default.")
+                               : qsTr("Select one file to choose an application.")
             }]
         });
 
@@ -929,6 +951,171 @@ Item {
         if (row < 0)
             return;
         root.activateNode(directory.uriAt(row), directory.isDirAt(row));
+    }
+
+    // -- Open With (T334) ----------------------------------------------------
+
+    // The file a right-click targets, or the single selected file when the
+    // global menu (which has no context node) invokes the action.
+    function openWithTargetUri() {
+        if (root.contextNode && root.contextNode.uri && !root.contextNode.isDir)
+            return root.contextNode.uri;
+        return root.selectedFileUri;
+    }
+
+    // Open the picker for `uri`. An absent handler list still opens the dialog
+    // with its visible message; a non-file target is refused with a notice.
+    function openWithDialogFor(uri) {
+        if (!uri) {
+            root.notice = qsTr("Select one file to open with another application.");
+            return false;
+        }
+        var handlers = Files.handlers(uri);
+        root.openWithUri = uri;
+        root.openWithName = Files.displayName(uri);
+        root.openWithMime = Files.mimeType(uri);
+        root.openWithHandlers = handlers;
+        root.openWithSelectedId = "";
+        for (var i = 0; i < handlers.length; ++i) {
+            if (handlers[i].isDefault) {
+                root.openWithSelectedId = handlers[i].id;
+                break;
+            }
+        }
+        if (root.openWithSelectedId.length === 0 && handlers.length > 0)
+            root.openWithSelectedId = handlers[0].id;
+        // Capture seam: pin a non-default handler for the live stills.
+        var select = Files.startOpenWithSelect;
+        if (select.length > 0) {
+            var found = false;
+            for (var s = 0; s < handlers.length; ++s) {
+                if (handlers[s].id === select) {
+                    root.openWithSelectedId = handlers[s].id;
+                    found = true;
+                    break;
+                }
+            }
+            var index = parseInt(select, 10);
+            if (!found && !isNaN(index) && index >= 0 && index < handlers.length)
+                root.openWithSelectedId = handlers[index].id;
+        }
+        root.openWithNotice = "";
+        openWithDialog.show();
+        return true;
+    }
+
+    function openWithForTarget() {
+        return root.openWithDialogFor(root.openWithTargetUri());
+    }
+
+    function openWithSelected(id) {
+        if (!root.openWithUri || !id)
+            return false;
+        if (!Files.openWith(root.openWithUri, id)) {
+            root.openWithNotice = qsTr("Could not open “%1” with the chosen application.")
+                    .arg(root.openWithName);
+            return false;
+        }
+        openWithDialog.hide();
+        return true;
+    }
+
+    // The context/global menu's handler row. The target is the right-clicked
+    // row when one is open, otherwise the current single selection.
+    function openWithContext(id) {
+        var uri = root.openWithTargetUri();
+        if (!uri || !id)
+            return false;
+        if (!Files.openWith(uri, id)) {
+            root.notice = qsTr("Could not open “%1” with the chosen application.")
+                    .arg(Files.displayName(uri));
+            return false;
+        }
+        return true;
+    }
+
+    // The picker's explicit "Set as Default" path. It writes the MIME default
+    // through `xdg-mime`/`gio` (FilesBridge) and refreshes the live rows so the
+    // default marker moves immediately.
+    function setDefaultOpenHandler(id) {
+        if (!root.openWithUri || !id)
+            return false;
+        if (!Files.setDefaultHandler(root.openWithUri, id)) {
+            root.openWithNotice = qsTr("Could not set “%1” as the default application.")
+                    .arg(root.openWithName);
+            return false;
+        }
+        root.openWithHandlers = Files.handlers(root.openWithUri);
+        root.openWithSelectedId = id;
+        root.openWithNotice = qsTr("“%1” is now the default application.")
+                .arg(Files.displayName(root.openWithUri));
+        FilesMenu.revision += 1;
+        return true;
+    }
+
+    // The File menu's "Choose a Default Application…" row: open the same
+    // picker in default-selection mode. The Set as Default button is the
+    // write path; the dialog is one surface, not a second chooser.
+    function chooseDefaultApplication() {
+        return root.openWithDialogFor(root.openWithTargetUri());
+    }
+
+    // The published menu model's action dispatcher. It is the one local
+    // endpoint for both a global-menu click/accelerator and a test.
+    function dispatchMenuAction(action) {
+        if (!action)
+            return false;
+        if (action.indexOf("openWith:") === 0)
+            return root.openWithContext(action.substring(9));
+        switch (action) {
+        case "newWindow": root.openNewWindow(); return true;
+        case "newTab": root.newTab(); return true;
+        case "newFolder": root.makeFolder(); return true;
+        case "open": root.openSelection(); return true;
+        case "chooseDefaultApp": return root.chooseDefaultApplication();
+        case "getInfo": return root.openGetInfo();
+        case "rename":
+            if (root.selectedId > 0) {
+                root.beginRename(root.selectedId);
+                return true;
+            }
+            return false;
+        case "trash":
+            root.trashSelection(); return true;
+        case "putBack": root.putBackSelection(); return true;
+        case "undo": return root.undo();
+        case "redo": return root.redo();
+        case "cut": root.cutSelection(); return true;
+        case "copy": root.copySelection(); return true;
+        case "paste": root.paste(); return true;
+        case "selectAll": root.selectAll(); return true;
+        case "view.icon": root.setView("icon"); return true;
+        case "view.list": root.setView("list"); return true;
+        case "toggleToolbar": root.toggleToolbar(); return true;
+        case "toggleTabBar": root.toggleTabBar(); return true;
+        case "back": return root.back();
+        case "forward": return root.forward();
+        case "go.home": return root.navigate(Files.homeUri);
+        case "go.computer": return root.navigate(Files.computerUri);
+        case "go.trash": return root.navigate(Files.trashUri);
+        case "go.desktop": return root.navigate(root.favoriteUri("desktop"));
+        case "go.documents": return root.navigate(root.favoriteUri("documents"));
+        case "go.downloads": return root.navigate(root.favoriteUri("downloads"));
+        case "close": root.closeRequested(); return true;
+        case "minimize": root.minimizeRequested(); return true;
+        case "zoom": root.zoomRequested(); return true;
+        case "bring-all-to-front": root.raiseRequested(); return true;
+        }
+        return false;
+    }
+
+    function favoriteUri(id) {
+        var favorites = Files.favorites;
+        for (var i = 0; i < favorites.length; ++i) {
+            if (favorites[i].id === id)
+                return favorites[i].uri;
+        }
+        return "";
     }
 
     // Inline rename (T-10.4c). Exactly one row at a time.
@@ -1163,6 +1350,34 @@ Item {
         }
     }
 
+    // The File ▸ Open With rows for one node. The same bridge list feeds the
+    // picker, so the submenu never invents application names.
+    function openWithMenu(node) {
+        var rows = [];
+        var handlers = node && node.uri ? Files.handlers(node.uri) : [];
+        for (var i = 0; i < handlers.length; ++i) {
+            var handler = handlers[i];
+            rows.push({
+                label: handler.isDefault
+                       ? qsTr("%1 (Default)").arg(handler.name) : handler.name,
+                action: "openWith:" + handler.id,
+                checked: handler.isDefault === true,
+                checkable: true
+            });
+        }
+        if (rows.length === 0) {
+            rows.push({
+                label: qsTr("No Applications Available"),
+                enabled: false,
+                disabledReason: qsTr("No installed application handles this file type.")
+            });
+        }
+        rows.push({ type: "separator" });
+        rows.push({ label: qsTr("Choose a Default Application\u2026"),
+                    action: "chooseDefaultApp" });
+        return rows;
+    }
+
     // The Files rule: the menu depends on what is under the pointer.
     function nodeMenu(node) {
         if (root.inTrash && node !== null) {
@@ -1189,10 +1404,17 @@ Item {
             ];
         }
         var entries = [
-            { label: qsTr("Open"), action: "open", enabled: node !== null },
-            { label: qsTr("Get Info"), shortcut: "Super+I",
-              action: "getInfo", enabled: node !== null }
+            { label: qsTr("Open"), action: "open", enabled: node !== null }
         ];
+        // T334: Open With is a live submenu of the installed handlers, the
+        // default row checked. The last row opens the picker for the
+        // "Choose a default application" path.
+        if (node && !node.isDir) {
+            entries.push({ label: qsTr("Open With"), type: "submenu",
+                           submenu: root.openWithMenu(node) });
+        }
+        entries.push({ label: qsTr("Get Info"), shortcut: "Super+I",
+                       action: "getInfo", enabled: node !== null });
         // T333: a folder opens in its own tab or its own window; the window
         // is a second process (crash-independent), the tab shares this one.
         if (node && node.isDir) {
@@ -1334,10 +1556,17 @@ Item {
     }
 
     function contextAction(action) {
+        if (action && action.indexOf("openWith:") === 0) {
+            root.openWithContext(action.substring(9));
+            return;
+        }
         switch (action) {
         case "open":
             if (root.contextNode)
                 root.activateNode(root.contextNode.uri, root.contextNode.isDir);
+            break;
+        case "chooseDefaultApp":
+            root.chooseDefaultApplication();
             break;
         case "rename":
             if (root.contextNode)
@@ -1442,6 +1671,22 @@ Item {
             root.openBackgroundMenu(320, 220);
         } else if (root.startMenu === "edit") {
             root.openBackgroundMenu(320, 220);
+        } else if (root.startMenu === "openWith") {
+            // T334 capture: select the first file row and open the picker
+            // (the nested synthetic harness cannot reliably right-click a Qt
+            // client surface and walk a submenu).
+            var fileId = 0;
+            for (var f = 0; f < ids.length; ++f) {
+                if (!directory.isDirAt(f)) {
+                    fileId = ids[f];
+                    break;
+                }
+            }
+            if (fileId > 0) {
+                root.selectedIds = [fileId];
+                root.selectedId = fileId;
+                root.openWithDialogFor(directory.uriAt(directory.rowForNodeId(fileId)));
+            }
         } else if (root.startEmptyTrash) {
             root.confirmEmptyTrash();
         }
@@ -1722,6 +1967,89 @@ Item {
         target: Glass
         property: "appChromeSupported"
         value: root.appChromeSupported
+    }
+
+    // T334: the window's one published menu model reads this live state. It is
+    // the same `FilesMenu` object the broker receives, not a second list.
+    Binding {
+        target: FilesMenu
+        property: "currentUri"
+        value: root.currentUri
+    }
+    Binding {
+        target: FilesMenu
+        property: "currentView"
+        value: root.currentView
+    }
+    Binding {
+        target: FilesMenu
+        property: "canGoBack"
+        value: root.canGoBack
+    }
+    Binding {
+        target: FilesMenu
+        property: "canGoForward"
+        value: root.canGoForward
+    }
+    Binding {
+        target: FilesMenu
+        property: "canUndo"
+        value: root.canUndo
+    }
+    Binding {
+        target: FilesMenu
+        property: "canRedo"
+        value: root.canRedo
+    }
+    Binding {
+        target: FilesMenu
+        property: "undoLabel"
+        value: directory ? directory.undoLabel : ""
+    }
+    Binding {
+        target: FilesMenu
+        property: "redoLabel"
+        value: directory ? directory.redoLabel : ""
+    }
+    Binding {
+        target: FilesMenu
+        property: "hasSelection"
+        value: root.selectedIds.length > 0
+    }
+    Binding {
+        target: FilesMenu
+        property: "selectedCount"
+        value: root.selectedIds.length
+    }
+    Binding {
+        target: FilesMenu
+        property: "selectionIsDir"
+        value: root.infoSummary.isDir === true
+    }
+    Binding {
+        target: FilesMenu
+        property: "selectionUri"
+        value: root.selectedFileUri
+    }
+    Binding {
+        target: FilesMenu
+        property: "canPaste"
+        value: clipboard.count > 0
+    }
+    Binding {
+        target: FilesMenu
+        property: "inTrash"
+        value: root.inTrash
+    }
+    Binding {
+        target: FilesMenu
+        property: "toolbarVisible"
+        value: root.toolbarVisible
+    }
+    Binding {
+        target: FilesMenu
+        property: "tabBarVisible"
+        value: root.tabBarVisible
     }
 
     // T333: the per-location view kinds (uri -> "icon" | "list"). Tabs read
@@ -2107,6 +2435,20 @@ Item {
         id: contextMenu
         accessibleName: qsTr("Context menu")
         onTriggered: (index, item) => root.contextAction(item.action)
+    }
+
+    // T334: the Open With picker. The File menu's "Choose a Default
+    // Application…" row opens the same dialog; its Set as Default button is
+    // the write path.
+    OpenWithDialog {
+        id: openWithDialog
+        fileName: root.openWithName
+        mimeName: root.openWithMime
+        handlers: root.openWithHandlers
+        selectedId: root.openWithSelectedId
+        notice: root.openWithNotice
+        onOpenRequested: (id) => root.openWithSelected(id)
+        onDefaultRequested: (id) => root.setDefaultOpenHandler(id)
     }
 
     // T230d: a disabled view segment explains itself on hover; a click also

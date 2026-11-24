@@ -80,6 +80,10 @@ def main():
     parser.add_argument("--scroll", action="store_true",
                         help="scroll the list after the nudge (large-directory trace)")
     parser.add_argument("--dock-crop", help="also save the Dock band to this path")
+    parser.add_argument("--keep-pointer", action="store_true",
+                        help="do not nudge the pointer to the centre before the still")
+    parser.add_argument("--no-trim", action="store_true",
+                        help="save the raw active-window capture (keeps host chrome)")
     args = parser.parse_args()
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -96,10 +100,11 @@ def main():
     sock.sendto(b"set color-scheme dark", args.synth)
     time.sleep(0.5)
     raise_dragonfruit(args.scratch)
-    for step in range(16):
-        x = 0.5 + 0.002 * (step % 4)
-        sock.sendto(f"motion-abs {x} 0.5".encode(), args.synth)
-        time.sleep(0.04)
+    if not args.keep_pointer:
+        for step in range(16):
+            x = 0.5 + 0.002 * (step % 4)
+            sock.sendto(f"motion-abs {x} 0.5".encode(), args.synth)
+            time.sleep(0.04)
 
     if args.scroll:
         sock.sendto(b"motion-abs 0.62 0.60", args.synth)
@@ -114,7 +119,11 @@ def main():
     subprocess.run(["spectacle", "-b", "-n", "-a", "-o", raw],
                    check=True, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL)
-    im = trim(Image.open(raw))
+    im = Image.open(raw)
+    if args.no_trim:
+        im = im.convert("RGB")
+    else:
+        im = trim(im)
     im.save(args.dest)
     log(f"saved {args.dest} ({im.width}x{im.height})")
     if args.dock_crop:

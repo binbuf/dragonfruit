@@ -12,6 +12,7 @@
 // tab; a `--activation-handoff` launch asks it before opening its own window.
 #include "FilesArguments.h"
 #include "FilesThumbnailProvider.h"
+#include "MenuPublisher.h"
 #include "OpenHandler.h"
 
 #include <cstdio>
@@ -26,6 +27,7 @@
 #include <QMetaObject>
 #include <QProcess>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QStringList>
 #include <QUrl>
 
@@ -254,9 +256,16 @@ int main(int argc, char *argv[])
             qputenv("DF_FILES_START_URI", location.toUtf8());
     }
 
+    // T334: the app-side end of the native global-menu publication. The model
+    // stays in FilesMenu.qml; this object only carries it to the broker.
+    // Declared before the engine so it outlives QML's `onDestruction` calls.
+    MenuPublisher menuPublisher;
+
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("files-thumbnail"),
                             new FilesThumbnailProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("MenuPublisher"),
+                                             &menuPublisher);
     if (ownsName) {
         QDBusConnection::sessionBus().registerObject(
                 QStringLiteral("/org/dragonfruit/Files1"),

@@ -8,6 +8,10 @@
 # `FilesDirectoryModel` links. The imported target is defined once at the top
 # level so the shell's Dock Trash bridge (T-10.6a) shares it.
 
+# The Files app's published native menu model (T334): one singleton is the
+# source the window exposes and the menu-broker receives.
+set_source_files_properties(FilesMenu.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_library(dragonfruit-files-ui STATIC)
 qt_add_qml_module(dragonfruit-files-ui
     URI Dragonfruit.Files
@@ -24,10 +28,12 @@ qt_add_qml_module(dragonfruit-files-ui
     QML_FILES
         FilesBrowser.qml
         FilesClipboard.qml
+        FilesMenu.qml
         FilesTabs.qml
         FilesTabBar.qml
         FilesIconView.qml
         FilesListView.qml
+        OpenWithDialog.qml
         PathBar.qml
         StatusBar.qml
         GetInfoInspector.qml
@@ -46,6 +52,8 @@ target_link_libraries(dragonfruit-files-ui PUBLIC
 
 qt_add_executable(dragonfruit-files
     main.cpp
+    MenuPublisher.cpp
+    MenuPublisher.h
 )
 target_link_libraries(dragonfruit-files PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus
@@ -149,10 +157,12 @@ install(FILES "${CMAKE_SOURCE_DIR}/assets/icons/apps/org.dragonfruit.Files.svg"
 
 df_qml_lint(app-files
     FilesBrowser.qml
+    FilesMenu.qml
     FilesTabs.qml
     FilesTabBar.qml
     FilesIconView.qml
     FilesListView.qml
+    OpenWithDialog.qml
     PathBar.qml
     StatusBar.qml
     GetInfoInspector.qml

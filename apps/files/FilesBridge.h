@@ -15,6 +15,7 @@
 #pragma once
 
 #include <QObject>
+#include <QHash>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -77,6 +78,9 @@ class FilesBridge : public QObject
     // (the T333 stills); 0 is the live rule (the bar appears from the second
     // tab).
     Q_PROPERTY(int startTabs READ startTabs CONSTANT)
+    // `DF_FILES_OPEN_WITH_SELECT` preselects a handler in the T334 capture
+    // picker: a zero-based index or a desktop id. Empty keeps the MIME default.
+    Q_PROPERTY(QString startOpenWithSelect READ startOpenWithSelect CONSTANT)
     // The view a fresh window opens in, from `DF_FILES_START_VIEW` (`list`
     // or `icon`); empty means the shell default. A capture seam, sibling of
     // `DF_FILES_START_URI`.
@@ -104,6 +108,7 @@ public:
     bool startRename() const { return m_startRename; }
     int startSelect() const { return m_startSelect; }
     int startTabs() const { return m_startTabs; }
+    QString startOpenWithSelect() const { return m_startOpenWithSelect; }
     bool startEmptyTrash() const { return m_startEmptyTrash; }
     QString captureDir() const { return m_captureDir; }
 
@@ -139,6 +144,31 @@ public:
     // installed. Directories are the browser's job (`FilesBrowser.navigate`),
     // not this call.
     Q_INVOKABLE bool open(const QString &uri) const;
+    // The installed handlers for `uri`'s MIME type as
+    // `{ id, name, path, isDefault }`, default first (T334). A non-local or
+    // directory target has no handler rows; an empty list is a visible state,
+    // not an error.
+    Q_INVOKABLE QVariantList handlers(const QString &uri) const;
+    // The file's MIME type name (for the picker's explanatory line), or empty
+    // for a non-local/directory target.
+    Q_INVOKABLE QString mimeType(const QString &uri) const;
+    // Open `uri` with the named desktop entry (the Open With picker's choice).
+    // False when the entry is missing, not launchable, or the launch fails.
+    Q_INVOKABLE bool openWith(const QString &uri, const QString &desktopId);
+    // Write `desktopId` as the MIME default for `uri` (one-shot override).
+    // False when the MIME cannot be resolved or the platform tool refuses.
+    Q_INVOKABLE bool setDefaultHandler(const QString &uri, const QString &desktopId);
+    // Replace the handler list/open/default writes with recording callables
+    // (tests/captures only). A plain QML property write would replace a
+    // binding, so these are invokable setters, matching `setNewWindowCallable`.
+    Q_INVOKABLE void setHandlerFixture(const QVariantList &handlers);
+    Q_INVOKABLE void clearHandlerFixture();
+    Q_INVOKABLE void setOpenWithCallable(const QJSValue &callable);
+    Q_INVOKABLE QStringList openWithRequests() const { return m_openWithRequests; }
+    Q_INVOKABLE QStringList defaultHandlerRequests() const
+    {
+        return m_defaultHandlerRequests;
+    }
     // The volume backing `uri`, as `{ available, freeBytes, freeText }`. Used
     // by the status bar; an unavailable volume leaves `freeText` empty rather
     // than inventing a number (T230d).
@@ -186,10 +216,18 @@ private:
     bool m_startRename = false;
     int m_startSelect = 0;
     int m_startTabs = 0;
+    QString m_startOpenWithSelect;
     bool m_startEmptyTrash = false;
     QVariantList m_favorites;
     QVariantList m_volumes;
     QJSValue m_newWindowCallable;
     QStringList m_newWindowRequests;
+    QJSValue m_openWithCallable;
+    QVariantList m_handlerFixture;
+    bool m_handlerFixtureSet = false;
+    QString m_fixtureDefaultId;
+    mutable QHash<QString, QVariantList> m_handlerCache;
+    QStringList m_openWithRequests;
+    QStringList m_defaultHandlerRequests;
 
 };

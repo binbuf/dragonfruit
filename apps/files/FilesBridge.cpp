@@ -109,11 +109,13 @@ FilesBridge::FilesBridge(QObject *parent)
     // `edit` opens the T331 Edit menu (a capture seam for the Undo rows).
     if (m_startMenu != QStringLiteral("item")
         && m_startMenu != QStringLiteral("background")
-        && m_startMenu != QStringLiteral("edit"))
+        && m_startMenu != QStringLiteral("edit")
+        && m_startMenu != QStringLiteral("openWith"))
         m_startMenu.clear();
     m_startRename = qEnvironmentVariableIsSet("DF_FILES_START_RENAME");
     m_startSelect = qEnvironmentVariableIntValue("DF_FILES_START_SELECT");
     m_startTabs = qEnvironmentVariableIntValue("DF_FILES_CAPTURE_TABS");
+    m_startOpenWithSelect = qEnvironmentVariable("DF_FILES_OPEN_WITH_SELECT");
     m_startEmptyTrash = qEnvironmentVariableIsSet("DF_FILES_START_EMPTY_TRASH");
     if (m_fixture) {
         // Deterministic locations for the headless QML tests; independent of
@@ -326,6 +328,164 @@ bool FilesBridge::open(const QString &uri) const
     return filesOpen(uri);
 }
 
+QString FilesBridge::mimeType(const QString &uri) const
+{
+    const QUrl url(uri);
+    if (!url.isLocalFile())
+        return {};
+    const QFileInfo info(url.toLocalFile());
+    if (!info.isFile())
+        return {};
+    if (m_fixture) {
+        if (info.suffix().compare(QStringLiteral("txt"), Qt::CaseInsensitive) == 0)
+            return QStringLiteral("text/plain");
+        if (info.suffix().compare(QStringLiteral("png"), Qt::CaseInsensitive) == 0)
+            return QStringLiteral("image/png");
+        return QStringLiteral("application/octet-stream");
+    }
+    const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
+    return mime.isValid() ? mime.name() : QString();
+}
+
+QVariantList FilesBridge::handlers(const QString &uri) const
+{    const QUrl url(uri);
+    if (!url.isLocalFile())
+        return {};
+    const QFileInfo info(url.toLocalFile());
+    if (!info.isFile())
+        return {};
+
+    if (m_handlerFixtureSet)
+        return m_handlerFixture;
+
+    const QString key = QDir::cleanPath(info.absoluteFilePath());
+    const auto cached = m_handlerCache.constFind(key);
+    if (cached != m_handlerCache.constEnd())
+        return *cached;
+
+    QVariantList rows;
+    if (m_fixture) {
+        // Deterministic rows for the headless picker tests/captures. A
+        // `.unknown` file exercises the absent-handler state.
+        if (!info.fileName().endsWith(QStringLiteral(".unknown"))) {
+            const bool text = info.suffix().compare(QStringLiteral("txt"),
+                                                    Qt::CaseInsensitive) == 0;
+            const struct {
+                const char *id;
+                const char *name;
+            } kFixture[] = {
+                { "df-test-text.desktop", "Text Editor" },
+                { "df-test-code.desktop", "Code Editor" },
+            };
+            const struct {
+                const char *id;
+                const char *name;
+            } kImage = { "df-test-image.desktop", "Image Viewer" };
+            if (text) {
+                for (int i = 0; i < 2; ++i) {
+                    QVariantMap row;
+                    row.insert(QStringLiteral("id"),
+                               QString::fromLatin1(kFixture[i].id));
+                    row.insert(QStringLiteral("name"),
+                               QString::fromLatin1(kFixture[i].name));
+                    row.insert(QStringLiteral("path"), QString());
+                    row.insert(QStringLiteral("isDefault"),
+                               m_fixtureDefaultId.isEmpty()
+                                   ? i == 0
+                                   : m_fixtureDefaultId
+                                             == QString::fromLatin1(kFixture[i].id));
+                    rows.append(row);
+                }
+            } else if (info.suffix().compare(QStringLiteral("png"),
+                                            Qt::CaseInsensitive) == 0) {
+                QVariantMap row;
+                row.insert(QStringLiteral("id"), QString::fromLatin1(kImage.id));
+                row.insert(QStringLiteral("name"),
+                           QString::fromLatin1(kImage.name));
+                row.insert(QStringLiteral("path"), QString());
+                row.insert(QStringLiteral("isDefault"), true);
+                rows.append(row);
+            }
+        }
+        m_handlerCache.insert(key, rows);
+        return rows;
+    }
+
+    const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
+    if (mime.isValid()) {
+        const QList<FilesHandlerEntry> entries = filesHandlersForMime(mime.name());
+        for (const FilesHandlerEntry &entry : entries) {
+            QVariantMap row;
+            row.insert(QStringLiteral("id"), entry.id);
+            row.insert(QStringLiteral("name"), entry.name);
+            row.insert(QStringLiteral("path"), entry.path);
+            row.insert(QStringLiteral("isDefault"), entry.isDefault);
+            rows.append(row);
+        }
+    }
+    m_handlerCache.insert(key, rows);
+    return rows;
+}
+
+bool FilesBridge::openWith(const QString &uri, const QString &desktopId)
+{
+    if (uri.isEmpty() || desktopId.isEmpty())
+        return false;
+    if (m_openWithCallable.isCallable()) {
+        m_openWithRequests.append(desktopId + QLatin1Char('\t') + uri);
+        const QJSValue result =
+                m_openWithCallable.call({QJSValue(uri), QJSValue(desktopId)});
+        return !result.isBool() || result.toBool();
+    }
+    if (m_fixture)
+        return true; // fixture rows have no real desktop file to launch
+    return filesOpenWith(uri, desktopId);
+}
+
+bool FilesBridge::setDefaultHandler(const QString &uri, const QString &desktopId)
+{
+    const QUrl url(uri);
+    if (!url.isLocalFile() || desktopId.isEmpty())
+        return false;
+    const QFileInfo info(url.toLocalFile());
+    if (!info.isFile())
+        return false;
+    if (m_fixture) {
+        m_defaultHandlerRequests.append(desktopId);
+        m_fixtureDefaultId = desktopId;
+        m_handlerCache.clear();
+        return true;
+    }
+    const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
+    if (!mime.isValid())
+        return false;
+    const bool ok = filesSetDefaultDesktopId(mime.name(), desktopId);
+    if (ok)
+        m_handlerCache.clear();
+    return ok;
+}
+
+void FilesBridge::setHandlerFixture(const QVariantList &handlers)
+{
+    m_handlerFixture = handlers;
+    m_handlerFixtureSet = true;
+    m_handlerCache.clear();
+}
+
+void FilesBridge::clearHandlerFixture()
+{
+    m_handlerFixture.clear();
+    m_handlerFixtureSet = false;
+    m_fixtureDefaultId.clear();
+    m_handlerCache.clear();
+}
+
+void FilesBridge::setOpenWithCallable(const QJSValue &callable)
+{
+    m_openWithCallable = callable.isCallable() ? callable : QJSValue();
+    m_openWithRequests.clear();
+}
+
 QVariantMap FilesBridge::volumeInfo(const QString &uri) const
 {
     QVariantMap info;
@@ -380,16 +540,24 @@ QString FilesBridge::defaultHandler(const QString &uri) const
         return tr("Folder");
     if (!info.isFile())
         return {};
-    if (m_fixture)
-        return QStringLiteral("Text Editor");
 
-    const QMimeType mime = QMimeDatabase().mimeTypeForFile(info);
-    if (!mime.isValid())
-        return {};
-    const QString id = filesDefaultDesktopId(mime.name());
-    if (id.isEmpty())
-        return tr("No default application");
-    return id;
+    const QVariantList rows = handlers(uri);
+    for (const QVariant &value : rows) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("isDefault")).toBool()) {
+            const QString name = row.value(QStringLiteral("name")).toString();
+            if (!name.isEmpty())
+                return name;
+        }
+    }
+    if (!rows.isEmpty()) {
+        const QString name = rows.first().toMap()
+                                     .value(QStringLiteral("name"))
+                                     .toString();
+        if (!name.isEmpty())
+            return name;
+    }
+    return tr("No default application");
 }
 
 bool FilesBridge::newWindow(const QString &uri)

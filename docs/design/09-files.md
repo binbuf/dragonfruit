@@ -421,9 +421,10 @@ all-or-nothing rule inside `StdFsOps::move_as` (hidden destination sibling,
 copy, rename, then remove the source); symlinks are recreated as links and
 never followed, so a directory copy cannot escape its tree. See
 [ADR 0337](adr/0337-files-clipboard-paste-and-conflicts.md). **Deferred:**
-Open With (T334), drag-and-drop inside Files, Duplicate/Compress/Make Alias,
-merge, byte-level progress/cancel, and the native Files menu model. Undo
-landed next (T331, below); tabs and New Window landed with T333.
+drag-and-drop inside Files, Duplicate/Compress/Make Alias,
+merge, and byte-level progress/cancel. Undo
+landed next (T331, below); tabs and New Window landed with T333; Open With and
+the native Files menu landed with T334 (below).
 
 **Implementation status (T331).** Undo and Redo are real for rename, new
 folder, Move to Trash, copy/paste, and move/paste. `files-core::undo::UndoStack`
@@ -519,6 +520,28 @@ second-window stills. See
 tab out to a new window, tab reordering, session restore, and app-wide
 clipboard sharing between windows.
 
+**Implementation status (T334).** Open With and the native Files menu are
+shipped. The item menu's **Open With** submenu lists the MIME's installed
+handlers from `Files.handlers(uri)` (`gio mime` plus `.desktop` parsing),
+default first and checked; a file with no handler gets a disabled row with its
+reason. **Choose a Default Application…** opens one picker
+(`OpenWithDialog.qml`) with the same rows, the default preselected, **Open**,
+and **Set as Default**; the write goes through `xdg-mime` (or `gio mime`), and
+a refused launch/write is a notice. `FilesMenu.qml` is the window's one menu
+model — `FilesShell.menuModel` exposes it and `MenuPublisher` publishes the
+same object to the native broker tier under
+`org.dragonfruit.Files.desktop`. File, Edit, View, Go, Window, and Help rows
+carry live enable/check state and the shipped accelerators; `Open With` is a
+live submenu from the same handler list. Tests: `tst_files_open` (handler
+enumeration, default write, chosen-handler launch) and `tst_files_shell`
+(submenu rows, picker selection/open, absent handler, Set as Default, the
+published model and its dispatcher); `make t334-files-capture` writes the
+picker and File-menu stills. See
+[ADR 0342](adr/0342-files-open-with-and-native-menu-publication.md).
+**Deferred:** the MIME editor/Default Apps Settings pane, exotic MIME
+handlers, and the remaining menu-target rows (Duplicate, Compress, Make Alias,
+Sort By, Connect to Server).
+
 **Current status (2026-11) — what the Files MVP actually ships.** The browsing
 core is real: streaming listings, natural sorting, the C ABI delta path,
 sidebar favorites/volumes/Computer/Trash, icon/list views, selection
@@ -531,13 +554,14 @@ tabs with independent histories and New Window, and the Dock/desktop
 integration. It is **not** the full Files design:
 
 - **Not implemented:** drag-and-drop inside Files, duplicate, Make Alias,
-  Compress, Open With, merge, byte-level progress/cancel, column/gallery
+  Compress, merge, byte-level progress/cancel, column/gallery
   views, Preview, preview pane, tags, saved searches, batch rename, Connect to
-  Server, drag-tab-out/tab reordering, session restore, and the Files menu
-  model. T230d landed the measured 52/198/30/28 pt chrome, the status bar, the
+  Server, drag-tab-out/tab reordering, and session restore. T230d landed the
+  measured 52/198/30/28 pt chrome, the status bar, the
   toolbar-hidden mode and the Get Info inspector; T330 landed copy/cut/paste,
   the conflict sheet and per-item paste progress; T331 landed undo/redo and
-  the Edit menu; T333 landed tabs and New Window; T244a lands the column and
+  the Edit menu; T333 landed tabs and New Window; T334 landed the Open With
+  picker and the native Files menu publication; T244a lands the column and
   gallery views.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a
   host helper exists; no archives/remote), search (current-location name
@@ -859,11 +883,21 @@ family libarchive supports, with per-entry errors and no partial output.
   toolchain; it does not re-implement `mimeapps.list` writes. The child runs
   out of process with the desktop's forced `QT_QPA_PLATFORM=offscreen`
   removed. See [ADR 0190](adr/0190-files-thumbnails-and-default-handler-opening.md).
+- **Open With is shipped (T334).** The item menu's **Open With** submenu lists
+  the installed handlers for the file's MIME, default first and checked; a file
+  with no registered handler shows a disabled "No Applications Available" row
+  with its reason instead of doing nothing. The same list feeds the picker:
+  **Choose a Default Application…** opens one dialog with the installed
+  handlers, the default preselected, **Open**, and **Set as Default**. The
+  picker opens the chosen desktop entry through `Files.openWith`, and
+  **Set as Default** writes the MIME association through `xdg-mime` (or
+  `gio mime`), never by rewriting `mimeapps.list` itself. A failed launch or
+  write is a visible notice. See
+  [ADR 0342](adr/0342-files-open-with-and-native-menu-publication.md).
 - **Design target:** association enumeration and defaults come from GIO's
   `AppInfo` when the toolchain links it; "Always Open With" writes the default
-  per spec and a plain Open With is a one-shot override.
-- **Open With UI is not shipped yet** (G-04); only the default-handler open
-  path is.
+  per spec and a plain Open With is a one-shot override. The shipped picker has
+  the same two paths through the platform tooling.
 - app-index is *not* involved here — it resolves window→application identity
   for the shell (see [01-architecture.md](01-architecture.md)), not file
   associations.
@@ -1006,12 +1040,17 @@ The macOS model: **the file manager owns the desktop.**
 
 ## Menu model
 
-**Status (2026-11): not implemented for Files.** Settings publishes its native
-model; Files does not yet publish one, so the shell keeps the fixed application
-menu for Files. The model below is the design target (G-04). It will publish
-via the design system's `MenuBarMenu` component (see
-[06-global-menu.md](06-global-menu.md)), with live enable/disable state
-driven by the selection:
+**Status (2026-11, T334): shipped through the native tier.** `FilesMenu.qml`
+is the window's one model: `FilesShell.menuModel` exposes it and the app's
+`MenuPublisher` publishes the same object to `org.dragonfruit.MenuBroker1`
+under `org.dragonfruit.Files.desktop`. The broker resolves it for the focused
+Files window exactly like Settings' model, and its accelerators are
+focus-scoped (ADR [0041](adr/0041-native-menu-model-publication-shape.md),
+[0342](adr/0342-files-open-with-and-native-menu-publication.md)). The model
+carries File, Edit, View, Go, Window, and Help; every row either performs a
+shipped action or is disabled with a reason. Open With is a live submenu built
+from the same handler list as the picker. The full design target below remains
+the reference for the rows that are still deferred:
 
 ```text
 File    New Window Super+N · New Tab Super+T · New Folder Shift+Super+N ·

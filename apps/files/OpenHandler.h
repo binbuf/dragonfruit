@@ -163,6 +163,29 @@ inline bool filesDesktopFileCanLaunch(const QString &path)
     return !QStandardPaths::findExecutable(program).isEmpty();
 }
 
+// One installed handler for a MIME type, in display order. `isDefault` marks
+// the desktop entry `xdg-mime query default` names (when it is installed and
+// launchable); the list always puts it first so a picker can preselect it.
+struct FilesHandlerEntry
+{
+    QString id;
+    QString name;
+    QString path;
+    bool isDefault = false;
+};
+
+// The human name from a `.desktop` file. Falls back to the file stem when the
+// entry carries no `Name=`, so a handler is never listed as an empty row.
+inline QString filesDesktopFileDisplayName(const QString &path)
+{
+    QSettings desktop(path, QSettings::IniFormat);
+    desktop.beginGroup(QStringLiteral("Desktop Entry"));
+    QString name = desktop.value(QStringLiteral("Name")).toString().trimmed();
+    if (name.isEmpty())
+        name = QFileInfo(path).completeBaseName();
+    return name;
+}
+
 inline QStringList filesRegisteredDesktopIds(const QString &mime)
 {
     const QString output = filesToolOutput(QStringLiteral("gio"),
@@ -214,6 +237,81 @@ inline QString filesDefaultDesktopId(const QString &mime)
     return chosen;
 }
 
+// The installed applications registered for `mime`, default first. A stale
+// `mimeapps.list` entry that is not installed is skipped (the same rule
+// `filesDefaultDesktopId` applies); the Files app itself is never offered as
+// an "open with" handler.
+inline QList<FilesHandlerEntry> filesHandlersForMime(const QString &mime)
+{
+    QList<FilesHandlerEntry> out;
+    if (mime.isEmpty())
+        return out;
+
+    const QString defaultId = filesDefaultDesktopId(mime);
+    QStringList ids;
+    if (!defaultId.isEmpty())
+        ids.append(defaultId);
+    for (const QString &id : filesRegisteredDesktopIds(mime)) {
+        if (!ids.contains(id))
+            ids.append(id);
+    }
+
+    for (const QString &id : ids) {
+        if (id == QStringLiteral("org.dragonfruit.Files.desktop"))
+            continue;
+        const QString path = filesDesktopFileForId(id);
+        if (path.isEmpty() || !filesDesktopFileCanLaunch(path))
+            continue;
+        FilesHandlerEntry entry;
+        entry.id = id;
+        entry.name = filesDesktopFileDisplayName(path);
+        entry.path = path;
+        entry.isDefault = id == defaultId;
+        out.append(entry);
+    }
+    return out;
+}
+
+// Write the default handler for `mime` through the freedesktop tooling. This
+// is a one-shot override from the picker's "Set as Default"; the app never
+// rewrites `mimeapps.list` itself. `xdg-mime` is the spec tool; `gio mime`
+// accepts the same `MIME HANDLER` form when it is absent.
+inline bool filesSetDefaultDesktopId(const QString &mime, const QString &desktopId)
+{
+    if (mime.isEmpty() || desktopId.isEmpty())
+        return false;
+
+    const QString xdgMime =
+            QStandardPaths::findExecutable(QStringLiteral("xdg-mime"));
+    const QString gio = QStandardPaths::findExecutable(QStringLiteral("gio"));
+    QString program;
+    QStringList arguments;
+    if (!xdgMime.isEmpty()) {
+        program = xdgMime;
+        arguments = {QStringLiteral("default"), desktopId, mime};
+    } else if (!gio.isEmpty()) {
+        program = gio;
+        arguments = {QStringLiteral("mime"), mime, desktopId};
+    } else {
+        return false;
+    }
+
+    QProcess process;
+    process.setProcessEnvironment(filesDesktopChildEnvironment());
+    process.setProgram(program);
+    process.setArguments(arguments);
+    process.start();
+    if (!process.waitForStarted(1000))
+        return false;
+    if (!process.waitForFinished(3000)) {
+        process.kill();
+        process.waitForFinished(200);
+        return false;
+    }
+    return process.exitStatus() == QProcess::NormalExit
+            && process.exitCode() == 0;
+}
+
 inline bool filesStartDetached(const QStringList &command)
 {
     if (command.isEmpty())
@@ -250,6 +348,27 @@ inline bool filesStartDesktopFile(const QString &desktopPath, const QString &fil
             return true;
     }
     return false;
+}
+
+// Open `uri` with a specific installed handler (the Open With picker). Only a
+// local file is supported; a missing or non-launchable desktop entry is a
+// visible failure, never a silent fallback to a different application.
+inline bool filesOpenWith(const QString &uri, const QString &desktopId)
+{
+    if (uri.isEmpty() || desktopId.isEmpty())
+        return false;
+
+    const QUrl url(uri);
+    if (!url.isLocalFile())
+        return false;
+    const QFileInfo info(url.toLocalFile());
+    if (!info.isFile())
+        return false;
+
+    const QString desktopPath = filesDesktopFileForId(desktopId);
+    if (desktopPath.isEmpty() || !filesDesktopFileCanLaunch(desktopPath))
+        return false;
+    return filesStartDesktopFile(desktopPath, info.absoluteFilePath());
 }
 
 // Open `uri` with the default application. Local files resolve through the

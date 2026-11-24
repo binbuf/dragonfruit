@@ -58,8 +58,10 @@ contract rather than inventing a private association store.
 - Opening no longer silently fails when `mimeapps.list` is stale; the fallback
   chain is testable headlessly (`tst_files_open`, `tst_files_thumbnails`).
 - This ADR records an implementation decision; it does not make the rest of
-  the Files design shipped. Tabs, copy/move, undo, progress/conflicts, Open
-  With, and Files menu publication remain open (G-04).
+  the Files design shipped. Tabs, copy/move, undo, and progress/conflicts
+  landed later; Open With and the Files menu publication landed in T334
+  ([ADR 0342](0342-files-open-with-and-native-menu-publication.md)). Merge and
+  tab drag-out remain open (G-04).
 
 ## References
 

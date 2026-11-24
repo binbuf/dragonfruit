@@ -22,6 +22,7 @@ Item {
         Component { id: shellComponent; FilesShell { } }
         Component { id: filesWindowComponent; FilesWindow { } }
         Component { id: desktopComponent; DesktopSurface { } }
+        Component { id: menuComponent; ContextMenu { } }
 
         SignalSpy { id: closeSpy; signalName: "closeRequested" }
         Component { id: closeComponent; SignalSpy { signalName: "closeRequested" } }
@@ -124,6 +125,14 @@ Item {
             verify(image !== null);
             verify(image.width > 0 && image.height > 0);
             image.save(Files.captureDir + "/t333-files-" + suffix + ".png", "PNG");
+        }
+
+        function captureT334(item, suffix) {
+            waitForRendering(stage);
+            var image = grabImage(item);
+            verify(image !== null);
+            verify(image.width > 0 && image.height > 0);
+            image.save(Files.captureDir + "/t334-files-" + suffix + ".png", "PNG");
         }
 
         // A pointer click at an item's centre through the stage. The tab
@@ -403,6 +412,8 @@ Item {
             verify(infoRow(shell, "comments", "Comments").reason.length > 0);
             compare(infoRow(shell, "openWith", "Open with").value, "Text Editor");
             verify(!infoRow(shell, "openWith", "Open with").editable);
+            verify(infoRow(shell, "openWith", "Open with").reason
+                   .indexOf("Open With") >= 0);
             compare(infoRow(shell, "sharing", "Permissions").value,
                     "Not available");
 
@@ -435,6 +446,175 @@ Item {
             compare(infoRow(shell, "name", "Name").editable, false);
             verify(infoRow(shell, "name", "Name").reason.length > 0);
             verify(infoRow(shell, "general", "Kind").value.indexOf("folders") >= 0);
+        }
+
+        // -- Open With (T334) --------------------------------------------------
+
+        function openWithSubmenu(shell, uri) {
+            var menu = shell.nodeMenu({ id: 1, uri: uri, isDir: false });
+            for (var i = 0; i < menu.length; ++i) {
+                if (menu[i].label === "Open With")
+                    return menu[i];
+            }
+            return null;
+        }
+
+        function test_open_with_submenu_lists_the_installed_handlers() {
+            Files.clearHandlerFixture();
+            var shell = make({ width: 900, height: 600 });
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+            var id = idForUri(shell, fileUri);
+            verify(id > 0);
+            shell.selectNode(id, 0);
+
+            var openWith = openWithSubmenu(shell, fileUri);
+            verify(openWith !== null);
+            compare(openWith.type, "submenu");
+            var labels = openWith.submenu.map(function(row) { return row.label; });
+            verify(labels.indexOf("Text Editor (Default)") >= 0);
+            verify(labels.indexOf("Code Editor") >= 0);
+            verify(labels.indexOf("Choose a Default Application\u2026") >= 0);
+            // The default row is the checked one, and the picker's first row
+            // is the same default.
+            var defaultRow = openWith.submenu.filter(function(row) {
+                return row.checked === true;
+            })[0];
+            verify(defaultRow !== undefined);
+            compare(defaultRow.action, "openWith:df-test-text.desktop");
+        }
+
+        function test_open_with_picker_opens_the_chosen_handler() {
+            Files.clearHandlerFixture();
+            var shell = make({ width: 900, height: 600 });
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+            var id = idForUri(shell, fileUri);
+            verify(id > 0);
+            shell.selectNode(id, 0);
+
+            Files.setOpenWithCallable(function(uri, desktopId) {
+                return true;
+            });
+            try {
+                verify(shell.openWithForTarget());
+                compare(shell.openWithDialog.open, true);
+                compare(shell.openWithHandlers.length, 2);
+                compare(shell.openWithSelectedId, "df-test-text.desktop");
+                compare(shell.openWithDialog.selectedId,
+                        "df-test-text.desktop");
+
+                shell.openWithSelectedId = "df-test-code.desktop";
+                verify(shell.openWithSelected("df-test-code.desktop"));
+                compare(Files.openWithRequests().length, 1);
+                compare(Files.openWithRequests()[0],
+                        "df-test-code.desktop\t" + fileUri);
+                compare(shell.openWithDialog.open, false);
+            } finally {
+                Files.setOpenWithCallable(null);
+            }
+        }
+
+        function test_open_with_absent_handler_is_a_visible_message() {
+            Files.clearHandlerFixture();
+            var shell = make({ width: 900, height: 600 });
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+            var id = idForUri(shell, fileUri);
+            verify(id > 0);
+            shell.selectNode(id, 0);
+
+            Files.setHandlerFixture([]);
+            try {
+                var openWith = openWithSubmenu(shell, fileUri);
+                verify(openWith !== null);
+                compare(openWith.submenu[0].enabled, false);
+                verify(openWith.submenu[0].disabledReason.length > 0);
+
+                verify(shell.openWithForTarget());
+                compare(shell.openWithHandlers.length, 0);
+                verify(shell.openWithDialog.message.indexOf("No application") >= 0);
+                compare(shell.openWithDialog.open, true);
+                shell.openWithDialog.hide();
+            } finally {
+                Files.clearHandlerFixture();
+            }
+        }
+
+        function test_open_with_set_default_reaches_the_bridge() {
+            Files.clearHandlerFixture();
+            var shell = make({ width: 900, height: 600 });
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+            var id = idForUri(shell, fileUri);
+            verify(id > 0);
+            shell.selectNode(id, 0);
+
+            var before = Files.defaultHandlerRequests().length;
+            verify(shell.openWithForTarget());
+            verify(shell.setDefaultOpenHandler("df-test-code.desktop"));
+            compare(Files.defaultHandlerRequests().length, before + 1);
+            compare(Files.defaultHandlerRequests()[before],
+                    "df-test-code.desktop");
+            verify(shell.openWithNotice.indexOf("default") >= 0);
+            // The refreshed list carries the new default marker.
+            var handlers = Files.handlers(fileUri);
+            var defaultRow = handlers.filter(function(row) {
+                return row.isDefault === true;
+            })[0];
+            verify(defaultRow !== undefined);
+            compare(defaultRow.id, "df-test-code.desktop");
+            shell.openWithDialog.hide();
+        }
+
+        function test_files_menu_model_is_the_window_model() {
+            Files.clearHandlerFixture();
+            var shell = make({ width: 900, height: 600 });
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var id = idForUri(shell, Files.viewFixtureUri + "/alpha.txt");
+            verify(id > 0);
+            shell.selectNode(id, 0);
+
+            compare(shell.menuModel.appName, "Files");
+            var titles = shell.menuModel.menus.map(function(menu) {
+                return menu.title;
+            });
+            compare(titles, ["File", "Edit", "View", "Go", "Window", "Help"]);
+
+            var fileMenu = shell.menuModel.menus[0];
+            var newWindow = fileMenu.items.filter(function(row) {
+                return row.action === "newWindow";
+            })[0];
+            verify(newWindow !== undefined);
+            compare(newWindow.shortcut, "Super+N");
+            var openWith = fileMenu.items.filter(function(row) {
+                return row.label === "Open With";
+            })[0];
+            verify(openWith !== undefined);
+            compare(openWith.type, "submenu");
+            verify(openWith.submenu.length >= 3);
+
+            // The model carries live state: Open is enabled with a selection.
+            var open = fileMenu.items.filter(function(row) {
+                return row.action === "open";
+            })[0];
+            compare(open.enabled, true);
+
+            // The one dispatcher performs the same actions a global click or
+            // accelerator would.
+            compare(shell.currentView, "icon");
+            verify(shell.dispatchMenuAction("view.list"));
+            compare(shell.currentView, "list");
+            verify(shell.dispatchMenuAction("view.icon"));
+            compare(shell.currentView, "icon");
+            verify(shell.dispatchMenuAction("chooseDefaultApp"));
+            compare(shell.openWithDialog.open, true);
+            shell.openWithDialog.hide();
         }
 
         function test_get_info_rename_uses_the_real_backend() {
@@ -2449,6 +2629,53 @@ Item {
             } finally {
                 Files.setNewWindowCallable(null);
             }
+        }
+
+        // T334 capture seam, run by scripts/capture-t334-files.sh. The
+        // headless stills show the picker with its default selection, the
+        // chosen non-default handler, the Set as Default result, and the File
+        // menu rendered from the same published model the broker receives.
+        function test_capture_t334_open_with() {
+            Files.clearHandlerFixture();
+            if (Files.captureDir.length === 0) {
+                skip("DF_FILES_CAPTURE_DIR not set");
+                return;
+            }
+            var shell = make({ width: 900, height: 600,
+                               startUri: Files.viewFixtureUri });
+            tryCompare(shell.directory, "state", "complete");
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+            var id = idForUri(shell, fileUri);
+            verify(id > 0);
+            shell.selectNode(id, 0);
+
+            verify(shell.openWithForTarget());
+            tryCompare(shell.openWithDialog, "open", true);
+            compare(shell.openWithHandlers.length, 2);
+            captureT334(shell, "open-with");
+
+            shell.openWithSelectedId = "df-test-code.desktop";
+            compare(shell.openWithDialog.selectedId, "df-test-code.desktop");
+            wait(150);
+            captureT334(shell, "open-with-selected");
+
+            verify(shell.setDefaultOpenHandler("df-test-code.desktop"));
+            verify(shell.openWithNotice.indexOf("default") >= 0);
+            wait(150);
+            captureT334(shell, "open-with-default");
+            shell.openWithDialog.hide();
+
+            // The File menu is the published model's first menu. Rendering it
+            // with the shared ContextMenu is the same rows the global bar
+            // resolves, not a second menu list.
+            var menu = createTemporaryObject(menuComponent, stage, {});
+            verify(menu);
+            menu.model = shell.menuModel.menus[0].items;
+            menu.showAt(24, 24);
+            waitForRendering(stage);
+            captureT334(stage, "file-menu");
+            menu.hide();
+            menu.destroy();
         }
 
             // -- External changes (T332) -------------------------------------------

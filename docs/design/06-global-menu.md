@@ -62,13 +62,13 @@ feature cannot work automatically for them. This is an application-cooperation
 problem, not something we can force from the compositor side.
 
 **Current status (2026-11).** All three tiers are wired. The **native** tier is
-published by first-party apps (Settings is the reference) and resolved by the
-broker. The **DBusMenu** tier is projected by app-index, stored by the broker,
-and consumed by the shell: focus maps to the focused window's registration,
-the registration is re-keyed to the canonical desktop id, a fresh `WindowMenu`
-read picks up dynamic rows, and a `dbusmenu:<id>` click is routed back through
-`WindowMenuEvent` as `Event(id, "clicked")`. The fixed application menu's
-Hide/Hide Others/Show All rows compute live enabled state and execute as
+published by first-party apps (Settings and Files are the references) and
+resolved by the broker. The **DBusMenu** tier is projected by app-index, stored
+by the broker, and consumed by the shell: focus maps to the focused window's
+registration, the registration is re-keyed to the canonical desktop id, a fresh
+`WindowMenu` read picks up dynamic rows, and a `dbusmenu:<id>` click is routed
+back through `WindowMenuEvent` as `Event(id, "clicked")`. The fixed application
+menu's Hide/Hide Others/Show All rows compute live enabled state and execute as
 tracked compositor minimize/restore operations. The tray (StatusNotifier) tier
 is live and re-reads on a timer; live icon/attention signals are not subscribed.
 Read "compatible Linux apps" in the table below as **shipped for apps that
@@ -155,7 +155,13 @@ toolkit.
   the app's `App` / `File` / `Edit` / `View` / `Window` / `Help` menus. T230
   wires the app-side transport (`apps/settings/MenuPublisher.cpp`) to
   `Publish("org.dragonfruit.Settings.desktop", model)`; the shell resolves the
-  focused raw `app_id` through app-index to that canonical desktop id.
+  focused raw `app_id` through app-index to that canonical desktop id. Files
+  publishes the same way (T334): `apps/files/FilesMenu.qml` is the one model,
+  `FilesShell.menuModel` exposes it in-window, and
+  `apps/files/MenuPublisher.cpp` publishes it as
+  `org.dragonfruit.Files.desktop`. A click or accelerator returns through the
+  broker's `Activate` to `FilesShell.dispatchMenuAction`, the same dispatcher a
+  local row uses.
 - DBusMenu bridges map third-party models into the same menu-broker
   representation.
 

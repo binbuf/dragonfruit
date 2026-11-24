@@ -74,4 +74,17 @@ Window {
             win.requestActivate();
         }
     }
+
+    // T334: the broker's activation endpoint delivers a published menu action
+    // back to the app that owns the current generation. The same shell
+    // dispatcher serves a local click/accelerator and a test, so the two paths
+    // cannot diverge. `completeActivation` returns the handled result to the
+    // broker, which surfaces a rejection instead of claiming success.
+    Connections {
+        target: typeof MenuPublisher !== "undefined" ? MenuPublisher : null
+        function onActivationRequested(action, itemJson, generation, windowId) {
+            if (typeof MenuPublisher !== "undefined")
+                MenuPublisher.completeActivation(shell.dispatchMenuAction(action));
+        }
+    }
 }
