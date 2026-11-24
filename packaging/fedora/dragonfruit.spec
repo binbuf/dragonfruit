@@ -111,6 +111,7 @@ gtk-update-icon-cache -q -t -f %{_datadir}/icons/hicolor >/dev/null 2>&1 || :
 %{_bindir}/dragonfruit-session-entry
 %{_bindir}/dragonfruit-settings
 %{_bindir}/dragonfruit-settingsd
+%{_bindir}/dragonfruit-screencast-producer
 %{_bindir}/dragonfruit-shell
 %{_bindir}/dragonfruit-system-status
 %{_bindir}/dragonfruit-wallpaperd

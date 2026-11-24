@@ -813,10 +813,7 @@ mod tests {
         assert_eq!(policy.delay(IdleStage::Lock), Some(seconds(600)));
         assert_eq!(policy.delay(IdleStage::Suspend), None);
 
-        let off = IdlePolicy::from_keys([
-            ("idle.suspend", "1800"),
-            (KEY_PREVENT_SLEEP, "false"),
-        ]);
+        let off = IdlePolicy::from_keys([("idle.suspend", "1800"), (KEY_PREVENT_SLEEP, "false")]);
         assert_eq!(off.delay(IdleStage::Suspend), Some(seconds(1800)));
     }
 

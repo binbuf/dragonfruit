@@ -460,12 +460,7 @@ impl DoubleClickTracker {
         location: Point<i32, Logical>,
         now_msec: u64,
     ) -> bool {
-        self.register_with_interval(
-            window,
-            location,
-            now_msec,
-            TITLEBAR_DOUBLE_CLICK_MS,
-        )
+        self.register_with_interval(window, location, now_msec, TITLEBAR_DOUBLE_CLICK_MS)
     }
 
     /// Register a press with the session's configured double-click interval

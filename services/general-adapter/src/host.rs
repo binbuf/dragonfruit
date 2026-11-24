@@ -388,12 +388,7 @@ impl HostGeneral {
         disk.secure_boot = read_secure_boot();
         if let Ok(output) = run(
             "lsblk",
-            &[
-                "-J",
-                "-b",
-                "-o",
-                "NAME,SIZE,TYPE,MODEL,LABEL,MOUNTPOINT",
-            ],
+            &["-J", "-b", "-o", "NAME,SIZE,TYPE,MODEL,LABEL,MOUNTPOINT"],
         ) {
             if output.success() {
                 disk.disks = parse_lsblk_disks(&output.stdout, &disk.disk);
@@ -601,11 +596,7 @@ impl GeneralSource for HostGeneral {
     }
 
     fn remove_autostart(&mut self, id: &str) -> GeneralOutcome {
-        match remove_autostart(
-            &self.config_home(),
-            Path::new("/etc/xdg/autostart"),
-            id,
-        ) {
+        match remove_autostart(&self.config_home(), Path::new("/etc/xdg/autostart"), id) {
             Ok(()) => GeneralOutcome::Applied,
             Err(error) => GeneralOutcome::Failed(AdapterError::new(error)),
         }
@@ -661,7 +652,8 @@ impl GeneralSource for HostGeneral {
         self.write("systemctl", &["reboot"])
     }
 
-    fn run_backup(&mut self, destination: &str) -> GeneralOutcome {        let backup = match self.read_backup() {
+    fn run_backup(&mut self, destination: &str) -> GeneralOutcome {
+        let backup = match self.read_backup() {
             Ok(backup) => backup,
             Err(error) => return GeneralOutcome::Failed(AdapterError::new(error)),
         };
@@ -1454,18 +1446,12 @@ pub fn broken_login_item(command: &str) -> (bool, String) {
         if path.is_file() {
             return (false, String::new());
         }
-        return (
-            true,
-            format!("The command {program} is missing."),
-        );
+        return (true, format!("The command {program} is missing."));
     }
     if program_path(program).is_some() {
         (false, String::new())
     } else {
-        (
-            true,
-            format!("The command {program} is not installed."),
-        )
+        (true, format!("The command {program} is not installed."))
     }
 }
 
@@ -1507,15 +1493,16 @@ pub fn read_login_apps(config_home: &Path, autostart: &[LoginItem]) -> Vec<Login
             if map.get("Hidden").map(String::as_str) == Some("true") {
                 continue;
             }
-            let Some(id) = path.file_stem().map(|stem| stem.to_string_lossy().into_owned())
+            let Some(id) = path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
             else {
                 continue;
             };
             if existing.contains(id.as_str()) || by_id.contains_key(&id) {
                 continue;
             }
-            let Some(command) = map.get("Exec").filter(|exec| !exec.trim().is_empty())
-            else {
+            let Some(command) = map.get("Exec").filter(|exec| !exec.trim().is_empty()) else {
                 continue;
             };
             by_id.insert(
@@ -1732,7 +1719,11 @@ pub fn parse_lsblk_disks(text: &str, boot_disk: &str) -> Vec<DiskEntry> {
         out.push(DiskEntry {
             boot: device_path == boot_disk,
             device: device_path,
-            label: if label.is_empty() { model.clone() } else { label },
+            label: if label.is_empty() {
+                model.clone()
+            } else {
+                label
+            },
             model,
             size_bytes,
             mounted,
@@ -1764,7 +1755,10 @@ pub fn add_autostart(config_home: &Path, app_id: &str) -> Result<(), String> {
     let Some(command) = map.get("Exec").filter(|exec| !exec.trim().is_empty()) else {
         return Err(format!("application {app_id} has no command"));
     };
-    let name = map.get("Name").cloned().unwrap_or_else(|| app_id.to_owned());
+    let name = map
+        .get("Name")
+        .cloned()
+        .unwrap_or_else(|| app_id.to_owned());
     let user_dir = config_home.join("autostart");
     std::fs::create_dir_all(&user_dir).map_err(|error| error.to_string())?;
     let entry = format!(
@@ -1778,11 +1772,7 @@ pub fn add_autostart(config_home: &Path, app_id: &str) -> Result<(), String> {
 /// Remove a login item. A user entry is deleted; a system entry gets a user
 /// override with `Hidden=true`, which is how XDG autostart removes an entry the
 /// user does not own.
-pub fn remove_autostart(
-    config_home: &Path,
-    system_dir: &Path,
-    id: &str,
-) -> Result<(), String> {
+pub fn remove_autostart(config_home: &Path, system_dir: &Path, id: &str) -> Result<(), String> {
     if id.trim().is_empty() || id.contains('/') {
         return Err("no login item selected".to_owned());
     }
@@ -1791,9 +1781,8 @@ pub fn remove_autostart(
     let system_path = system_dir.join(format!("{id}.desktop"));
     if system_path.is_file() {
         std::fs::create_dir_all(&user_dir).map_err(|error| error.to_string())?;
-        let text = std::fs::read_to_string(&user_path).unwrap_or_else(|_| {
-            std::fs::read_to_string(&system_path).unwrap_or_default()
-        });
+        let text = std::fs::read_to_string(&user_path)
+            .unwrap_or_else(|_| std::fs::read_to_string(&system_path).unwrap_or_default());
         let updated = set_desktop_key(&text, "Hidden", "true");
         return std::fs::write(user_path, updated).map_err(|error| error.to_string());
     }
@@ -1956,10 +1945,7 @@ mod tests {
 
     #[test]
     fn a_user_login_item_is_removed() {
-        let root = std::env::temp_dir().join(format!(
-            "df-general-t270-{}",
-            std::process::id()
-        ));
+        let root = std::env::temp_dir().join(format!("df-general-t270-{}", std::process::id()));
         let config = root.join("config");
         let system = root.join("system-autostart");
         std::fs::create_dir_all(&system).unwrap();
@@ -1977,7 +1963,8 @@ mod tests {
     }
 
     #[test]
-    fn unit_description_parses() {        assert_eq!(
+    fn unit_description_parses() {
+        assert_eq!(
             parse_unit_description("[Unit]\nDescription=Backup user files\n[Service]\n"),
             "Backup user files"
         );

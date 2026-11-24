@@ -33,6 +33,11 @@ pub mod synthetic;
 // The input vocabulary is re-exported for the rest of the crate and the
 // tests; not every name is used by the binary itself.
 #[allow(unused_imports)]
+pub use crate::pointer_policy::{
+    scroll_scale, secondary_click_button, PointerApplier, PointerConfig, PointerConfigFailure,
+    PointerController, PointerKind,
+};
+#[allow(unused_imports)]
 pub use action::{GestureKind, HotCorner, InputAction, TriggerKind};
 #[allow(unused_imports)]
 pub use dispatch::{AppAcceleratorEvent, DispatchedAction, InputDispatch, ShellInputEvent};
@@ -45,11 +50,6 @@ pub use gestures::{
 pub use hot_corners::{HotCornerAction, HotCornerConfig, HotCornerDetector, HotCornerTrigger};
 #[allow(unused_imports)]
 pub use keymap::{role_held, ModifierRole, RoleMods};
-#[allow(unused_imports)]
-pub use crate::pointer_policy::{
-    secondary_click_button, scroll_scale, PointerApplier, PointerConfig, PointerConfigFailure,
-    PointerController, PointerKind,
-};
 #[allow(unused_imports)]
 pub use settings::{AccelProfile, InputSettings, KeyboardSettings, PointerSettings, ScrollMethod};
 #[allow(unused_imports)]
@@ -861,8 +861,12 @@ where
             let scale = crate::pointer_policy::scroll_scale(
                 state.input_settings.default_pointer.scroll_speed,
             );
-            let horizontal = event.amount(backend_input::Axis::Horizontal).map(|a| a * scale);
-            let vertical = event.amount(backend_input::Axis::Vertical).map(|a| a * scale);
+            let horizontal = event
+                .amount(backend_input::Axis::Horizontal)
+                .map(|a| a * scale);
+            let vertical = event
+                .amount(backend_input::Axis::Vertical)
+                .map(|a| a * scale);
             let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
             if let Some(amount) = horizontal {
                 frame = frame.value(backend_input::Axis::Horizontal, amount);

@@ -251,7 +251,9 @@ fn device_from_props(
 
 /// A `u8` property (BlueZ's `Battery1.Percentage`), `None` when absent.
 fn u8_prop(props: &HashMap<String, OwnedValue>, key: &str) -> Option<u8> {
-    props.get(key).and_then(|value| value.downcast_ref::<u8>().ok())
+    props
+        .get(key)
+        .and_then(|value| value.downcast_ref::<u8>().ok())
 }
 
 /// A string property, `""` when BlueZ did not report it.

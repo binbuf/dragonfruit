@@ -268,8 +268,10 @@ fn an_in_place_rename_requests_a_reset_and_the_later_change_is_still_seen() {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert!(model.node_id_for_uri(&later).is_some(),
-            "a folder that was replaced in place still reports changes");
+    assert!(
+        model.node_id_for_uri(&later).is_some(),
+        "a folder that was replaced in place still reports changes"
+    );
     model.check_consistent().expect("consistent");
 }
 

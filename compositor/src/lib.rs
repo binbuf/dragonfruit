@@ -14,7 +14,9 @@
 //! frame scheduler ([`frame_scheduler`]), and the clock-injected idle timer
 //! ([`idle`]); the T-14.5 conformance test drives the first's codec against a
 //! real Xwayland server, and the T-03.2/T-03.3/T-03.4/T-21.2/T315 tests pin
-//! the others' decisions without hardware.
+//! the others' decisions without hardware. The live ScreenCast producer
+//! ([`screencast_producer`]) is here too: its node-id parser and frame
+//! packets are tested without a PipeWire host.
 
 pub mod design_tokens;
 pub mod dpms;
@@ -28,6 +30,7 @@ pub mod output_input;
 pub mod pointer_policy;
 pub mod presentation;
 pub mod refresh;
+pub mod screencast_producer;
 pub mod window_menu;
 pub mod xdnd;
 pub mod xdnd_bridge;

@@ -338,9 +338,7 @@ pub fn run(
     loaded_schema: u32,
 ) -> zbus::Result<()> {
     let object = match persistence {
-        Some(persistence) => {
-            Settings1::with_persistence_at(settings, persistence, loaded_schema)
-        }
+        Some(persistence) => Settings1::with_persistence_at(settings, persistence, loaded_schema),
         None => Settings1::new(settings),
     };
     let connection = connection::Builder::session()?

@@ -914,8 +914,7 @@ mod tests {
     fn small_transient_roles_may_reach_minimal() {
         let role = MaterialRole::Popup;
         for tier in DegradeTier::ALL {
-            let material =
-                EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, true, tier);
+            let material = EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, true, tier);
             assert_eq!(material.role, role);
             assert_eq!(material.tier, tier);
             assert_eq!(material.blur_active, tier.blur_enabled());
@@ -953,12 +952,8 @@ mod tests {
             assert_eq!(floor_missed.fallback, MaterialFallback::NoSampledBlur);
         }
         let role = MaterialRole::Popup;
-        let material = EffectiveMaterial::resolve_for_role(
-            role,
-            MaterialPath::Gpu,
-            false,
-            DegradeTier::Full,
-        );
+        let material =
+            EffectiveMaterial::resolve_for_role(role, MaterialPath::Gpu, false, DegradeTier::Full);
         assert_eq!(material.tier, DegradeTier::Full);
         assert!(!material.blur_active);
         assert_eq!(material.fallback, MaterialFallback::NoSampledBlur);

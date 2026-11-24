@@ -28,6 +28,7 @@ mod material_preset;
 mod overview;
 mod pointer_policy;
 mod render;
+mod screencast_producer;
 mod session;
 mod shell;
 mod shell_protocol;

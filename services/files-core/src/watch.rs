@@ -531,9 +531,7 @@ impl FolderWatcher for InotifyWatcher {
         }
         // The folder's own name, so the parent's report of it (armed by the
         // worker before its first read) can be recognised.
-        let base_name = watch_path
-            .file_name()
-            .map(std::ffi::OsStr::to_os_string);
+        let base_name = watch_path.file_name().map(std::ffi::OsStr::to_os_string);
         Ok(Box::new(InotifyReader {
             fd,
             wd,
@@ -607,8 +605,11 @@ impl InotifyReader {
         let parent = path.parent()?;
         let c_parent = CString::new(parent.as_os_str().as_bytes()).ok()?;
         let wd = unsafe {
-            libc::inotify_add_watch(self.fd, c_parent.as_ptr(), libc::IN_CREATE
-                | libc::IN_MOVED_TO | libc::IN_DELETE | libc::IN_MOVED_FROM)
+            libc::inotify_add_watch(
+                self.fd,
+                c_parent.as_ptr(),
+                libc::IN_CREATE | libc::IN_MOVED_TO | libc::IN_DELETE | libc::IN_MOVED_FROM,
+            )
         };
         (wd >= 0).then_some(wd)
     }

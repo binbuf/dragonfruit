@@ -497,7 +497,8 @@ impl GeneralSource for MockGeneral {
         outcome
     }
 
-    fn set_user_unit_enabled(&mut self, unit: &str, enabled: bool) -> GeneralOutcome {        let outcome = self.outcome();
+    fn set_user_unit_enabled(&mut self, unit: &str, enabled: bool) -> GeneralOutcome {
+        let outcome = self.outcome();
         if outcome.is_applied() {
             self.writes += 1;
             self.last_user_unit = Some((unit.to_owned(), enabled));

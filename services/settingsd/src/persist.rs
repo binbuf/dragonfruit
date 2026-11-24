@@ -543,10 +543,9 @@ mod tests {
 
         let mut settings = Settings::new();
         settings.set("dock.size", Value::Number(0.9)).unwrap();
-        let mut bytes = serde_json::to_vec_pretty(
-            &Persistence::new(path.clone()).document(&settings).unwrap(),
-        )
-        .unwrap();
+        let mut bytes =
+            serde_json::to_vec_pretty(&Persistence::new(path.clone()).document(&settings).unwrap())
+                .unwrap();
 
         // Model the process dying after the temporary file is staged and
         // flushed but before the rename commits.
@@ -791,7 +790,10 @@ mod tests {
         let loaded = load(&path).unwrap();
         assert!(loaded.found);
         assert!(loaded.future, "a newer revision is flagged");
-        assert!(!loaded.migrated, "a newer revision is not downgraded in place");
+        assert!(
+            !loaded.migrated,
+            "a newer revision is not downgraded in place"
+        );
         assert_eq!(loaded.schema, SCHEMA_VERSION + 5);
         assert_eq!(
             loaded.settings.get("dock.size").unwrap(),

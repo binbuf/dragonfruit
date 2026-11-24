@@ -161,10 +161,7 @@ mod tests {
             ));
         }
         assert_eq!(settings, before);
-        assert_eq!(
-            settings.get("dock.size").unwrap(),
-            &Value::Number(0.5)
-        );
+        assert_eq!(settings.get("dock.size").unwrap(), &Value::Number(0.5));
     }
 
     /// T282: a value that matches its type but not its semantic (a colour

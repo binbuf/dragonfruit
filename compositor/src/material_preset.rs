@@ -1106,10 +1106,8 @@ mod tests {
                     ..input(preset, scheme)
                 });
                 let direct = preset == Preset::MenuAttached && scheme == Scheme::Light;
-                let relative = matches!(
-                    preset,
-                    Preset::MenuDetached | Preset::StatusMenu
-                ) && scheme == Scheme::Light;
+                let relative = matches!(preset, Preset::MenuDetached | Preset::StatusMenu)
+                    && scheme == Scheme::Light;
                 assert_eq!(
                     low.slider_applied,
                     direct || relative,

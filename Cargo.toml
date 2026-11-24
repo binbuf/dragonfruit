@@ -33,6 +33,7 @@ members = [
     "services/system-status",
     "services/wallpaperd",
     "tools/dragonfruit-dev",
+    "tools/screencast-producer",
 ]
 
 [workspace.package]

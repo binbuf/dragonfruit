@@ -26,9 +26,11 @@
 //! * [`screenshot`] — the Screenshot's pure model (T-13.3a): the capture
 //!   mode, the request registry and its one-shot completion, and the URI
 //!   normalization the presenter's capture result uses.
-//! * [`stream`] — the ScreenCast stream transport (T-13.4b): the negotiation
-//!   seam that turns a chosen source into a live PipeWire node or names the
-//!   stills-only fallback.
+//! * [`stream`] — the ScreenCast stream transport (T-13.4b, live in T335a): the
+//!   negotiation seam that turns a chosen source into a live PipeWire node or
+//!   names the stills-only fallback, and the [`stream::PipeWireTransport`]
+//!   that asks the compositor for a node through an injected
+//!   [`stream::CompositorWatch`].
 //!
 //! Settings and GlobalShortcuts landed in T-13.1b; FileChooser in T-13.2a;
 //! Screenshot in T-13.3a, ScreenCast in T-13.4a, and the stream negotiation in
@@ -84,8 +86,10 @@ pub use screenshot::{
     ScreenshotResponse, SCREENSHOT_INTERFACE, SCREENSHOT_VERSION,
 };
 pub use stream::{
-    FallbackReason, NegotiatedStream, StillsTransport, StreamMode, StreamNegotiator, StreamSource,
-    StreamTransport, STREAM_FALLBACK_PROPERTY, STREAM_MODE_PROPERTY,
+    AbsentCompositor, CompositorWatch, CreatedNode, FallbackReason, FnWatch, NegotiatedStream,
+    PipeWireTransport, ShellBridgeWatch, StillsTransport, StreamMode, StreamNegotiator,
+    StreamSource, StreamTransport, WatchError, DEFAULT_STREAM_FPS, STREAM_FALLBACK_PROPERTY,
+    STREAM_MODE_PROPERTY,
 };
 
 #[cfg(test)]

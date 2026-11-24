@@ -202,7 +202,8 @@ impl HotCornerDetector {
 
     /// Whether the corner's required modifier is currently held.
     fn modifier_held(&self, corner: HotCorner) -> bool {
-        self.modifiers.contains(self.config.modifiers[corner.index()])
+        self.modifiers
+            .contains(self.config.modifiers[corner.index()])
     }
 
     /// True while a corner is occupied, assigned, and waiting out its
@@ -393,7 +394,10 @@ mod tests {
     #[test]
     fn a_modifier_parse_rejects_unknown_roles() {
         assert_eq!(parse_hot_corner_modifier("none"), Some(RoleMods::EMPTY));
-        assert_eq!(parse_hot_corner_modifier("command"), Some(RoleMods::COMMAND));
+        assert_eq!(
+            parse_hot_corner_modifier("command"),
+            Some(RoleMods::COMMAND)
+        );
         assert_eq!(parse_hot_corner_modifier("option"), Some(RoleMods::OPTION));
         assert_eq!(parse_hot_corner_modifier("hyper"), None);
     }

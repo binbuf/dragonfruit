@@ -1,0 +1,21 @@
+[package]
+name = "dragonfruit-screencast-producer"
+description = "The live ScreenCast host: owns a PipeWire video node and pumps the compositor's frames into it (T335a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "dragonfruit-screencast-producer"
+path = "src/main.rs"
+
+# One file, no dependencies. The host is a deliberately narrow, disposable
+# process (see docs/design/adr/0344-screencast-producer-process-boundary.md):
+# it reads one encoded frame per SOCK_SEQPACKET packet from the compositor and
+# registers a Video/Source node in the PipeWire graph through `pw-cli`. A lib
+# target lets the packet and argument codecs be unit-tested without a graph.
+[lib]
+name = "dragonfruit_screencast_producer"
+path = "src/lib.rs"

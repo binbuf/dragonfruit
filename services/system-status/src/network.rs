@@ -49,9 +49,8 @@ mod tests {
     use dragonfruit_networkmanager::{MockNetworkManager, NetworkManagerData};
 
     fn wifi() -> NetworkManagerAdapter<MockNetworkManager> {
-        let mut adapter = NetworkManagerAdapter::new(MockNetworkManager::present(
-            NetworkManagerData::default(),
-        ));
+        let mut adapter =
+            NetworkManagerAdapter::new(MockNetworkManager::present(NetworkManagerData::default()));
         adapter.refresh();
         adapter
     }

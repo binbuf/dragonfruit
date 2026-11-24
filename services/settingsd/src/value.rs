@@ -115,15 +115,10 @@ pub enum SettingsError {
     },
     /// A double is NaN or infinite (T282). Every range comparison is false for
     /// NaN, so this is checked before the bounds and never reaches persistence.
-    NonFinite {
-        key: String,
-    },
+    NonFinite { key: String },
     /// A value matched its type but failed a semantic rule: a malformed time,
     /// colour, path, list element, or an over-long message (T282).
-    Invalid {
-        key: String,
-        message: String,
-    },
+    Invalid { key: String, message: String },
 }
 
 impl fmt::Display for SettingsError {

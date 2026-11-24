@@ -992,8 +992,10 @@ pub mod glass {
                     pub const ALPHA_75: f32 = 0.05882353_f32;
                     pub const ALPHA_90: f32 = 0.00784314_f32;
                     pub const ALPHA_95: f32 = 0.0_f32;
-                    pub const ADAPT_LUMA: [f32; 5] = [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
-                    pub const ADAPT_SCALE: [f32; 5] = [1.0_f32, 1.06_f32, 0.91_f32, 0.48_f32, 0.0_f32];
+                    pub const ADAPT_LUMA: [f32; 5] =
+                        [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
+                    pub const ADAPT_SCALE: [f32; 5] =
+                        [1.0_f32, 1.06_f32, 0.91_f32, 0.48_f32, 0.0_f32];
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -1021,8 +1023,10 @@ pub mod glass {
                     pub const ALPHA_75: f32 = 0.0626_f32;
                     pub const ALPHA_90: f32 = 0.00835_f32;
                     pub const ALPHA_95: f32 = 0.0_f32;
-                    pub const ADAPT_LUMA: [f32; 5] = [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
-                    pub const ADAPT_SCALE: [f32; 5] = [0.06_f32, 0.14_f32, 0.26026_f32, 0.13728_f32, 0.0_f32];
+                    pub const ADAPT_LUMA: [f32; 5] =
+                        [0.0_f32, 0.25_f32, 0.5_f32, 0.78_f32, 1.0_f32];
+                    pub const ADAPT_SCALE: [f32; 5] =
+                        [0.06_f32, 0.14_f32, 0.26026_f32, 0.13728_f32, 0.0_f32];
                 }
                 pub const BLUR: f32 = 0.0_f32;
                 pub const EDGE: f32 = 0.0_f32;
@@ -1775,7 +1779,12 @@ pub mod motion {
     };
     pub const DOCK_HOVER: Motion = Motion {
         duration_ms: 135_u32,
-        curve: [0.3333333333333333_f32, 0.0_f32, 0.6666666666666666_f32, 1.0_f32],
+        curve: [
+            0.3333333333333333_f32,
+            0.0_f32,
+            0.6666666666666666_f32,
+            1.0_f32,
+        ],
         reduced_duration_ms: 0_u32,
     };
     pub const DOCK_MAGNIFY_TRACK: Motion = Motion {
@@ -1800,7 +1809,12 @@ pub mod motion {
     };
     pub const WINDOW_GENIE: Motion = Motion {
         duration_ms: 450_u32,
-        curve: [0.3333333333333333_f32, 0.0_f32, 0.6666666666666666_f32, 1.0_f32],
+        curve: [
+            0.3333333333333333_f32,
+            0.0_f32,
+            0.6666666666666666_f32,
+            1.0_f32,
+        ],
         reduced_duration_ms: 0_u32,
     };
     pub const MISSION_CONTROL: Motion = Motion {

@@ -99,7 +99,10 @@ fn light_detached_and_status_follow_the_attached_curve_relatively() {
 fn dark_attached_and_detached_are_distinct() {
     let attached = resolve(replacement(Preset::MenuAttached, Scheme::Dark));
     let detached = resolve(replacement(Preset::MenuDetached, Scheme::Dark));
-    assert_ne!((attached.alpha, attached.tint), (detached.alpha, detached.tint));
+    assert_ne!(
+        (attached.alpha, attached.tint),
+        (detached.alpha, detached.tint)
+    );
 }
 
 #[test]
@@ -146,7 +149,10 @@ fn veil_is_explicit_and_unsupported_sampled_paths_are_safe() {
         assert!(resolved.alpha >= 0.9);
         assert_eq!(resolved.blur, 0.0);
     }
-    assert_eq!(safe_solid(Scheme::Light, "unknown-preset").render_mode, RenderMode::Solid);
+    assert_eq!(
+        safe_solid(Scheme::Light, "unknown-preset").render_mode,
+        RenderMode::Solid
+    );
 }
 
 #[test]

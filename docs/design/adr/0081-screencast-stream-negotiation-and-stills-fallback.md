@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (T-13.4b).
+Accepted (T-13.4b). Partly superseded by
+[ADR 0344](0344-screencast-producer-process-boundary.md) (T335a): decision 5
+is closed — a live producer now exists — and the transport seam, node
+lifecycle, and picker note now carry the live mode as well.
 
 ## Context
 
@@ -48,6 +51,13 @@ gap is therefore timeboxed and documented, not hidden.
 5. **The live producer is not built in this slice.** No PipeWire node is
    created; the stills mode is the shipped answer and the gap is recorded. The
    fallback stops being selected the day a `StreamTransport` can create a node.
+
+   *Superseded by [ADR 0344](0344-screencast-producer-process-boundary.md)
+   (T335a).* A host tool (`dragonfruit-screencast-producer`) now owns a
+   `Video/Source` node per stream, the compositor's capture pass feeds it, and
+   `portal::stream::PipeWireTransport` reports `pipewire` for every creation it
+   can satisfy. The stills fallback is selected only when the host stack or the
+   bridge is absent, and still carries `df_fallback`.
 
 ## Consequences
 

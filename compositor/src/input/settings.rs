@@ -17,9 +17,7 @@ use super::keymap::ModifierRole;
 use super::shortcuts::Shortcut;
 use crate::pointer_policy::PointerKind;
 
-pub use crate::pointer_policy::{
-    AccelProfile, PointerSettings, ScrollMethod, SecondaryClick,
-};
+pub use crate::pointer_policy::{AccelProfile, PointerSettings, ScrollMethod, SecondaryClick};
 
 /// Keyboard repeat settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -205,9 +205,7 @@ fn alternative_for(spec: &KeySpec) -> Value {
             }
             KeySemantic::DayList => Value::TextList(vec!["mon".to_owned(), "fri".to_owned()]),
             KeySemantic::LayoutList => Value::TextList(vec!["us".to_owned(), "de".to_owned()]),
-            KeySemantic::ReplacementList => {
-                Value::TextList(vec!["teh\tthe".to_owned()])
-            }
+            KeySemantic::ReplacementList => Value::TextList(vec!["teh\tthe".to_owned()]),
             _ => Value::TextList(vec!["a.desktop".to_owned(), "b.desktop".to_owned()]),
         },
     }
@@ -595,8 +593,7 @@ fn a_failed_persist_surfaces_memory_only_and_keeps_the_value() {
         .member("PersistenceFailed")
         .expect("valid member")
         .build();
-    let mut signals =
-        MessageIterator::for_match_rule(rule, &client, Some(4)).expect("subscribe");
+    let mut signals = MessageIterator::for_match_rule(rule, &client, Some(4)).expect("subscribe");
 
     set(&client, "dock.autohide", &Value::Bool(true)).expect("the in-memory write applies");
     assert_eq!(

@@ -573,7 +573,13 @@ mod tests {
         assert_eq!(view["login"]["extensions"].as_array().unwrap().len(), 1);
         assert_eq!(view["sharing"]["installedCount"], 3);
         assert_eq!(view["sharing"]["hostname"], "dragon");
-        assert_eq!(view["sharing"]["services"][1]["details"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            view["sharing"]["services"][1]["details"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
         assert_eq!(view["backup"]["backend"], "timeshift");
         assert_eq!(view["storage"]["categories"].as_array().unwrap().len(), 3);
         assert_eq!(view["startup"]["bootMode"], "UEFI");
@@ -612,8 +618,14 @@ mod tests {
         );
         assert_eq!(host.run_backup("/mnt/backup")["outcome"], "applied");
         assert_eq!(host.open_restore()["outcome"], "applied");
-        assert_eq!(host.add_autostart("org.example.Notes")["outcome"], "applied");
-        assert_eq!(host.remove_autostart("org.example.Agent")["outcome"], "applied");
+        assert_eq!(
+            host.add_autostart("org.example.Notes")["outcome"],
+            "applied"
+        );
+        assert_eq!(
+            host.remove_autostart("org.example.Agent")["outcome"],
+            "applied"
+        );
         assert_eq!(host.set_hostname("dragonfruit")["outcome"], "applied");
         assert_eq!(host.restart_system()["outcome"], "applied");
         assert_eq!(host.adapter().source().writes(), 10);

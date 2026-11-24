@@ -755,6 +755,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-screencast-producer"
+version = "0.3.0"
+
+[[package]]
 name = "dragonfruit-session"
 version = "0.3.0"
 dependencies = [

@@ -17,8 +17,15 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use std::sync::{Arc, Mutex};
+
 use xdg_desktop_portal_dragonfruit::interfaces::SCREENCAST_INTERFACE;
 use xdg_desktop_portal_dragonfruit::model::{DBUS_NAME, DBUS_PATH, STATUS_INTERFACE};
+use xdg_desktop_portal_dragonfruit::screencast::{ScreenCastRegistry, ScreenCastSelection};
+use xdg_desktop_portal_dragonfruit::stream::{
+    CompositorWatch, CreateFn, CreatedNode, FallbackReason, FnWatch, PipeWireTransport, StreamMode,
+    StreamSource, StreamTransport, WatchError,
+};
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::{ObjectPath, OwnedValue};
 use zbus::MatchRule;
@@ -558,4 +565,97 @@ fn an_empty_selection_is_an_error_response() {
             vec![("monitor:1".to_owned(), 1u32)],
         )
     ));
+}
+
+// --- T335a: the live transport --------------------------------------------
+
+/// A live transport over a scripted compositor: it hands out node ids and
+/// records the tokens it released.
+fn live_transport(start: u32) -> Box<dyn StreamTransport> {
+    let next = Arc::new(Mutex::new(start));
+    let create: CreateFn = {
+        let next = next.clone();
+        Arc::new(move |_source: &StreamSource| {
+            let mut node = next.lock().unwrap();
+            let id = *node;
+            *node += 1;
+            Ok(id)
+        })
+    };
+    Box::new(PipeWireTransport::new(Box::new(FnWatch::new(create))))
+}
+
+/// The registry path a portal `Start`/`Close` drives, over the live
+/// transport: `Start` returns a PipeWire node id and the mode, and closing the
+/// session releases the node. This is the T335a transport test at the
+/// acceptance level: the D-Bus backend serves the same registry, and the
+/// shipped backend without a shell bridge is covered by the fallback test.
+#[test]
+fn the_live_transport_fills_the_start_result_and_releases_the_node_on_close() {
+    let mut registry = ScreenCastRegistry::with_transport(live_transport(77));
+    assert_eq!(registry.stream_mode(), StreamMode::PipeWire);
+    registry.create_session("org.example.App", "/s").unwrap();
+    let request = xdg_desktop_portal_dragonfruit::screencast::ScreenCastRequest::new(
+        "/r",
+        "/s",
+        "org.example.App",
+        &HashMap::new(),
+    );
+    registry.begin_select(request).expect("begin_select");
+    registry
+        .complete("/r", vec![ScreenCastSelection::monitor("monitor:DP-1")])
+        .expect("complete");
+    let response = registry.start("/s").expect("start");
+    let streams = response.streams();
+    assert_eq!(streams.len(), 1);
+    assert_eq!(streams[0].node_id, 77, "the live node id reaches the wire");
+    assert_eq!(streams[0].mode, StreamMode::PipeWire);
+    assert_eq!(streams[0].fallback, None);
+    assert!(registry.close_session("/s"));
+}
+
+/// A live transport whose compositor refuses still answers the D-Bus flow with
+/// the named stills fallback, never a silent success.
+#[test]
+fn a_refusing_compositor_is_the_named_stills_fallback() {
+    let mut transport = PipeWireTransport::unavailable();
+    assert_eq!(
+        transport
+            .create(&StreamSource {
+                id: "monitor:DP-1".to_owned(),
+                source_type: xdg_desktop_portal_dragonfruit::screencast::SourceType::Monitor,
+                cursor_mode: 1,
+            })
+            .expect_err("no compositor"),
+        FallbackReason::ProducerUnavailable
+    );
+}
+
+/// A watch that times out or is missing is an error, never a placeholder id
+/// (the shape T335b's shell bridge must also obey).
+struct SilentWatch;
+
+impl CompositorWatch for SilentWatch {
+    fn create(
+        &mut self,
+        _token: &str,
+        _source: &StreamSource,
+        _fps: u32,
+    ) -> Result<CreatedNode, WatchError> {
+        Err(WatchError("the shell bridge did not answer".to_owned()))
+    }
+
+    fn destroy(&mut self, _token: &str) {}
+}
+
+#[test]
+fn a_silent_compositor_never_becomes_a_fake_node() {
+    let mut transport = PipeWireTransport::new(Box::new(SilentWatch));
+    assert!(transport
+        .create(&StreamSource {
+            id: "window:7".to_owned(),
+            source_type: xdg_desktop_portal_dragonfruit::screencast::SourceType::Window,
+            cursor_mode: 1,
+        })
+        .is_err());
 }

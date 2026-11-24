@@ -361,11 +361,7 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
         ),
         // T313: Cmd+Shift+Q ends the session. The shell opens the same
         // confirmation as the system menu's Log Out row before calling logind.
-        Shortcut::new(
-            command.union(shift),
-            keysyms::KEY_Q,
-            InputAction::LogOut,
-        ),
+        Shortcut::new(command.union(shift), keysyms::KEY_Q, InputAction::LogOut),
         // T314: Ctrl+Alt+Esc is the last-resort manual shell restart. The
         // compositor drops the trusted shell connection and systemd starts a
         // fresh one against the reissued launch token. It is an exact chord;

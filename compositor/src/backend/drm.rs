@@ -2409,7 +2409,22 @@ fn render_surface(
             scale,
             capture_rect,
         );
+        // T335a: a live ScreenCast stream on this output takes the same
+        // offscreen readback (one capture pass per frame, shared).
+        crate::backend::nested::feed_screencast(state, &surface.output, &result);
         crate::backend::nested::resolve_capture(state, result);
+    } else if !state.screencast_tokens_for(&surface.output).is_empty() {
+        // A live stream with no screenshot pending gets its own readback of
+        // the same element list; the scanout frame itself is untouched.
+        let result = crate::backend::nested::capture_frame(
+            &mut renderer,
+            &custom_elements,
+            state,
+            &surface.output,
+            scale,
+            None,
+        );
+        crate::backend::nested::feed_screencast(state, &surface.output, &result);
     }
 
     let composite_start = Instant::now();

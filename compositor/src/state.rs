@@ -121,6 +121,7 @@ use crate::overview::grid::{
 use crate::overview::reveal::reveal_frame;
 use crate::overview::switcher::preview_area;
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
+use crate::screencast_producer::ScreencastProducer;
 use crate::shell::ShellProtocolState;
 use crate::suspend::SuspendModel;
 use crate::wallpaper::{slide_offset, slide_slots, WallpaperCache, WallpaperSlot};
@@ -1852,6 +1853,10 @@ pub struct DfState {
     /// is written to the requested path. Capture is portal-presenter-only:
     /// this seam is reachable only by the authenticated shell.
     pub pending_capture: Option<PendingCapture>,
+    /// The live ScreenCast producer (T335a): every stream the portal asked
+    /// this compositor to publish as a PipeWire video node, fed from the same
+    /// capture pass [`DfState::pending_capture`] uses.
+    pub screencast: ScreencastProducer,
 
     // --- private shell protocols (T-07) -------------------------------------
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
@@ -2134,6 +2139,7 @@ impl DfState {
             minimize_region: None,
             minimize_targets: HashMap::new(),
             pending_capture: None,
+            screencast: ScreencastProducer::new(),
             shell,
             material_pass: BackdropPass::new(),
             scene_pass: SceneTransformPass::new(),
@@ -5410,6 +5416,31 @@ impl DfState {
     /// produced (or failed to produce) the frame.
     pub fn take_capture(&mut self) -> Option<PendingCapture> {
         self.pending_capture.take()
+    }
+
+    /// The live ScreenCast streams this output must feed this frame
+    /// (T335a). A stream is fed from the capture pass every frame the output
+    /// renders: the producer throttles to the stream's rate, so a 60 Hz output
+    /// feeding a 30 fps stream offers every other frame and never more.
+    ///
+    /// Only the stream's own output feeds it: a second monitor's frame must
+    /// never reach a stream that shares the first.
+    pub fn screencast_tokens_for(&self, output: &smithay::output::Output) -> Vec<u64> {
+        self.screencast.tokens_for_output(output.name().as_str())
+    }
+
+    /// Offer one frame read back from the capture pass to every stream this
+    /// output feeds. The readback is the whole output; the producer re-crops
+    /// it to each stream's geometry and throttles each stream to its own
+    /// rate. A stream fed by another output is untouched.
+    pub fn offer_screencast_image(
+        &mut self,
+        output: &smithay::output::Output,
+        image: &image::RgbaImage,
+    ) -> usize {
+        let now = Instant::now();
+        self.screencast
+            .offer_image_to_output(output.name().as_str(), image, now)
     }
 
     /// The material the compositor actually applies to chrome (P1). This is

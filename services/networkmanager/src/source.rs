@@ -548,11 +548,7 @@ impl MockNetworkManager {
             });
         }
         let device = &mut data.devices[0];
-        let ap_path = if let Some(ap) = device
-            .access_points
-            .iter_mut()
-            .find(|ap| ap.ssid == ssid)
-        {
+        let ap_path = if let Some(ap) = device.access_points.iter_mut().find(|ap| ap.ssid == ssid) {
             ap.path.clone()
         } else {
             let path = format!("/mock/ap/{ssid}");
@@ -716,7 +712,8 @@ impl NetworkManagerSource for MockNetworkManager {
             return WriteOutcome::Absent;
         };
         let before = data.connections.len();
-        data.connections.retain(|connection| connection.uuid != uuid);
+        data.connections
+            .retain(|connection| connection.uuid != uuid);
         data.active.retain(|active| active.uuid != uuid);
         if data.connections.len() == before {
             return WriteOutcome::Failed(AdapterError::new(format!(

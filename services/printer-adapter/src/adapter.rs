@@ -355,9 +355,7 @@ mod tests {
         adapter.refresh();
 
         assert!(adapter.print_test_page("Canon_MF230").is_applied());
-        assert!(adapter
-            .set_printer_shared("Canon_MF230", true)
-            .is_applied());
+        assert!(adapter.set_printer_shared("Canon_MF230", true).is_applied());
         assert!(adapter.open_scanner("epson2:net:127.0.0.1").is_applied());
         assert!(adapter.remove_printer("Canon_MF230").is_applied());
 

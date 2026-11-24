@@ -264,7 +264,10 @@ impl OptimisticModel {
         // `Rescan` (the folder inode was replaced, T333): the old tree's rows
         // are gone, so every pending edit in this folder snapped back above;
         // the receiver must re-list.
-        let rescanned = batch.kinds.iter().any(|kind| matches!(kind, WatchEventKind::Rescan));
+        let rescanned = batch
+            .kinds
+            .iter()
+            .any(|kind| matches!(kind, WatchEventKind::Rescan));
         let applied = self.model.apply_watch_batch(batch);
         if rescanned {
             self.model.note_removal();

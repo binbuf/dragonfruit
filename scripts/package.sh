@@ -211,6 +211,7 @@ required=(
     usr/bin/dragonfruit-system-status
     usr/bin/xdg-desktop-portal-dragonfruit
     usr/bin/dragonfruit-pam-helper
+    usr/bin/dragonfruit-screencast-producer
     usr/bin/dragonfruit-files
     usr/bin/dragonfruit-settings
     usr/lib/systemd/user/dragonfruit-session.target

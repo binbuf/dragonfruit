@@ -1347,6 +1347,17 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     scale,
                     capture_rect,
                 ));
+            } else if !state.screencast_tokens_for(&output).is_empty() {
+                // T335a: a live ScreenCast stream on this output is fed from
+                // the same capture seam, once per frame the output renders.
+                // The producer throttles to the stream's own rate and
+                // re-crops; there is no second render and no per-frame
+                // screencopy.
+                if let Ok((image, _)) =
+                    capture_frame(renderer, &frame_elements, state, &output, scale, None)
+                {
+                    state.offer_screencast_image(&output, &image);
+                }
             }
             let composite_start = Instant::now();
             data.gpu_timer.begin(renderer, GpuPass::Composite, frame);
@@ -1379,8 +1390,10 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         Ok(result) => result,
         Err(err) => {
             // Answer a pending capture even though the live frame failed, so
-            // the shell's portal presenter never hangs.
+            // the shell's portal presenter never hangs, and feed a live stream
+            // from the same readback (T335a).
             if let Some(result) = captured.take() {
+                feed_screencast(state, &output, &result);
                 resolve_capture(state, result);
             }
             return Err(format!("nested render failed: {err:?}"));
@@ -1388,8 +1401,11 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     };
 
     // The capture is a readback of the offscreen pass, independent of the
-    // host swap; answer it before the frame leaves the main thread.
+    // host swap; answer it before the frame leaves the main thread. A live
+    // ScreenCast stream on this output takes the same readback (T335a): one
+    // capture pass per frame, shared by the screenshot and every stream.
     if let Some(result) = captured.take() {
+        feed_screencast(state, &output, &result);
         resolve_capture(state, result);
     }
 
@@ -2331,6 +2347,24 @@ where
         }
     };
     Ok((image, output.name()))
+}
+
+/// Feed every live ScreenCast stream on `output` from one capture readback
+/// (T335a). The producer re-crops each stream to its own geometry and applies
+/// the stream's rate, so an unchanged desktop costs no socket write and a
+/// stream never sees more frames than it asked for. Shared with the DRM
+/// backend.
+pub(crate) fn feed_screencast(
+    state: &mut crate::state::DfState,
+    output: &smithay::output::Output,
+    result: &Result<(image::RgbaImage, String), String>,
+) {
+    if state.screencast_tokens_for(output).is_empty() {
+        return;
+    }
+    if let Ok((image, _)) = result {
+        state.offer_screencast_image(output, image);
+    }
 }
 
 /// Write a produced capture to the path the shell supplied and reply, or

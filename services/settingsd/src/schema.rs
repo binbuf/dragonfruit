@@ -215,8 +215,7 @@ impl KeySemantic {
     ];
 
     /// The weekday ids the Focus schedule accepts.
-    pub const DAYS: &'static [&'static str] =
-        &["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    pub const DAYS: &'static [&'static str] = &["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 }
 
 /// A 24-hour wall-clock time, `HH:MM` (00:00 through 23:59).
@@ -250,10 +249,7 @@ fn check_clean_text(text: &str, max: usize, key: &str) -> Result<(), SettingsErr
             message: format!("is longer than {max} characters"),
         });
     }
-    if text
-        .chars()
-        .any(|c| c == '\0' || c == '\n' || c == '\r')
-    {
+    if text.chars().any(|c| c == '\0' || c == '\n' || c == '\r') {
         return Err(SettingsError::Invalid {
             key: key.to_owned(),
             message: "contains a control character".to_owned(),
@@ -434,9 +430,9 @@ impl KeySpec {
                 for item in items {
                     let valid = !item.is_empty()
                         && item.len() <= 32
-                        && item
-                            .chars()
-                            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-' | '(' | ')'));
+                        && item.chars().all(|c| {
+                            c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-' | '(' | ')')
+                        });
                     if !valid {
                         return Err(self.invalid(format!("invalid keyboard layout {item:?}")));
                     }
@@ -4505,15 +4501,9 @@ mod tests {
             assert_eq!(spec.consumer, "shell/MenuBar status row", "{key}");
             assert_eq!(spec.since, 24, "{key}");
             assert!(spec.validate(&Value::Bool(false)).is_ok(), "{key}");
-            assert!(
-                spec.validate(&Value::Text("on".into())).is_err(),
-                "{key}"
-            );
+            assert!(spec.validate(&Value::Text("on".into())).is_err(), "{key}");
         }
-        assert_eq!(
-            spec("menu.control.search").map(|spec| spec.since),
-            Some(21)
-        );
+        assert_eq!(spec("menu.control.search").map(|spec| spec.since), Some(21));
     }
 
     /// The OS-menu glyph choice is a new Menu key in revision 26. The default
@@ -5352,10 +5342,17 @@ mod tests {
             }
         }
 
-        for key in ["appearance.accent", "appearance.highlight", "appearance.folderColor"] {
+        for key in [
+            "appearance.accent",
+            "appearance.highlight",
+            "appearance.folderColor",
+        ] {
             let spec = spec(key).unwrap();
             assert!(spec.validate(&Value::Text(String::new())).is_ok(), "{key}");
-            assert!(spec.validate(&Value::Text("#4A7DFF".into())).is_ok(), "{key}");
+            assert!(
+                spec.validate(&Value::Text("#4A7DFF".into())).is_ok(),
+                "{key}"
+            );
             for bad in ["4a7dff", "#4a7df", "#4a7dfff", "#gggggg", "red"] {
                 assert!(
                     matches!(
@@ -5375,7 +5372,10 @@ mod tests {
         ] {
             let spec = spec(key).unwrap();
             assert!(spec.validate(&Value::Text(String::new())).is_ok(), "{key}");
-            assert!(spec.validate(&Value::Text("/home/a/b.png".into())).is_ok(), "{key}");
+            assert!(
+                spec.validate(&Value::Text("/home/a/b.png".into())).is_ok(),
+                "{key}"
+            );
             for bad in ["relative/path.png", "./x", "~/x"] {
                 assert!(
                     matches!(
@@ -5486,7 +5486,10 @@ mod tests {
                 spec.consumer
             );
         }
-        assert!(stored > 0, "the schema must label at least one stored-only key");
+        assert!(
+            stored > 0,
+            "the schema must label at least one stored-only key"
+        );
         // The two T281 Linux additions and the analytics preference stay
         // explicitly stored-only until their consumers land.
         for key in [

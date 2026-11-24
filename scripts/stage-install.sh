@@ -160,6 +160,7 @@ RUST_BINS=(
     dragonfruit-system-status
     xdg-desktop-portal-dragonfruit
     dragonfruit-pam-helper
+    dragonfruit-screencast-producer
 )
 QT_BINS=(
     dragonfruit-shell
