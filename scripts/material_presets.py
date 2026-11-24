@@ -378,6 +378,11 @@ def validate(data: dict) -> list[str]:
                 _number(entry, "cornerLensTail", scheme_path, errors, low=1.0, high=128.0)
             if name == "dock":
                 _number(entry, "toneWeight", scheme_path, errors, low=0.0, high=1.0)
+                # The along-axis reach is a separate measured-fit token. It is
+                # deliberately not the 50 pt depth influence radius: reusing the
+                # depth token made the end lens spill 100-150 pt along the long
+                # edges and onto the top/bottom flats (ADR 0343).
+                _number(entry, "cornerLensAlong", scheme_path, errors, low=1.0, high=64.0)
 
     # The measured File anchors are the light attached-menu calibration. A
     # mismatch here would silently move the slider midpoint off the measured

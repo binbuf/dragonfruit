@@ -182,6 +182,7 @@ QtObject {
                 cornerLensPeak: 0,
                 cornerLensDistance: 0,
                 cornerLensTail: 0,
+                cornerLensAlong: 0,
                 toneWeight: 0,
                 materialize: 1,
                 foreground: 0,
@@ -206,6 +207,7 @@ QtObject {
         var cornerLensPeak = 0;
         var cornerLensDistance = 0;
         var cornerLensTail = 0;
+        var cornerLensAlong = 0;
         var toneWeight = 0;
         var materialize = 1;
         var foreground;
@@ -235,6 +237,8 @@ QtObject {
             cornerLensDistance = entry.cornerLensDistance !== undefined
                 ? entry.cornerLensDistance : 0;
             cornerLensTail = entry.cornerLensTail !== undefined ? entry.cornerLensTail : 0;
+            cornerLensAlong = entry.cornerLensAlong !== undefined
+                ? entry.cornerLensAlong : 0;
             toneWeight = entry.toneWeight !== undefined ? entry.toneWeight : 0;
             foreground = entry.foreground;
             confidence = entry.confidence;
@@ -386,6 +390,7 @@ QtObject {
             cornerLensPeak: cornerLensPeak,
             cornerLensDistance: cornerLensDistance,
             cornerLensTail: cornerLensTail,
+            cornerLensAlong: cornerLensAlong,
             toneWeight: toneWeight,
             materialize: materialize,
             foreground: foreground,

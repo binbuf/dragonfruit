@@ -250,7 +250,8 @@ class GPU:
                        lens_falloff=24 * scale, tint_scale=1, flat_band=float(flat_band),
                        flat_alpha=band, rim_peak=.397, rim_half_width=scale,
                        rim_tail=6 * scale, corner_peak=peak * scale,
-                       corner_distance=15 * scale, corner_tail=50 * scale, tint=0,
+                       corner_distance=15 * scale, corner_tail=50 * scale,
+                       corner_along=12 * scale, tint=0,
                        coverage_aa=coverage_aa)
         for name, value in scalars.items():
             self.uniform(name, value)
@@ -482,6 +483,59 @@ class GlassShaderTests(unittest.TestCase):
         # The profile is one smooth band, not two narrow diagonal spikes.
         self.assertLess(max(values) - min(values), 40,
                         f"short end is not a smooth band: {values}")
+
+    def test_corner_horizontal_matches_the_measured_profile(self):
+        # The reference profile is the horizontal displacement of a vertical
+        # grid line 17.5 pt from the left edge, inside the 26.9 pt corner
+        # radius: 4 / 8.5 / 9.6 pt at 5 / 10 / 15 pt inside the top rim.
+        # A horizontal ramp makes the sampled x coordinate readable in the
+        # red-green difference, so the lens displacement is direct.
+        w, h, scale = 966, 156, 2
+        lens, _ = self.gpu.render(w, h, scale, squircle=4.0, ramp=True,
+                                  flat_alpha=0.0, tone_weight=0.0,
+                                  coverage_aa=1.0)
+        plain, _ = self.gpu.render(w, h, scale, squircle=4.0, ramp=True,
+                                   flat_alpha=0.0, tone_weight=0.0,
+                                   coverage_aa=1.0, peak=0)
+        for depth, target in ((5, 4.0), (10, 8.5), (15, 9.6)):
+            with self.subTest(depth_pt=depth):
+                x = round(17.5 * scale)
+                y = round(depth * scale)
+                a = ((h - 1 - y) * w + x) * 4
+                self.assertGreaterEqual(lens[a + 3], 250)
+                # The lens and plain renders share the rim; their red-channel
+                # difference is the ramp displacement.
+                displacement = abs(lens[a] - plain[a]) * (w - 1) / 255.0 / scale
+                # The 8-bit ramp quantises the displacement by ~0.5 pt; the
+                # model profile itself is pinned to +/-0.7 pt in dock_optics.rs.
+                self.assertLessEqual(
+                    abs(displacement - target), 1.1,
+                    f"corner horizontal at {depth} pt is {displacement:.2f}, "
+                    f"expected {target}")
+
+    def test_flat_edge_near_the_end_keeps_the_measured_flat(self):
+        # The 50 pt depth token is not an along-axis reach. At 15 pt inside
+        # the top edge and 50 pt from the corner centre the old model spilled
+        # 3.7 pt vertically; the measured flat is ~0.5 pt. Use the green
+        # channel's vertical gradient as the displacement proxy.
+        w, h, scale = 966, 156, 2
+        lens, _ = self.gpu.render(w, h, scale, squircle=4.0)
+        plain, _ = self.gpu.render(w, h, scale, squircle=4.0, peak=0)
+        x = round((483 - 27 - 50) * scale)
+        y = round(15 * scale)
+        a = ((h - 1 - y) * w + x) * 4
+        delta = abs(lens[a + 1] - plain[a + 1])
+        self.assertLessEqual(
+            delta, 20,
+            f"flat edge at 50 pt from the corner centre spills {delta}/255")
+
+        # The sharp caustic must not run along the top edge at that x either.
+        out, _ = self.gpu.render(w, h, scale, bevel=True, solid=True,
+                                 flat_alpha=0.0, squircle=4.0)
+        near = ((h - 1 - round(10 * scale)) * w + x) * 4 + 3
+        cap = ((h - 1 - round(10 * scale)) * w + round((483 - 27) * scale)) * 4 + 3
+        self.assertGreater(out[cap], 180, "the short-end caustic band is missing")
+        self.assertEqual(out[near], 0, "the caustic band spills along the long edge")
 
     def test_bevel_overlay_is_a_narrow_short_end_band(self):
         # The sharp overlay is the measured short-end clear/caustic band:

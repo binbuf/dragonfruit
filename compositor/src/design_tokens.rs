@@ -920,7 +920,7 @@ pub mod glass {
             pub const SLIDER: &str = "none";
             pub mod light {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur sigma 3.86pt first fit";
+                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner horizontal lens 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left corner; newer window-edge study 6.34/9.55pt at 6/9pt OPEN), 50pt depth influence, 12pt along-axis reach, ~0.5pt on the long flats; blur sigma 3.86pt first fit";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub const TONE_WEIGHT: f32 = 1.0_f32;
                 pub mod calibration {
@@ -938,11 +938,12 @@ pub mod glass {
                 pub const CORNER_LENS_PEAK: f32 = 13.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
                 pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
+                pub const CORNER_LENS_ALONG: f32 = 12.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
             pub mod dark {
                 pub const CONFIDENCE: &str = "measured";
-                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur and rim reuse the light fit because the dark rim was not separately fitted";
+                pub const PROVENANCE: &str = "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner horizontal lens 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left corner; newer window-edge study 6.34/9.55pt at 6/9pt OPEN), 50pt depth influence, 12pt along-axis reach, ~0.5pt on the long flats; blur and rim reuse the light fit because the dark rim was not separately fitted";
                 pub const COLOUR_SPACE: &str = "srgb";
                 pub const TONE_WEIGHT: f32 = 1.0_f32;
                 pub mod calibration {
@@ -960,6 +961,7 @@ pub mod glass {
                 pub const CORNER_LENS_PEAK: f32 = 13.6_f32;
                 pub const CORNER_LENS_DISTANCE: f32 = 15.0_f32;
                 pub const CORNER_LENS_TAIL: f32 = 50.0_f32;
+                pub const CORNER_LENS_ALONG: f32 = 12.0_f32;
                 pub const FOREGROUND: f32 = 0.0_f32;
             }
         }

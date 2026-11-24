@@ -40,6 +40,9 @@ RIM_TAIL = 6.0
 CORNER_PEAK = 9.6
 CORNER_DISTANCE = 15.0
 CORNER_TAIL = 50.0
+# The end lens fades along the long axis over this separate reach; the 50 pt
+# `CORNER_TAIL` is the depth/bezel influence radius (ADR 0343).
+CORNER_ALONG = 12.0
 SHARP_FRACTION = 0.192
 BLUR_SIGMA_PT = 3.86
 LOW_FREQUENCY_TRANSMISSION = 0.777
@@ -390,6 +393,7 @@ def score(capture: Path, query: Path, out: Path,
         "corner_lens_model_pt": CORNER_PEAK,
         "corner_lens_peak_distance_pt": CORNER_DISTANCE,
         "corner_lens_tail_pt": CORNER_TAIL,
+        "corner_lens_along_pt": CORNER_ALONG,
         "status": "pass" if flat_edge_delta is not None and flat_edge_delta < 1.0
         else "fail",
     }
@@ -418,6 +422,7 @@ def score(capture: Path, query: Path, out: Path,
             "rim_tail_pt": RIM_HALF_WIDTH * math.log(100.0) / math.log(2.0),
             "corner_peak": model_corner(CORNER_DISTANCE),
             "corner_tail_pt": CORNER_TAIL,
+            "corner_along_pt": CORNER_ALONG,
         },
     }
     if not sampled:
@@ -582,8 +587,12 @@ def write_t235a_report(outdir: Path) -> None:
         "peak (+0.397 ± 0.02 on top/bottom/left/right), half-amplitude",
         "(1.0 ± 0.25 pt), 10 % point (2.5 ± 0.5 pt), 6 ± 1 pt tail, no outer",
         "shadow, flat-edge lens < 0.5 pt and the 9.6 ± 1 pt corner horizontal",
-        "component at 15 pt inside. The QML fallback is pinned to a uniform",
-        "perimeter delta and the calibrated stroke opacity; its near-white",
+        "component at 15 pt inside. The end lens uses the separate 12 pt",
+        "along-axis reach (`cornerLensAlong`), so the corner horizontal is",
+        "measured at the vertical grid line 17.5 pt from the left edge while",
+        "the long flats stay near 0.5 pt (ADR 0343). The QML fallback is",
+        "pinned to a uniform perimeter delta and the calibrated stroke",
+        "opacity; its near-white",
         "opaque accessibility body caps the absolute additive peak, so the",
         "sampled path owns that photometric row.",
         "",

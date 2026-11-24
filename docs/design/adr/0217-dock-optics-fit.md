@@ -69,6 +69,14 @@ corrects the bevel's spatial gain: the measured lens is a short-end lens, not
 a 45-degree corner gate, so the whole left/right end refracts as one rounded
 band and the top/bottom edges stay at the measured ~0.5 pt.
 
+A 2026-11-24 follow-up corrects the measurement location and direction: the
+measured `4 / 8.5 / 9.6 pt` is the **horizontal** displacement of a vertical
+grid line at the top-left **corner**, not a normal displacement at the
+short-end middle. The end lens is now split into a long-axis horizontal
+component and a cross-axis bevel component, with a separate 12 pt along-axis
+reach. See ADR [0343](0343-dock-end-lens-split-axis.md). The flat-band fit,
+the sharp-plus-Gaussian blur and the uniform rim in this ADR are unchanged.
+
 ## References
 
 - `docs/tasks/glass/plan/REFERENCE.md` — Dock plate measurements.

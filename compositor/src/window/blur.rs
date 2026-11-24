@@ -216,6 +216,7 @@ uniform float rim_tail;
 uniform float corner_peak;
 uniform float corner_distance;
 uniform float corner_tail;
+uniform float corner_along;
 uniform vec2 panel_uv_offset;
 uniform vec2 panel_uv_scale;
 uniform vec2 uv_per_px;
@@ -313,13 +314,10 @@ float snell_shift(float depth, float bezel_px, vec4 field) {
     return h * tan(theta_i - theta_r) / 1.41421356;
 }
 
-// The measured plate lens is an end lens: strongest across the short sides
-// (the left/right ends of a horizontal Dock, the top/bottom ends of a vertical
-// one) and fading along the long edges. Only the long-axis component of the
-// distance from the nearest corner centre controls the gain, so the whole
-// short side shares one rounded refraction. The old `4*nx^2*ny^2` normal
-// product instead peaked on the 45-degree diagonal, leaving the middle of each
-// short side flat and producing two diagonal lobes there.
+// The measured plate lens is an end lens: full across the short end/corner and
+// fading along the long edges over the separate `corner_along` reach. The
+// 50 pt `corner_tail` token is the depth/bezel range, not this reach; reusing
+// it made the lens spill 100-150 pt onto the top/bottom flats (ADR 0343).
 float end_gain(vec2 half_size, vec2 p, vec2 size, float reach) {
     vec2 offset = max(half_size - abs(p), vec2(0.0));
     float along = (size.x >= size.y) ? offset.x : offset.y;
@@ -350,22 +348,31 @@ void main() {
     float ol = length(outside);
     // Shared by the blurred body and the sharp bevel overlay. The measured
     // short end keeps the full lens; the long flats keep the measured ~0.5 pt.
-    float measured_end_gain = end_gain(half_size, p, glass_size, corner_tail);
+    float measured_end_gain = end_gain(half_size, p, glass_size, corner_along);
 
     vec2 uv = v_coords;
     if (flat_band > 0.5) {
         // Physical bevel: a continuous height field refracted through Snell's
-        // law. The end-lens gain is not a hard gate: it leaves the measured
-        // ~0.5 pt on the long flats and reaches the full measured short-side
-        // displacement across the whole end. `shape.x` is the materialize
-        // axis (1.0 at the measured default).
+        // law. The measured 4/8.5/9.6 pt profile is the horizontal
+        // displacement of the short end/corner, not the displacement along
+        // the SDF normal. Apply it along the long axis; keep the cross-axis
+        // bevel at the measured flat gain so the long edges stay at ~0.5 pt.
+        // `shape.x` is the materialize axis (1.0 at the measured default).
         if (corner_peak > 0.0 && inside < corner_tail) {
             float corner_gate = 4.0 * rim_normal.x * rim_normal.x
                               * rim_normal.y * rim_normal.y;
             if (shape.y > 2.0) {
-                float gain = mix(0.05, 1.0, measured_end_gain);
                 float shift = snell_shift(inside, corner_tail, bevel);
-                uv -= rim_normal * (shift * gain * shape.x) * uv_per_px;
+                vec2 long_axis = (glass_size.x >= glass_size.y)
+                    ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                vec2 cross_axis = (glass_size.x >= glass_size.y)
+                    ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
+                float long_shift = shift * measured_end_gain;
+                float cross_shift = shift * mix(0.05, 1.0, measured_end_gain)
+                                  * abs(dot(rim_normal, cross_axis));
+                vec2 shift_vec = long_axis * sign(dot(p, long_axis)) * long_shift
+                               + cross_axis * sign(dot(p, cross_axis)) * cross_shift;
+                uv -= shift_vec * (shape.x * uv_per_px);
             } else {
                 // Other measured flat-band presets keep the fitted bump.
                 float t = inside / max(corner_distance, 1.0);
@@ -507,6 +514,7 @@ uniform float rim_tail;
 uniform float corner_peak;
 uniform float corner_distance;
 uniform float corner_tail;
+uniform float corner_along;
 uniform vec2 panel_uv_offset;
 uniform vec2 panel_uv_scale;
 uniform vec2 uv_per_px;
@@ -576,14 +584,14 @@ void main() {
     vec2 normal = squircle_normal(outside, q, shape.y);
     float corner_gate = 4.0 * normal.x * normal.x
                       * normal.y * normal.y;
-    float measured_end_gain = end_gain(half_size, p, glass_size, corner_tail);
+    float measured_end_gain = end_gain(half_size, p, glass_size, corner_along);
     float shift = snell_shift(inside, corner_tail, bevel);
 
     // The sharp overlay is the measured short-end clear/caustic band. The
     // 2026-11-13 refraction study measures that band at ~12 pt adjacent to the
-    // 6 pt rim, while the lens displacement itself keeps its ~50 pt influence
-    // in the body. Keep the overlay on the rim-adjacent band: following the
-    // full displacement made the left/right edge read as a wide clear stripe.
+    // 6 pt rim. Keep it on the rim-adjacent band and on the same localised
+    // end-lens reach as the body; following the old 50 pt along-axis gain made
+    // the top/bottom edges read as a wide clear stripe.
     float caustic_end = corner_distance + rim_tail * 0.5;
     float caustic = 1.0 - smoothstep(rim_tail * 1.1, caustic_end, inside);
     float band = smoothstep(0.08, 0.50, measured_end_gain) * caustic;
@@ -604,8 +612,16 @@ void main() {
 
     if (corner_peak > 0.0 && inside < corner_tail) {
         if (shape.y > 2.0) {
-            float gain = mix(0.05, 1.0, measured_end_gain);
-            uv -= normal * (shift * gain * shape.x) * uv_per_px;
+            vec2 long_axis = (glass_size.x >= glass_size.y)
+                ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec2 cross_axis = (glass_size.x >= glass_size.y)
+                ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
+            float long_shift = shift * measured_end_gain;
+            float cross_shift = shift * mix(0.05, 1.0, measured_end_gain)
+                              * abs(dot(normal, cross_axis));
+            vec2 shift_vec = long_axis * sign(dot(p, long_axis)) * long_shift
+                           + cross_axis * sign(dot(p, cross_axis)) * cross_shift;
+            uv -= shift_vec * (shape.x * uv_per_px);
         } else {
             float t = inside / max(corner_distance, 1.0);
             float bump = t * t * t * exp(3.0 * (1.0 - t));
@@ -787,8 +803,10 @@ pub const GLASS_RIM_TAIL_UNIFORM: &str = "rim_tail";
 pub const GLASS_CORNER_PEAK_UNIFORM: &str = "corner_peak";
 /// T198: corner-lens peak distance (physical px).
 pub const GLASS_CORNER_DISTANCE_UNIFORM: &str = "corner_distance";
-/// T198: corner-lens decay tail (physical px).
+/// T198: corner-lens depth/bezel tail (physical px).
 pub const GLASS_CORNER_TAIL_UNIFORM: &str = "corner_tail";
+/// T198: along-axis reach of the end lens (physical px).
+pub const GLASS_CORNER_ALONG_UNIFORM: &str = "corner_along";
 /// T198: panel-normalized origin of the visible texture slice.
 pub const GLASS_PANEL_UV_OFFSET_UNIFORM: &str = "panel_uv_offset";
 /// T198: panel-normalized size of the visible texture slice.
@@ -879,7 +897,7 @@ pub fn gaussian_uniform_names() -> [UniformName<'static>; 3] {
 
 /// The additional uniform descriptors [`GLASS_SHADER`] declares, passed to
 /// `GlesRenderer::compile_custom_texture_shader`.
-pub fn glass_uniform_names() -> [UniformName<'static>; 25] {
+pub fn glass_uniform_names() -> [UniformName<'static>; 26] {
     [
         UniformName::new(GLASS_SIZE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_RADIUS_UNIFORM, UniformType::_1f),
@@ -898,6 +916,7 @@ pub fn glass_uniform_names() -> [UniformName<'static>; 25] {
         UniformName::new(GLASS_CORNER_PEAK_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_DISTANCE_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_CORNER_TAIL_UNIFORM, UniformType::_1f),
+        UniformName::new(GLASS_CORNER_ALONG_UNIFORM, UniformType::_1f),
         UniformName::new(GLASS_PANEL_UV_OFFSET_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_PANEL_UV_SCALE_UNIFORM, UniformType::_2f),
         UniformName::new(GLASS_UV_PER_PX_UNIFORM, UniformType::_2f),
@@ -1080,8 +1099,12 @@ pub struct GlassSpec {
     pub corner_peak: f32,
     /// T198: corner-lens peak distance from the corner in logical pixels.
     pub corner_distance: f32,
-    /// T198: corner-lens decay tail in logical pixels.
+    /// T198: corner-lens depth/bezel tail in logical pixels.
     pub corner_tail: f32,
+    /// T198: along-axis reach of the end lens in logical pixels. Kept separate
+    /// from `corner_tail` so the 50 pt depth fit does not spill 100-150 pt
+    /// along the long edges (ADR 0343).
+    pub corner_along: f32,
     /// Whether the element draws one full panel rect and uses the SDF as an
     /// antialiased coverage mask. Set for the measured Dock; zero elsewhere.
     pub coverage_aa: f32,
@@ -1113,6 +1136,7 @@ impl Default for GlassSpec {
             corner_peak: 0.0,
             corner_distance: 0.0,
             corner_tail: 0.0,
+            corner_along: 0.0,
             coverage_aa: 0.0,
             bevel: [0.0; 4],
             perceptual: [0.0; 4],
@@ -1140,6 +1164,7 @@ impl GlassSpec {
             corner_peak: optics.corner_lens_peak,
             corner_distance: optics.corner_lens_distance,
             corner_tail: optics.corner_lens_tail,
+            corner_along: optics.corner_lens_along,
             coverage_aa: 1.0,
             bevel: [
                 crate::window::dock_optics::DOCK_BEVEL_HEIGHT_PT,
@@ -1197,7 +1222,7 @@ impl GlassSpec {
         scale: Scale<f64>,
         panel: Rectangle<i32, Logical>,
         texture_region: Rectangle<i32, Logical>,
-    ) -> [Uniform<'static>; 25] {
+    ) -> [Uniform<'static>; 26] {
         let w = physical.w.max(1) as f32;
         let h = physical.h.max(1) as f32;
         let sx = scale.x.max(f64::EPSILON) as f32;
@@ -1238,6 +1263,7 @@ impl GlassSpec {
             Uniform::new(GLASS_CORNER_PEAK_UNIFORM, self.corner_peak * sx),
             Uniform::new(GLASS_CORNER_DISTANCE_UNIFORM, self.corner_distance * sx),
             Uniform::new(GLASS_CORNER_TAIL_UNIFORM, self.corner_tail * sx),
+            Uniform::new(GLASS_CORNER_ALONG_UNIFORM, self.corner_along * sx),
             Uniform::new(GLASS_PANEL_UV_OFFSET_UNIFORM, (offset_x, offset_y)),
             Uniform::new(GLASS_PANEL_UV_SCALE_UNIFORM, (uv_scale_x, uv_scale_y)),
             Uniform::new(GLASS_UV_PER_PX_UNIFORM, (uv_per_px_x, uv_per_px_y)),
@@ -1950,12 +1976,13 @@ mod tests {
         // radius is scaled with them so the SDF is device-pixel consistent.
         let panel = Rectangle::new((0, 0).into(), (800, 28).into());
         let uniforms = spec.uniforms(Size::from((1600, 56)), 20, Scale::from(2.0), panel, panel);
-        assert_eq!(uniforms.len(), 25);
-        assert_eq!(uniforms[20].value, UniformValue::_1f(0.0));
-        assert_eq!(uniforms[21].value, UniformValue::_4f(0.0, 0.0, 0.0, 0.0));
+        assert_eq!(uniforms.len(), 26);
+        assert_eq!(uniforms[17].value, UniformValue::_1f(0.0));
+        assert_eq!(uniforms[21].value, UniformValue::_1f(0.0));
         assert_eq!(uniforms[22].value, UniformValue::_4f(0.0, 0.0, 0.0, 0.0));
-        assert_eq!(uniforms[23].value, UniformValue::_2f(1.0, 2.0));
-        assert_eq!(uniforms[24].value, UniformValue::_1f(1.0));
+        assert_eq!(uniforms[23].value, UniformValue::_4f(0.0, 0.0, 0.0, 0.0));
+        assert_eq!(uniforms[24].value, UniformValue::_2f(1.0, 2.0));
+        assert_eq!(uniforms[25].value, UniformValue::_1f(1.0));
         assert_eq!(
             uniforms[0].value,
             UniformValue::_2f(1600.0, 56.0),
@@ -2021,6 +2048,7 @@ mod tests {
             "corner_peak",
             "corner_distance",
             "corner_tail",
+            "corner_along",
             "panel_uv_offset",
             "panel_uv_scale",
             "uv_per_px",
@@ -2045,6 +2073,7 @@ mod tests {
         assert_eq!(spec.rim_half_width, optics.edge_width);
         assert_eq!(spec.corner_peak, optics.corner_lens_peak);
         assert_eq!(spec.corner_distance, optics.corner_lens_distance);
+        assert_eq!(spec.corner_along, optics.corner_lens_along);
         assert_eq!(spec.tint_color, [optics.tint; 3]);
         assert_eq!(
             spec.bevel,

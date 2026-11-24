@@ -662,16 +662,26 @@ narrow specular line on that physical pixel plus a super-exponential tail
 approximates the same tail with three concentric full-perimeter strokes
 (`plate.glowOuter*`/`glowMid*`/`glowInner*`) and an Increase Contrast-only
 uniform border; it has no `position` branch, so bottom, left and right Docks
-draw the same perimeter. The lens is a measured **short-end** lens: it is
-parameterized by distance inside the rim, directed by the outward SDF normal,
-and weighted by `DockOptics::bevel_end_gain`, so the whole short side keeps the
-measured displacement (4/8.5/9.6 pt at 5/10/15 pt inside) while the long flats
-stay at the measured ~0.5 pt. The earlier `4·nx²·ny²` corner gate instead
-peaked on the 45-degree diagonals and left the middle of each short side flat
-(ADR [0255](adr/0255-dock-uniform-perimeter-and-corner-gate.md) amendment).
+draw the same perimeter. The lens is a measured **split end/corner** lens
+(ADR [0343](adr/0343-dock-end-lens-split-axis.md)). Its long-axis component is
+the horizontal displacement of the short end and corner, calibrated to the
+measured `4 / 8.5 / 9.6 pt` at `5 / 10 / 15 pt` inside the top rim on a
+vertical grid line 17.5 pt from the left edge; the whole end cap shares it and
+`DockOptics::end_lens_along_gain` fades it over the separate
+`cornerLensAlong` token (`12 pt`). Its cross-axis component is the Snell bevel
+normal term with the measured flat gain, so the top/bottom long flats keep the
+measured `~0.5 pt` and the corner keeps its two-axis bend. `cornerLensTail`
+(`50 pt`) is the depth/bezel range, not the along-axis reach. The sharp
+caustic overlay is the measured `6.6–18 pt` rim-adjacent band and uses the
+same localised reach; it does not run along the top/bottom edges. The earlier
+`4·nx²·ny²` gate peaked on the 45-degree diagonals and left the middle of each
+short side flat; the subsequent single normal-directed field fixed that
+middle but under-refracted the corner and put a vertical lens on the long
+flats. Both are superseded by the split field. The dark scheme reuses the
+light lens fit because the reference did not separately measure a dark lens.
 The persistent Dock resolves to the `Reduced` tier; that tier keeps the
 flat-band end lens and drops only the generic edge-lens `refraction`, so the
-measured short-end refraction is present on the normal production path
+measured end/corner refraction is present on the normal production path
 (T235a). The plate group
 is clipped at its top edge so no paint bleeds into the transparent magnify band
 above it (T-10 section 2). Icon tiles are rounded squares at

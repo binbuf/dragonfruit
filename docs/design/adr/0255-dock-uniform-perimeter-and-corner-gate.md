@@ -106,6 +106,27 @@ path as the nested path already does. The flattened scene order, the padded
 DRM source and the narrow caustic band are the durable decisions; the
 diagnostic A/B stills remain local-only.
 
+## Amendment (2026-11-24) — split the end lens by axis
+
+The 2026-11-12 follow-up read the measured `4 / 8.5 / 9.6 pt` profile as a
+short-end displacement along the SDF normal. The reference measurement is a
+**horizontal** displacement of a vertical grid line at the **top-left corner**
+(17.5 pt from the left edge, inside the 26.9 pt corner radius), not the
+short-end middle. The single normal-directed field therefore under-refracted
+the corner and put a vertical lens on the long flats: at the research point
+the shader produced `0.5 / 2.4 / 4.3 pt` horizontal instead of `4 / 8.5 /
+9.6 pt`, and the flat edge carried `3.7 / 1.6 pt` at 50 / 100 pt from the
+corner centre instead of the measured `~0.5 pt`.
+
+The lens is now a split field: the long-axis component is the measured
+horizontal end/corner displacement, and the cross-axis component is the Snell
+bevel with the measured flat gain. `cornerLensTail` remains the 50 pt
+depth/bezel range; a separate `cornerLensAlong` token (12 pt) controls the
+along-axis reach, so the end effect stays on the end cap and the sharp caustic
+no longer runs ~126 pt along the top/bottom edges. See ADR
+[0343](0343-dock-end-lens-split-axis.md). The uniform perimeter decision in
+this ADR is unchanged.
+
 ## References
 
 - `docs/design/proposals/dock-Glass-perimeter.md`

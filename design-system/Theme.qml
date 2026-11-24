@@ -160,7 +160,7 @@ QtObject {
                 readonly property string slider: "none"
                 readonly property var light: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur sigma 3.86pt first fit"
+                    readonly property string provenance: "REFERENCE.md Dock plate: light neutral fit alpha 0.253 / tint 0.604; one uniform rim peak 0.397 on mid-grey (first covered pixel), half-amplitude 1pt, 10% at 2.5pt, 6pt tail; corner horizontal lens 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left corner; newer window-edge study 6.34/9.55pt at 6/9pt OPEN), 50pt depth influence, 12pt along-axis reach, ~0.5pt on the long flats; blur sigma 3.86pt first fit"
                     readonly property string colourSpace: "srgb"
                     readonly property real toneWeight: 1.0
                     readonly property var calibration: QtObject {
@@ -178,11 +178,12 @@ QtObject {
                     readonly property real cornerLensPeak: 13.6
                     readonly property real cornerLensDistance: 15.0
                     readonly property real cornerLensTail: 50.0
+                    readonly property real cornerLensAlong: 12.0
                     readonly property real foreground: 0.0
                 }
                 readonly property var dark: QtObject {
                     readonly property string confidence: "measured"
-                    readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), short-end lens displacement 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left end), 50pt influence radius, ~0.5pt on the long flats; blur and rim reuse the light fit because the dark rim was not separately fitted"
+                    readonly property string provenance: "REFERENCE.md Dock plate: dark neutral fit alpha 0.149 / tint 0.207; one uniform rim peak 0.397 on mid-grey (first covered pixel), corner horizontal lens 4/8.5/9.6pt at 5/10/15pt inside (vertical grid line at the left corner; newer window-edge study 6.34/9.55pt at 6/9pt OPEN), 50pt depth influence, 12pt along-axis reach, ~0.5pt on the long flats; blur and rim reuse the light fit because the dark rim was not separately fitted"
                     readonly property string colourSpace: "srgb"
                     readonly property real toneWeight: 1.0
                     readonly property var calibration: QtObject {
@@ -200,6 +201,7 @@ QtObject {
                     readonly property real cornerLensPeak: 13.6
                     readonly property real cornerLensDistance: 15.0
                     readonly property real cornerLensTail: 50.0
+                    readonly property real cornerLensAlong: 12.0
                     readonly property real foreground: 0.0
                 }
             }
