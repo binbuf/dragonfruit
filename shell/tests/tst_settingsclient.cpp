@@ -134,6 +134,20 @@ private slots:
         // A non-integral double rounds to the nearest integer.
         client.set(QStringLiteral("input.repeatDelay"), 2500.4);
         QCOMPARE(client.integer(QStringLiteral("input.repeatDelay"), -1), qlonglong(2500));
+
+        // An integral QML number arrives as `int`, not `double`. It must still
+        // be normalized to the schema's int64 shape: the daemon rejects the
+        // `i` wire signature, which would silently revert every integer
+        // control (the Lock Screen Never option included).
+        client.set(QStringLiteral("idle.dim"), 0);
+        QCOMPARE(client.value(QStringLiteral("idle.dim")).metaType().id(),
+                 static_cast<int>(QMetaType::LongLong));
+        QCOMPARE(client.integer(QStringLiteral("idle.dim"), -1), qlonglong(0));
+
+        client.set(QStringLiteral("input.repeatRate"), 100);
+        QCOMPARE(client.value(QStringLiteral("input.repeatRate")).metaType().id(),
+                 static_cast<int>(QMetaType::LongLong));
+        QCOMPARE(client.integer(QStringLiteral("input.repeatRate"), -1), qlonglong(100));
     }
 
     void dbusClientRoundTripsAgainstTheService()
@@ -168,6 +182,15 @@ private slots:
         client.set(QStringLiteral("dock.autohide"), true);
         QTRY_VERIFY(service.value(QStringLiteral("dock.autohide")).toBool());
         QCOMPARE(client.boolean(QStringLiteral("dock.autohide"), false), true);
+
+        // An integral QML number must cross the bus as the schema's `x`, not
+        // `i`. The fake keeps the type it received, so this pins the wire
+        // shape the real daemon validates.
+        client.set(QStringLiteral("input.repeatRate"), 100);
+        QTRY_COMPARE(service.value(QStringLiteral("input.repeatRate")).toLongLong(),
+                     qlonglong(100));
+        QCOMPARE(service.value(QStringLiteral("input.repeatRate")).metaType().id(),
+                 static_cast<int>(QMetaType::LongLong));
 
         bus.unregisterObject(kPath);
         bus.unregisterService(kService);

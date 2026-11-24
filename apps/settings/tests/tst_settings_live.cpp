@@ -176,6 +176,10 @@ Item {
     width: 240
     height: 60
 
+    // The Lock Screen pane's `Never` path in miniature: an integral JavaScript
+    // literal written through the same `Settings` singleton.
+    function writeNever() { Settings.set("idle.dim", 0) }
+
     Toggle {
         id: reduceMotion
         text: "Reduce motion"
@@ -449,6 +453,20 @@ private slots:
         // An external write (as another client would make) updates the control.
         settings.call(QStringLiteral("Set"), kKey, QVariant::fromValue(QDBusVariant(false)));
         QTRY_COMPARE(toggle->property("checked").toBool(), false);
+
+        // An integral QML value must reach the daemon as int64. QML hands the
+        // `Settings.set` slot an `int`; before the coercion fix that crossed
+        // the bus as `i`, settingsd rejected it, and the Lock Screen's `Never`
+        // option (0) silently reverted to its previous value.
+        QMetaObject::invokeMethod(root.data(), "writeNever");
+        QTRY_COMPARE(settings.call(QStringLiteral("Get"), QStringLiteral("idle.dim"))
+                         .arguments().value(0).value<QDBusVariant>().variant()
+                         .toLongLong(),
+                     qlonglong(0));
+        QCOMPARE(settings.call(QStringLiteral("Get"), QStringLiteral("idle.dim"))
+                     .arguments().value(0).value<QDBusVariant>().variant()
+                     .metaType().id(),
+                 static_cast<int>(QMetaType::LongLong));
 
         daemon.terminate();
         QVERIFY(daemon.waitForFinished(5000));

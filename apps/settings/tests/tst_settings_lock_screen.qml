@@ -113,6 +113,15 @@ Item {
             pane.requirePasswordSelect.activateIndex(6);
             compare(Settings.values["lock.requirePasswordAfter"], -1);
             compare(Settings.values["idle.lock"], 0);
+
+            // The dim and display-off `Never` options are the same 0 spelling
+            // and must reach the same disabled stage (the live daemon used to
+            // reject the integer write, so the menu snapped back).
+            pane.dimSelect.activateIndex(5); // Never
+            compare(Settings.values["idle.dim"], 0);
+            pane.displayOffSelect.activateIndex(8); // Never
+            compare(Settings.values["idle.blank"], 0);
+            compare(Settings.values["idle.lock"], 0);
         }
 
         function test_require_password_means_after_display_off() {

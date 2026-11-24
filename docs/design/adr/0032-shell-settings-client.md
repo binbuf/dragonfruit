@@ -56,6 +56,15 @@ needs the same seam for `appearance.*`/`accessibility.reduceMotion`).
   whenever a key is added in `schema.rs`; the frozen v1 manifest is enforced by
   `settingsd`, and the mirrored list is enforced by the C++ tests
   (`tst_dockcore`, `tst_settingsclient`).
+- `coerceToSchema()` normalizes both QML numeric shapes to the schema's wire
+  type. A JavaScript integral number reaches a `QVariant` slot as `int`; a
+  fractional one is `double`. The daemon accepts only `x` for integer keys and
+  `d` for number keys, so the client must convert both shapes before storing or
+  sending. Without that, every integer control (including the Lock Screen
+  `Never` option, value 0) crosses the bus as `i`, settingsd rejects the write,
+  and the optimistic value reverts. The in-process mock cannot expose this
+  because it never marshals; `tst_settingsclient`'s wire-type assertion and
+  `tst_settings_live`'s real-daemon integer write are the regression gates.
 - `dock.pinned` seeds the installed defaults once per session when empty. Since
   the daemon exposes no "file existed" bit, an intentionally emptied pin set is
   re-seeded on the next launch; T-08.3 may add a seeding marker if that matters.

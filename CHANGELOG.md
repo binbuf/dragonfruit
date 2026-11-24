@@ -20,6 +20,14 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Integer settings persist live.** Choosing `Never` (or any other integer
+  value) in a Settings dropdown now sticks. QML hands an integral JavaScript
+  number to the settings client as an `int`, but the client only normalized
+  `double` values to the schema's `int64` wire type. settingsd rejected the
+  `int` write, so the optimistic value reverted; this affected the Lock
+  Screen's `Dim screen when inactive` and `Turn display off when inactive`
+  and every other integer-valued control on the live bus. The client now
+  normalizes every integral `QVariant` (and integral values for double keys).
 - **Menu pointer stability.** Hovering a row in a tall submenu no longer
   scrolls the card out from under the cursor. The owner now reads the
   pointer-selection flag when it schedules the deferred reveal, so the

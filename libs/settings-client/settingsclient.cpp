@@ -27,6 +27,27 @@ QVariant unwrapVariant(const QVariant &value)
     return value;
 }
 
+// True for the integer-shaped QVariant types QML can hand a QVariant slot.
+// QML maps an integral JavaScript number to `int` (not `double`), so the
+// schema coercion below has to normalize every integral type, not just the
+// double QML used to be assumed to produce.
+bool isIntegral(const QVariant &value)
+{
+    switch (value.typeId()) {
+    case QMetaType::Int:
+    case QMetaType::UInt:
+    case QMetaType::Long:
+    case QMetaType::ULong:
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:
+    case QMetaType::Short:
+    case QMetaType::UShort:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 SettingsClient::SettingsClient(QObject *parent)
@@ -77,8 +98,8 @@ QStringList SettingsClient::stringList(const QString &key) const
 
 QVariant coerceToSchema(const QString &key, const QVariant &value)
 {
-    // QML has one number type (double), so a control bound to an integer key
-    // (`input.repeatRate`) writes a double. Coerce it back to the schema's
+    // A QML number reaches a QVariant slot as either a double or, when the
+    // value is integral, an int. Coerce both shapes back to the schema's
     // `x`/`d` type here, before the value is stored or sent over D-Bus, so the
     // daemon's type check accepts it and the reactive map keeps its type.
     static const QVariantMap &defaults = settingsSchemaDefaults();
@@ -86,19 +107,23 @@ QVariant coerceToSchema(const QString &key, const QVariant &value)
     if (it == defaults.constEnd())
         return value;
     const QVariant &declared = it.value();
-    if (declared.typeId() == QMetaType::LongLong
-            && value.typeId() == QMetaType::Double) {
-        // T282: QML has one number type, so a control bound to an int64 key
-        // writes a double. Coerce a finite value to the nearest integer (the
-        // long-standing QML contract); pass a non-finite value through so
-        // `validate()` reports it instead of `qRound64` being undefined.
-        const double number = value.toDouble();
-        if (std::isfinite(number))
-            return QVariant::fromValue<qlonglong>(qRound64(number));
+    if (declared.typeId() == QMetaType::LongLong) {
+        if (isIntegral(value))
+            return QVariant::fromValue<qlonglong>(value.toLongLong());
+        if (value.typeId() == QMetaType::Double
+                || value.typeId() == QMetaType::Float) {
+            // T282: a fractional QML number is rounded to the nearest int64
+            // (the long-standing QML contract); pass a non-finite value
+            // through so `validate()` reports it instead of `qRound64` being
+            // undefined.
+            const double number = value.toDouble();
+            if (std::isfinite(number))
+                return QVariant::fromValue<qlonglong>(qRound64(number));
+        }
         return value;
     }
     if (declared.typeId() == QMetaType::Double
-            && value.typeId() == QMetaType::LongLong)
+            && (isIntegral(value) || value.typeId() == QMetaType::Float))
         return value.toDouble();
     if (declared.typeId() == QMetaType::QStringList
             && value.typeId() == QMetaType::QVariantList) {
