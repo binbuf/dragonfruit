@@ -41,6 +41,72 @@ private slots:
         QCOMPARE(filesLocationArgument({}), QString());
     }
 
+    // -- T333 launch forms ------------------------------------------------
+
+    void handoff_options_are_not_positional_locations()
+    {
+        QCOMPARE(filesLocationArgument({QStringLiteral("dragonfruit-files"),
+                                        QStringLiteral("--new-window"),
+                                        QStringLiteral("--location=trash://")}),
+                 QString());
+        QCOMPARE(filesLocationArgument({QStringLiteral("dragonfruit-files"),
+                                        QStringLiteral("--activation-handoff=1-2-3"),
+                                        QStringLiteral("--location=file:///tmp")}),
+                 QString());
+        // A positional URI after the options still wins.
+        QCOMPARE(filesLocationArgument({QStringLiteral("dragonfruit-files"),
+                                        QStringLiteral("--new-window"),
+                                        QStringLiteral("trash://")}),
+                 QStringLiteral("trash://"));
+    }
+
+    void only_a_handoff_token_requests_the_running_instance()
+    {
+        QVERIFY(filesActivationRequested(
+            {QStringLiteral("dragonfruit-files"),
+             QStringLiteral("--activation-handoff=1-2-3"),
+             QStringLiteral("--location=trash://")}));
+        QVERIFY(!filesActivationRequested({QStringLiteral("dragonfruit-files"),
+                                           QStringLiteral("trash://")}));
+        QVERIFY(!filesActivationRequested({QStringLiteral("dragonfruit-files"),
+                                           QStringLiteral("--new-window")}));
+    }
+
+    void handoff_location_reads_the_location_option()
+    {
+        QCOMPARE(filesHandoffLocation(
+                     {QStringLiteral("dragonfruit-files"),
+                      QStringLiteral("--activation-handoff=1-2-3"),
+                      QStringLiteral("--location=trash://")}),
+                 QStringLiteral("trash://"));
+        QCOMPARE(filesHandoffLocation(
+                     {QStringLiteral("dragonfruit-files"),
+                      QStringLiteral("--activation-handoff=1-2-3"),
+                      QStringLiteral("trash://")}),
+                 QStringLiteral("trash://"));
+        QCOMPARE(filesHandoffLocation(
+                     {QStringLiteral("dragonfruit-files"),
+                      QStringLiteral("--activation-handoff=1-2-3")}),
+                 QString());
+    }
+
+    void new_window_opens_a_process_and_names_its_location()
+    {
+        QVERIFY(filesNewWindowRequested({QStringLiteral("dragonfruit-files"),
+                                         QStringLiteral("--new-window")}));
+        QVERIFY(!filesNewWindowRequested({QStringLiteral("dragonfruit-files")}));
+        QCOMPARE(filesLaunchLocation(
+                     {QStringLiteral("dragonfruit-files"),
+                      QStringLiteral("--new-window"),
+                      QStringLiteral("--location=file:///tmp")}),
+                 QStringLiteral("file:///tmp"));
+        QCOMPARE(filesLaunchLocation(
+                     {QStringLiteral("dragonfruit-files"),
+                      QStringLiteral("--activation-handoff=1-2-3"),
+                      QStringLiteral("--location=trash://")}),
+                 QStringLiteral("trash://"));
+    }
+
     // -- the T-19.3 desktop process -------------------------------------
 
     void desktop_flag_is_detected()

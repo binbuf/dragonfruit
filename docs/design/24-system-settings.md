@@ -1978,7 +1978,8 @@ otherwise imply are missing.
 The 2026-11-14 review found the following. “P0” means the pane is visibly
 broken or a shipped control is not truthful; “P1” means a major macOS row or
 state is missing; “P2” means polish. P0-16 and P0-17 were added the same day
-from the first live T263 run; they are part of the same release bar.
+from the first live T263 run; P0-18 was added from the live click audit. They
+are part of the same release bar.
 
 ### P0 — broken or untruthful
 
@@ -2001,6 +2002,7 @@ from the first live T263 run; they are part of the same release bar.
 | P0-15 | Pane tests run at 900/1000 px; many panes have no dark/absence/scale capture; no golden diff; no real-host matrix | `apps/settings/tests/`, `scripts/capture-*settings*` | T283, T284 |
 | P0-16 | Wallpaper picks do not acknowledge the click reliably: a tile can look unselected, the spinner/preview state starts only after the provider round trip, a second pick during a pending apply is ignored, and the selected tile can disagree with the background | `apps/settings/WallpaperPane.qml`, `SettingsBridge.cpp`, `services/wallpaperd` | T278 (landed: optimistic ring/spinner, supersede, bounded timeout/revert, fake-clock seams) |
 | P0-17 | A stationary click on a sidebar row or pane control is often dropped; moving the pointer or scrolling first makes it land. The activating press can be consumed by focus or routed through a stale cached pointer location, so the first click looks inert | `apps/settings/SettingsShell.qml`, `design-system/components/Sidebar.qml`, `compositor/src/input.rs` | T263 (live-position ray-test landed), T266 (row focus + stationary-click harness landed) |
+| P0-18 | Most pane controls (Selects, toggles, radios, rows, lists) drop pointer clicks while sidebar rows and top-of-pane tiles work; scrolling a pane moves the dead region with the content. Closed `Dialog`/`Sheet` cards stay laid out at opacity 0 and keep hit-testing above the pane, so an invisible centered card consumes the press. | `design-system/components/Dialog.qml`, `Sheet.qml` | ADR [0341](adr/0341-closed-modal-is-input-disabled.md) (landed: `enabled: open`, scrim consumes press/wheel, `tst_settings_components` regression) |
 
 ### P1 — missing major rows or states
 

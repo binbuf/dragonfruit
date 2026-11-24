@@ -69,6 +69,13 @@ FocusScope {
 
     width: parent ? parent.width : 480
     height: parent ? parent.height : 320
+    // A closed dialog keeps its root visible for the card's close fade, but it
+    // must never own the pointer. The card's controls and scroll body are
+    // still laid out at opacity 0, and an enabled subtree would hit-test them
+    // above the pane (the reported dead clicks on rows and Selects under a
+    // closed dialog's card). Disabling the whole scope removes the hit target
+    // immediately; the fade is render-only.
+    enabled: root.open
     visible: opacity > 0
     z: 3000
     focus: root.open
@@ -164,6 +171,15 @@ FocusScope {
         anchors.fill: parent
         color: Theme.color.shadowColor
         opacity: root.open ? 0.4 : 0.0
+
+        // An open modal owns the pointer everywhere in the window. Without
+        // this, a press on the scrim fell through to the pane's rows and
+        // controls; the card above still keeps its own targets.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => wheel.accepted = true
+        }
 
         Behavior on opacity {
             NumberAnimation {

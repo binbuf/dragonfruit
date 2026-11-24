@@ -124,6 +124,13 @@ int main(int argc, char **argv)
     writeFile(mutationRoot + QStringLiteral("/UndoTrash/note.txt"), QByteArray("note"));
     writeFile(mutationRoot + QStringLiteral("/UndoCapture/alpha.txt"), QByteArray("alpha"));
 
+    // T333: two sibling folders with different contents, so the tab capture
+    // shows that each tab keeps its own listing.
+    QDir(mutationRoot).mkpath(QStringLiteral("TabsCapture/1"));
+    QDir(mutationRoot).mkpath(QStringLiteral("TabsCapture/2"));
+    writeFile(mutationRoot + QStringLiteral("/TabsCapture/1/one.txt"), QByteArray("one"));
+    writeFile(mutationRoot + QStringLiteral("/TabsCapture/2/two.txt"), QByteArray("two"));
+
     // T332: the folder watched by the external-change test. The test itself
     // creates, deletes and renames entries here after the window is open.
     QDir(mutationRoot).mkpath(QStringLiteral("Watch"));

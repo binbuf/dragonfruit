@@ -16,8 +16,10 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QJSValue>
 #include <QtQml/qqmlregistration.h>
 
 class FilesBridge : public QObject
@@ -71,6 +73,10 @@ class FilesBridge : public QObject
     // `DF_FILES_START_EMPTY_TRASH=1` opens the Empty Trash confirmation once a
     // non-empty Trash listing settles (T-10.6b capture seam).
     Q_PROPERTY(bool startEmptyTrash READ startEmptyTrash CONSTANT)
+    // `DF_FILES_CAPTURE_TABS=1` shows the empty tab bar from the first tab
+    // (the T333 stills); 0 is the live rule (the bar appears from the second
+    // tab).
+    Q_PROPERTY(int startTabs READ startTabs CONSTANT)
     // The view a fresh window opens in, from `DF_FILES_START_VIEW` (`list`
     // or `icon`); empty means the shell default. A capture seam, sibling of
     // `DF_FILES_START_URI`.
@@ -97,6 +103,7 @@ public:
     QString startMenu() const { return m_startMenu; }
     bool startRename() const { return m_startRename; }
     int startSelect() const { return m_startSelect; }
+    int startTabs() const { return m_startTabs; }
     bool startEmptyTrash() const { return m_startEmptyTrash; }
     QString captureDir() const { return m_captureDir; }
 
@@ -140,6 +147,27 @@ public:
     // label. Empty for a non-local location. Read-only in Get Info until the
     // default-application editor lands (T230d).
     Q_INVOKABLE QString defaultHandler(const QString &uri) const;
+    // T333: New Window. Launch a second Files process on `uri` (a `file://` or
+    // `trash://` location; empty means Home), detached and with the normal
+    // browser environment, exactly as the desktop's folder launch does. The
+    // window is a second process, so a crash in one never takes the other
+    // down; the first keeps the `org.dragonfruit.Files1` name. Tests swap the
+    // callable (`setNewWindowCallable`) so no process is spawned.
+    Q_INVOKABLE bool newWindow(const QString &uri = QString());
+    // Replace the process spawn with a recording callable (tests/captures
+    // only). A callable QJSValue is called with the location and its falsy
+    // return value refuses the window; a non-callable one restores the real
+    // launch. Every request is recorded in `newWindowRequests`.
+    Q_INVOKABLE void setNewWindowCallable(const QJSValue &callable);
+    Q_INVOKABLE QStringList newWindowRequests() const { return m_newWindowRequests; }
+    // Whether the capture/test double is installed; false means `newWindow`
+    // launches a real process, which a test must never do.
+    Q_INVOKABLE bool hasNewWindowCallable() const;
+    // The launch lines of T333's window menu, for the installed menu model
+    // (T334) and the tests: `{ newWindow, newTab }`, each a plain argv list
+    // after the program name (`--new-window [--location=…]` and
+    // `--activation-handoff=<token> [--location=…]`).
+    Q_INVOKABLE QVariantMap menuLaunchCommands(const QString &location = QString()) const;
 
 private:
     void buildLocations();
@@ -157,7 +185,11 @@ private:
     QString m_captureDir;
     bool m_startRename = false;
     int m_startSelect = 0;
+    int m_startTabs = 0;
     bool m_startEmptyTrash = false;
     QVariantList m_favorites;
     QVariantList m_volumes;
+    QJSValue m_newWindowCallable;
+    QStringList m_newWindowRequests;
+
 };

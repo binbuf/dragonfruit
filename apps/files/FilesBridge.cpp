@@ -8,10 +8,14 @@
 #include <QFileInfo>
 #include <QLocale>
 #include <QMimeDatabase>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QFile>
 #include <QUrl>
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QJSValue>
 
 namespace {
 
@@ -109,6 +113,7 @@ FilesBridge::FilesBridge(QObject *parent)
         m_startMenu.clear();
     m_startRename = qEnvironmentVariableIsSet("DF_FILES_START_RENAME");
     m_startSelect = qEnvironmentVariableIntValue("DF_FILES_START_SELECT");
+    m_startTabs = qEnvironmentVariableIntValue("DF_FILES_CAPTURE_TABS");
     m_startEmptyTrash = qEnvironmentVariableIsSet("DF_FILES_START_EMPTY_TRASH");
     if (m_fixture) {
         // Deterministic locations for the headless QML tests; independent of
@@ -385,4 +390,72 @@ QString FilesBridge::defaultHandler(const QString &uri) const
     if (id.isEmpty())
         return tr("No default application");
     return id;
+}
+
+bool FilesBridge::newWindow(const QString &uri)
+{
+    const QString location = uri;
+    if (!location.isEmpty() && !isBrowsable(location))
+        return false;
+    if (m_newWindowCallable.isCallable()) {
+        m_newWindowRequests.append(location);
+        const QJSValue result = m_newWindowCallable.call({QJSValue(location)});
+        return !result.isBool() || result.toBool();
+    }
+
+    // A second process, like the desktop's folder launch: the browser and the
+    // new window never share a crash domain. The first instance keeps the
+    // `org.dragonfruit.Files1` name; the second one may lose it, which is the
+    // documented single-instance trade-off (T333, 09-files.md).
+    QProcess window;
+    window.setProcessEnvironment(filesDesktopChildEnvironment());
+    window.setProgram(QCoreApplication::applicationFilePath());
+    if (!location.isEmpty())
+        window.setArguments({location});
+    return window.startDetached();
+}
+
+void FilesBridge::setNewWindowCallable(const QJSValue &callable)
+{
+    m_newWindowCallable = callable.isCallable() ? callable : QJSValue();
+    // Each install starts a fresh recording, so one test's request never
+    // counts against the next.
+    m_newWindowRequests.clear();
+}
+
+bool FilesBridge::hasNewWindowCallable() const
+{
+    return m_newWindowCallable.isCallable();
+}
+
+namespace {
+// The token a `--activation-handoff` launch carries (one per request, like the
+// desktop's launch token): time, pid and a counter, so two requests in the same
+// millisecond still differ.
+static QString filesLaunchToken()
+{
+    static quint64 counter = 0;
+    return QStringLiteral("%1-%2-%3")
+            .arg(QDateTime::currentMSecsSinceEpoch())
+            .arg(QCoreApplication::applicationPid())
+            .arg(++counter);
+}
+
+} // namespace
+
+QVariantMap FilesBridge::menuLaunchCommands(const QString &location) const
+{
+    QVariantMap commands;
+    QVariantList newWindow;
+    newWindow << QStringLiteral("--new-window");
+    if (!location.isEmpty()) {
+        newWindow << QStringLiteral("--location=") + location;
+    }
+    commands.insert(QStringLiteral("newWindow"), newWindow);
+    QVariantList newTab;
+    newTab << QStringLiteral("--activation-handoff=") + filesLaunchToken();
+    if (!location.isEmpty())
+        newTab << QStringLiteral("--location=") + location;
+    commands.insert(QStringLiteral("newTab"), newTab);
+    return commands;
 }

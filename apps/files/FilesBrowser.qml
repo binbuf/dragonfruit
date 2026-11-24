@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
 
-// The Files browsing model (T-10.4a): the current location, per-window
-// back/forward history, and per-location view state. It owns no pixels; the
-// shell binds the toolbar and sidebar to it, and T-10.4b attaches the
-// files-core directory listing to `currentUri`.
+// The Files browsing model (T-10.4a): the current location, back/forward
+// history, and per-location view state. It owns no pixels; the shell binds the
+// toolbar and sidebar to it, and T-10.4b attaches the files-core directory
+// listing to `currentUri`.
+//
+// Since T333 the window's tabs (`FilesTabs`) own the locations and the
+// histories — one stack per tab — so a live window reads `currentUri`,
+// `history` and `historyIndex` from its active tab, while this object remains
+// the shell's per-location view map and the standalone browsing model its
+// tests exercise.
 //
 // The location is an opaque URI (`file:///…`, `trash://`): resolving it to a
 // real directory is the platform seam's job (FilesBridge / files-core), not
@@ -72,22 +78,26 @@ QtObject {
         navigated(currentUri);
     }
 
+    // The location's view: the per-location kind when one was chosen, else the
+    // window's default.
     function viewFor(uri) {
         var kind = viewState[uri];
         return kind !== undefined ? kind : defaultView;
     }
 
-    // Switch the current location's view. The choice is remembered for that
-    // location, and other locations keep theirs.
-    function setView(kind) {
+    // Switch a location's view (`uri` defaults to the browsing model's current
+    // location; the tabbed window passes its active tab's). The choice is
+    // remembered for that location, and other locations keep theirs.
+    function setView(kind, uri) {
         if (kind !== "icon" && kind !== "list")
             return;
-        if (viewFor(currentUri) === kind)
+        var location = uri !== undefined && uri !== null ? uri : currentUri;
+        if (viewFor(location) === kind)
             return;
         var next = {};
         for (var key in viewState)
             next[key] = viewState[key];
-        next[currentUri] = kind;
+        next[location] = kind;
         viewState = next;
     }
 }

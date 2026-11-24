@@ -31,6 +31,9 @@ FocusScope {
 
     width: parent ? parent.width : 480
     height: parent ? parent.height : 320
+    // A closed sheet keeps its root visible for the card's close fade, but the
+    // card must not own the pointer at opacity 0. Same contract as Dialog.
+    enabled: root.open
     visible: opacity > 0
     z: 3000
     focus: root.open
@@ -107,6 +110,14 @@ FocusScope {
         anchors.fill: parent
         color: Theme.color.shadowColor
         opacity: root.open ? 0.35 : 0.0
+
+        // Same modal contract as Dialog: the scrim consumes the press and
+        // wheel, while the card above keeps its own targets.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onWheel: (wheel) => wheel.accepted = true
+        }
 
         Behavior on opacity {
             NumberAnimation {

@@ -119,6 +119,46 @@ Item {
         }
     }
 
+    // A control under a closed Dialog and a closed Sheet. Both modal roots
+    // keep their cards laid out for the close fade, so a closed modal must be
+    // input-disabled or its invisible card/scroll body shadows the control.
+    Component {
+        id: closedModalHostComponent
+        Item {
+            width: 720
+            height: 480
+            property alias overlayer: modalOverlay
+            property alias select: modalSelect
+            property alias dialog: modalDialog
+            property alias sheet: modalSheet
+
+            WindowOverlay { id: modalOverlay }
+
+            Select {
+                id: modalSelect
+                width: 160
+                anchors.centerIn: parent
+                model: ["Default", "Violet", "Blue"]
+            }
+
+            Dialog {
+                id: modalDialog
+                title: "Closed dialog"
+                message: "The card is laid out while the dialog is closed."
+                contentData: Item { width: 300; height: 220 }
+                buttonsData: Button { text: "OK" }
+            }
+
+            Sheet {
+                id: modalSheet
+                title: "Closed sheet"
+                message: "The card is laid out while the sheet is closed."
+                contentData: Item { width: 300; height: 220 }
+                buttonsData: Button { text: "OK" }
+            }
+        }
+    }
+
     Component {
         id: scrollComponent
         ScrollView {
@@ -681,6 +721,33 @@ Item {
             scrolled.clickVerticalTrack(50);
             verify(scrolled.flickable.contentY > 0,
                    "a track click jumps the thumb to the clicked spot");
+        }
+
+        function test_closed_modal_does_not_own_the_pointer() {
+            var host = createTemporaryObject(closedModalHostComponent, stage,
+                                             { y: 700 });
+            waitForRendering(stage);
+            var select = host.select;
+            verify(select !== null, "the host owns the control under the modals");
+
+            // A closed Dialog and a closed Sheet both cover the Select's card
+            // rectangle at opacity 0. The click must reach the Select.
+            mouseClick(select, select.width / 2, select.height / 2);
+            tryVerify(function() { return select.menu.open; }, 5000,
+                      "a closed modal must not shadow the control beneath it");
+            select.menu.hide();
+            waitForRendering(stage);
+
+            // Opening the modal must restore the scrim/card as the pointer
+            // owner: the same click now lands on the dialog, not the Select.
+            host.dialog.show();
+            waitForRendering(stage);
+            mouseClick(select, select.width / 2, select.height / 2);
+            wait(200);
+            compare(select.menu.open, false,
+                    "an open modal still owns the pointer");
+            host.dialog.hide();
+            waitForRendering(stage);
         }
 
         function test_stationary_click_harness() {

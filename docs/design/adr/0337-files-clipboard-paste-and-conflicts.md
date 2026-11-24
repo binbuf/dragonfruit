@@ -77,7 +77,8 @@ Rejected alternatives:
 - Copying a large tree is synchronous on the files-core worker; there is no
   cancel mid-copy yet. The operation is off the UI thread and the progress
   counters still advance per item, not per byte.
-- The clipboard is per-window until T333's tabs/windows share one app-wide
-  clipboard; the model is already a separate object so that move is local.
+- The clipboard is per-window. T333 kept it window-scoped (each window is its
+  own process, ADR 0340); sharing one app-wide clipboard across windows is a
+  follow-up, and the model is already a separate object so that move is local.
 - Hard links, ACLs, extended attributes, and ownership are not preserved;
   permissions and mtime are the contract, as in ADR 0323.

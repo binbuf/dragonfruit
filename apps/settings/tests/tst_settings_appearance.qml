@@ -285,6 +285,11 @@ Item {
         function test_advanced_provider_rows_disable_without_a_provider() {
             var shell = make();
             var pane = paneOf(shell);
+            // The advanced rows live in a closed modal, which is
+            // input-disabled until it opens. Read their own enabled state
+            // with the sheet open (ADR 0341).
+            pane.openAdvanced();
+            waitForRendering(shell);
             verify(pane.iconThemeRow.enabled);
             verify(pane.cursorThemeRow.enabled);
 
@@ -910,6 +915,11 @@ Item {
         function test_icon_and_cursor_rows_disable_without_a_provider() {
             var shell = make();
             var pane = paneOf(shell);
+            // The provider rows are in the closed Advanced Appearance sheet;
+            // open it so their own enabled state is not masked by the modal's
+            // input gate (ADR 0341).
+            pane.openAdvanced();
+            waitForRendering(shell);
 
             Settings.setIconThemeFixture("none");
             Settings.setCursorThemeFixture("none");

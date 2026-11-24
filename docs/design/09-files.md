@@ -43,8 +43,9 @@ separate layouts; the window geometry does not change when the view mode
 changes.
 
 T230d owns the measured chrome, status bar, toolbar-hidden mode and Get Info
-inspector; T244a owns the column and gallery views. Tabs, search results, tags,
-customization and motion remain explicit `OPEN` rows. See
+inspector; T244a owns the column and gallery views. Tabs landed with T333;
+search results, tags, customization, tab drag-out/reordering and motion remain
+explicit `OPEN` rows. See
 [23-macos-structural-surface-review.md](23-macos-structural-surface-review.md)
 and [ADR 0241](adr/0241-macos-structural-surface-review.md).
 
@@ -390,9 +391,10 @@ material alpha is unchanged from T206 (Light 0.985/0.858 and 0.994/0.922; Dark
 0.935/0.218 and 0.900/0.247); the 0.55 popover alpha is not used. Tests cover
 the geometry, toolbar-hidden mode, status counts, segment states, inspector
 sections, multi-selection aggregation, the real rename path and the volume
-absence path; `make t230d-files-capture` writes the light/dark stills. Tabs,
-column/gallery rendering, search results, tags, sidebar/toolbar customization
-and motion remain `OPEN` (see §9 of the structural review). See
+absence path; `make t230d-files-capture` writes the light/dark stills.
+Column/gallery rendering, search results, tags, sidebar/toolbar customization
+and motion remain `OPEN`; tabs landed with T333 (see §9 of the structural
+review). See
 [ADR 0247](adr/0247-files-measured-anatomy-and-get-info.md).
 
 **Implementation status (T330).** Copy, Cut, and Paste are real, and the
@@ -419,9 +421,9 @@ all-or-nothing rule inside `StdFsOps::move_as` (hidden destination sibling,
 copy, rename, then remove the source); symlinks are recreated as links and
 never followed, so a directory copy cannot escape its tree. See
 [ADR 0337](adr/0337-files-clipboard-paste-and-conflicts.md). **Deferred:**
-tabs/New Window (T333), Open With (T334), drag-and-drop inside
-Files, Duplicate/Compress/Make Alias, merge, byte-level progress/cancel, and
-the native Files menu model. Undo landed next (T331, below).
+Open With (T334), drag-and-drop inside Files, Duplicate/Compress/Make Alias,
+merge, byte-level progress/cancel, and the native Files menu model. Undo
+landed next (T331, below); tabs and New Window landed with T333.
 
 **Implementation status (T331).** Undo and Redo are real for rename, new
 folder, Move to Trash, copy/paste, and move/paste. `files-core::undo::UndoStack`
@@ -476,6 +478,34 @@ writes) and `tst_files_shell`'s `test_external_changes_update_the_open_window`
 recursive watch, a remote (GVfs) watch, and the `trash://` live refresh (the
 Trash is re-listed on navigation).
 
+**Implementation status (T333).** Tabs and New Window are real. One
+`FilesTabs` model per window owns each tab's `{id, title, history,
+historyIndex}`; the active tab supplies the window's location, breadcrumb,
+title, and back/forward stack, and a tab's selection is saved by id and
+restored on switch. `FilesBrowser` keeps the per-location view kind, so a tab
+remembers icon/list at each location. The measured tab bar sits below the
+unified toolbar and appears from the second tab (or via Show Tab Bar); it
+reports select/close/new-tab/context intent and paints `{id,title}` rows.
+`Cmd+T` opens a tab, `Cmd+W` closes the current one, `Ctrl+Tab` /
+`Ctrl+Shift+Tab` step tabs, `Cmd+1…Cmd+9` activate the nth (`Cmd+9` the last),
+`Cmd+N` opens a new window, and `Shift+Cmd+N` still makes a folder. Closing the
+last tab closes the window: the model empties first, then the close request is
+emitted, so Files never paints an empty browser shell. **New Window is a
+second process** (`FilesBridge::newWindow`, detached like the desktop's folder
+launch), so the windows do not share a crash domain; the first process keeps
+`org.dragonfruit.Files1`. A component's `--activation-handoff=<token>
+[--location=<uri>]` launch asks that instance over D-Bus (`Activate(location)`)
+to open the location as a tab or raise the window; a bare launch, a positional
+URI (the Dock/desktop), and `--new-window` always open a window. The window
+title follows the active tab. Tests: `tst_files_shell`'s tab cases (independent
+navigation, per-tab selection/view, close/last-close, tab bar pointer and menu,
+Open in New Tab/Window, `Cmd+N`, hand-off), `tst_files_arguments`' launch forms,
+and `make t333-files-capture` writes the two-tab, second-tab, one-tab and
+second-window stills. See
+[ADR 0340](adr/0340-files-tabs-and-new-window.md). **Deferred:** dragging a
+tab out to a new window, tab reordering, session restore, and app-wide
+clipboard sharing between windows.
+
 **Current status (2026-11) — what the Files MVP actually ships.** The browsing
 core is real: streaming listings, natural sorting, the C ABI delta path,
 sidebar favorites/volumes/Computer/Trash, icon/list views, selection
@@ -484,18 +514,18 @@ Trash, file opening, thumbnails, Trash browsing, path bar, back/forward
 history, local name search, the measured window anatomy, the status bar,
 toolbar-hidden mode, Get Info, copy/cut/paste with conflict policy and
 per-item progress, undo/redo with a truthful refusal, live folder watching,
-and the Dock/desktop integration. It is **not** the full
-Files design:
+tabs with independent histories and New Window, and the Dock/desktop
+integration. It is **not** the full Files design:
 
-- **Not implemented:** tabs, New Window (the context row is disabled),
-  drag-and-drop inside Files, duplicate, Make Alias, Compress, Open With,
-  merge, byte-level progress/cancel, column/gallery views, Preview,
-  preview pane, tags, saved searches, batch rename, Connect to Server, and the
-  Files menu model. T230d landed the measured 52/198/30/28 pt chrome, the
-  status bar, the toolbar-hidden mode and the Get Info inspector; T330 landed
-  copy/cut/paste, the conflict sheet and per-item paste progress; T331 landed
-  undo/redo and the Edit menu; T244a lands
-  the column and gallery views. Tabs remain open.
+- **Not implemented:** drag-and-drop inside Files, duplicate, Make Alias,
+  Compress, Open With, merge, byte-level progress/cancel, column/gallery
+  views, Preview, preview pane, tags, saved searches, batch rename, Connect to
+  Server, drag-tab-out/tab reordering, session restore, and the Files menu
+  model. T230d landed the measured 52/198/30/28 pt chrome, the status bar, the
+  toolbar-hidden mode and the Get Info inspector; T330 landed copy/cut/paste,
+  the conflict sheet and per-item paste progress; T331 landed undo/redo and
+  the Edit menu; T333 landed tabs and New Window; T244a lands the column and
+  gallery views.
 - **Partially implemented:** thumbnails (local images; PDF/video only when a
   host helper exists; no archives/remote), search (current-location name
   filter, not the app-index Search), and the folder watcher (a local folder is
@@ -555,23 +585,29 @@ and the session runs fine without it.
 
 ## Windows, tabs, and navigation
 
-**Status (2026-11): back/forward history and the single-window browser are
-shipped; tabs, New Window, and per-tab history are not.** The bullets below are
-the design target.
+**Status (2026-11): the single-window browser, per-tab back/forward history,
+tabs, and New Window are shipped (T333).** The remaining bullets are the
+design target or explicitly deferred.
 
 - **Browser model**, Files-style: the window persists while the location
   changes within it; back/forward history is per tab.
-- Tabs with independent histories; drag a tab out to a new window;
-  Super-double-click opens a folder in a new window (or tab, per preference).
+- Tabs with independent histories are shipped (`Cmd+T`, `Cmd+W`,
+  `Ctrl+Tab`, `Cmd+1…9`); the tab bar appears from the second tab. Drag a tab
+  out to a new window, tab reordering, and Super-double-click's
+  window-or-tab preference are deferred.
 - **Proxy icon:** the title-bar folder icon *is* the current location —
   dragging it moves the folder. A Files signature.
 - **Path bar:** clickable ancestors; drag onto an ancestor to move there;
   right-click an ancestor for New Tab / New Window / Copy Path.
 - **Go to Folder** (Shift+Super+G): a path-completion sheet.
 - Single instance: activating Files with no windows opens a new one (Dock
-  click); other components ask the running instance to reveal items over
-  `org.dragonfruit.Files1` (`OpenPaths`, `RevealItems`), D-Bus-activated so
-  "open folder" works from any app even with no Files process running.
+  click); a Dock/desktop launch with a positional URI always opens a window.
+  Other components ask the running instance to reveal items over
+  `org.dragonfruit.Files1` (`OpenPaths`, `RevealItems`); the shipped T333
+  hand-off uses `Activate(location)` to open the location as a tab or raise the
+  window, D-Bus-activated so "open folder" works from any app even with no
+  Files process running. A **New Window** is a second process
+  ([ADR 0340](adr/0340-files-tabs-and-new-window.md)).
 - **Open in Terminal** (context menu / File menu) launches the
   `xdg-terminal-exec` default terminal at the current location, falling
   back to the first `TerminalEmulator`-category application — Files never

@@ -21,9 +21,13 @@ import Dragonfruit
 // history; Ctrl+F focuses search; Escape clears it; Cmd+A selects all;
 // Cmd+O/Cmd+Down opens the selection; Cmd+C/Cmd+X/Cmd+V copy/cut/paste;
 // Cmd+Z undoes, Shift+Cmd+Z redoes (T331); Shift+Cmd+N makes a folder;
-// Delete trashes; Return renames.
+// Delete trashes; Return renames. Tabs (T333): Cmd+T opens a tab, Cmd+W closes
+// the current tab (the last tab closes the window), Ctrl+Tab / Ctrl+Shift+Tab
+// step tabs, and Cmd+1…Cmd+9 activate the nth tab (Cmd+9 the last). New Window
+// is Cmd+N; New Folder stays Shift+Cmd+N, matching the design's File menu.
 Item {
     id: root
+    objectName: "filesShell"
 
     property string searchText: ""
     // Guards the sidebar selection sync so setting `currentIndex`
@@ -41,6 +45,8 @@ Item {
     property real anchorId: 0
     // The node the open context menu targets, or null for the background.
     property var contextNode: null
+    // T333: the tab whose context menu is open, or -1.
+    property int menuTabIndex: -1
     // A transient inline notice (a snapped-back operation).
     property string notice: ""
     // The conflicting names shown by the paste conflict sheet, and the policy
@@ -72,8 +78,35 @@ Item {
     // Bumped on every model repaint so the inspector's data binding re-reads
     // the current row (rename, watcher update, optimistic edit).
     property int directoryRevision: 0
+    // -- Tabs (T333) -------------------------------------------------------
+    // The selection per tab id, so switching back restores the rows the user
+    // had selected. Node ids are per-listing; a location change still clears
+    // them (`navigate`), so a stored id that no longer exists is pruned by the
+    // views rather than selected.
+    property var tabSelections: ({})
+    // The location of the tab that was active before a switch.
+    property string tabUriBefore: ""
+    // The highest tab count seen; the bar appears from the second tab.
+    property int tabBarRevealedAt: 0
+    // Shift+Cmd+T shows the bar with one tab (the capture seam shows it too).
+    property bool tabBarForced: Files.startTabs > 0
+    readonly property bool tabBarVisible: root.toolbarVisible
+                                          && (root.tabBarForced
+                                              || root.tabs.count > 1
+                                              || root.tabBarRevealedAt > 1)
+    // Capture seam: `DF_FILES_START_TABS=N` opens N tabs on the mutation
+    // fixture's `TabsCapture/<n>` folders once the first listing settles.
+    property int startTabs: Files.startTabs
+    // The history cursor, and therefore view/breadcrumb/title, changed with
+    // the tab (or a back/forward in it, or the view kind of a location). A
+    // plain counter bumped by every path that mutates the tab list without the
+    // location being navigated again; `tabState`, `tabBar.tabs` and the view
+    // switch re-read through it.
+    property int tabRevision: 0
 
     property alias browser: browser
+    property alias tabs: tabs
+    property alias tabBar: tabBar
     property alias sidebar: sidebar
     property alias sidebarPane: sidebarPane
     // T230b: the unified toolbar is the titlebar row; keep the old alias so
@@ -111,15 +144,45 @@ Item {
     // `Files.open` handler; keeping it a signal lets the QML tests observe the
     // double-click/context-menu path without spawning a real application.
     signal openRequested(string uri)
+    // T333: a second Files window on `uri` (empty: the current location). The
+    // window maps this onto `Files.newWindow`; a signal keeps the QML tests
+    // from spawning a process. `windowClosed` is emitted when a new window
+    // anyway closes every tab, so the host window can go.
+    signal newWindowRequested(string uri)
+    signal windowClosed()
+    // A hand-off with no location asks the window to come forward.
+    signal raiseRequested()
     // A window-edge press. `edges` is a `Qt.Edges` flag; the host window
     // forwards it to `startSystemResize`.
     signal resizeRequested(int edges)
 
-    readonly property string locationTitle: Files.displayName(browser.currentUri)
-    readonly property var breadcrumb: Files.breadcrumb(browser.currentUri)
+    // T333: the tab-derived state. The reading is the active tab's location,
+    // history cursor and per-location view; `tabRevision` is bumped by the one
+    // `FilesTabs` model change, so a tab switch or a back/forward re-reads all
+    // of it without the location being navigated again.
+    readonly property var tabState: {
+        var revision = root.tabRevision;
+        var tab = root.tabs.current;
+        return {
+            uri: tab ? (tab.history[tab.historyIndex] || "") : "",
+            canGoBack: root.tabs.canGoBack,
+            canGoForward: root.tabs.canGoForward,
+            view: root.browser.viewFor(tab ? tab.history[tab.historyIndex] : "")
+        };
+    }
+    readonly property string currentUri: root.tabState.uri
+    readonly property bool canGoBack: root.tabState.canGoBack
+    readonly property bool canGoForward: root.tabState.canGoForward
+    readonly property string currentView: root.tabState.view
+    readonly property string locationTitle: Files.displayName(root.currentUri)
+    readonly property var breadcrumb: Files.breadcrumb(root.currentUri)
     readonly property bool hasSearch: root.searchText.length > 0
     // Whether the window is at the Trash location, which owns Empty Trash.
-    readonly property bool inTrash: browser.currentUri === Files.trashUri
+    readonly property bool inTrash: root.currentUri === Files.trashUri
+    // The active tab id and index (a tab is a browsing context; the selection
+    // is saved per id, so this is the key the capture lines and tests read).
+    readonly property int currentTabIndex: root.tabs.currentIndex
+    readonly property int currentTabId: root.tabs.current ? root.tabs.current.id : -1
     // T230d: the measured Files content inset. Visible: the 52 pt unified
     // toolbar. Hidden: the 64 pt content start (the toolbar is a mode, and the
     // sidebar goes with it).
@@ -129,7 +192,7 @@ Item {
     // The status bar's volume free space. A missing volume is an empty label,
     // never an invented number.
     readonly property string freeSpaceText: {
-        var info = Files.volumeInfo(root.browser.currentUri);
+        var info = Files.volumeInfo(root.currentUri);
         return info.available ? info.freeText : "";
     }
     // T230d: the live Get Info model. The selection is the same shell-owned
@@ -200,6 +263,281 @@ Item {
     // in the directory session, so a copy survives navigation.
     FilesClipboard { id: clipboard }
 
+    // T333: the window's tabs. Each tab is a browsing context: its own
+    // location, back/forward history, per-location view state (in `browser`)
+    // and its own selection (recorded when the active tab changes). The
+    // directory listing follows the tab's location; view kinds are the
+    // window's one choice, kept per location so each tab remembers its own.
+    FilesTabs { id: tabs }
+
+    // -- Tab commands (T333) -------------------------------------------------
+
+    // Record the active tab's selection under its id.
+    function captureTabSelection() {
+        var tab = root.tabs.current;
+        if (!tab)
+            return;
+        var saved = {};
+        for (var key in root.tabSelections)
+            saved[key] = root.tabSelections[key];
+        saved[tab.id] = root.selectedIds.slice();
+        root.tabSelections = saved;
+    }
+
+    function tabUri(index) {
+        return root.tabs.uriAt(index);
+    }
+
+    // Make `index` the visible tab. The selection and history of the tab that
+    // was active are recorded first; the new tab's location becomes the
+    // window's (title, contents, breadcrumb, status bar).
+    function activateTab(index) {
+        if (!root.tabs.validIndex(index))
+            return false;
+        if (index === root.tabs.currentIndex) {
+            root.raiseRequested();
+            return false;
+        }
+        root.tabUriBefore = root.currentUri;
+        root.captureTabSelection();
+        root.tabs.currentIndex = index;
+        root.afterTabSwitch();
+        return true;
+    }
+
+    // Everything that follows the model's current tab changing: the new tab's
+    // location is the window's now, so take its selection and re-read the
+    // history-derived controls.
+    function afterTabSwitch() {
+        var tab = root.tabs.current;
+        var ids = tab ? (root.tabSelections[tab.id] || []) : [];
+        root.selectedIds = ids.slice();
+        root.selectedId = ids.length > 0 ? ids[ids.length - 1] : 0;
+        root.anchorId = root.selectedId;
+        root.cancelRename();
+        root.syncSelection();
+        root.resetBrowserDerived();
+    }
+
+    function resetBrowserDerived() {
+        root.tabRevision += 1;
+    }
+
+    // Cmd+T / the tab bar's plus: a new tab on the current location, which is
+    // the Files behaviour (a new tab starts where you are).
+    function newTab(uri) {
+        var target = uri !== undefined && uri !== null && uri.length > 0
+                ? uri : root.currentUri;
+        if (!target)
+            target = Files.homeUri;
+        // The new tab's selection starts empty; the current tab's is saved
+        // under its id so switching back restores it.
+        root.captureTabSelection();
+        var at = root.tabs.openTab(target, Files.displayName(target));
+        if (at < 0)
+            return false;
+        root.tabUriBefore = target;
+        root.tabBarRevealedAt = Math.max(root.tabBarRevealedAt, root.tabs.count);
+        var saved = {};
+        for (var key in root.tabSelections)
+            saved[key] = root.tabSelections[key];
+        saved[root.tabs.current.id] = [];
+        root.tabSelections = saved;
+        root.afterTabSwitch();
+        return true;
+    }
+
+    // Cmd+W: close the current tab. The last tab closes the window (the
+    // decision in 09-files.md's "Closing the last tab" note): a window with no
+    // browsing context has nothing to show, and Files never shows an empty
+    // shell in place of one.
+    function closeTab(index) {
+        var at = (index === undefined || index === null) ? root.tabs.currentIndex
+                                                         : index;
+        if (!root.tabs.validIndex(at))
+            return false;
+        if (root.tabs.count <= 1) {
+            // No browsing context is left, so the model empties before the
+            // window goes; the shell never paints an empty tab strip.
+            root.tabs.tabs = [];
+            root.tabs.currentIndex = -1;
+            root.resetBrowserDerived();
+            root.closeRequested();
+            root.windowClosed();
+            return true;
+        }
+        var closing = root.tabs.tabs[at];
+        var saved = {};
+        for (var key in root.tabSelections)
+            saved[key] = root.tabSelections[key];
+        delete saved[closing.id];
+        root.tabSelections = saved;
+        root.tabUriBefore = root.currentUri;
+        root.tabs.closeTab(at);
+        root.afterTabSwitch();
+        return true;
+    }
+
+    // Ctrl+Tab / Ctrl+Shift+Tab: step within the window's tabs.
+    function stepTab(delta) {
+        if (root.tabs.count < 2)
+            return false;
+        var count = root.tabs.count;
+        var next = ((root.tabs.currentIndex + delta) % count + count) % count;
+        return root.activateTab(next);
+    }
+
+    // Cmd+1…Cmd+9: the nth tab; Cmd+9 is always the last tab.
+    function activateTabNumber(number) {
+        if (number < 1 || root.tabs.count === 0)
+            return false;
+        var index = number === 9 ? root.tabs.count - 1
+                                 : Math.min(number - 1, root.tabs.count - 1);
+        return root.activateTab(index);
+    }
+
+    // Shift+Cmd+T: show the tab bar with one tab.
+    function toggleTabBar() {
+        root.tabBarForced = !root.tabBarForced;
+        return root.tabBarForced;
+    }
+
+    // New Window / Open in New Window: a second process on `uri`, so each
+    // window is its own crash domain (T333). The window maps the signal onto
+    // `Files.newWindow`.
+    function openNewWindow(uri) {
+        var target = uri !== undefined && uri !== null && uri.length > 0
+                ? uri : root.currentUri;
+        root.newWindowRequested(target);
+        return true;
+    }
+
+    // Open a folder of the current tab's listing in a new window.
+    function openSelectionInNewWindow() {
+        if (!root.contextNode)
+            return false;
+        return root.openNewWindow(root.contextNode.uri);
+    }
+
+    // The tab menu (`index` -1: the strip's "New Tab..." end). It is the
+    // window's one context-menu surface, like the item and background menus.
+    function openTabMenu(index, x, y) {
+        root.contextNode = null;
+        root.menuTabIndex = root.tabs.validIndex(index) ? index : -1;
+        contextMenu.model = root.tabMenu(index);
+        contextMenu.showAt(x, y);
+    }
+
+    function tabMenu(index) {
+        var tab = root.tabs.validIndex(index) ? root.tabs.tabs[index] : null;
+        var rows = [];
+        if (tab) {
+            rows.push({ label: root.tabs.count > 1 ? qsTr("Close Tab")
+                                                   : qsTr("Close Window"),
+                        shortcut: "Super+W", action: "closeTab" });
+            rows.push({ label: qsTr("Duplicate to New Tab"),
+                        action: "newTab" });
+            rows.push({ label: qsTr("New Window"), shortcut: "Super+N",
+                        action: "newWindow" });
+            if (root.tabs.count > 1) {
+                rows.push({ type: "separator" });
+                rows.push({ label: qsTr("Close Other Tabs"),
+                            action: "closeOtherTabs" });
+                rows.push({ label: qsTr("Close Tabs to the Right"),
+                            action: "closeTabsToRight",
+                            enabled: index < root.tabs.count - 1 });
+            }
+        } else {
+            rows.push({ label: qsTr("New Window"), shortcut: "Super+N",
+                        action: "newWindow" });
+            rows.push({ label: qsTr("New Tab"), shortcut: "Super+T",
+                        action: "newTab" });
+            rows.push({ type: "separator" });
+            rows.push({ label: root.tabBarForced ? qsTr("Hide Tab Bar")
+                                                 : qsTr("Show Tab Bar"),
+                        action: "toggleTabBar" });
+        }
+        return rows;
+    }
+
+    // Close every tab but `keep` (the tab-bar context menu). The kept tab is
+    // activated first so the selection save in `activateTab` does not record
+    // the closed tabs' ids against the survivor.
+    function closeOtherTabs(keep) {
+        if (!root.tabs.validIndex(keep))
+            return false;
+        root.activateTab(keep);
+        var list = root.tabs.tabs.slice();
+        for (var i = list.length - 1; i >= 0; --i) {
+            if (i !== keep)
+                root.closeTab(i);
+        }
+        return true;
+    }
+
+    function closeTabsToRight(index) {
+        if (!root.tabs.validIndex(index))
+            return false;
+        while (root.tabs.count > index + 1)
+            root.closeTab(root.tabs.count - 1);
+        return root.activateTab(index);
+    }
+
+    // Open `uri` in a new tab, in the background (`keepCurrent`) or not;
+    // Open in New Tab uses the background form so the current listing stays.
+    function openInNewTab(uri, keepCurrent) {
+        if (!uri)
+            return false;
+        var current = root.tabs.currentIndex;
+        if (!root.newTab(uri))
+            return false;
+        if (!keepCurrent)
+            return true;
+        var opened = root.tabs.currentIndex;
+        // Move the new tab next to the current one and go back to it.
+        var list = root.tabs.tabs.slice();
+        var tab = list.splice(opened, 1)[0];
+        list.splice(current + 1, 0, tab);
+        // Keep the current tab active and current: the list index moves but
+        // the active context must not.
+        root.tabs.tabs = list;
+        root.tabs.currentIndex = current;
+        root.resetBrowserDerived();
+        return true;
+    }
+
+    // The single-instance hand-off target (`org.dragonfruit.Files1`): open a
+    // location as a new tab, or raise the window when the request names none.
+    // Called from the entry point; returns whether the request was used.
+    function activateLocation(uri) {
+        if (!uri || uri.length === 0) {
+            root.raiseRequested();
+            return true;
+        }
+        var target = uri;
+        if (!Files.isBrowsable(target)) {
+            var resolved = Files.resolveOpenTarget(target);
+            target = resolved.location;
+        }
+        if (!target)
+            return false;
+        if (root.tabs.count === 0) {
+            root.tabs.openTab(target, Files.displayName(target));
+            root.afterTabSwitch();
+            return true;
+        }
+        var existing = -1;
+        for (var i = 0; i < root.tabs.count; ++i) {
+            if (root.tabs.uriAt(i) === target) {
+                existing = i;
+                break;
+            }
+        }
+        if (existing >= 0)
+            return root.activateTab(existing);
+        return root.openInNewTab(target, false);
+    }
+
     // The sidebar sections the design doc names: Favorites (real XDG user
     // directories), then Locations (Computer, mounted volumes, Trash last).
     readonly property var sidebarSections: {
@@ -247,12 +585,55 @@ Item {
 
     function syncSelection() {
         root.syncing = true;
-        sidebar.currentIndex = root.entryIndexForUri(browser.currentUri);
+        sidebar.currentIndex = root.entryIndexForUri(root.currentUri);
         root.syncing = false;
     }
 
     function focusSearch() {
         searchField.forceActiveFocus();
+    }
+
+    // -- Navigating the active tab (T333) ------------------------------------
+
+    // Record a location in the active tab's history. A location change starts
+    // a fresh selection (node ids are per-listing) and re-reads the tab-derived
+    // state; the tab's own back/forward stack is the only thing that grows.
+    function navigate(uri) {
+        var title = Files.displayName(uri);
+        if (!root.tabs.navigate(uri, title))
+            return false;
+        root.clearSelection();
+        root.cancelRename();
+        root.syncSelection();
+        root.resetBrowserDerived();
+        return true;
+    }
+
+    function back() {
+        if (!root.tabs.back())
+            return false;
+        root.clearSelection();
+        root.cancelRename();
+        root.syncSelection();
+        root.resetBrowserDerived();
+        return true;
+    }
+
+    function forward() {
+        if (!root.tabs.forward())
+            return false;
+        root.clearSelection();
+        root.cancelRename();
+        root.syncSelection();
+        root.resetBrowserDerived();
+        return true;
+    }
+
+    // The view switch: one window kind, remembered per location, so each tab
+    // keeps the view its own location was last shown in.
+    function setView(kind) {
+        root.browser.setView(kind, root.currentUri);
+        root.resetBrowserDerived();
     }
 
     // Selection and opening the two views share (T-10.4b/T-10.4c).
@@ -523,7 +904,7 @@ Item {
         if (!uri)
             return;
         if (isDir)
-            browser.navigate(uri);
+            root.navigate(uri);
         else
             root.openRequested(uri);
     }
@@ -566,7 +947,7 @@ Item {
     }
 
     function makeFolder() {
-        directory.newFolder(browser.currentUri);
+        directory.newFolder(root.currentUri);
     }
 
     // -- Undo / redo (T331) --------------------------------------------------
@@ -722,7 +1103,7 @@ Item {
     function performPaste(policy) {
         if (clipboard.empty || !directory)
             return false;
-        var target = browser.currentUri;
+        var target = root.currentUri;
         var mode = clipboard.mode;
         var items = clipboard.items.slice();
         var queued = 0;
@@ -801,9 +1182,13 @@ Item {
             { label: qsTr("Get Info"), shortcut: "Super+I",
               action: "getInfo", enabled: node !== null }
         ];
+        // T333: a folder opens in its own tab or its own window; the window
+        // is a second process (crash-independent), the tab shares this one.
         if (node && node.isDir) {
-            entries.push({ label: qsTr("Open in New Window"), action: "noop",
-                           enabled: false });
+            entries.push({ label: qsTr("Open in New Tab"),
+                           action: "openInNewTab" });
+            entries.push({ label: qsTr("Open in New Window"),
+                           action: "openInNewWindow" });
         }
         entries.push({ type: "separator" });
         entries.push({ label: qsTr("Copy"), shortcut: "Super+C",
@@ -839,6 +1224,7 @@ Item {
     // the menu the user opens for Undo/Redo beside Cmd+Z.
     function openEditMenu(x, y) {
         root.contextNode = null;
+        root.menuTabIndex = -1;
         contextMenu.model = root.editMenuRows();
         contextMenu.showAt(x, y);
         return true;
@@ -866,26 +1252,42 @@ Item {
         root.openEditMenu(Math.max(0, point.x), point.y);
     }
 
+    function startMenuRows() {
+        return [
+            { label: root.toolbarVisible ? qsTr("Hide Toolbar")
+                                         : qsTr("Show Toolbar"),
+              shortcut: "Ctrl+Alt+T", action: "toggleToolbar" },
+            { label: root.tabBarVisible ? qsTr("Hide Tab Bar")
+                                        : qsTr("Show Tab Bar"),
+              action: "toggleTabBar" }
+        ];
+    }
+
     function backgroundMenu() {
         if (root.startMenu === "edit")
             return root.editMenuRows();
-        var toolbarRow = { label: root.toolbarVisible ? qsTr("Hide Toolbar")
-                                                       : qsTr("Show Toolbar"),
-                           shortcut: "Ctrl+Alt+T",
-                           action: "toggleToolbar" };
+        // T333: the File section leads with New Tab / New Window. Shift+Cmd+N
+        // is New Window (the design's File menu row); New Folder keeps its
+        // T-10.4c chord on Alt+Cmd+N.
+        var fileRows = [
+            { label: qsTr("New Tab"), shortcut: "Super+T", action: "newTab" },
+            { label: qsTr("New Window"), shortcut: "Shift+Super+N",
+              action: "newWindow" },
+            { type: "separator" }
+        ];
         var editRows = root.undoMenuRows();
         if (root.inTrash) {
-            return editRows.concat([
+            return fileRows.concat(editRows, [
                 { type: "separator" },
                 { label: qsTr("Empty Trash"), shortcut: "Shift+Super+Delete",
                   action: "emptyTrash", enabled: directory.count > 0 },
-                { type: "separator" },
-                toolbarRow,
+                { type: "separator" }
+            ], root.startMenuRows(), [
                 { label: qsTr("Select All"), shortcut: "Super+A",
                   action: "selectAll" }
             ]);
         }
-        var rows = editRows.concat([
+        var rows = fileRows.concat(editRows, [
             { label: qsTr("Cut"), shortcut: "Super+X", action: "cut",
               enabled: root.selectionClipboardItems().length > 0 },
             { label: qsTr("Copy"), shortcut: "Super+C", action: "copy",
@@ -898,10 +1300,10 @@ Item {
         ]);
         // Free placement is an icon-view rule; a list has no icon slots to
         // clean up, so the row would be a dead affordance there.
-        if (browser.currentView !== "list")
+        if (root.currentView !== "list")
             rows.push({ label: qsTr("Clean Up"), action: "cleanUp" });
         rows.push({ type: "separator" });
-        rows.push(toolbarRow);
+        rows = rows.concat(root.startMenuRows());
         rows.push({ label: qsTr("Select All"), shortcut: "Super+A",
                     action: "selectAll" });
         return rows;
@@ -915,6 +1317,7 @@ Item {
 
     function openBackgroundMenu(x, y) {
         root.contextNode = null;
+        root.menuTabIndex = -1;
         contextMenu.model = root.backgroundMenu();
         contextMenu.showAt(x, y);
     }
@@ -969,6 +1372,35 @@ Item {
         case "putBack":
             root.putBackSelection();
             break;
+        case "openInNewTab":
+            if (root.contextNode)
+                root.openInNewTab(root.contextNode.uri, true);
+            break;
+        case "openInNewWindow":
+            root.openSelectionInNewWindow();
+            break;
+        case "newTab":
+            if (root.menuTabIndex >= 0 && root.tabs.validIndex(root.menuTabIndex))
+                root.openInNewTab(root.tabs.uriAt(root.menuTabIndex), true);
+            else
+                root.newTab();
+            root.menuTabIndex = -1;
+            break;
+        case "closeTab":
+            root.closeTab(root.menuTabIndex >= 0 ? root.menuTabIndex : undefined);
+            break;
+        case "closeOtherTabs":
+            root.closeOtherTabs(root.menuTabIndex);
+            break;
+        case "closeTabsToRight":
+            root.closeTabsToRight(root.menuTabIndex);
+            break;
+        case "newWindow":
+            root.openNewWindow();
+            break;
+        case "toggleTabBar":
+            root.toggleTabBar();
+            break;
         }
     }
 
@@ -1019,7 +1451,7 @@ Item {
                 root.selectedIds = [ids[i]];
                 root.selectedId = ids[i];
                 root.anchorId = ids[i];
-                if (browser.currentView === "list")
+                if (root.currentView === "list")
                     listView.scrollToNode(ids[i]);
                 else
                     iconView.scrollToNode(ids[i]);
@@ -1034,7 +1466,8 @@ Item {
         // scripted checks; an unusable URI falls back to Home.
         if (root.startUri.length > 0 && Files.isBrowsable(root.startUri))
             start = root.startUri;
-        browser.reset(start);
+        root.tabs.openTab(start, Files.displayName(start));
+        root.tabBarRevealedAt = root.tabs.count;
         root.syncSelection();
     }
 
@@ -1055,13 +1488,13 @@ Item {
         switch (event.key) {
         case Qt.Key_Left:
             if (event.modifiers & Qt.AltModifier) {
-                browser.back();
+                root.back();
                 event.accepted = true;
             }
             break;
         case Qt.Key_Right:
             if (event.modifiers & Qt.AltModifier) {
-                browser.forward();
+                root.forward();
                 event.accepted = true;
             }
             break;
@@ -1073,13 +1506,27 @@ Item {
             break;
         case Qt.Key_BracketLeft:
             if (event.modifiers & Qt.ControlModifier) {
-                browser.back();
+                root.back();
                 event.accepted = true;
             }
             break;
         case Qt.Key_BracketRight:
             if (event.modifiers & Qt.ControlModifier) {
-                browser.forward();
+                root.forward();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_1:
+        case Qt.Key_2:
+        case Qt.Key_3:
+        case Qt.Key_4:
+        case Qt.Key_5:
+        case Qt.Key_6:
+        case Qt.Key_7:
+        case Qt.Key_8:
+        case Qt.Key_9:
+            if (command && !(event.modifiers & Qt.ShiftModifier)) {
+                root.activateTabNumber(event.key - Qt.Key_0);
                 event.accepted = true;
             }
             break;
@@ -1100,7 +1547,12 @@ Item {
             break;
         case Qt.Key_N:
             if (command && (event.modifiers & Qt.ShiftModifier)) {
+                // New Folder keeps its T-10.4c chord; the design's File menu
+                // gives New Window the unshifted Cmd+N.
                 root.makeFolder();
+                event.accepted = true;
+            } else if (command) {
+                root.openNewWindow();
                 event.accepted = true;
             }
             break;
@@ -1134,9 +1586,30 @@ Item {
                 event.accepted = true;
             }
             break;
+        case Qt.Key_Tab:
+            // Ctrl+Tab / Ctrl+Shift+Tab is the defined tab switch chord. It
+            // stays off Super/Meta so the compositor's own window switcher is
+            // never shadowed.
+            if (event.modifiers & Qt.ControlModifier) {
+                root.stepTab((event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+                event.accepted = true;
+            }
+            break;
         case Qt.Key_T:
             if (command && (event.modifiers & Qt.AltModifier)) {
                 root.toggleToolbar();
+                event.accepted = true;
+            } else if (command) {
+                if (event.modifiers & Qt.ShiftModifier)
+                    root.toggleTabBar();
+                else
+                    root.newTab();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_W:
+            if (command) {
+                root.closeTab();
                 event.accepted = true;
             }
             break;
@@ -1240,19 +1713,13 @@ Item {
         value: root.appChromeSupported
     }
 
+    // T333: the per-location view kinds (uri -> "icon" | "list"). Tabs read
+    // this through `tabState`, so each tab remembers its own view.
     FilesBrowser {
         id: browser
         // `DF_FILES_START_VIEW` lets the capture harness open in either view;
         // the toolbar switch still owns the live choice.
         defaultView: Files.startView.length > 0 ? Files.startView : "icon"
-        onCurrentUriChanged: {
-            // Node ids are per-listing; a selection from another folder is
-            // meaningless here.
-            root.clearSelection();
-            root.cancelRename();
-            root.syncSelection();
-        }
-        onNavigated: root.syncSelection()
     }
 
     AppWindow {
@@ -1290,16 +1757,16 @@ Item {
                     icon: "chevron-left"
                     variant: "ghost"
                     accessibleName: qsTr("Back")
-                    enabled: browser.canGoBack
-                    onClicked: browser.back()
+                    enabled: root.canGoBack
+                    onClicked: root.back()
                 }
                 Button {
                     id: forwardButton
                     icon: "chevron-right"
                     variant: "ghost"
                     accessibleName: qsTr("Forward")
-                    enabled: browser.canGoForward
-                    onClicked: browser.forward()
+                    enabled: root.canGoForward
+                    onClicked: root.forward()
                 }
                 SegmentedControl {
                     id: viewControl
@@ -1324,8 +1791,8 @@ Item {
                           enabled: false,
                           reason: qsTr("Gallery view arrives with T244a.") }
                     ]
-                    onActivated: (index) => browser.setView(index === 1
-                                                            ? "list" : "icon")
+                    onActivated: (index) => root.setView(index === 1
+                                                        ? "list" : "icon")
                     onRejected: (index, reason) => {
                         root.notice = reason;
                         noticeTimer.restart();
@@ -1388,7 +1855,7 @@ Item {
                     onActivated: (index, item) => {
                         var uri = root.uriForEntry(item);
                         if (uri)
-                            browser.navigate(uri);
+                            root.navigate(uri);
                     }
                     onCurrentIndexChanged: {
                         // A click/Return moves the index and then emits
@@ -1399,7 +1866,7 @@ Item {
                             return;
                         var uri = root.uriForEntry(sidebar.entries[sidebar.currentIndex]);
                         if (uri)
-                            browser.navigate(uri);
+                            root.navigate(uri);
                     }
                 }
             }
@@ -1428,6 +1895,35 @@ Item {
                     anchors.fill: parent
                     spacing: 0
 
+                    // T333: the measured 702×28 pt tab bar, below the unified
+                    // toolbar and above the path bar. It spans the detail
+                    // column only (the sidebar starts at the toolbar bottom);
+                    // it appears from the second tab, or when shifted open.
+                    FilesTabBar {
+                        id: tabBar
+                        width: parent.width
+                        visible: root.tabBarVisible
+                        height: visible ? implicitHeight : 0
+                        tabs: {
+                            var revision = root.tabRevision;
+                            var out = [];
+                            for (var i = 0; i < root.tabs.count; ++i) {
+                                var tab = root.tabs.tabs[i];
+                                out.push({ id: tab.id,
+                                           title: root.tabs.tabTitle(i) });
+                            }
+                            return out;
+                        }
+                        currentIndex: root.tabs.currentIndex
+                        onTabSelected: (index) => root.activateTab(index)
+                        onTabCloseRequested: (index) => root.closeTab(index)
+                        onNewTabRequested: root.newTab()
+                        onContextRequested: (index, x, y) => {
+                            var p = tabBar.mapToItem(root, x, y);
+                            root.openTabMenu(index, p.x, p.y);
+                        }
+                    }
+
                     // The location content: the files-core listing rendered
                     // by the icon or list view (T-10.4b). Both views stay
                     // instantiated and share the selection, so the view
@@ -1436,18 +1932,19 @@ Item {
                     Item {
                         id: contentArea
                         width: parent.width
-                        height: Math.max(0, parent.height - pathBar.height
+                        height: Math.max(0, parent.height - tabBar.height
+                                            - pathBar.height
                                             - statusBar.height)
 
                         FilesDirectoryModel {
                             id: directory
-                            location: browser.currentUri
+                            location: root.currentUri
                         }
 
                         FilesIconView {
                             id: iconView
                             anchors.fill: parent
-                            visible: browser.currentView !== "list"
+                            visible: root.currentView !== "list"
                             directory: directory
                             selectedId: root.selectedId
                             selectedIds: root.selectedIds
@@ -1473,7 +1970,7 @@ Item {
                         FilesListView {
                             id: listView
                             anchors.fill: parent
-                            visible: browser.currentView === "list"
+                            visible: root.currentView === "list"
                             directory: directory
                             selectedId: root.selectedId
                             selectedIds: root.selectedIds
@@ -1569,7 +2066,7 @@ Item {
                         width: parent.width
                         model: root.breadcrumb
                         bottomRightRadius: Theme.controls.window.radius
-                        onNavigated: (uri) => browser.navigate(uri)
+                        onNavigated: (uri) => root.navigate(uri)
                     }
 
                     // T230d: item count, selection count and the volume's
@@ -1680,7 +2177,7 @@ Item {
     Binding {
         target: viewControl
         property: "currentIndex"
-        value: browser.currentView === "list" ? 1 : 0
+        value: root.currentView === "list" ? 1 : 0
     }
 
     // T330: one conflict sheet for the whole paste. Replace / Skip / Keep Both

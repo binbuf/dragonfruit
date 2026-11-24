@@ -20,9 +20,11 @@ Item {
         when: windowShown
 
         Component { id: shellComponent; FilesShell { } }
+        Component { id: filesWindowComponent; FilesWindow { } }
         Component { id: desktopComponent; DesktopSurface { } }
 
         SignalSpy { id: closeSpy; signalName: "closeRequested" }
+        Component { id: closeComponent; SignalSpy { signalName: "closeRequested" } }
         SignalSpy { id: openSpy; signalName: "openRequested" }
         SignalSpy { id: resizeSpy; signalName: "resizeRequested" }
         SignalSpy { id: desktopOpenSpy; signalName: "openRequested" }
@@ -116,6 +118,33 @@ Item {
                        "PNG");
         }
 
+        function captureT333(item, suffix) {
+            waitForRendering(stage);
+            var image = grabImage(item);
+            verify(image !== null);
+            verify(image.width > 0 && image.height > 0);
+            image.save(Files.captureDir + "/t333-files-" + suffix + ".png", "PNG");
+        }
+
+        // A pointer click at an item's centre through the stage. The tab
+        // delegates are created by a Repeater, and their own `window` can be
+        // unset for a frame; the stage coordinate path is stable.
+        function clickStageItem(item) {
+            waitForRendering(stage);
+            var p = item.mapToItem(stage, 0, 0);
+            mouseClick(stage, p.x + item.width / 2, p.y + item.height / 2);
+        }
+
+        // A tab delegate is recreated whenever the tab model changes (the
+        // bar's `tabs` binding is replaced wholesale), so re-read it by index
+        // after each click instead of holding a stale item.
+        function clickTab(repeater, index) {
+            waitForRendering(stage);
+            var item = repeater.itemAt(index);
+            verify(item);
+            clickStageItem(item);
+        }
+
         // -- Platform seam ------------------------------------------------------
 
         function test_platform_locations_are_deterministic() {
@@ -190,7 +219,7 @@ Item {
 
         function test_shell_opens_at_home_with_sections() {
             var shell = make();
-            compare(shell.browser.currentUri, Files.homeUri);
+            compare(shell.currentUri, Files.homeUri);
             compare(shell.locationTitle, "tester");
             compare(shell.titleBar.title, "tester");
             compare(shell.titleBar.style, "unified",
@@ -237,7 +266,7 @@ Item {
 
         function test_status_bar_counts_and_free_space() {
             var shell = make({ width: 900, height: 600 });
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             compare(shell.statusBar.itemCount, 5);
             compare(shell.statusBar.selectionCount, 0);
@@ -310,16 +339,16 @@ Item {
             verify(shell.notice.length > 0);
 
             shell.viewControl.activateIndex(1);
-            compare(shell.browser.currentView, "list");
+            compare(shell.currentView, "list");
             shell.viewControl.activateIndex(0);
-            compare(shell.browser.currentView, "icon");
+            compare(shell.currentView, "icon");
         }
 
         // Focus the content grid, the way a click on the folder does: the
         // views own the arrow keys and forward command chords (Cmd+Z, …) to
         // the shell.
         function focusContent(shell) {
-            var view = shell.browser.currentView === "list"
+            var view = shell.currentView === "list"
                     ? shell.listView : shell.iconView;
             var grid = null;
             for (var i = 0; i < view.children.length; ++i) {
@@ -341,7 +370,7 @@ Item {
 
         function test_get_info_single_item_sections() {
             var shell = make({ width: 900, height: 600 });
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             var fileId = idForUri(shell, Files.viewFixtureUri + "/alpha.txt");
             verify(fileId > 0);
@@ -383,7 +412,7 @@ Item {
 
         function test_get_info_multi_selection_aggregates() {
             var shell = make({ width: 900, height: 600 });
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             var ids = shell.directory.allNodeIds();
             compare(ids.length, 5);
@@ -410,7 +439,7 @@ Item {
 
         function test_get_info_rename_uses_the_real_backend() {
             var shell = make({ width: 900, height: 600 });
-            shell.browser.navigate(Files.mutationFixtureUri + "/Info");
+            shell.navigate(Files.mutationFixtureUri + "/Info");
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = shell.directory.allNodeIds()[0];
@@ -446,7 +475,7 @@ Item {
             var savedScheme = Settings.values["appearance.colorScheme"];
             try {
                 var shell = make({ width: 900, height: 600 });
-                shell.browser.navigate(Files.viewFixtureUri);
+                shell.navigate(Files.viewFixtureUri);
                 tryCompare(shell.directory, "state", "complete");
 
                 Settings.set("appearance.colorScheme", "light");
@@ -557,7 +586,7 @@ Item {
             var shell = make();
             var documents = Files.favorites[1].uri;
             shell.sidebar.activateIndex(shell.entryIndexForUri(documents));
-            compare(shell.browser.currentUri, documents);
+            compare(shell.currentUri, documents);
             compare(shell.locationTitle, "Documents");
             verify(shell.backButton.enabled);
             compare(shell.pathBar.model[shell.pathBar.model.length - 1].label,
@@ -570,9 +599,9 @@ Item {
             waitForRendering(stage);
             // The default selection is Home; Down steps to Computer.
             keyClick(Qt.Key_Down);
-            compare(shell.browser.currentUri, Files.computerUri);
+            compare(shell.currentUri, Files.computerUri);
             keyClick(Qt.Key_Up);
-            compare(shell.browser.currentUri, Files.homeUri);
+            compare(shell.currentUri, Files.homeUri);
             verify(shell.backButton.enabled);
         }
 
@@ -582,29 +611,30 @@ Item {
             var shell = make();
             var documents = Files.favorites[1].uri;
             var downloads = Files.favorites[2].uri;
-            shell.browser.navigate(documents);
-            shell.browser.navigate(downloads);
-            compare(shell.browser.currentUri, downloads);
-            verify(!shell.browser.canGoForward);
+            shell.navigate(documents);
+            shell.navigate(downloads);
+            compare(shell.currentUri, downloads);
+            verify(!shell.canGoForward);
 
             mouseClick(shell.backButton);
             waitForRendering(stage);
-            compare(shell.browser.currentUri, documents);
+            compare(shell.currentUri, documents);
             verify(shell.backButton.enabled);
             verify(shell.forwardButton.enabled);
 
             mouseClick(shell.forwardButton);
             waitForRendering(stage);
-            compare(shell.browser.currentUri, downloads);
+            compare(shell.currentUri, downloads);
             verify(!shell.forwardButton.enabled);
         }
 
         function test_history_does_not_grow_on_same_location() {
             var shell = make();
             shell.sidebar.activateIndex(shell.entryIndexForUri(Files.homeUri));
-            compare(shell.browser.history.length, 1);
+            compare(shell.tabs.count, 1);
+            compare(shell.tabs.current.history.length, 1);
             shell.sidebar.activateIndex(shell.entryIndexForUri(Files.homeUri));
-            compare(shell.browser.history.length, 1);
+            compare(shell.tabs.current.history.length, 1);
         }
 
         // -- View switch + per-location persistence -----------------------------
@@ -613,26 +643,26 @@ Item {
             var shell = make();
             compare(shell.viewControl.entries[0].icon, "icon-view");
             compare(shell.viewControl.entries[1].icon, "list-view");
-            compare(shell.browser.currentView, "icon");
+            compare(shell.currentView, "icon");
             compare(shell.viewControl.currentIndex, 0);
 
             shell.viewControl.activateIndex(1);
-            compare(shell.browser.currentView, "list");
+            compare(shell.currentView, "list");
             waitForRendering(stage);
             compare(shell.viewControl.currentIndex, 1);
 
             // Another location starts on the default view...
             var documents = Files.favorites[1].uri;
-            shell.browser.navigate(documents);
+            shell.navigate(documents);
             waitForRendering(stage);
-            compare(shell.browser.currentView, "icon");
+            compare(shell.currentView, "icon");
             compare(shell.viewControl.currentIndex, 0);
 
             // ...and the first location remembers its choice.
-            shell.browser.back();
+            shell.back();
             waitForRendering(stage);
-            compare(shell.browser.currentUri, Files.homeUri);
-            compare(shell.browser.currentView, "list");
+            compare(shell.currentUri, Files.homeUri);
+            compare(shell.currentView, "list");
             compare(shell.viewControl.currentIndex, 1);
         }
 
@@ -641,36 +671,36 @@ Item {
         function test_icon_view_renders_the_listing() {
             var shell = make();
             verify(Files.viewFixtureUri.length > 0);
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             compare(shell.directory.count, 5);
-            compare(shell.browser.currentView, "icon");
+            compare(shell.currentView, "icon");
             compare(shell.iconView.visible, true);
             compare(shell.listView.visible, false);
         }
 
         function test_view_toggle_swaps_the_delegate() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "count", 5);
             compare(shell.iconView.visible, true);
 
             shell.viewControl.activateIndex(1);
             waitForRendering(stage);
-            compare(shell.browser.currentView, "list");
+            compare(shell.currentView, "list");
             compare(shell.listView.visible, true);
             compare(shell.iconView.visible, false);
 
             shell.viewControl.activateIndex(0);
             waitForRendering(stage);
-            compare(shell.browser.currentView, "icon");
+            compare(shell.currentView, "icon");
             compare(shell.iconView.visible, true);
             compare(shell.listView.visible, false);
         }
 
         function test_selection_survives_the_view_switch() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "count", 5);
             waitForRendering(stage);
 
@@ -691,7 +721,7 @@ Item {
 
         function test_list_view_shows_the_columns() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "count", 5);
             // The rows carry the list-view columns (name + metadata).
             var index = shell.directory.index(0, 0);
@@ -703,7 +733,7 @@ Item {
 
         function test_multi_select_command_and_shift() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             var ids = shell.directory.allNodeIds();
             compare(ids.length, 5);
@@ -728,7 +758,7 @@ Item {
 
         function test_rubber_band_selects_enclosed_tiles() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             waitForRendering(stage);
             compare(shell.selectedIds.length, 0);
@@ -778,7 +808,7 @@ Item {
 
         function test_icon_free_placement_is_translucent_and_cleans_up() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             waitForRendering(stage);
 
@@ -811,7 +841,7 @@ Item {
 
         function test_context_menu_targets_the_pointer() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             var ids = shell.directory.allNodeIds();
 
@@ -832,12 +862,14 @@ Item {
             compare(shell.contextMenu.model[3].action, "trash");
             shell.contextMenu.hide();
 
-            // The background menu leads with the Edit section (Undo/Redo,
-            // T331), then Paste Item (disabled with an empty clipboard), then
-            // New Folder.
+            // The background menu leads with the File section (New Tab /
+            // New Window, T333), then the Edit section (Undo/Redo, T331), then
+            // Paste Item (disabled with an empty clipboard), then New Folder.
             shell.openBackgroundMenu(12, 12);
-            compare(shell.contextMenu.model[0].action, "undo");
-            compare(shell.contextMenu.model[1].action, "redo");
+            compare(shell.contextMenu.model[0].action, "newTab");
+            compare(shell.contextMenu.model[1].action, "newWindow");
+            compare(shell.contextMenu.model[3].action, "undo");
+            compare(shell.contextMenu.model[4].action, "redo");
             var pasteRows = shell.contextMenu.model.filter(function(e) {
                 return e.action === "paste";
             });
@@ -885,7 +917,7 @@ Item {
 
         function test_right_click_opens_the_item_menu() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             waitForRendering(stage);
             // A real pointer right-click on a tile routes through the view's
@@ -898,7 +930,7 @@ Item {
 
         function test_clicking_away_closes_the_context_menu() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             waitForRendering(stage);
 
@@ -915,7 +947,7 @@ Item {
 
         function test_double_click_and_context_open_launch_files() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             var fileUri = Files.viewFixtureUri + "/alpha.txt";
 
@@ -930,9 +962,9 @@ Item {
 
             shell.activateNode(Files.viewFixtureUri + "/Folder", true);
             compare(openSpy.count, 1);
-            compare(shell.browser.currentUri, Files.viewFixtureUri + "/Folder");
+            compare(shell.currentUri, Files.viewFixtureUri + "/Folder");
 
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             var fileId = 0;
             for (var i = 0; i < shell.directory.count; ++i) {
@@ -952,7 +984,7 @@ Item {
 
         function test_double_clicking_a_file_tile_opens_it() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             waitForRendering(stage);
 
@@ -977,7 +1009,7 @@ Item {
 
         function test_image_rows_carry_thumbnail_sources() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             var imageRow = -1;
             var textRow = -1;
@@ -1002,7 +1034,7 @@ Item {
 
         function test_image_thumbnail_actually_loads() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             waitForRendering(stage);
 
@@ -1046,7 +1078,7 @@ Item {
 
         function test_capture_seams_drive_the_menus_and_rename() {
             var shell = make();
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
 
             shell.startMenu = "item";
@@ -1076,7 +1108,7 @@ Item {
 
         function test_optimistic_rename_paints_immediately() {
             var shell = make();
-            shell.browser.navigate(Files.mutationFixtureUri + "/Rename");
+            shell.navigate(Files.mutationFixtureUri + "/Rename");
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = shell.directory.allNodeIds()[0];
@@ -1096,7 +1128,7 @@ Item {
 
         function test_optimistic_rename_reverts_on_conflict() {
             var shell = make();
-            shell.browser.navigate(Files.mutationFixtureUri + "/Revert");
+            shell.navigate(Files.mutationFixtureUri + "/Revert");
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 2);
             var ids = shell.directory.allNodeIds(); // a.txt, b.txt
@@ -1121,11 +1153,11 @@ Item {
 
         function test_optimistic_new_folder_paints_immediately() {
             var shell = make();
-            shell.browser.navigate(Files.mutationFixtureUri + "/New");
+            shell.navigate(Files.mutationFixtureUri + "/New");
             tryCompare(shell.directory, "state", "complete");
             compare(shell.directory.count, 0);
 
-            verify(shell.directory.newFolder(shell.browser.currentUri));
+            verify(shell.directory.newFolder(shell.currentUri));
             compare(shell.directory.count, 1); // visible before confirmation
             tryCompare(shell.directory, "pendingOps", 0);
             compare(shell.directory.lastError, "");
@@ -1133,7 +1165,7 @@ Item {
 
         function test_optimistic_trash_paints_immediately() {
             var shell = make();
-            shell.browser.navigate(Files.mutationFixtureUri + "/Trash");
+            shell.navigate(Files.mutationFixtureUri + "/Trash");
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = shell.directory.allNodeIds()[0];
@@ -1150,7 +1182,7 @@ Item {
             var shell = make();
             var src = Files.mutationFixtureUri + "/PasteSrc";
             var dst = Files.mutationFixtureUri + "/PasteDst";
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 2);
 
@@ -1164,7 +1196,7 @@ Item {
             // Copy removes nothing.
             compare(shell.directory.count, 2);
 
-            shell.browser.navigate(dst);
+            shell.navigate(dst);
             tryCompare(shell.directory, "state", "complete");
             compare(shell.directory.count, 0);
             verify(shell.paste());
@@ -1187,7 +1219,7 @@ Item {
             var shell = make();
             var src = Files.mutationFixtureUri + "/PasteCut";
             var dst = Files.mutationFixtureUri + "/PasteCutDest";
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = idForUri(shell, src + "/move-me.txt");
@@ -1196,7 +1228,7 @@ Item {
             verify(shell.cutSelection());
             compare(shell.clipboard.mode, "cut");
 
-            shell.browser.navigate(dst);
+            shell.navigate(dst);
             tryCompare(shell.directory, "state", "complete");
             verify(shell.paste());
             tryCompare(shell.directory, "count", 1);
@@ -1205,7 +1237,7 @@ Item {
             compare(shell.clipboard.count, 0, "a cut paste consumes the marks");
 
             // The source folder is now empty.
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             compare(shell.directory.count, 0);
         }
@@ -1214,14 +1246,14 @@ Item {
             var shell = make();
             var src = Files.mutationFixtureUri + "/PasteSrc";
             var conflict = Files.mutationFixtureUri + "/PasteConflict";
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             var id = idForUri(shell, src + "/report.txt");
             verify(id > 0);
             shell.selectNode(id, 0);
             verify(shell.copySelection());
 
-            shell.browser.navigate(conflict);
+            shell.navigate(conflict);
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             verify(shell.paste());
@@ -1245,7 +1277,7 @@ Item {
             var shell = make();
             var src = Files.mutationFixtureUri + "/PasteSrc";
             var dst = Files.mutationFixtureUri + "/PasteKeyboard";
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             var id = idForUri(shell, src + "/report.txt");
             verify(id > 0);
@@ -1255,7 +1287,7 @@ Item {
             compare(shell.clipboard.mode, "copy");
             compare(shell.clipboard.count, 1);
 
-            shell.browser.navigate(dst);
+            shell.navigate(dst);
             tryCompare(shell.directory, "state", "complete");
             shell.forceActiveFocus();
             keyClick(Qt.Key_V, Qt.ControlModifier);
@@ -1267,7 +1299,7 @@ Item {
         function test_paste_into_the_same_folder_is_skipped() {
             var shell = make();
             var src = Files.mutationFixtureUri + "/PasteSrc";
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             var id = idForUri(shell, src + "/report.txt");
             verify(id > 0);
@@ -1298,13 +1330,13 @@ Item {
             var cutSrc = Files.mutationFixtureUri + "/CaptureCut";
             var cutDst = Files.mutationFixtureUri + "/CaptureCutDest";
 
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             var ids = shell.directory.allNodeIds();
             shell.selectedIds = ids.slice();
             shell.selectedId = ids[ids.length - 1];
             verify(shell.copySelection());
-            shell.browser.navigate(dst);
+            shell.navigate(dst);
             tryCompare(shell.directory, "state", "complete");
             verify(shell.paste());
             tryCompare(shell.directory, "count", 2);
@@ -1312,13 +1344,13 @@ Item {
             captureT330(shell, "paste-copy");
 
             // The conflict sheet is the visible report.
-            shell.browser.navigate(src);
+            shell.navigate(src);
             tryCompare(shell.directory, "state", "complete");
             var reportId = idForUri(shell, src + "/report.txt");
             verify(reportId > 0);
             shell.selectNode(reportId, 0);
             verify(shell.copySelection());
-            shell.browser.navigate(conflict);
+            shell.navigate(conflict);
             tryCompare(shell.directory, "state", "complete");
             verify(shell.paste());
             compare(shell.pasteConflictDialog.open, true);
@@ -1332,13 +1364,13 @@ Item {
             captureT330(shell, "paste-keep-both");
 
             // Cut/paste.
-            shell.browser.navigate(cutSrc);
+            shell.navigate(cutSrc);
             tryCompare(shell.directory, "state", "complete");
             var moveId = idForUri(shell, cutSrc + "/move-me.txt");
             verify(moveId > 0);
             shell.selectNode(moveId, 0);
             verify(shell.cutSelection());
-            shell.browser.navigate(cutDst);
+            shell.navigate(cutDst);
             tryCompare(shell.directory, "state", "complete");
             verify(shell.paste());
             tryCompare(shell.directory, "count", 1);
@@ -1353,7 +1385,7 @@ Item {
             var shell = make();
 
             // Put two real files into the (temp) home Trash through files-core.
-            shell.browser.navigate(Files.mutationFixtureUri + "/Empty");
+            shell.navigate(Files.mutationFixtureUri + "/Empty");
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 2);
             var ids = shell.directory.allNodeIds();
@@ -1363,7 +1395,7 @@ Item {
             compare(shell.directory.lastError, "");
 
             // Clicking Trash opens the same store Files lists (trash://).
-            shell.browser.navigate(Files.trashUri);
+            shell.navigate(Files.trashUri);
             tryCompare(shell.directory, "state", "complete");
             verify(shell.directory.count >= 2);
             compare(shell.locationTitle, "Trash");
@@ -1403,7 +1435,7 @@ Item {
         function test_large_list_paints_fast_and_stays_windowed() {
             var shell = make();
             var start = Date.now();
-            shell.browser.navigate("file:///synthetic");
+            shell.navigate("file:///synthetic");
             while (shell.directory.count === 0 && Date.now() - start < 5000)
                 wait(1);
             var firstFrame = Date.now() - start;
@@ -1441,7 +1473,7 @@ Item {
 
         function test_large_list_scroll_sweep() {
             var shell = make();
-            shell.browser.navigate("file:///synthetic");
+            shell.navigate("file:///synthetic");
             tryCompare(shell.directory, "state", "complete", 60000);
             compare(shell.directory.count, 100000);
 
@@ -1479,12 +1511,12 @@ Item {
 
         function test_path_bar_segment_navigates() {
             var shell = make();
-            shell.browser.navigate(Files.favorites[1].uri); // Documents
+            shell.navigate(Files.favorites[1].uri); // Documents
             waitForRendering(stage);
             // Computer, tester, Documents.
             compare(shell.pathBar.model.length, 3);
             shell.pathBar.navigated(Files.computerUri);
-            compare(shell.browser.currentUri, Files.computerUri);
+            compare(shell.currentUri, Files.computerUri);
             compare(shell.locationTitle, "Computer");
         }
 
@@ -1768,7 +1800,7 @@ Item {
         function test_undo_reverts_a_rename_from_the_keyboard() {
             var shell = make();
             var folder = Files.mutationFixtureUri + "/UndoRename";
-            shell.browser.navigate(folder);
+            shell.navigate(folder);
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = idForUri(shell, folder + "/a.txt");
@@ -1803,7 +1835,7 @@ Item {
         function test_undo_refuses_a_conflict_and_says_why() {
             var shell = make();
             var folder = Files.mutationFixtureUri + "/UndoConflict";
-            shell.browser.navigate(folder);
+            shell.navigate(folder);
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = idForUri(shell, folder + "/c.txt");
@@ -1833,7 +1865,7 @@ Item {
             var folder = Files.mutationFixtureUri + "/UndoMenu";
             var shell = make({ startUri: folder });
             tryCompare(shell.directory, "state", "complete");
-            compare(shell.browser.currentUri, folder);
+            compare(shell.currentUri, folder);
             compare(shell.directory.count, 0);
             verify(shell.makeFolder() !== false);
             tryCompare(shell.directory, "count", 1);
@@ -1868,7 +1900,7 @@ Item {
         function test_undo_takes_back_a_paste() {
             var shell = make();
             var folder = Files.mutationFixtureUri + "/UndoPaste";
-            shell.browser.navigate(folder);
+            shell.navigate(folder);
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = idForUri(shell, folder + "/report.txt");
@@ -1892,7 +1924,7 @@ Item {
         function test_put_back_restores_a_trashed_item_and_undo_takes_it_back() {
             var shell = make();
             var folder = Files.mutationFixtureUri + "/UndoTrash";
-            shell.browser.navigate(folder);
+            shell.navigate(folder);
             tryCompare(shell.directory, "state", "complete");
             tryCompare(shell.directory, "count", 1);
             var id = idForUri(shell, folder + "/note.txt");
@@ -1922,7 +1954,7 @@ Item {
             var shell = make();
             var folder = Files.mutationFixtureUri + "/UndoPurge";
             Files.writeFixture(folder + "/purge-me.txt", "purge");
-            shell.browser.navigate(Files.trashUri);
+            shell.navigate(Files.trashUri);
             tryCompare(shell.directory, "state", "complete");
             verify(shell.inTrash);
             // A Trash row's context menu leads with Put Back, the same verb
@@ -1940,12 +1972,12 @@ Item {
         function test_navigation_clears_the_undo_history() {
             var shell = make();
             var folder = Files.mutationFixtureUri + "/UndoFolder";
-            shell.browser.navigate(folder);
+            shell.navigate(folder);
             tryCompare(shell.directory, "state", "complete");
             verify(shell.directory.newFolder(folder));
             tryCompare(shell.directory, "pendingOps", 0);
             verify(shell.canUndo);
-            shell.browser.navigate(Files.viewFixtureUri);
+            shell.navigate(Files.viewFixtureUri);
             tryCompare(shell.directory, "state", "complete");
             verify(!shell.canUndo, "an undo is folder-scoped");
             verify(!shell.canRedo);
@@ -1959,7 +1991,7 @@ Item {
             }
             var shell = make({ width: 900, height: 600 });
             var folder = Files.mutationFixtureUri + "/UndoCapture";
-            shell.browser.navigate(folder);
+            shell.navigate(folder);
             tryCompare(shell.directory, "state", "complete");
             // The runner's own tree: each run renames alpha.txt, so a rerun
             // may find beta.txt from the previous one.
@@ -1989,6 +2021,329 @@ Item {
             tryCompare(shell, "notice", "Undid \"Rename \"alpha.txt\"\"");
             wait(200);
             captureT331(shell, "undone");
+        }
+
+        // -- Tabs and New Window (T333) ---------------------------------------
+
+        // The shell's `newWindow` seam: record the request instead of
+        // launching a second process, which a test must never spawn. The
+        // window host normally connects the signal to `Files.newWindow`; a
+        // bare shell test has to make that connection itself.
+        function installWindowDouble(shell) {
+            Files.setNewWindowCallable(function(location) { return true; });
+            shell.newWindowRequested.connect(function(uri) {
+                Files.newWindow(uri);
+            });
+        }
+
+        function test_two_tabs_navigate_independently() {
+            var shell = make({ startUri: Files.viewFixtureUri });
+            var folder = Files.viewFixtureUri;
+            var nested = Files.viewFixtureUri + "/Nested";
+            shell.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.tabs.count, 1);
+
+            // Cmd+T from the content: a second tab on the same location (the
+            // view forwards a key it does not use to the shell's commands).
+            shell.iconView.children[0].forceActiveFocus();
+            verify(shell.iconView.children[0].activeFocus, "the content holds the key focus");
+            keyClick(Qt.Key_T, Qt.ControlModifier);
+            compare(shell.tabs.count, 2);
+            compare(shell.tabs.currentIndex, 1);
+            compare(shell.currentUri, folder);
+            compare(shell.tabBar.visible, true, "the bar appears from the second tab");
+
+            // The second tab navigates on its own; the first keeps the folder.
+            shell.navigate(nested);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.currentUri, nested);
+            compare(shell.tabs.uriAt(0), folder);
+            compare(shell.tabs.uriAt(1), nested);
+            compare(shell.tabs.current.history.length, 2);
+
+            // Switching back restores the first tab's location and its
+            // one-step history.
+            shell.tabBar.tabSelected(0);
+            tryCompare(shell, "currentUri", folder);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.tabs.currentIndex, 0);
+            compare(shell.canGoBack, false, "tab 1 never navigated");
+            compare(shell.canGoForward, false);
+
+            // Cmd+2 goes to the second tab, Ctrl+Tab wraps back to the first.
+            keyClick(Qt.Key_2, Qt.ControlModifier);
+            compare(shell.currentUri, nested);
+            keyClick(Qt.Key_Tab, Qt.ControlModifier);
+            compare(shell.currentUri, folder);
+            keyClick(Qt.Key_Tab, Qt.ControlModifier | Qt.ShiftModifier);
+            compare(shell.currentUri, nested);
+
+            // The title and the breadcrumb follow the active tab.
+            compare(shell.locationTitle, "Nested");
+            compare(shell.breadcrumb[shell.breadcrumb.length - 1].label, "Nested");
+            shell.tabBar.tabSelected(0);
+            compare(shell.locationTitle, Files.displayName(folder));
+        }
+
+        function test_tabs_keep_their_own_selection_and_view() {
+            var shell = make({ startUri: Files.viewFixtureUri });
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var alpha = idForUri(shell, Files.viewFixtureUri + "/alpha.txt");
+            verify(alpha > 0);
+            shell.selectNode(alpha, 0);
+            shell.setView("list");
+            compare(shell.currentView, "list");
+
+            shell.newTab(Files.viewFixtureUri + "/Nested");
+            tryCompare(shell, "currentUri", Files.viewFixtureUri + "/Nested");
+            compare(shell.selectedIds.length, 0, "a new tab starts unselected");
+            compare(shell.currentView, "icon", "the other location keeps the default view");
+
+            shell.activateTab(0);
+            compare(shell.currentView, "list");
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.selectedIds, [alpha], "the first tab's selection returns");
+            compare(shell.iconView.visible, false);
+        }
+
+        function test_closing_a_tab_and_the_last_tab_closes_the_window() {
+            var shell = make();
+            var folder = Files.viewFixtureUri;
+            shell.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            shell.newTab();
+            shell.newTab();
+            compare(shell.tabs.count, 3);
+
+            // Cmd+W closes the active (last) tab; its neighbour becomes current.
+            shell.iconView.children[0].forceActiveFocus();
+            keyClick(Qt.Key_W, Qt.ControlModifier);
+            compare(shell.tabs.count, 2);
+            compare(shell.tabs.currentIndex, 1);
+            compare(shell.currentUri, folder);
+
+            // The tab bar's x closes a given tab.
+            shell.tabBar.tabCloseRequested(0);
+            compare(shell.tabs.count, 1);
+            compare(shell.currentTabIndex, 0);
+
+            // The last tab closes the window: one close request, no empty shell.
+            var closed = createTemporaryObject(closeComponent, shell);
+            closed.target = shell;
+            compare(closed.count, 0);
+            shell.tabBar.tabCloseRequested(0);
+            compare(shell.tabs.count, 0);
+            compare(closed.count, 1);
+        }
+
+        function test_tab_bar_pointer_and_menu() {
+            var shell = make({ startUri: Files.viewFixtureUri });
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            shell.newTab(Files.viewFixtureUri + "/Nested");
+            tryCompare(shell, "currentUri", Files.viewFixtureUri + "/Nested");
+            compare(shell.tabBar.tabs.length, 2);
+            compare(shell.tabBar.tabs[1].title, "Nested");
+            compare(shell.tabBar.currentIndex, 1);
+
+            // The strip's delegates (its Repeater) live in the row.
+            var tabRow = null;
+            var repeater = null;
+            for (var c = 0; c < shell.tabBar.children.length; ++c) {
+                var child = shell.tabBar.children[c];
+                if (child.objectName === "filesTabRow")
+                    tabRow = child;
+            }
+            verify(tabRow !== null);
+            for (c = 0; c < tabRow.children.length; ++c) {
+                if (tabRow.children[c].objectName === "filesTabRepeater")
+                    repeater = tabRow.children[c];
+            }
+            verify(repeater !== null);
+            compare(repeater.count, 2, "one delegate per tab");
+            // The delegates exist once the model settles; one frame lets the
+            // row lay them out before the pointer targets them.
+            clickTab(repeater, 0);
+            compare(shell.currentTabIndex, 0, "a click selects a background tab");
+            compare(shell.tabs.count, 2);
+
+            // Re-clicking the active tab closes it.
+            clickTab(repeater, 1);
+            compare(shell.currentTabIndex, 1);
+            clickTab(repeater, 1);
+            compare(shell.tabs.count, 1, "a re-click closes the active tab");
+
+            // The tab menu: close the other tabs, then reopen.
+            shell.newTab();
+            shell.openTabMenu(1, 40, 80);
+            verify(shell.contextMenu.open);
+            var actions = shell.contextMenu.model.map(function(e) { return e.action; });
+            verify(actions.indexOf("closeOtherTabs") >= 0);
+            verify(actions.indexOf("closeTabsToRight") >= 0);
+            shell.contextAction("closeOtherTabs");
+            compare(shell.tabs.count, 1);
+            compare(shell.currentTabIndex, 0);
+            shell.contextMenu.hide();
+
+            // Shift+Cmd+T shows the bar with one tab; the bar's plus adds a tab.
+            keyClick(Qt.Key_T, Qt.ControlModifier | Qt.ShiftModifier);
+            compare(shell.tabBar.visible, true);
+            var plus = null;
+            for (var i = 0; i < shell.tabBar.children.length; ++i) {
+                if (shell.tabBar.children[i].objectName === "filesNewTabButton")
+                    plus = shell.tabBar.children[i];
+            }
+            // The bar's plus is its own button object.
+            verify(plus !== null);
+            clickStageItem(plus);
+            compare(shell.tabs.count, 2);
+        }
+
+        function test_context_open_in_new_tab_and_new_window() {
+            var shell = make();
+            installWindowDouble(shell);
+            var folder = Files.viewFixtureUri;
+            shell.navigate(folder);
+            tryCompare(shell.directory, "state", "complete");
+            var nested = idForUri(shell, folder + "/Nested");
+            verify(nested > 0);
+
+            // Open in New Tab opens a background tab; the current one stays.
+            shell.openNodeMenu(nested, folder + "/Nested", true, 20, 20);
+            var actions = shell.contextMenu.model.map(function(e) { return e.action; });
+            verify(actions.indexOf("openInNewTab") >= 0);
+            verify(actions.indexOf("openInNewWindow") >= 0);
+            shell.contextAction("openInNewTab");
+            compare(shell.tabs.count, 2);
+            compare(shell.currentUri, folder, "the new tab stays in the background");
+            compare(shell.tabs.uriAt(1), folder + "/Nested");
+
+            // Open in New Window asks for a second process on that folder.
+            shell.contextMenu.hide();
+            shell.openNodeMenu(nested, folder + "/Nested", true, 20, 20);
+            shell.contextAction("openInNewWindow");
+            compare(Files.newWindowRequests().length, 1);
+            compare(Files.newWindowRequests()[0], folder + "/Nested");
+        }
+
+        function test_new_window_chord_and_window_menu_launch_lines() {
+            var shell = make();
+            installWindowDouble(shell);
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+
+            // Cmd+N from the content asks for a new window on the tab's
+            // location; Shift+Cmd+N still makes a folder.
+            shell.iconView.children[0].forceActiveFocus();
+            keyClick(Qt.Key_N, Qt.ControlModifier);
+            compare(Files.newWindowRequests().length, 1);
+            compare(Files.newWindowRequests()[0], Files.viewFixtureUri);
+
+            // The window menu's launch lines: New Window is a launch of this
+            // executable; New Tab carries a hand-off token and the location.
+            var lines = Files.menuLaunchCommands(Files.viewFixtureUri);
+            var newWindow = lines.newWindow;
+            compare(newWindow[0], "--new-window");
+            compare(newWindow[1], "--location=" + Files.viewFixtureUri);
+            var newTab = lines.newTab;
+            verify(newTab[0].startsWith("--activation-handoff="));
+            compare(newTab[1], "--location=" + Files.viewFixtureUri);
+            compare(Files.hasNewWindowCallable(), true);
+        }
+
+        function test_single_instance_hand_off_opens_a_tab() {
+            var shell = make();
+            shell.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.tabs.count, 1);
+
+            // A component's request for a folder opens it as a new tab, unless
+            // that folder is already open, which it then activates.
+            verify(shell.activateLocation(Files.viewFixtureUri + "/Nested"));
+            compare(shell.tabs.count, 2);
+            compare(shell.currentUri, Files.viewFixtureUri + "/Nested");
+            verify(shell.activateLocation(Files.viewFixtureUri));
+            compare(shell.tabs.count, 2, "an open location is activated, not duplicated");
+            compare(shell.currentTabIndex, 0);
+
+            // The launched window's own argument arrives as its first tab.
+            var launched = make({ startUri: Files.viewFixtureUri + "/Nested" });
+            compare(launched.tabs.count, 1);
+            compare(launched.currentUri, Files.viewFixtureUri + "/Nested");
+        }
+
+        // T333 capture seam, run by scripts/capture-t333-files.sh.
+        function test_capture_t333_tabs() {
+            if (Files.captureDir.length === 0) {
+                skip("DF_FILES_CAPTURE_DIR not set");
+                return;
+            }
+            var base = Files.mutationFixtureUri + "/TabsCapture";
+            var shell = make({ width: 900, height: 600, startUri: base + "/1" });
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            // Two tabs, each at its own folder: the first stays active.
+            shell.newTab(base + "/2");
+            tryCompare(shell.directory, "state", "complete");
+            shell.activateTab(0);
+            tryCompare(shell, "currentUri", base + "/1");
+            compare(shell.tabs.count, 2);
+            compare(shell.tabBar.visible, true);
+            waitForRendering(stage);
+            captureT333(shell, "two-tabs");
+
+            // Switch to the second tab (its own location) and close it.
+            shell.activateTab(1);
+            tryCompare(shell, "currentUri", base + "/2");
+            tryCompare(shell.directory, "state", "complete");
+            waitForRendering(stage);
+            captureT333(shell, "second-tab");
+            shell.closeTab(1);
+            compare(shell.tabs.count, 1);
+            compare(shell.currentUri, base + "/1");
+
+            // New Window: the double records the second process's location,
+            // and a second Files window surface shows the same tabbed shell
+            // on that location (the production launch is a second process;
+            // the offscreen capture cannot photograph another process's
+            // surface, so this is the same shell rendered twice).
+            installWindowDouble(shell);
+            try {
+                shell.openNewWindow();
+                compare(Files.newWindowRequests().length, 1);
+                captureT333(shell, "new-window");
+
+                var second = createTemporaryObject(filesWindowComponent, null);
+                verify(second);
+                var secondShell = null;
+                for (var attempt = 0; attempt < 100 && secondShell === null; ++attempt) {
+                    for (var c = 0; c < second.contentItem.children.length; ++c) {
+                        if (second.contentItem.children[c].objectName === "filesShell")
+                            secondShell = second.contentItem.children[c];
+                    }
+                    if (secondShell === null)
+                        wait(20);
+                }
+                verify(secondShell !== null, "the second window hosts a shell");
+                // The new window starts at Home; navigate its one tab to the
+                // tabbed capture's second folder (the headless test home does
+                // not exist, so wait for the initial tab before moving it).
+                tryCompare(secondShell.tabs, "count", 1);
+                verify(secondShell.navigate(base + "/2"));
+                tryCompare(secondShell, "currentUri", base + "/2");
+                tryCompare(secondShell.directory, "state", "complete");
+                // A second window is one tab of its own (it never inherits the
+                // first window's tabs); the bar shows because the capture
+                // seam keeps it visible, and its location is this window's.
+                compare(secondShell.tabs.count, 1);
+                waitForRendering(second.contentItem);
+                captureT333(second.contentItem, "second-window");
+                second.close();
+            } finally {
+                Files.setNewWindowCallable(null);
+            }
         }
 
             // -- External changes (T332) -------------------------------------------

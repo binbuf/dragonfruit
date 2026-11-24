@@ -93,6 +93,13 @@ never passes a `popupParent`; a surface inside a clipped `ScrollView` is still
 drawn and hit-tested in window coordinates. The overlay has no pointer
 handlers, so an empty layer never eats a click.
 
+A modal's input gate is `enabled`, not `opacity`. `Dialog` and `Sheet` keep
+their cards laid out for the close fade, so a closed modal sets
+`enabled: open`; otherwise its invisible card and scroll body shadow the pane
+underneath (ADR [0341](adr/0341-closed-modal-is-input-disabled.md)). An open
+modal's scrim consumes press and wheel, while the card above keeps its own
+targets.
+
 The Settings shell set (T286) extends that library rather than forking it.
 `SettingsRow` now owns the measured variants through properties: a 33 pt plain
 row, a 52 pt description row, a 53 pt icon row with a 29 pt leading category

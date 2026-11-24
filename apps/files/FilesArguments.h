@@ -22,15 +22,69 @@
 // options and their separate values (`-platform offscreen`) are never mistaken
 // for the location. An empty result means "open Home", which the QML shell
 // already does when `DF_FILES_START_URI` is unset.
+// The location a launch names is either one of the options T333 added
+// (`--location=`, `--activation-handoff=`, `--new-window`) or a positional URI;
+// an option's value is never a location even when it parses as a URI.
+inline bool filesLocationOption(const QString &argument)
+{
+    return argument.startsWith(QStringLiteral("--location="))
+            || argument.startsWith(QStringLiteral("--activation-handoff="))
+            || argument == QStringLiteral("--new-window");
+}
+
 inline QString filesLocationArgument(const QStringList &arguments)
 {
     for (int i = 1; i < arguments.size(); ++i) {
         const QString &argument = arguments.at(i);
+        if (filesLocationOption(argument))
+            continue;
         const QUrl url(argument);
         if (url.isValid() && !url.scheme().isEmpty())
             return argument;
         if (argument.startsWith(QLatin1Char('/')))
             return argument;
+    }
+    return QString();
+}
+
+// Whether this invocation opens a Files window *because* a component asked
+// for a location (`--activation-handoff=<token>` plus the location), which the
+// entry point may hand to an already-running instance instead of opening a
+// window in this process (T333's single-instance rule). A bare invocation and
+// the Dock's plain positional `trash://` are never handed off: a Dock click
+// always opens a window. The location is read by `filesLocationArgument`
+// (the first non-option argument) or from a `--location=<uri>` option.
+inline bool filesActivationRequested(const QStringList &arguments)
+{
+    for (int i = 1; i < arguments.size(); ++i) {
+        if (arguments.at(i).startsWith(QStringLiteral("--activation-handoff=")))
+            return true;
+    }
+    return false;
+}
+
+// The location a hand-off request names. An empty result means "show the
+// current window" (the holder raises its windows).
+inline QString filesHandoffLocation(const QStringList &arguments)
+{
+    for (int i = 1; i < arguments.size(); ++i) {
+        const QString &argument = arguments.at(i);
+        if (argument.startsWith(QStringLiteral("--activation-handoff=")))
+            continue;
+        if (argument.startsWith(QStringLiteral("--location="))) {
+            const QString value = argument.mid(QStringLiteral("--location=").size());
+            if (value.isEmpty())
+                return QString();
+            const QUrl url(value);
+            if (url.isValid() && !url.scheme().isEmpty())
+                return value;
+            return QUrl::fromLocalFile(QFileInfo(value).absoluteFilePath()).toString();
+        }
+        if (filesLocationOption(argument))
+            continue;
+        const QString location = filesLocationArgument({QString(), argument});
+        if (!location.isEmpty())
+            return location;
     }
     return QString();
 }
@@ -95,4 +149,22 @@ inline FilesOpenTarget filesOpenTarget(const QString &argument)
 
     target.location = argument;
     return target;
+}
+// T333's launch forms for the first-party window menu and other components:
+//   Files > New Window   -> `--new-window [--location=<folder>]` (a second
+//                           process)
+//   Files > New Tab      -> `--activation-handoff=<token> [--location=<folder>]`
+//                           (handed to the running instance)
+// The location a launch names, in any form.
+inline QString filesLaunchLocation(const QStringList &arguments)
+{
+    const QString handoff = filesHandoffLocation(arguments);
+    return handoff.isEmpty() ? filesLocationArgument(arguments) : handoff;
+}
+
+// Whether the launch must open a window even when a component hand-off
+// advertises an offer (`--new-window`, or a file opened into a new window).
+inline bool filesNewWindowRequested(const QStringList &arguments)
+{
+    return arguments.contains(QStringLiteral("--new-window"));
 }

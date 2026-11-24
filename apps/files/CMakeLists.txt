@@ -24,6 +24,8 @@ qt_add_qml_module(dragonfruit-files-ui
     QML_FILES
         FilesBrowser.qml
         FilesClipboard.qml
+        FilesTabs.qml
+        FilesTabBar.qml
         FilesIconView.qml
         FilesListView.qml
         PathBar.qml
@@ -147,6 +149,8 @@ install(FILES "${CMAKE_SOURCE_DIR}/assets/icons/apps/org.dragonfruit.Files.svg"
 
 df_qml_lint(app-files
     FilesBrowser.qml
+    FilesTabs.qml
+    FilesTabBar.qml
     FilesIconView.qml
     FilesListView.qml
     PathBar.qml

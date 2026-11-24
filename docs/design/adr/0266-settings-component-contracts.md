@@ -58,3 +58,6 @@ same problems reappear in every new pane.
   `tst_settings_components`.
 - The compositor's live-position ray-test remains the stationary-click fix;
   the QML tests pin the row/tile/select/dialog and scroll-under-pointer half.
+- A closed `Dialog`/`Sheet` is input-disabled (`enabled: open`); its card is
+  render-only during the close fade, so it can never shadow a pane control
+  (ADR [0341](0341-closed-modal-is-input-disabled.md)).
