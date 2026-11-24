@@ -15,10 +15,11 @@ An invisible card still hit-tests: its `ScrollView`, buttons, and controls
 were above the pane and consumed presses in the card rectangle.
 
 System Settings instantiates many dialogs closed and adopts them into the
-window overlay. The centered closed cards therefore shadowed a moving region
-of every pane. A click on a row, Select, toggle, radio, or list under a closed
-card was consumed; a click outside it worked. Because the detail view scrolls
-under a resting pointer, the failure read as intermittent: "clicks work
+window overlay. The centered closed cards therefore shadowed a fixed
+rectangle in every pane. A click on a row, Select, toggle, radio, or list
+inside that rectangle was consumed; a click outside it worked. Because the
+detail view scrolls under a resting pointer, controls moved into and out of
+the dead rectangle, and the failure read as intermittent: "clicks work
 sometimes when scrolling, but most dropdowns and controls do nothing."
 
 The component suite missed the leak because it clicked standalone controls or
