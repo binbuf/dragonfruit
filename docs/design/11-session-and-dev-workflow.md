@@ -855,16 +855,23 @@ scripts/native-session.sh deps          # print the detected package command
 
 The native session defaults to the **release** profile because it is the
 dogfooding/deployment rail; debug is opt-in with `make native-debug`,
-`DF_NATIVE_PROFILE=debug`, or `--debug`. The installer is idempotent: it
-stages the T-12.2 entry/units, the portal discovery files, and the first-party
-app entries, then copies them under `/usr` (sudo is used only for that step).
-The runtime binaries are **symlinks** into `target/release` and
-`build-release/` by default (`target/debug`/`build/` for the debug profile),
-so a later `make build`/`make native-rebuild` updates what the next `restart`
-runs without reinstalling anything. `restart` refuses to cross profiles
-because it cannot replace the running compositor; use
+`DF_NATIVE_PROFILE=debug`, or `--debug`. The installer is a transaction: it
+stages the T-12.2 entry/units, the portal discovery files, the first-party app
+entries, the QML tree, and the binary link farm under a temporary directory,
+validates every destination, then writes it under `/usr` (sudo is used only for
+that step). A destination this installer does not own stops the run before
+anything is written; `--force` keeps the replaced file as `<path>.pre-dfdev`.
+A failed write or verification restores the previous files and removes only
+what that run created. The runtime binaries are **symlinks** into
+`target/release` and `build-release/` by default (`target/debug`/`build/` for
+the debug profile), so a later `make build`/`make native-rebuild` updates what
+the next `restart` runs without reinstalling anything. `restart` refuses to
+cross profiles because it cannot replace the running compositor; use
 `native-rebuild`/`native-reboot` for that. `--no-deps` skips the package
-bootstrap when the host is already provisioned.
+bootstrap when the host is already provisioned. The install manifest
+(`~/.local/state/dragonfruit/native-install.json`) records what was written so
+`recover` can remove the dev tree again; the offline check is
+`bash scripts/check-native-session.sh`.
 
 The native session requires systemd user units. On a non-systemd host the
 script refuses and points at the nested `make dev` loop; the build itself still
@@ -918,7 +925,9 @@ greeter that only offers Dragonfruit. `--skip-preflight` is the escape hatch.
 inside Dragonfruit. They:
 
 1. remove the greeter preselect (only a file this script wrote, identified by
-   its marker) and the dev runtime environment;
+   its marker), the dev runtime environment, and the session tree recorded in
+   the install manifest (a packaged install has no manifest and is left
+   alone);
 2. clear the newer login manager's remembered last session (otherwise it would
    fall back to the failed Dragonfruit login after the preselect is gone);
 3. restore the display-manager files snapshotted by the T-12.6b round trip,

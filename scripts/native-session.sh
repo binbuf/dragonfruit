@@ -14,6 +14,13 @@
 # `make build` (or the release build) is enough before a restart: no reinstall
 # step is needed.
 #
+# The install is one transaction (T343): the complete tree is staged, every
+# destination is validated before the first write, a failed write restores the
+# previous files, and a manifest under the user state directory lets `recover`
+# remove exactly what the install wrote. A conflict with a file this script
+# does not own stops the run unless `--force` keeps a `.pre-dfdev` backup.
+# `scripts/check-native-session.sh` exercises the whole path offline.
+#
 # Usage:
 #   scripts/native-session.sh [start] [--no-build] [--no-logout] [--no-deps] [--autologin] [--force] [--skip-preflight]
 #   scripts/native-session.sh return [--restart-dm|--no-restart-dm] [--force]
@@ -87,14 +94,19 @@ if [ -n "$PROFILE_FLAG" ]; then
     set -- "${args[@]}"
 fi
 PROFILE="${PROFILE_FLAG:-${DF_NATIVE_PROFILE:-release}}"
+# Build artifacts (the Rust target tree and the Qt build directory) live under
+# the repo by default. DF_NATIVE_BUILD_ROOT redirects that read-only source
+# tree, which is what lets the offline install check stage fake binaries
+# without a full build. The repo itself (scripts, assets) is still `root`.
+BUILD_ROOT="${DF_NATIVE_BUILD_ROOT:-$root}"
 case "$PROFILE" in
-    debug) QT_BUILD_DIR="$root/build" ;;
-    release) QT_BUILD_DIR="$root/build-release" ;;
+    debug) QT_BUILD_DIR="$BUILD_ROOT/build" ;;
+    release) QT_BUILD_DIR="$BUILD_ROOT/build-release" ;;
     *) echo "native-session: DF_NATIVE_PROFILE must be debug or release" >&2; exit 2 ;;
 esac
-DEV_BIN="$root/target/$PROFILE/dragonfruit"
-SESSION_BIN="$root/target/$PROFILE/dragonfruit-session"
-PORTAL_BIN="$root/target/$PROFILE/xdg-desktop-portal-dragonfruit"
+DEV_BIN="$BUILD_ROOT/target/$PROFILE/dragonfruit"
+SESSION_BIN="$BUILD_ROOT/target/$PROFILE/dragonfruit-session"
+PORTAL_BIN="$BUILD_ROOT/target/$PROFILE/xdg-desktop-portal-dragonfruit"
 
 BIN_NAMES=(
     dragonfruit
@@ -114,6 +126,11 @@ BIN_NAMES=(
 )
 
 NATIVE_ENV_FILE="${DF_NATIVE_ENV_FILE:-$HOME/.config/dragonfruit/native.env}"
+
+# T343: the install manifest records every path the transactional install
+# wrote (and any `.pre-dfdev` backup it made), so `recover` can remove exactly
+# that tree again instead of leaving a half-armed `/usr` install behind.
+INSTALL_MANIFEST="${DF_NATIVE_INSTALL_MANIFEST:-${XDG_STATE_HOME:-$HOME/.local/state}/dragonfruit/native-install.json}"
 
 # Dev-only diagnostics. The unit and target drop-in are per-user, installed by
 # `make native` and removed by `native-recover`/`native-return`; the capture
@@ -225,6 +242,10 @@ is the recovery path when the greeter cannot start it.
 
 DF_NATIVE_PREFIX overrides the install prefix (default /usr; useful for
 staging tests, not for a real display-manager login).
+DF_NATIVE_BUILD_ROOT overrides where build artifacts are read from (default
+the repo; used by scripts/check-native-session.sh).
+DF_NATIVE_INSTALL_MANIFEST overrides the install manifest path (default
+$XDG_STATE_HOME/dragonfruit/native-install.json).
 EOF
 }
 
@@ -237,7 +258,7 @@ binary_source() {
         dragonfruit-shell) printf '%s\n' "$QT_BUILD_DIR/shell/src/dragonfruit-shell" ;;
         dragonfruit-files) printf '%s\n' "$QT_BUILD_DIR/apps/files/dragonfruit-files" ;;
         dragonfruit-settings) printf '%s\n' "$QT_BUILD_DIR/apps/settings/dragonfruit-settings" ;;
-        *) printf '%s\n' "$root/target/$PROFILE/$1" ;;
+        *) printf '%s\n' "$BUILD_ROOT/target/$PROFILE/$1" ;;
     esac
 }
 
@@ -337,6 +358,31 @@ systemd_env_value() {
     printf '%s' "$value"
 }
 
+# Collapse a colon-separated search path, keeping the first occurrence of each
+# directory. `XCURSOR_PATH` is composed from the base roots plus whatever the
+# caller inherited; a login shell that already sourced native.env would
+# otherwise append the same list again on every `make native` run (T343).
+dedupe_path_list() {
+    local input="$1" out="" part
+    local -a parts=()
+    local old_ifs="$IFS"
+    IFS=':'
+    read -r -a parts <<<"$input"
+    IFS="$old_ifs"
+    for part in "${parts[@]}"; do
+        [ -n "$part" ] || continue
+        case ":$out:" in
+            *":$part:"*) continue ;;
+        esac
+        if [ -z "$out" ]; then
+            out="$part"
+        else
+            out="$out:$part"
+        fi
+    done
+    printf '%s\n' "$out"
+}
+
 write_session_environment() {
     local libs qml_dir cursor_dir unit dropin_dir tmp
     local -a env_names=() env_values=()
@@ -367,6 +413,14 @@ write_session_environment() {
         cursor_search="$cursor_dir:${HOME}/.icons:${XDG_DATA_HOME:-${HOME}/.local/share}/icons:/usr/local/share/icons:/usr/share/icons:/usr/share/pixmaps"
         if [ -n "${XCURSOR_PATH:-}" ]; then
             cursor_search="$cursor_search:$XCURSOR_PATH"
+        fi
+        cursor_search="$(dedupe_path_list "$cursor_search")"
+        # Idempotence check: a repeated `make native` from a login that
+        # sourced native.env must produce the exact same value. The helper
+        # above guarantees it; refuse to write a growing path if that ever
+        # regresses.
+        if [ "$(dedupe_path_list "$cursor_search")" != "$cursor_search" ]; then
+            die "XCURSOR_PATH is not idempotent: $cursor_search"
         fi
         env_names+=(XCURSOR_PATH XCURSOR_THEME)
         env_values+=("$cursor_search" "capitaine-cursors")
@@ -1137,8 +1191,20 @@ restart_display_manager() {
     return 1
 }
 
+# Install the session tree as one transaction (T343).
+#
+# The complete tree (session entry, units, app metadata, portal data, QML,
+# cursors, and the binary link farm) is staged under a temporary directory
+# first. `scripts/native-install.py` validates every destination *before* the
+# first write, keeps a rollback copy of each replaced file, and restores the
+# previous install if any write or the post-write verification fails. A
+# conflict (an existing file this installer does not own) stops the run with
+# the previous install untouched unless `--force` asks for a `.pre-dfdev`
+# backup. The manifest it writes is what `recover` uses to undo the install.
 install_native() {
     require_built
+    command -v python3 >/dev/null 2>&1 \
+        || die "python3 is required for the transactional install; install it and retry"
 
     [ -d "$PREFIX" ] || mkdir -p "$PREFIX"
 
@@ -1150,26 +1216,71 @@ install_native() {
     "$PORTAL_BIN" --install-data "$stage_root" >/dev/null
     cmake --install "$QT_BUILD_DIR" --prefix "$stage_root" >/dev/null
 
-    say "installing under $PREFIX"
-    elevate cp -a --no-preserve=ownership,context "$stage_root/." "$PREFIX/"
-
-    local name src dest
+    local name src
+    local -a link_args=() require_args=()
     for name in "${BIN_NAMES[@]}"; do
         src="$(binary_source "$name")"
-        dest="$PREFIX/bin/$name"
-        if [ -e "$dest" ] && [ ! -L "$dest" ]; then
-            if [ "$FORCE" -eq 1 ]; then
-                elevate mv "$dest" "$dest.pre-dfdev"
-                say "backed up $dest to $dest.pre-dfdev"
-            else
-                die "$dest exists and is not a dev symlink; pass --force to replace it (a .pre-dfdev backup is kept)"
-            fi
-        fi
-        elevate ln -sfn "$src" "$dest"
+        link_args+=(--link "$name=$src")
     done
+    require_args+=(--require bin/dragonfruit-session-entry)
+    require_args+=(--require share/wayland-sessions/dragonfruit.desktop)
+
+    local -a cmd=(
+        python3 "$root/scripts/native-install.py" install
+        --stage "$stage_root"
+        --prefix "$PREFIX"
+        --manifest-in "$INSTALL_MANIFEST"
+        --manifest-out "$STAGE/manifest.json"
+        "${link_args[@]}"
+        "${require_args[@]}"
+    )
+    if [ "$FORCE" -eq 1 ]; then
+        cmd+=(--force)
+    fi
+    # Fault injection for scripts/check-native-session.sh; never set in a real
+    # install.
+    if [ "${DF_NATIVE_TEST_FAIL_WRITE:-0}" = "1" ]; then
+        cmd+=(--fail-after-write)
+    fi
+
+    say "validating and installing under $PREFIX"
+    local status=0
+    elevate "${cmd[@]}" || status=$?
+    case "$status" in
+        0) ;;
+        3)
+            # Rollback is incomplete; the helper kept the staging tree so the
+            # backups are still there. Do not let the EXIT trap delete it.
+            local kept="$STAGE"
+            STAGE=""
+            die "install failed and the rollback is incomplete; the staging tree was kept at $kept"
+            ;;
+        *)
+            die "install aborted; the previous install was left in place"
+            ;;
+    esac
+
+    mkdir -p "$(dirname "$INSTALL_MANIFEST")"
+    mv "$STAGE/manifest.json" "$INSTALL_MANIFEST"
 
     systemctl --user daemon-reload 2>/dev/null || true
     say "installed; the display manager will list Dragonfruit at the next login"
+}
+
+# Undo exactly what install_native wrote, using its manifest. Files this
+# installer created are removed; files it replaced with `--force` are restored
+# from their `.pre-dfdev` backup. The manifest is kept when the removal is
+# incomplete so `recover` can be retried. A packaged install has no manifest
+# and is never touched.
+remove_native_install() {
+    [ -f "$INSTALL_MANIFEST" ] || return 0
+    say "removing the native install under $PREFIX"
+    if ! elevate python3 "$root/scripts/native-install.py" uninstall \
+            --prefix "$PREFIX" --manifest "$INSTALL_MANIFEST"; then
+        say "the native install could not be fully removed; keeping $INSTALL_MANIFEST for a retry"
+        return 1
+    fi
+    rm -f "$INSTALL_MANIFEST"
 }
 
 cmd_install() {
@@ -1185,8 +1296,11 @@ cmd_install() {
     done
     require_user
     build_all
-    write_session_environment
     install_native
+    # The runtime environment and drop-ins are written only after the install
+    # committed: a failed install must not leave a login pointed at a tree it
+    # did not write (T343).
+    write_session_environment
     install_native_capture
     verify_installed_links
 }
@@ -1216,8 +1330,10 @@ cmd_start() {
     else
         say "skipping the login preflight (--skip-preflight)"
     fi
-    write_session_environment
     install_native
+    # The runtime environment and drop-ins follow a committed install; a
+    # failed transaction must not point a login at a tree it did not write.
+    write_session_environment
     install_native_capture
     verify_installed_links
     write_plasma_login_preselect
@@ -1256,8 +1372,9 @@ cmd_capture() {
 }
 
 # Undo everything the native loop changed outside the repo: the login-manager
-# preselect, the dev runtime environment, and the saved display-manager files.
-# Safe to run when nothing is armed (idempotent) and from a plain text console.
+# preselect, the dev runtime environment, the installed session tree, and the
+# saved display-manager files. Safe to run when nothing is armed (idempotent)
+# and from a plain text console.
 recover_host() {
     local inside="$1"
     local restore_status=0
@@ -1265,6 +1382,9 @@ recover_host() {
     remove_plasma_login_preselect
     remove_native_capture
     remove_session_environment
+    # T343: the install manifest is the only proof of what `make native` wrote
+    # under the prefix. Without it (a packaged install) nothing is removed.
+    remove_native_install || restore_status=1
     clear_login_manager_last_session
     if ! restore_round_trip_state; then
         restore_status=1
@@ -1348,13 +1468,14 @@ cmd_rebuild() {
     fi
 
     build_all
-    write_session_environment
     if [ "$no_install" -eq 0 ]; then
         install_native
+        write_session_environment
         install_native_capture
         verify_installed_links
         write_plasma_login_preselect
     else
+        write_session_environment
         say "skipping install refresh (--no-install)"
     fi
 

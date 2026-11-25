@@ -54,11 +54,16 @@ make lint    # Run lint checks
 
 make dev-full # Run DE inside of current DE
 
-make make native # Switch your current DE for this one
+make native # Switch your current DE for this one
 make native-rebuild # Build and update this DE on logout
 make native-reboot # Build and update this DE on reboot
 make native-recover # Switch DE back to your distro default
 ```
+
+The native install is transactional: it stages and validates the whole tree
+before writing `/usr`, restores the previous files if a write fails, and
+`make native-recover` removes exactly what it installed. The offline check is
+`bash scripts/check-native-session.sh` (temporary prefix, no root).
 
 Explore the [design goals](docs/design/22-total-experience.md), [architecture and design docs](docs/design/), [status and roadmap](docs/design/STATUS.md), and [packaging guide](packaging/README.md).
 

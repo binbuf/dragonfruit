@@ -79,7 +79,7 @@ endif
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare t238-dock-popover-ab t238-dock-popover-ab-native t238-material-regions t238-material-workloads t238-shadow-capture t238-decoration-matrix t238-nested-responsiveness t238-presenter-lifecycle t238-native-acceptance t238-wake-swap-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
-        files-capture t230d-files-capture t330-files-capture t331-files-capture t333-files-capture t334-files-capture t334-files-live-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-glass-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture t329-window-menu-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture t335a-screencast t335b-screencast-client glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check check-native-deps clean install
+        files-capture t230d-files-capture t330-files-capture t331-files-capture t333-files-capture t334-files-capture t334-files-live-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-glass-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture t329-window-menu-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture t335a-screencast t335b-screencast-client glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check check-native-deps check-native-session clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -194,6 +194,7 @@ help:
 	@echo "  make check-naming — user-facing naming map + desktop/packaging metadata gate"
 	@echo "  make check-assets — asset manifest source/license coverage"
 	@echo "  make check-native-deps — T342 Qt Wayland platform plugin preflight (read-only)"
+	@echo "  make check-native-session — T343 transactional native install (temp prefix, no root)"
 	@echo "  make distro-contract-check — T221 distro adapter contract tests + live capability probe"
 	@echo "  make check-phosphor — Phosphor registry and glyph-reference gate"
 	@echo "  make glass-selftest — T-19.4 deterministic colour/geometry/MTF/motion self-test"
@@ -270,6 +271,7 @@ gate-checks:
 	$(MAKE) experience-schema-check
 	$(MAKE) check-naming
 	$(MAKE) check-assets
+	$(MAKE) check-native-session
 	$(MAKE) distro-contract-check
 
 # The release gate. ctest stays serial so a release run has deterministic
@@ -1489,6 +1491,12 @@ check-desktop-names:
 # root. The native session runs the same script in its login preflight.
 check-native-deps:
 	./scripts/check-native-deps.sh
+
+# T343: the offline native-install transaction and session-entry check. It
+# uses a temporary prefix and HOME, fake build artifacts, and fake systemd, so
+# it needs no built tree, no root, and no display.
+check-native-session:
+	./scripts/check-native-session.sh
 
 # T220: the user-facing naming map, its regression tests, and the asset
 # provenance manifest. `check-desktop-names` is the shell entry point (it also

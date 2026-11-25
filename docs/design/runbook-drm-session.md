@@ -80,6 +80,18 @@ make native-debug
 # or: make native-rebuild NATIVE_ARGS=--debug
 ```
 
+The install is a transaction: the session tree is staged and validated before
+anything is written under `/usr`, a conflicting packaged file stops the run
+with the previous install untouched (use `--force` to keep a `.pre-dfdev`
+backup), and a failed write restores the previous files. `make native-recover`
+removes exactly what `make native` installed, using
+`~/.local/state/dragonfruit/native-install.json`. The offline proof needs no
+root and no built tree:
+
+```bash
+bash scripts/check-native-session.sh
+```
+
 The native two-pass material is the default: the scene-texture/Kawase path and
 the Glass compose both run unless explicitly disabled. For a diagnostic
 run or a quick rollback, opt out with:

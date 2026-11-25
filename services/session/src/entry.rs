@@ -209,6 +209,28 @@ mod tests {
     }
 
     #[test]
+    fn the_entry_stops_a_stale_target_before_the_handoff_cleanup() {
+        let stale = ENTRY_SCRIPT
+            .find("stopping an already-active")
+            .expect("the entry stops a stale target");
+        let cleanup = ENTRY_SCRIPT
+            .find("Remove hand-off files")
+            .expect("the entry removes hand-off files");
+        assert!(
+            stale < cleanup,
+            "the stale target must stop before the socket cleanup"
+        );
+
+        let start_failure = ENTRY_SCRIPT
+            .find("failed to start")
+            .expect("the entry reports a failed start");
+        assert!(
+            ENTRY_SCRIPT[start_failure..].contains("stop \"$target\""),
+            "a failed start stops the target"
+        );
+    }
+
+    #[test]
     fn every_embedded_unit_is_named_after_its_file() {
         for (name, contents) in UNIT_FILES {
             assert!(name.ends_with(".service") || name.ends_with(".target"));

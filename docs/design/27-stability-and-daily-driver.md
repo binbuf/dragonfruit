@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md), [ADR 0348](adr/0348-settings-default-browser-async.md), [ADR 0349](adr/0349-wallpaper-provider-and-luma-async.md), [ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md), [ADR 0353](adr/0353-qt-wayland-platform-plugin-preflight.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md), [ADR 0348](adr/0348-settings-default-browser-async.md), [ADR 0349](adr/0349-wallpaper-provider-and-luma-async.md), [ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md), [ADR 0353](adr/0353-qt-wayland-platform-plugin-preflight.md), [ADR 0354](adr/0354-native-install-transaction.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -379,6 +379,20 @@ its end; a client that closes its read end gets `EPIPE` immediately and does
 not take the shell down (SIGPIPE is blocked around the write and ignored by
 the shell process). ADR 0321 records the decision.
 
+A dev install is a transaction, not a copy (T343,
+[ADR 0354](adr/0354-native-install-transaction.md)). `make native` stages the
+complete session tree, validates every destination before the first write, and
+refuses a file it does not own unless `--force` keeps a `.pre-dfdev` backup. A
+failed write or a failed post-write verification restores the rollback copies
+and removes only the files and directories that run created. The install
+manifest (`~/.local/state/dragonfruit/native-install.json`) is what `recover`
+uses to remove the dev tree again; a packaged install has no manifest and is
+never touched. The session entry likewise stops an already-active
+`dragonfruit-session.target` before it unlinks the hand-off socket, and stops
+the target again when `start` fails, so a stale login cannot lose a live
+compositor's socket. `scripts/check-native-session.sh` proves all of it under a
+temporary prefix with no root.
+
 ### 3.5 Data operations are all-or-nothing
 
 A move within one filesystem is a single `rename(2)`: the destination either
@@ -680,7 +694,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-25 | Files desktop spins on compositor loss and creates its background layer twice | T339 |
 | S-26 | No terminal fallback; `Terminal=true` entries fail on Fedora | T340 |
 | S-27 | App index ignores `OnlyShowIn`/`NotShowIn`/`TryExec` | T341 |
-| S-28 | Native bring-up has dependency, transaction, DM-selection, stale-target, and `XCURSOR_PATH` traps | T342–T344 |
+| S-28 | Native bring-up has dependency, transaction, DM-selection, stale-target, and `XCURSOR_PATH` traps (dependency closed by T342; transaction/stale target/`XCURSOR_PATH` closed by T343) | T342–T344 |
 | S-29 | Session supervisor can respawn every 50 ms and can kill a reused PGID | T345 |
 
 ## 5. Acceptance matrix

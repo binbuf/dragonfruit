@@ -102,6 +102,19 @@ fi
 
 runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
+# A previous login can leave the target active (a lingering user manager, a
+# crashed entry, or a dev restart). Starting an active target is a no-op, and
+# the hand-off cleanup below would then unlink a live compositor's socket.
+# Stop and reset it first, so the cleanup only ever removes stale files. This
+# is idempotent: an inactive target is left alone.
+target_state="$("$systemctl" --user is-active "$target" 2>/dev/null || true)"
+if [ "$target_state" = "active" ] || [ "$target_state" = "activating" ]; then
+    printf 'dragonfruit-session-entry: stopping an already-active %s before the hand-off cleanup\n' \
+        "$target" >&2
+    "$systemctl" --user stop "$target" || true
+    "$systemctl" --user reset-failed "$target" >/dev/null 2>&1 || true
+fi
+
 # Remove hand-off files a previous, crashed login may have left. Doing this
 # before the readiness gate is what makes the gate meaningful: a stale socket
 # must not make a failed compositor look healthy.
@@ -116,6 +129,9 @@ rm -f \
 if ! "$systemctl" --user start "$target"; then
     printf 'dragonfruit-session-entry: %s failed to start\n' "$target" >&2
     "$systemctl" --user status --no-pager "$target" dragonfruit-compositor.service >&2 || true
+    # A partially started target must not survive the failed login.
+    "$systemctl" --user stop "$target" >/dev/null 2>&1 || true
+    "$systemctl" --user reset-failed "$target" >/dev/null 2>&1 || true
     exit 1
 fi
 
