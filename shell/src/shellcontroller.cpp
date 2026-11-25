@@ -988,18 +988,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     m_menuBarPopupExitTimer = new QTimer(this);
     m_menuBarPopupExitTimer->setSingleShot(true);
-    m_menuBarPopupExitTimer->setInterval(210); // Allow the 183 ms exit to finish.
-    connect(m_menuBarPopupExitTimer, &QTimer::timeout, this, [this]() {
-        ++m_menuBarPopupGeneration;
-        m_popupWidth = 0;
-        m_popupHeight = 0;
-        m_protocol->hidePopup();
-        scheduleRender();
-        if (m_menuRefreshDeferred) {
-            m_menuRefreshDeferred = false;
-            applyFocusedApp();
-        }
-    });
+    // The interval is set per close from the QML motion token (T352); an
+    // ordinary menu keeps its 183 ms visual tail, reduced motion unmaps
+    // immediately. This replaces the old fixed 210 ms frost tail.
+    connect(m_menuBarPopupExitTimer, &QTimer::timeout, this,
+            &ShellController::finishMenuBarPopupExit);
     // T238 popup targets: release the warm menu-bar popup allocation after the
     // interaction session ends instead of holding it until the next menu.
     m_menuBarPopupReleaseTimer = new QTimer(this);
@@ -7632,8 +7625,33 @@ void ShellController::onMenuBarPopupClosed()
     m_menuOpen = false;
     m_popupGeometryPending = false;
     m_protocol->dismissPopupInput();
+    // T352: keep the surface mapped only for the visual tail the QML motion
+    // token actually uses. A reduced-motion (or otherwise zero-duration) exit
+    // unmaps immediately instead of leaving a stale frosted surface for a
+    // fixed interval. One frame of slack covers the animation's final tick.
+    const int exitDuration =
+        m_item ? qMax(0, m_item->property("popupExitDuration").toInt()) : 0;
+    if (exitDuration <= 0) {
+        finishMenuBarPopupExit();
+        return;
+    }
+    m_menuBarPopupExitTimer->setInterval(exitDuration + 16);
     m_menuBarPopupExitTimer->start();
     scheduleRender();
+}
+
+void ShellController::finishMenuBarPopupExit()
+{
+    ++m_menuBarPopupGeneration;
+    m_popupWidth = 0;
+    m_popupHeight = 0;
+    if (m_protocol)
+        m_protocol->hidePopup();
+    scheduleRender();
+    if (m_menuRefreshDeferred) {
+        m_menuRefreshDeferred = false;
+        applyFocusedApp();
+    }
 }
 
 void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVariant &item)
@@ -7944,15 +7962,20 @@ void ShellController::applyPopupGeometry()
 {
     if (!m_item || !m_menuOpen)
         return;
-    // The open dropdown's rectangle in window coordinates. The popup QML
-    // overflows the bar item; the shell reveals it through the overlay
-    // surface placed at exactly this rectangle.
-    const int x = qMax(0, qFloor(m_item->property("dropdownX").toReal()));
-    const int y = qMax(0, qFloor(m_item->property("dropdownY").toReal()));
-    const int width = qCeil(m_item->property("dropdownX").toReal()
-                            + m_item->property("dropdownWidth").toReal()) - x;
-    const int height = qCeil(m_item->property("dropdownY").toReal()
-                             + m_item->property("dropdownHeight").toReal()) - y;
+    // T352: the QML snapshot publishes the committed crop (card + shadow
+    // reach, clamped to the visible output), the card material regions and the
+    // card-body picking rects. The popup surface is placed at exactly that
+    // crop, so the shadow paints inside the committed buffer and the empty
+    // bands/gaps never accept input.
+    const QVariantMap crop = m_item->property("dropdownCropRect").toMap();
+    const qreal cropX = crop.value(QStringLiteral("x")).toReal();
+    const qreal cropY = crop.value(QStringLiteral("y")).toReal();
+    const qreal cropW = crop.value(QStringLiteral("w")).toReal();
+    const qreal cropH = crop.value(QStringLiteral("h")).toReal();
+    const int x = qMax(0, qFloor(cropX));
+    const int y = qMax(0, qFloor(cropY));
+    const int width = qCeil(cropX + cropW) - x;
+    const int height = qCeil(cropY + cropH) - y;
     if (width <= 0 || height <= 0) {
         m_popupWidth = 0;
         m_popupHeight = 0;
@@ -7964,11 +7987,23 @@ void ShellController::applyPopupGeometry()
     m_popupWidth = width;
     m_popupHeight = height;
     m_protocol->setPopupGeometry(x, y, width, height);
-    // T202: declare the exact attached/detached/status regions for this open
-    // menu. The popup surface accepts input only while it is logically open;
-    // the close path clears both before the visual exit.
+    // T202/T352: declare the exact attached/detached/status card regions for
+    // this open menu. The popup surface accepts input only while it is
+    // logically open; the close path clears both before the visual exit.
     m_protocol->setPopupPanelRegions(
         m_item->property("dropdownSurfaceRegions").toList());
+    QList<QRect> popupInputRects;
+    const QVariantList rawPopupInputRects =
+        m_item->property("dropdownSurfaceInputRects").toList();
+    for (const QVariant &value : rawPopupInputRects) {
+        const QVariantMap rect = value.toMap();
+        popupInputRects.append(
+            QRect(qFloor(rect.value(QStringLiteral("x")).toReal()),
+                  qFloor(rect.value(QStringLiteral("y")).toReal()),
+                  qCeil(rect.value(QStringLiteral("w")).toReal()),
+                  qCeil(rect.value(QStringLiteral("h")).toReal())));
+    }
+    m_protocol->setPopupInputRects(popupInputRects);
     m_protocol->setPopupInputActive(true);
 }
 

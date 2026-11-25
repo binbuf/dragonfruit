@@ -190,6 +190,30 @@
       "owner": "T349",
       "setup": "MenuBar width 800 with one File app menu; open, close, reopen",
       "symptom": "the attached menu card must stay current across a close/reopen"
+    },
+    {
+      "test": "test_menubar_popup_crop_includes_shadow_and_separate_cards",
+      "expected": "pass",
+      "owner": "T352",
+      "setup": "MenuBar width 800, output 800x640, File menu with one submenu; open the menu and its submenu",
+      "symptom": "the committed crop includes each card's shadow reach while material and picking stay on the separate card bodies and the gap is click-through",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_popup_first_frame_after_a_width_change",
+      "expected": "pass",
+      "owner": "T352",
+      "setup": "MenuBar width 800, File menu; replace the open model with a wider row, close, then reopen",
+      "symptom": "the changed model width settles into the crop, material card and picking rects on the next rendered frame and survives the warm reopen",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_popup_quick_switch_close_and_reduced_motion",
+      "expected": "pass",
+      "owner": "T352",
+      "setup": "MenuBar width 800 with File/Edit menus and Wi-Fi/Volume status popovers; switch titles, switch status popups, close, and repeat under reduced motion",
+      "symptom": "one popup owner follows the live title/status card, a logical close publishes no material or picking region, and reduced motion uses a zero-duration exit",
+      "scales": [1, 1.5, 2]
     }
   ]
 }

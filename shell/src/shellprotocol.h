@@ -131,6 +131,9 @@ public:
     // overscan; an empty list clears the material. The region requests are
     // commit-latched by the compositor.
     void setPopupPanelRegions(const QVariantList &regions);
+    // T352: explicit picking rects in popup-surface coordinates. Empty rects
+    // keep the legacy whole-surface input region while `inputActive`.
+    void setPopupInputRects(const QList<QRect> &rects);
     // The popup surface accepts pointer input only while a menu is logically
     // open; the closing animation must not intercept clicks.
     void setPopupInputActive(bool active);

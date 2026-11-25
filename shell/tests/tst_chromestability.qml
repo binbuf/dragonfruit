@@ -947,5 +947,241 @@ Item {
             compare(bar.dropdownPreset, "menuAttached");
             bar.closeMenus(true);
         }
+
+        // --- Menu Bar popup footprint (T352) -------------------------------
+
+        function pointInRect(rect, x, y) {
+            return x >= rect.x && x < rect.x + rect.w
+                && y >= rect.y && y < rect.y + rect.h;
+        }
+
+        function regionCoversPoint(regions, x, y) {
+            for (var i = 0; i < regions.length; ++i) {
+                if (pointInRect(regions[i], x, y))
+                    return true;
+            }
+            return false;
+        }
+
+        function inputContains(bar, x, y) {
+            var crop = bar.dropdownCropRect;
+            var lx = x - Math.floor(crop.x);
+            var ly = y - Math.floor(crop.y);
+            var rects = bar.dropdownSurfaceInputRects;
+            for (var i = 0; i < rects.length; ++i) {
+                if (pointInRect(rects[i], lx, ly))
+                    return true;
+            }
+            return false;
+        }
+
+        function makeSubmenuBar(props) {
+            var base = {
+                appName: "Test",
+                appMenuModel: [ { title: "File", items: [
+                    { label: "New" },
+                    { label: "Open With", type: "submenu",
+                      submenu: [ { label: "Text Editor" },
+                                 { label: "Preview" } ] }
+                ] } ]
+            };
+            for (var key in (props || {}))
+                base[key] = props[key];
+            return makeBar(base);
+        }
+
+        // The committed crop is the card plus the full shadow reach, clamped
+        // to the visible output. Each attached menu and detached submenu stays
+        // its own material card; the gap between them carries no material and
+        // no input, and the shadow ring is click-through.
+        function test_menubar_popup_crop_includes_shadow_and_separate_cards() {
+            var bar = makeSubmenuBar({ width: 800, outputWidth: 800,
+                                       outputHeight: 640 });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var menu = bar.appMenuAt(2);
+            menu.openSubmenu(1);
+            waitForRendering(stage);
+            var crop = bar.dropdownCropRect;
+            var paint = bar.dropdownPaintRect;
+            var bounds = bar.hostBounds;
+            verify(crop.w > 0 && crop.h > 0, "the menu commits a crop");
+            verify(paint.w > 0 && paint.h > 0, "the menu has a paint extent");
+            verify(crop.x >= bounds.x && crop.y >= bounds.y,
+                   "the crop starts inside the visible output");
+            verify(crop.x + crop.w <= bounds.x + bounds.w + 0.01,
+                   "the crop stays inside the output horizontally");
+            verify(crop.y + crop.h <= bounds.y + bounds.h + 0.01,
+                   "the crop stays inside the output vertically");
+
+            var regions = bar.dropdownRegions;
+            verify(regions.length >= 2,
+                   "the attached menu and detached submenu are separate cards");
+            compare(bar.dropdownSurfaceRegions.length, regions.length,
+                    "every card publishes a surface region");
+            for (var i = 0; i < regions.length; ++i) {
+                var region = regions[i];
+                var left = Math.max(bounds.x,
+                                    region.x - bar.dropdownShadowLeft);
+                var top = Math.max(bounds.y,
+                                   region.y - bar.dropdownShadowTop);
+                var right = Math.min(bounds.x + bounds.w,
+                                     region.x + region.w
+                                     + bar.dropdownShadowRight);
+                var bottom = Math.min(bounds.y + bounds.h,
+                                      region.y + region.h
+                                      + bar.dropdownShadowBottom);
+                verify(crop.x <= left + 0.01,
+                       "card " + i + " keeps its left shadow reach");
+                verify(crop.y <= top + 0.01,
+                       "card " + i + " keeps its top shadow reach");
+                verify(crop.x + crop.w + 0.01 >= right,
+                       "card " + i + " keeps its right shadow reach");
+                verify(crop.y + crop.h + 0.01 >= bottom,
+                       "card " + i + " keeps its bottom shadow reach");
+            }
+
+            // The gap between the two cards is inside the crop but outside
+            // every material card.
+            var gapX = regions[0].x + regions[0].w + menu.submenuGap / 2;
+            var gapY = regions[0].y + 20;
+            verify(gapX < regions[1].x + 0.01,
+                   "the submenu is a separate card across a gap");
+            verify(pointInRect(crop, gapX, gapY),
+                   "the crop covers the gap between the cards");
+            verify(!regionCoversPoint(regions, gapX, gapY),
+                   "no material region covers the menu/submenu gap");
+            verify(!inputContains(bar, gapX, gapY),
+                   "the menu/submenu gap is click-through");
+
+            var body = regions[0];
+            verify(inputContains(bar, body.x + body.w / 2,
+                                 body.y + body.h / 2),
+                   "the card body is interactive");
+            verify(inputContains(bar, body.x + 1, body.y + 1),
+                   "an attached menu keeps its square top corner interactive");
+            verify(!inputContains(bar, body.x + 1,
+                                  body.y + body.h - 2),
+                   "the rounded bottom corner is click-through");
+            verify(!inputContains(bar, body.x - 4, body.y + body.h / 2),
+                   "the shadow ring is click-through");
+            saveShot(stage, "t352-menubar-crop.png");
+            bar.closeMenus(true);
+        }
+
+        // A live model change must settle the new width before the next
+        // committed frame: the crop, material card and picking rects all agree
+        // with the popup the first time it is rendered.
+        function test_menubar_popup_first_frame_after_a_width_change() {
+            var bar = makeBar({
+                appName: "Test",
+                appMenuModel: [ { title: "File", items: [
+                    { label: "New" } ] } ]
+            });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var menu = bar.appMenuAt(2);
+            var narrow = bar.dropdownCropWidth;
+            verify(narrow > 0, "the first model commits a width");
+
+            // Replace the model with a much wider row while the menu is open.
+            bar.appMenuModel = [ { title: "File", items: [
+                { label: "Open a very wide document" } ] } ];
+            waitForRendering(stage);
+            verify(bar.dropdownCropWidth > narrow,
+                   "the changed model grows the committed crop");
+            compare(bar.dropdownSurfaceRegions[0].w,
+                    menu.popup.width,
+                    "the material card matches the settled popup width");
+            var crop = bar.dropdownCropRect;
+            verify(crop.w >= menu.popup.width,
+                   "the crop contains the settled card width");
+            verify(inputContains(bar, bar.dropdownRegions[0].x + 1,
+                                 bar.dropdownRegions[0].y
+                                 + bar.dropdownRegions[0].h - 2) === false,
+                   "the settled rounded corner stays click-through");
+
+            bar.closeMenus(true);
+            waitForRendering(stage);
+            // A cold reopen with the wide model uses the same final width, not
+            // the narrow first model's warm value.
+            bar.openMenu(2);
+            waitForRendering(stage);
+            compare(bar.dropdownCropWidth,
+                    Math.ceil(crop.w), "the warm reopen keeps the settled crop");
+            bar.closeMenus(true);
+        }
+
+        // Quick title/status switches retarget the one popup owner. A logical
+        // close publishes no card or input, and reduced motion carries a
+        // zero-duration exit so the shell can unmap immediately.
+        function test_menubar_popup_quick_switch_close_and_reduced_motion() {
+            var bar = makeBar({
+                appName: "Test",
+                appMenuModel: [
+                    { title: "File", items: [ { label: "New" } ] },
+                    { title: "Edit", items: [ { label: "Undo" },
+                                              { label: "Redo" } ] }
+                ]
+            });
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var file = bar.appMenuAt(2);
+            var fileWidth = file.popup.width;
+            bar.openMenu(3);
+            waitForRendering(stage);
+            var edit = bar.appMenuAt(3);
+            compare(bar.openMenuIndex, 3, "the title switch retargets the menu");
+            compare(file.open, false, "the old title is closed");
+            compare(bar.dropdownSurfaceRegions[0].w,
+                    edit.popup.width,
+                    "the crop follows the new title's card");
+            verify(edit.popup.width !== fileWidth
+                   || bar.dropdownSurfaceRegions.length === 1,
+                   "the live card is the new title's card");
+
+            // A status switch uses the same one-owner contract.
+            bar.openStatusMenu("wifi");
+            waitForRendering(stage);
+            var wifi = findChild(bar, "wifiMenu").popup;
+            var wifiWidth = wifi.width;
+            bar.openStatusMenu("volume");
+            waitForRendering(stage);
+            var volume = findChild(bar, "volumeMenu").popup;
+            compare(bar.openStatusItem, "volume");
+            compare(wifi.open, false, "the old status popup is closed");
+            compare(bar.dropdownSurfaceRegions[0].w,
+                    volume.width,
+                    "the status crop follows the new popup");
+            verify(volume.width !== wifiWidth
+                   || bar.dropdownSurfaceRegions.length === 1);
+
+            compare(bar.popupExitDuration, Theme.motion.popupClose.duration,
+                    "a status close uses the popup exit token");
+            bar.closeStatusMenu(true);
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "");
+            compare(bar.dropdownRegions.length, 0,
+                    "a logical close publishes no material card");
+            compare(bar.dropdownSurfaceInputRects.length, 0,
+                    "a logical close publishes no picking region");
+
+            // Reduced motion has a zero-duration visual exit.
+            Theme.reducedMotion = true;
+            var reduced = makeBar({
+                appName: "Test",
+                appMenuModel: [ { title: "File", items: [ { label: "New" } ] } ]
+            });
+            reduced.openMenu(2);
+            waitForRendering(stage);
+            reduced.closeMenus(true);
+            waitForRendering(stage);
+            compare(reduced.popupExitDuration, 0,
+                    "reduced motion closes without a frost tail");
+            compare(reduced.dropdownRegions.length, 0);
+            compare(reduced.dropdownSurfaceInputRects.length, 0);
+            Theme.reducedMotion = false;
+        }
+
     }
 }

@@ -713,6 +713,10 @@ private:
     // ends; `shared` keeps the previous one-scene path.
     void releaseDockPopupTarget();
     void releaseMenuBarPopupTarget();
+    // T352: complete the menu-bar popup exit. A reduced-motion or otherwise
+    // zero-duration exit unmaps immediately; a normal exit runs when its
+    // matching visual tail ends instead of a fixed frost tail.
+    void finishMenuBarPopupExit();
     // One dmabuf target commit, including the per-surface stats path and the
     // producer-slot release bookkeeping for a shared scene.
     ShellProtocol::DmabufCommitResult commitChromeDmabufTarget(

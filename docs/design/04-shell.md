@@ -176,6 +176,8 @@ as a material region on the `menubar-popup`/`dock-popup` overlay with the
 attached square-top/rounded-bottom or detached all-rounded corners. The
 overlay accepts pointer input only while the menu is logically open; the
 183 ms, 0.95-scale exit tail is visual only and can be retargeted by a reopen.
+The exit interval follows the QML close motion token, so reduced motion
+unmaps immediately instead of keeping a fixed frost tail (T352).
 App-owned Files/desktop context menus paint the opaque local fallback because
 they have no trusted compositor backdrop. The Bluetooth slot now reads the
 existing bridge-host adapter and Menu Bar visibility key; it raises the same
@@ -209,6 +211,20 @@ it finishes. A superseded popup drops its queued GPU frames while a shared
 frame can still update the strip. Unmapping clears the previous-buffer
 comparison so reopening the same popup always attaches a buffer. See
 [ADR 0294](adr/0294-shell-popup-frame-lifecycle.md).
+
+**Menu Bar popup footprints (T352).** The menu-bar popup publishes one settled
+snapshot. `dropdownX/Y/Width/Height` is the card coverage used for placement;
+`dropdownPaintRect` adds the full QML `Shadow` reach; `dropdownCropRect` clamps
+that paint extent to the visible output and is what the shell commits in the
+independent, shared and shared-memory paths. `dropdownSurfaceRegions` keeps the
+attached menu and each detached submenu as separate crop-local cards, so the
+gap receives no material. `dropdownSurfaceInputRects` is the picking footprint:
+rounded spans over the card bodies only, while the shadow ring, the gap and the
+transparent corner tips stay click-through. A logical close empties the input
+region immediately; the material stays only for the token-driven visual tail.
+Reduced motion (or any zero-duration exit) unmaps at once instead of the old
+fixed 210 ms frost tail. See
+[ADR 0363](adr/0363-menubar-popup-footprints.md).
 
 In the default GPU mode, an open dropdown renders into its own content-sized
 view ([ADR 0286](adr/0286-content-sized-popup-render-targets.md)).

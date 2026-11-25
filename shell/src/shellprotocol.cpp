@@ -496,6 +496,11 @@ void ShellProtocol::setPopupPanelRegions(const QVariantList &regions)
     m_popupFrame.next.regions = regions;
 }
 
+void ShellProtocol::setPopupInputRects(const QList<QRect> &rects)
+{
+    m_popupFrame.next.inputRects = rects;
+}
+
 void ShellProtocol::setPopupInputActive(bool active)
 {
     m_popupFrame.next.inputActive = active;

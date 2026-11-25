@@ -220,7 +220,10 @@ The owning task flips its row to `pass` when the fix lands. A row may declare
 `scales`; the runner then repeats that fixture at each device scale. The
 status-anchor rows run at 1×/1.5×/2× and cover secondary-output bounds, the
 right-edge clamp, a status-row relayout, an output resize, and pointer/keyboard
-parity. This is agent evidence on the software scene graph, not a native
+parity. The T352 Menu Bar rows cover the shadow/card crop, separate submenu
+material and picking bounds, a changed-width first frame, quick title/status
+retargeting, logical-close input release, and reduced motion at the same
+scales. This is agent evidence on the software scene graph, not a native
 presentation claim ([ADR 0360](adr/0360-chrome-stability-fixture-gate.md)).
 
 Keep the evidence classes separate: the Qt fixture reports the declared

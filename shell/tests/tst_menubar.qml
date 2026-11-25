@@ -880,9 +880,9 @@ Item {
             verify(bar.dropdownRegions.length >= 1);
             compare(bar.dropdownRegions[0].preset, "menuAttached");
             compare(bar.dropdownSurfaceRegions[0].x,
-                    bar.dropdownX - Math.floor(bar.dropdownX));
+                    bar.dropdownRegions[0].x - Math.floor(bar.dropdownCropX));
             compare(bar.dropdownSurfaceRegions[0].y,
-                    bar.dropdownY - Math.floor(bar.dropdownY));
+                    bar.dropdownRegions[0].y - Math.floor(bar.dropdownCropY));
             compare(bar.dropdownRegions[0].tl, 0);
             compare(bar.dropdownRegions[0].tr, 0);
             fuzzyCompare(bar.dropdownRegions[0].br,
@@ -899,10 +899,10 @@ Item {
             compare(bar.dropdownRegions[1].preset, "menuDetached");
             for (var i = 0; i < bar.dropdownRegions.length; ++i) {
                 var local = bar.dropdownSurfaceRegions[i];
-                compare(local.x + Math.floor(bar.dropdownX), bar.dropdownRegions[i].x);
-                compare(local.y + Math.floor(bar.dropdownY), bar.dropdownRegions[i].y);
-                verify(local.x >= 0 && local.x + local.w <= Math.ceil(bar.dropdownX + bar.dropdownWidth) - Math.floor(bar.dropdownX));
-                verify(local.y >= 0 && local.y + local.h <= Math.ceil(bar.dropdownY + bar.dropdownHeight) - Math.floor(bar.dropdownY));
+                compare(local.x + Math.floor(bar.dropdownCropX), bar.dropdownRegions[i].x);
+                compare(local.y + Math.floor(bar.dropdownCropY), bar.dropdownRegions[i].y);
+                verify(local.x >= 0 && local.x + local.w <= Math.ceil(bar.dropdownCropX + bar.dropdownCropWidth) - Math.floor(bar.dropdownCropX));
+                verify(local.y >= 0 && local.y + local.h <= Math.ceil(bar.dropdownCropY + bar.dropdownCropHeight) - Math.floor(bar.dropdownCropY));
             }
 
             bar.closeMenus();
@@ -911,9 +911,9 @@ Item {
             compare(bar.dropdownPreset, "statusMenu");
             compare(bar.dropdownRegions[0].preset, "statusMenu");
             compare(bar.dropdownSurfaceRegions[0].x,
-                    bar.dropdownX - Math.floor(bar.dropdownX));
+                    bar.dropdownRegions[0].x - Math.floor(bar.dropdownCropX));
             compare(bar.dropdownSurfaceRegions[0].y,
-                    bar.dropdownY - Math.floor(bar.dropdownY));
+                    bar.dropdownRegions[0].y - Math.floor(bar.dropdownCropY));
             compare(findChild(bar, "wifiMenu").popup.materialPreset,
                     "statusMenu");
             bar.closeStatusMenu();

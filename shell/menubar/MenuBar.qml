@@ -380,6 +380,60 @@ Rectangle {
     readonly property real dropdownY: _dropdownRect.y
     readonly property real dropdownWidth: _dropdownRect.w
     readonly property real dropdownHeight: _dropdownRect.h
+
+    // T352: the committed popup has one settled layout snapshot. The card
+    // coverage above is the placement/anchor rect; the paint extent adds the
+    // full QML Shadow reach (blur and elevation offset), and the crop clamps
+    // that extent to the owning output's visible bounds. Material and input
+    // stay on the card bodies inside this crop.
+    readonly property real dropdownShadowBlur: Theme.controls.popup.shadowBlur
+    readonly property real dropdownShadowOffsetX: 0
+    readonly property real dropdownShadowOffsetY:
+        Theme.controls.elevation.high.offsetY
+    readonly property real dropdownShadowLeft:
+        dropdownShadowBlur - Math.min(0, dropdownShadowOffsetX)
+    readonly property real dropdownShadowRight:
+        dropdownShadowBlur + Math.max(0, dropdownShadowOffsetX)
+    readonly property real dropdownShadowTop:
+        dropdownShadowBlur - Math.min(0, dropdownShadowOffsetY)
+    readonly property real dropdownShadowBottom:
+        dropdownShadowBlur + Math.max(0, dropdownShadowOffsetY)
+    readonly property var dropdownPaintRect: {
+        var card = _dropdownRect;
+        if (card.w <= 0 || card.h <= 0)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        var left = card.x - dropdownShadowLeft;
+        var top = card.y - dropdownShadowTop;
+        var right = card.x + card.w + dropdownShadowRight;
+        var bottom = card.y + card.h + dropdownShadowBottom;
+        return { x: left, y: top, w: right - left, h: bottom - top };
+    }
+    readonly property var dropdownCropRect: {
+        var paint = dropdownPaintRect;
+        if (paint.w <= 0 || paint.h <= 0)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        var bounds = hostBounds;
+        var left = Math.max(bounds.x, Math.floor(paint.x));
+        var top = Math.max(bounds.y, Math.floor(paint.y));
+        var right = Math.min(bounds.x + bounds.w, Math.ceil(paint.x + paint.w));
+        var bottom = Math.min(bounds.y + bounds.h, Math.ceil(paint.y + paint.h));
+        return { x: left, y: top,
+                 w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
+    }
+    readonly property real dropdownCropX: dropdownCropRect.x
+    readonly property real dropdownCropY: dropdownCropRect.y
+    readonly property real dropdownCropWidth: dropdownCropRect.w
+    readonly property real dropdownCropHeight: dropdownCropRect.h
+
+    // The visual exit duration the shell keeps the popup surface mapped for.
+    // Ordinary menus use the 183 ms close token; status popovers use the
+    // shorter popup token. Reduced motion is an immediate, coherent unmap.
+    property int popupExitDuration: Theme.motion.menuClose.duration
+    function notifyPopupClosed(duration) {
+        popupExitDuration = Math.max(0, duration);
+        popupClosed();
+    }
+
     // T202: the preset for the open dropdown and the independently keyed
     // material regions the shell declares on the popup overlay. Attached
     // app menus keep square top corners; status menus and the tray context
@@ -468,8 +522,8 @@ Rectangle {
     // The compositor adds the popup surface origin. Publish coordinates
     // relative to the same integer crop used for its buffer, not the bar.
     readonly property var dropdownSurfaceRegions: {
-        var dx = Math.max(0, Math.floor(dropdownX));
-        var dy = Math.max(0, Math.floor(dropdownY));
+        var dx = Math.max(0, Math.floor(dropdownCropX));
+        var dy = Math.max(0, Math.floor(dropdownCropY));
         return dropdownRegions.map(function(region) {
             return { key: region.key, preset: region.preset,
                      x: region.x - dx, y: region.y - dy,
@@ -478,6 +532,74 @@ Rectangle {
                      br: region.br, bl: region.bl,
                      overscan: region.overscan };
         });
+    }
+
+    // T352: the picking footprint is the card bodies only, expressed as a few
+    // rounded spans per card in crop-local coordinates. The shadow ring, the
+    // transparent corner tips and the gap between an attached menu and its
+    // detached submenu stay click-through. The input region is emptied
+    // immediately at logical close (the shell's `dismissPopupInput`).
+    function dropdownArcInset(radius, depth) {
+        var r = Math.max(0, radius);
+        var d = Math.max(0, Math.min(r, depth));
+        return r - Math.sqrt(Math.max(0, r * r - (r - d) * (r - d)));
+    }
+    function dropdownInputRectsForRegion(region, dx, dy) {
+        var x = region.x - dx;
+        var y = region.y - dy;
+        var w = region.w;
+        var h = region.h;
+        if (w <= 0 || h <= 0)
+            return [];
+        var limit = Math.min(w, h) / 2;
+        var tl = Math.max(0, Math.min(region.tl || 0, limit));
+        var tr = Math.max(0, Math.min(region.tr || 0, limit));
+        var br = Math.max(0, Math.min(region.br || 0, limit));
+        var bl = Math.max(0, Math.min(region.bl || 0, limit));
+        var topRadius = Math.max(tl, tr);
+        var bottomRadius = Math.max(bl, br);
+        var out = [];
+        var steps = 4;
+        if (topRadius > 0) {
+            for (var i = 0; i < steps; ++i) {
+                var d0 = topRadius * i / steps;
+                var d1 = topRadius * (i + 1) / steps;
+                var leftInset = tl > 0 ? dropdownArcInset(tl, d0) : 0;
+                var rightInset = tr > 0 ? dropdownArcInset(tr, d0) : 0;
+                out.push({ x: Math.floor(x + leftInset),
+                           y: Math.floor(y + d0),
+                           w: Math.ceil(w - leftInset - rightInset),
+                           h: Math.ceil(d1 - d0) });
+            }
+        }
+        var middleTop = topRadius;
+        var middleBottom = h - bottomRadius;
+        if (middleBottom > middleTop) {
+            out.push({ x: Math.floor(x), y: Math.floor(y + middleTop),
+                       w: Math.ceil(w), h: Math.ceil(middleBottom - middleTop) });
+        }
+        if (bottomRadius > 0) {
+            for (var j = 0; j < steps; ++j) {
+                var b0 = bottomRadius * j / steps;
+                var b1 = bottomRadius * (j + 1) / steps;
+                var bottomLeftInset = bl > 0 ? dropdownArcInset(bl, b0) : 0;
+                var bottomRightInset = br > 0 ? dropdownArcInset(br, b0) : 0;
+                out.push({ x: Math.floor(x + bottomLeftInset),
+                           y: Math.floor(y + h - b1),
+                           w: Math.ceil(w - bottomLeftInset - bottomRightInset),
+                           h: Math.ceil(b1 - b0) });
+            }
+        }
+        return out;
+    }
+    readonly property var dropdownSurfaceInputRects: {
+        var dx = Math.max(0, Math.floor(dropdownCropX));
+        var dy = Math.max(0, Math.floor(dropdownCropY));
+        var out = [];
+        for (var i = 0; i < dropdownRegions.length; ++i)
+            out = out.concat(dropdownInputRectsForRegion(
+                dropdownRegions[i], dx, dy));
+        return out;
     }
 
     signal appMenuTriggered(int menuIndex, int itemIndex, var item)
@@ -710,7 +832,7 @@ Rectangle {
             if (item)
                 item.closeMenu(immediate === true);
             appMenuClosed();
-            popupClosed();
+            notifyPopupClosed(Theme.motion.menuClose.duration);
         }
     }
 
@@ -796,7 +918,7 @@ Rectangle {
         trayMenuOpen = false;
         trayContextMenu.hide(immediate === true);
         trayMenuClosed();
-        popupClosed();
+        notifyPopupClosed(Theme.motion.menuClose.duration);
     }
 
     // Open the popover for a status item. A hidden item (daemon absent, or a
@@ -839,7 +961,7 @@ Rectangle {
         openStatusItem = "";
         popup.hide(immediate === true);
         statusMenuClosed();
-        popupClosed();
+        notifyPopupClosed(Theme.motion.popupClose.duration);
         // Keep the status ring on the item that opened the popover when the
         // bar owns keyboard entry; a pointer dismissal clears it.
         if (!keyboardFocused)
@@ -924,7 +1046,7 @@ Rectangle {
             return;
         overflowMenuOpen = false;
         overflowContextMenu.hide(immediate === true);
-        popupClosed();
+        notifyPopupClosed(Theme.motion.menuClose.duration);
     }
 
     function toggleOverflowMenu() {
@@ -1135,7 +1257,7 @@ Rectangle {
                 openMenu(wasOpen);
             else {
                 appMenuClosed();
-                popupClosed();
+                notifyPopupClosed(Theme.motion.menuClose.duration);
             }
         }
     }
@@ -1310,7 +1432,8 @@ Rectangle {
                     if (menuBar.openMenuIndex === index) {
                         menuBar.openMenuIndex = -1;
                         menuBar.appMenuClosed();
-                        menuBar.popupClosed();
+                        menuBar.notifyPopupClosed(
+                            Theme.motion.menuClose.duration);
                         if (menuBar.keyboardFocused)
                             menuBar.focusTitle(index);
                     }
