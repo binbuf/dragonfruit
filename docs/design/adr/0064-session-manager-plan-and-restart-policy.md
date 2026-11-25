@@ -54,3 +54,9 @@ and policy are data, not repeated shell.
 - The systemd units T-12.1b ships remain the production supervisor; this
   in-process manager is the headless/testable contract and the seam the dev
   harness and the units must agree with.
+
+  *Amended by [ADR 0356](0356-supervisor-restart-backoff-and-pgid-teardown.md)
+  (T345).* Restart timing is now a bounded exponential backoff with a maximum
+  attempt count and a stable-run reset, and teardown sends the final group
+  `SIGKILL` before reaping the leader. The plan, policies, and anchor rules
+  above are unchanged.

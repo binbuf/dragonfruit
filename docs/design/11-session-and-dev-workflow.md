@@ -238,7 +238,10 @@ dragonfruit-session.target (started directly by dragonfruit-session-entry)
   returns — that is the display server reality, and the failure behavior we
   want. A shell crash while locked also ends the session: the compositor is
   the only authority that can distinguish a frozen lock from recoverable
-  chrome ([ADR 0312](adr/0312-lock-loss-ends-the-session.md)).
+  chrome ([ADR 0312](adr/0312-lock-loss-ends-the-session.md)). The in-process
+  supervisor bounds a crash loop with an exponential backoff (200 ms doubling,
+  capped at 30 s), five consecutive attempts, and a 10 s stable-run reset
+  ([ADR 0356](adr/0356-supervisor-restart-backoff-and-pgid-teardown.md), T345).
 - **Shell liveness (T314):** the shell unit is `Type=notify` with
   `WatchdogSec=30`. A `QTimer` on the GUI thread sends `READY=1` and then a
   `WATCHDOG=1` beat every 10 s through `ShellWatchdog`; a GUI-thread deadlock
@@ -372,7 +375,12 @@ display manager are never stopped, restarted, or reconfigured.
 **Logout tears down process groups.** Each supervised service is spawned as
 the leader of its own process group, and shutdown signals the whole group
 (`SIGTERM`, then `SIGKILL` after a short grace), so a shell or service wrapper
-cannot leak grandchildren past the session. The session binary installs the
+cannot leak grandchildren past the session. The group `SIGKILL` is sent while
+the leader is still an unreaped zombie: the pgid is the leader's pid, and
+reaping first would let the kernel recycle that id onto an unrelated process
+group (T345,
+[ADR 0356](adr/0356-supervisor-restart-backoff-and-pgid-teardown.md)). The
+session binary installs the
 descriptor, script, and the systemd user units under one prefix with
 `dragonfruit-session --install-session DIR` (`entry::install_into`); packaging
 (T164/T165) passes its build root. The contract is frozen in

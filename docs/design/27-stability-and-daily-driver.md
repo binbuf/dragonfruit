@@ -294,6 +294,17 @@ No single component failure may require a TTY reboot:
   taken; a shell loss while locked still ends the session safely
   ([ADR 0312](adr/0312-lock-loss-ends-the-session.md), T314,
   [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md));
+- the `--exec`/dev session supervisor must not fork-storm or kill a reused
+  process group. A crashed service is respawned on an exponential backoff
+  (200 ms doubling, capped at 30 s) and at most five consecutive attempts; a
+  run of at least 10 s resets the counter, and giving up leaves the service
+  exited with a `RestartAbandoned` event. Teardown `SIGTERM`s the group, waits
+  for the leader to exit *without reaping it* (a pidfd on Linux), `SIGKILL`s
+  the group while the leader's pid still owns the pgid, and only then reaps;
+  if the leader is already gone, the pgid is never signalled. The `--exec`
+  loop waits on `any_active()`, so a scheduled restart is not mistaken for a
+  finished session (T345,
+  [ADR 0356](adr/0356-supervisor-restart-backoff-and-pgid-teardown.md));
 - Log Out must end the session through logind, never a direct signal to the
   shell or compositor. The system menu row and `Super+Shift+Q` share the
   Restart/Shut Down confirmation, then call
@@ -705,7 +716,7 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-26 | No terminal fallback; `Terminal=true` entries fail on Fedora | T340 |
 | S-27 | App index ignores `OnlyShowIn`/`NotShowIn`/`TryExec` | T341 |
 | S-28 | Native bring-up has dependency, transaction, DM-selection, stale-target, and `XCURSOR_PATH` traps (dependency closed by T342; transaction/stale target/`XCURSOR_PATH` closed by T343) | T342–T344 |
-| S-29 | Session supervisor can respawn every 50 ms and can kill a reused PGID | T345 |
+| S-29 | Session supervisor can respawn every 50 ms and can kill a reused PGID (closed by T345) | T345 |
 
 ## 5. Acceptance matrix
 

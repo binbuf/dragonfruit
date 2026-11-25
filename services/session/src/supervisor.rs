@@ -16,6 +16,19 @@
 //! `SIGTERM` to the group for a clean exit, then `SIGKILL` if it is still
 //! alive. Killing only the direct child would leak the grandchildren a shell
 //! or service wrapper starts.
+//!
+//! Teardown kills the group *before* reaping the leader (T345). The group id
+//! is the leader's pid; while the leader is a zombie or still running, the
+//! kernel cannot recycle that number, so `kill(-pgid)` can only reach our
+//! group. Reaping first and then signalling the pgid is a race against pid
+//! reuse: the id may already name an unrelated process group.
+//!
+//! A crash loop is bounded by [`RestartBackoff`] (T345): consecutive restarts
+//! wait 200 ms, 400 ms, 800 ms, … (capped at 30 s) and stop after five
+//! attempts. A run at least ten seconds long is a stable run and resets the
+//! counter. A service waiting out its delay is [`ServiceState::Exited`] with
+//! [`Supervisor::next_restart_at`] set; the next [`Supervisor::tick`] that
+//! passes the deadline respawns it.
 
 use std::collections::HashMap;
 use std::io;
@@ -28,8 +41,46 @@ use crate::plan::{RestartPolicy, ServiceSpec, SessionPlan};
 /// How long a child gets to exit after `SIGTERM` before the group is
 /// `SIGKILL`ed.
 const TERM_GRACE: Duration = Duration::from_millis(500);
-/// The poll interval while waiting out [`TERM_GRACE`].
-const TERM_POLL: Duration = Duration::from_millis(10);
+
+/// The restart backoff and crash-loop limit for supervised services.
+///
+/// A crash loop must not become a fork storm: every consecutive restart waits
+/// twice as long as the one before, up to [`RestartBackoff::max_delay`], and
+/// after [`RestartBackoff::max_attempts`] consecutive restarts the supervisor
+/// leaves the service [`ServiceState::Exited`] instead of respawning it. A run
+/// at least [`RestartBackoff::stable_run`] long counts as stable and resets the
+/// attempt counter, so a service that crashes once a day is always restarted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RestartBackoff {
+    /// The delay before the first restart.
+    pub base: Duration,
+    /// The ceiling the doubled delay is clamped to.
+    pub max_delay: Duration,
+    /// Consecutive restarts allowed before the supervisor gives up.
+    pub max_attempts: u32,
+    /// How long a run must last to count as stable and reset the attempts.
+    pub stable_run: Duration,
+}
+
+impl Default for RestartBackoff {
+    fn default() -> Self {
+        RestartBackoff {
+            base: Duration::from_millis(200),
+            max_delay: Duration::from_secs(30),
+            max_attempts: 5,
+            stable_run: Duration::from_secs(10),
+        }
+    }
+}
+
+impl RestartBackoff {
+    /// The delay before restart attempt `attempt` (1-based), doubling from
+    /// [`RestartBackoff::base`] and capped at [`RestartBackoff::max_delay`].
+    pub fn delay(&self, attempt: u32) -> Duration {
+        let shift = attempt.saturating_sub(1).min(31);
+        self.base.saturating_mul(1u32 << shift).min(self.max_delay)
+    }
+}
 
 /// Send `signal` to the process group led by `pid`. Every managed child is a
 /// process-group leader ([`Command::process_group`](std::os::unix::process::CommandExt::process_group)),
@@ -46,30 +97,84 @@ fn signal_group(pid: u32, signal: libc::c_int) {
 /// grandchildren cannot outlive their leader. Returns once the direct child
 /// has been reaped.
 fn terminate(child: &mut Child) {
-    let pid = child.id();
-    signal_group(pid, libc::SIGTERM);
-    let deadline = Instant::now() + TERM_GRACE;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    signal_group(pid, libc::SIGKILL);
-                    let _ = child.wait();
-                    break;
-                }
-                std::thread::sleep(TERM_POLL);
-            }
-            Err(_) => {
-                signal_group(pid, libc::SIGKILL);
-                let _ = child.wait();
-                break;
-            }
-        }
+    terminate_with(child, &mut |pid, signal| signal_group(pid, signal));
+}
+
+/// What became of the leader while teardown waited for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LeaderWait {
+    /// The leader exited and is still an unreaped zombie.
+    Exited,
+    /// The leader is still running at the end of the grace.
+    Running,
+    /// The leader is no longer our child (already reaped). Its pid — and so
+    /// its process-group id — may already have been recycled.
+    Gone,
+}
+
+/// Wait up to `timeout` for `pid` to exit *without* reaping it, so the caller
+/// can still own its process-group id.
+///
+/// Linux uses a pidfd: it becomes readable when the child exits, and a zombie
+/// keeps the pid allocated until it is reaped. Kernels without `pidfd_open`
+/// fall back to waiting out the whole grace, which is slower but keeps the
+/// same ordering guarantee.
+#[cfg(target_os = "linux")]
+fn wait_leader(pid: u32, timeout: Duration) -> LeaderWait {
+    let opened = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
+    if opened < 0 {
+        return if io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+            LeaderWait::Gone
+        } else {
+            // No pidfd support. The leader is still unreaped (std owns it), so
+            // the group id is still ours after the grace.
+            std::thread::sleep(timeout);
+            LeaderWait::Running
+        };
     }
-    // The leader may have exited before a grandchild; make sure the group is
-    // gone even so.
-    signal_group(pid, libc::SIGKILL);
+    let fd = opened as libc::c_int;
+    let mut pollfd = libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let millis = timeout.as_millis().min(libc::c_int::MAX as u128) as libc::c_int;
+    let ready = unsafe { libc::poll(&mut pollfd, 1, millis) };
+    unsafe {
+        libc::close(fd);
+    }
+    if ready > 0 {
+        LeaderWait::Exited
+    } else {
+        LeaderWait::Running
+    }
+}
+
+/// Non-Linux fallback: wait out the grace, then kill the group while the
+/// leader is still unreaped.
+#[cfg(not(target_os = "linux"))]
+fn wait_leader(_pid: u32, timeout: Duration) -> LeaderWait {
+    std::thread::sleep(timeout);
+    LeaderWait::Running
+}
+
+/// [`terminate`] with an injectable group-signal transport. The production
+/// path sends a real `kill(-pgid, signal)`; the PGID-reuse test substitutes a
+/// recorder that models the kernel recycling the id after a reap.
+fn terminate_with(child: &mut Child, signal: &mut dyn FnMut(u32, libc::c_int)) {
+    let pid = child.id();
+    signal(pid, libc::SIGTERM);
+    match wait_leader(pid, TERM_GRACE) {
+        // While the leader is a zombie (or still running) its pid, and with
+        // it the process-group id, cannot be recycled. Kill the whole group
+        // *before* the reap below frees that id: a signal after the reap
+        // could reach an unrelated group that received the same pgid.
+        LeaderWait::Exited | LeaderWait::Running => signal(pid, libc::SIGKILL),
+        // Someone else reaped the leader; the pgid may already name another
+        // group, so never signal the number again.
+        LeaderWait::Gone => {}
+    }
+    let _ = child.wait();
 }
 
 /// How a child left this world.
@@ -158,6 +263,9 @@ pub enum SupervisorEvent {
     },
     /// A service exited and was not restarted (yet).
     Exited { name: String, outcome: ExitOutcome },
+    /// A crash loop hit [`RestartBackoff::max_attempts`]; the service stays
+    /// [`ServiceState::Exited`] until something else starts it.
+    RestartAbandoned { name: String, attempts: u32 },
     /// A spawn failed; the service is [`ServiceState::Failed`].
     SpawnFailed { name: String, error: String },
     /// The anchor exited (or failed to start); the session is over.
@@ -179,6 +287,9 @@ impl std::fmt::Display for SupervisorEvent {
                 after,
             } => write!(f, "restarted {name} (pid {pid}, #{count}, after {after})"),
             SupervisorEvent::Exited { name, outcome } => write!(f, "exited {name} ({outcome})"),
+            SupervisorEvent::RestartAbandoned { name, attempts } => {
+                write!(f, "gave up restarting {name} after {attempts} attempts")
+            }
             SupervisorEvent::SpawnFailed { name, error } => {
                 write!(f, "cannot start {name}: {error}")
             }
@@ -194,6 +305,12 @@ struct Slot {
     state: ServiceState,
     pid: Option<u32>,
     restarts: u32,
+    /// Consecutive restarts since the last stable run (or first start).
+    attempts: u32,
+    /// When the backoff delay ends and the restart may be spawned.
+    next_restart_at: Option<Instant>,
+    /// When the current process was spawned, for the stable-run reset.
+    started_at: Option<Instant>,
     last_exit: Option<ExitOutcome>,
     ready: bool,
 }
@@ -206,11 +323,12 @@ pub struct Supervisor {
     stages: Vec<u32>,
     next_stage: usize,
     state: SessionState,
+    backoff: RestartBackoff,
     events: Vec<SupervisorEvent>,
 }
 
 impl Supervisor {
-    /// Build a supervisor for `plan`.
+    /// Build a supervisor for `plan` with the default [`RestartBackoff`].
     ///
     /// # Panics
     ///
@@ -218,6 +336,16 @@ impl Supervisor {
     /// [`SessionPlan::validate`]); use [`SessionPlan::validate`] first for a
     /// fallible path.
     pub fn new(plan: SessionPlan) -> Self {
+        Self::with_backoff(plan, RestartBackoff::default())
+    }
+
+    /// Build a supervisor for `plan` with an explicit restart backoff.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `plan` breaks an invariant (see
+    /// [`SessionPlan::validate`]).
+    pub fn with_backoff(plan: SessionPlan, backoff: RestartBackoff) -> Self {
         plan.validate().expect("invalid session plan");
         let stages = plan.stages();
         let slots: Vec<Slot> = plan
@@ -230,6 +358,9 @@ impl Supervisor {
                 state: ServiceState::Pending,
                 pid: None,
                 restarts: 0,
+                attempts: 0,
+                next_restart_at: None,
+                started_at: None,
                 last_exit: None,
                 ready: false,
             })
@@ -247,6 +378,7 @@ impl Supervisor {
             stages,
             next_stage: 1,
             state: SessionState::Idle,
+            backoff,
             events: Vec::new(),
         }
     }
@@ -254,6 +386,11 @@ impl Supervisor {
     /// The plan this supervisor owns.
     pub fn plan(&self) -> &SessionPlan {
         &self.plan
+    }
+
+    /// The restart backoff this supervisor applies.
+    pub fn backoff(&self) -> RestartBackoff {
+        self.backoff
     }
 
     /// The session's state.
@@ -276,6 +413,18 @@ impl Supervisor {
         self.slot(name).map(|slot| slot.restarts)
     }
 
+    /// How many consecutive restarts one service has used since its last
+    /// stable run.
+    pub fn restart_attempts(&self, name: &str) -> Option<u32> {
+        self.slot(name).map(|slot| slot.attempts)
+    }
+
+    /// When one service's scheduled restart is due, if it is waiting out its
+    /// backoff. `None` means no restart is scheduled.
+    pub fn next_restart_at(&self, name: &str) -> Option<Instant> {
+        self.slot(name).and_then(|slot| slot.next_restart_at)
+    }
+
     /// The last recorded exit of one service.
     pub fn last_exit(&self, name: &str) -> Option<ExitOutcome> {
         self.slot(name).and_then(|slot| slot.last_exit)
@@ -293,6 +442,15 @@ impl Supervisor {
             .any(|slot| slot.state == ServiceState::Running)
     }
 
+    /// Whether any service is running or waiting out a restart backoff. This
+    /// is what a driver loop waits on: [`Supervisor::any_running`] alone would
+    /// exit between a crash and its scheduled restart.
+    pub fn any_active(&self) -> bool {
+        self.slots
+            .iter()
+            .any(|slot| slot.state == ServiceState::Running || slot.next_restart_at.is_some())
+    }
+
     /// Launch stage 0. A second call is a no-op.
     pub fn start(&mut self) -> io::Result<()> {
         if self.state != SessionState::Idle {
@@ -304,15 +462,19 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Reap exited children, apply their policies, and advance the stages.
-    /// Returns everything that happened since the last tick.
+    /// Reap exited children, apply their policies, spawn any restart whose
+    /// backoff has elapsed, and advance the stages. Returns everything that
+    /// happened since the last tick.
     pub fn tick(&mut self) -> Vec<SupervisorEvent> {
         if matches!(self.state, SessionState::Idle | SessionState::Ended) {
             return std::mem::take(&mut self.events);
         }
         self.reap();
         if self.state != SessionState::Ended {
-            self.advance_stages();
+            self.restart_due();
+            if self.state != SessionState::Ended {
+                self.advance_stages();
+            }
         }
         std::mem::take(&mut self.events)
     }
@@ -424,6 +586,8 @@ impl Supervisor {
         slot.pid = Some(pid);
         slot.state = ServiceState::Running;
         slot.ready = false;
+        slot.started_at = Some(Instant::now());
+        slot.next_restart_at = None;
         Ok(pid)
     }
 
@@ -448,9 +612,16 @@ impl Supervisor {
     fn handle_exit(&mut self, position: usize, status: ExitStatus) {
         let outcome = ExitOutcome::from_status(status);
         let name = self.slots[position].spec.name.clone();
+        // A run at least `stable_run` long is a success, not a crash: reset
+        // the consecutive-attempt counter so a long-lived service may crash
+        // again later.
+        let stable = self.slots[position]
+            .started_at
+            .is_some_and(|started| started.elapsed() >= self.backoff.stable_run);
         self.slots[position].child = None;
         self.slots[position].pid = None;
         self.slots[position].ready = false;
+        self.slots[position].started_at = None;
         self.slots[position].last_exit = Some(outcome);
         self.slots[position].state = ServiceState::Exited;
         self.events.push(SupervisorEvent::Exited {
@@ -474,23 +645,53 @@ impl Supervisor {
         if !restart {
             return;
         }
-        match self.spawn_child(position) {
-            Ok(pid) => {
-                self.slots[position].restarts += 1;
-                let count = self.slots[position].restarts;
-                self.events.push(SupervisorEvent::Restarted {
-                    name,
-                    pid,
-                    count,
-                    after: outcome,
-                });
+
+        if stable {
+            self.slots[position].attempts = 0;
+        }
+        if self.slots[position].attempts >= self.backoff.max_attempts {
+            self.slots[position].next_restart_at = None;
+            let attempts = self.slots[position].attempts;
+            self.events
+                .push(SupervisorEvent::RestartAbandoned { name, attempts });
+            return;
+        }
+        self.slots[position].attempts += 1;
+        let attempt = self.slots[position].attempts;
+        self.slots[position].next_restart_at = Some(Instant::now() + self.backoff.delay(attempt));
+    }
+
+    /// Spawn every service whose restart backoff has elapsed.
+    fn restart_due(&mut self) {
+        let now = Instant::now();
+        for position in 0..self.slots.len() {
+            if !self.slots[position]
+                .next_restart_at
+                .is_some_and(|at| at <= now)
+            {
+                continue;
             }
-            Err(error) => {
-                self.slots[position].state = ServiceState::Failed;
-                self.events.push(SupervisorEvent::SpawnFailed {
-                    name,
-                    error: error.to_string(),
-                });
+            self.slots[position].next_restart_at = None;
+            let name = self.slots[position].spec.name.clone();
+            let after = self.slots[position].last_exit;
+            match self.spawn_child(position) {
+                Ok(pid) => {
+                    self.slots[position].restarts += 1;
+                    let count = self.slots[position].restarts;
+                    self.events.push(SupervisorEvent::Restarted {
+                        name,
+                        pid,
+                        count,
+                        after: after.unwrap_or(ExitOutcome::Failure),
+                    });
+                }
+                Err(error) => {
+                    self.slots[position].state = ServiceState::Failed;
+                    self.events.push(SupervisorEvent::SpawnFailed {
+                        name,
+                        error: error.to_string(),
+                    });
+                }
             }
         }
     }
@@ -538,7 +739,8 @@ impl Supervisor {
 
     /// Stop everything and mark the session ended. The anchor stays
     /// [`ServiceState::Exited`]; surviving children become
-    /// [`ServiceState::Stopped`].
+    /// [`ServiceState::Stopped`]. A restart still waiting out its backoff is
+    /// cancelled.
     fn end_session(&mut self) {
         for slot in &mut self.slots {
             if let Some(mut child) = slot.child.take() {
@@ -546,6 +748,8 @@ impl Supervisor {
             }
             slot.pid = None;
             slot.ready = false;
+            slot.started_at = None;
+            slot.next_restart_at = None;
             if slot.state == ServiceState::Running {
                 slot.state = ServiceState::Stopped;
             }
@@ -573,5 +777,91 @@ mod tests {
         assert!(ExitOutcome::Success.is_success());
         assert!(!ExitOutcome::Failure.is_success());
         assert!(!ExitOutcome::Signaled(9).is_success());
+    }
+
+    #[test]
+    fn backoff_delay_doubles_and_caps() {
+        let backoff = RestartBackoff {
+            base: Duration::from_millis(100),
+            max_delay: Duration::from_millis(800),
+            max_attempts: 9,
+            stable_run: Duration::from_secs(1),
+        };
+        assert_eq!(backoff.delay(0), Duration::from_millis(100));
+        assert_eq!(backoff.delay(1), Duration::from_millis(100));
+        assert_eq!(backoff.delay(2), Duration::from_millis(200));
+        assert_eq!(backoff.delay(3), Duration::from_millis(400));
+        assert_eq!(backoff.delay(4), Duration::from_millis(800));
+        assert_eq!(backoff.delay(5), Duration::from_millis(800));
+        assert_eq!(backoff.delay(u32::MAX), Duration::from_millis(800));
+    }
+
+    /// Signal 0 checks existence without delivering anything. A zombie still
+    /// answers, which is exactly the state that keeps its pid (and so its
+    /// process-group id) allocated.
+    fn process_exists(pid: u32) -> bool {
+        unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+    }
+
+    /// T345: teardown must `SIGKILL` the group while the leader is still an
+    /// unreaped zombie. The recorder stands in for the kernel's pid allocator:
+    /// once the leader is reaped it models the pgid as recycled and forwards
+    /// the signal to an unrelated live group. A regression that reaps first
+    /// therefore records a violation and kills that unrelated group.
+    #[test]
+    fn teardown_kills_the_group_before_reaping_the_leader() {
+        use std::os::unix::process::CommandExt;
+
+        let mut victim = Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .expect("the victim starts");
+        let victim_pid = victim.id();
+        let mut unrelated = Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .expect("the unrelated group starts");
+        let unrelated_pid = unrelated.id();
+        assert_ne!(
+            victim_pid, unrelated_pid,
+            "the two process groups have different ids"
+        );
+
+        let mut violations = 0;
+        let mut killed_before_reap = false;
+        let mut recorder = |pgid: u32, signal: libc::c_int| {
+            assert_eq!(pgid, victim_pid, "teardown signals only the victim group");
+            if process_exists(pgid) {
+                // The leader is alive or a zombie: the id is still ours.
+                signal_group(pgid, signal);
+                if signal == libc::SIGKILL {
+                    killed_before_reap = true;
+                }
+            } else {
+                // Simulated reuse: the pgid now names an unrelated group.
+                violations += 1;
+                signal_group(unrelated_pid, signal);
+            }
+        };
+
+        terminate_with(&mut victim, &mut recorder);
+
+        assert!(
+            killed_before_reap,
+            "the final group SIGKILL must precede the reap"
+        );
+        assert_eq!(
+            violations, 0,
+            "teardown must never signal a process-group id after the reap"
+        );
+        assert!(
+            process_exists(unrelated_pid),
+            "an unrelated process group survives teardown"
+        );
+        assert!(!process_exists(victim_pid), "the victim leader is reaped");
+
+        terminate(&mut unrelated);
     }
 }

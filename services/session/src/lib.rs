@@ -26,8 +26,8 @@
 //!   applies the left-side GTK window-control layout so cooperative CSD apps
 //!   match the desktop (the compatibility phase's GTK steering).
 //! * [`supervisor`] — [`Supervisor`], which spawns the services stage by
-//!   stage, reaps exited children, restarts them per policy, and tears down
-//!   whole process groups at logout (T-12.2).
+//!   stage, reaps exited children, restarts them per policy with a bounded
+//!   backoff, and tears down whole process groups at logout (T-12.2, T345).
 //!
 //! The compositor is the anchor: its exit ends the session and stops
 //! everything else; it is never restarted. T-12.1b ships the environment, the
@@ -48,7 +48,9 @@ pub use idle::{
     IdleController, IdleEvent, IdleInhibitors, IdlePolicy, IdleStage, IdleTimers, InhibitorId,
 };
 pub use plan::{PlanError, RestartPolicy, ServiceSpec, SessionPlan};
-pub use supervisor::{ExitOutcome, ServiceState, SessionState, Supervisor, SupervisorEvent};
+pub use supervisor::{
+    ExitOutcome, RestartBackoff, ServiceState, SessionState, Supervisor, SupervisorEvent,
+};
 pub use suspend::{
     MockSuspend, SuspendBackend, SuspendController, SuspendCycle, SuspendRequest, SuspendState,
 };

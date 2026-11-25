@@ -361,7 +361,7 @@ fn run_exec(args: &[String]) -> ExitCode {
         println!("{line}");
     }
 
-    while supervisor.state() != SessionState::Ended && supervisor.any_running() {
+    while supervisor.state() != SessionState::Ended && supervisor.any_active() {
         if TERMINATE.load(Ordering::SeqCst) {
             supervisor.shutdown();
             break;
