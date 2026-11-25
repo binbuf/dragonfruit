@@ -794,6 +794,7 @@ mod tests {
             .read("etc/gdm/custom.conf")
             .contains("AutomaticLoginEnable=true"));
 
+        let before_restore = privilege.calls().len();
         let outcome = trip.restore().expect("restore through elevation");
         assert!(outcome.cleared);
         assert_eq!(
@@ -815,6 +816,19 @@ mod tests {
                 .iter()
                 .any(|call| call.starts_with("write ") && call.ends_with("custom.conf")),
             "the ready beat elevated the autologin write: {calls:?}"
+        );
+        let restore_calls = &calls[before_restore..];
+        assert!(
+            restore_calls
+                .iter()
+                .any(|call| call.starts_with("write ") && call.contains("AccountsService")),
+            "the return elevated the session restore: {restore_calls:?}"
+        );
+        assert!(
+            restore_calls
+                .iter()
+                .any(|call| call.starts_with("write ") && call.ends_with("custom.conf")),
+            "the return elevated the autologin restore: {restore_calls:?}"
         );
     }
 
