@@ -72,7 +72,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test settings-qml-refresh qml-test qml-test-serial glass-shader-test t238-native-build t238-native-round-trip \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast verify-settings verify-stability check-settings-consumers t304-stability-baseline gate-checks \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast verify-settings verify-stability check-settings-consumers check-deferred-register t304-stability-baseline gate-checks \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t263-settings-window-capture t264-settings-navigation-capture t265-settings-search-capture t266-settings-components-capture t267-settings-accessibility-capture t268-settings-performance t269-general-capture t270-general-system-capture t271-wifi-bluetooth-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
 	t272-network-capture t272a-network-capability-capture t273-data-panes-capture t274-appearance-capture t275-accessibility-capture t276-desktop-capture t277-quick-settings-menu-bar-capture t278-personalization-capture t279-accounts-security-capture t280-devices-capture t281-linux-specific-capture t285-settings-ia-capture t286-settings-shell-capture t287-settings-general-capture t288-settings-connectivity-capture t289-settings-battery-displays-capture t290-settings-appearance-capture t291a-settings-accessibility-vision-capture t291b-settings-accessibility-physical-motor-capture t291c-settings-accessibility-hearing-capture t291d-settings-accessibility-speech-capture t291e-settings-accessibility-general-capture t292a-settings-desktop-dock-capture t292b-settings-workspace-overview-capture t293a-settings-menu-bar-capture t293b-settings-menu-bar-controls-capture \
@@ -90,6 +90,7 @@ help:
 	@echo "  make verify-fast — same gate, parallel qml-test (CTEST_JOBS=$(CTEST_JOBS))"
 	@echo "  make verify-stability — T304 per-task stability gate (Rust + settings consumers + qml-test)"
 	@echo "  make check-settings-consumers — T304 live settings key must have a consumer/test entry"
+	@echo "  make check-deferred-register — T346 deferred rows have reason/impact/owner/trigger/STATUS"
 	@echo "  make t304-stability-baseline — write the current known-gap list to plan/progress"
 	@echo "  make t21-doctor — preflight a T-21 nested/host capture session"
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
@@ -305,6 +306,7 @@ verify-stability: gate-checks
 	$(CARGO) test -p dragonfruit-app-index
 	$(CARGO) test -p dragonfruit-files-core
 	$(MAKE) check-settings-consumers
+	$(MAKE) check-deferred-register
 	$(MAKE) qml-test
 
 # T304/ADR 0316: the behavioral half of the Settings map gate. A live
@@ -316,6 +318,13 @@ check-settings-consumers:
 	    --table $(SETTINGS_CONSUMERS) \
 	    --roadmap $(SETTINGS_ROADMAP)
 	python3 tests/settings/test_settings_consumers.py
+
+# T346/ADR 0357: every accepted P2 deferral is one row in design 27 §7 with a
+# reason, user impact, owner, promotion trigger, and an open STATUS gap id.
+# The parser is deliberately not a second roadmap.
+check-deferred-register:
+	python3 scripts/check-deferred-register.py
+	python3 tests/docs/test_deferred_register.py
 
 # T304: the local baseline. Writes the current known-gap list into the
 # gitignored task progress directory so later sessions can see what T304 saw.

@@ -11,11 +11,11 @@ environment boringly reliable:
 | Suspend/resume | logind `PrepareForSleep` hooks; render quiesce; resume re-init | Soak tests (see [ROADMAP.md](../ROADMAP.md)) |
 | Multiple displays, unusual DPI | Fractional scaling via `viewporter`/`fractional-scale`; per-display Spaces | Multi-monitor test machines |
 | Xwayland applications | Explicit compatibility phase; tracked app zoo | Compatibility phase |
-| Input methods | `text-input` / input-method protocols advertised; no shipped IME process yet (G-20) | Host IME integration is still open |
+| Input methods | `text-input` / input-method protocols advertised; no shipped IME process yet (G-20; [deferred register](27-stability-and-daily-driver.md#7-deferred-register)). Promote when a CJK user joins the reference set or a distro requires it. | Host IME integration is still open |
 | Drag and drop, clipboard | Wayland DnD + data-control paths; files, images, text | Vertical slice |
 | Screen sharing | Portal + PipeWire stream path | Infrastructure phase |
 | Full-screen games | Direct scanout where possible; avoid compositor overhead | Performance phase |
-| Accessibility | Apps live on AT-SPI; shell chrome keeps per-component semantics but is not on the bus yet (G-19; see [10-design-system.md](10-design-system.md)) | Apps live; shell component tests |
+| Accessibility | Apps live on AT-SPI; shell chrome keeps per-component semantics but is not on the bus yet (G-19; [deferred register](27-stability-and-daily-driver.md#7-deferred-register); see [10-design-system.md](10-design-system.md)). Promote when a screen-reader user joins the reference set. | Apps live; shell component tests |
 | Locking | Compositor-enforced fail-secure lock | Kill tests |
 | Applications bending protocol expectations | Robustness-first handling; never crash on malformed requests | Protocol fuzzing |
 
@@ -34,6 +34,14 @@ actually perceive as *our* desktop.
 | Shell recovery | The compositor preserves the session when the shell exits, and the supervisor starts a new shell. | A shared GUI-thread hang or shell crash affects both strips. Faster recovery and independent fault containment need separate evidence. |
 | Multi-GPU and rotated displays | The sampled material path has a single-GPU, normal-transform boundary. | Supported fallback behavior and the visual floor need hardware validation. |
 | Compatibility and usability | Compatibility layers, menu projections and per-component keyboard behavior are implemented. | Titlebar menu labels, desktop accessibility, input methods and other product gaps remain in the status register. |
+
+The accepted deferrals are not silent: [design 27 §7](27-stability-and-daily-driver.md#7-deferred-register)
+is the one register. Every row names a reason, a user impact, an owner, a
+promotion trigger, and an open STATUS gap row in [STATUS.md](STATUS.md).
+`scripts/check-deferred-register.py` (part of `make verify-stability`) fails on
+a missing field, a placeholder owner, a duplicate, or an unknown/resolved
+STATUS row. An item that is not in the table is a bug, not an undocumented
+decision. [ADR 0357](adr/0357-deferred-register-contract.md) records the rule.
 
 The [ranked performance gaps](STATUS.md#9-chrome-performance-priorities)
 link each risk to an acceptance condition. The
