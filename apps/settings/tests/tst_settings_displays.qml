@@ -277,6 +277,10 @@ Item {
             compare(pane.displayRow.label, "No display");
             compare(pane.displayRow.description, "No display");
             verify(pane.absenceNote.visible);
+            // Rotation lives in the Advanced sheet; open it before asserting
+            // the settingsd-backed control is live.
+            pane.advancedButton.clicked();
+            tryCompare(pane.advancedPopup, "open", true);
             // The settingsd controls are not host reads and stay live.
             compare(pane.brightnessSlider.enabled, true);
             compare(pane.rotationSelect.enabled, true);
@@ -289,6 +293,7 @@ Item {
             pane.brightnessSlider.setValue(0.3);
             pane.brightnessSlider.commit();
             fuzzyCompare(Settings.values["display.brightness"], 0.3, 0.0001);
+            pane.advancedPopup.hide();
             Settings.setDisplayFixture("single");
         }
 

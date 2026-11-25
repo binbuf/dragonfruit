@@ -307,12 +307,17 @@ Item {
             var pane = showPane(shell, "displays");
             compare(pane.resolutionRadios.count, 3);
             verify(pane.resolutionRadios.count > 0);
+            // Rotation lives in the Advanced sheet; open it before asserting
+            // the settingsd-backed control is live.
+            pane.advancedButton.clicked();
+            tryCompare(pane.advancedPopup, "open", true);
             verify(pane.rotationSelect.enabled);
 
             pane.resolutionRadios.select(0); // Large -> 1.25
             verify(Math.abs(Settings.values["display.scale"] - 1.25) < 0.001);
             pane.rotationSelect.activateIndex(2); // 180°
             compare(Settings.values["display.rotation"], "180");
+            pane.advancedPopup.hide();
         }
 
         // With no bridge host on the private bus, the Bluetooth pane is the absence
@@ -512,6 +517,10 @@ Item {
             pane.switchToAppSpaceToggle.toggle();
             compare(Settings.values["overview.switchToAppSpace"], false);
             compare(pane.topLeft, "mission-control");
+            // The corners, swipe-up, and workspace count live in the Advanced
+            // Workspace Overview sheet; open it before interacting.
+            pane.hotCornersButton.clicked();
+            tryCompare(pane.advancedOverviewDialog, "open", true);
             pane.topLeftSelect.activateIndex(0); // none
             compare(Settings.values["overview.hotCornerTopLeft"], "none");
             pane.bottomRightSelect.activateIndex(1); // Overview
@@ -520,6 +529,7 @@ Item {
             compare(Settings.values["gestures.missionControl"], false);
             pane.workspaceCountSelect.activateIndex(3); // four spaces
             compare(Settings.values["workspaces.count"], 4);
+            pane.advancedOverviewDialog.hide();
         }
 
         // With no bridge host on the private bus, the Battery pane is the absence
@@ -665,8 +675,13 @@ Item {
             compare(Settings.values["menu.showBackground"], false);
             pane.recentSelect.activateIndex(0); // None
             compare(Settings.values["menu.recentItems"], 0);
+            // The clock options live in the Clock Options sheet; open it
+            // before interacting with the seconds toggle.
+            pane.clockOptionsButton.clicked();
+            tryCompare(pane.clockDialog, "open", true);
             pane.clockSecondsToggle.toggle();
             compare(Settings.values["menu.clock.showSeconds"], true);
+            pane.clockDialog.hide();
             // T293a: Search is the first control; Wi-Fi is the next one.
             var toggle = findChild(pane.controlsRepeater.itemAt(0),
                                    "menuBarControlToggle");

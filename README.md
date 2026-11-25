@@ -23,7 +23,7 @@ Our goal is to bring the visual polish, consistency, and intuitive flow of macOS
 - **Native foundations** Rust/Smithay Wayland compositor, Qt Quick shell, and integration with your distro's native Linux services.
 
 > [!NOTE]
-> Dragonfruit is under active development and is not yet intended as a stable daily-driver desktop.
+> Dragonfruit is under active development. The stability set's agent gate is green (`make gates`, `make verify-stability`), but the reference-hardware daily-driver matrix is still `OPEN` (17/17 native rows; no native evidence yet), so it is not yet intended as a stable daily-driver desktop.
 
 ## Quick start
 

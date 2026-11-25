@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md), [ADR 0348](adr/0348-settings-default-browser-async.md), [ADR 0349](adr/0349-wallpaper-provider-and-luma-async.md), [ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md), [ADR 0353](adr/0353-qt-wayland-platform-plugin-preflight.md), [ADR 0354](adr/0354-native-install-transaction.md), [ADR 0355](adr/0355-dm-session-write-elevation.md), [ADR 0356](adr/0356-supervisor-restart-backoff-and-pgid-teardown.md), [ADR 0357](adr/0357-deferred-register-contract.md), [ADR 0358](adr/0358-t347-matrix-report-contract.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md), [ADR 0348](adr/0348-settings-default-browser-async.md), [ADR 0349](adr/0349-wallpaper-provider-and-luma-async.md), [ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md), [ADR 0353](adr/0353-qt-wayland-platform-plugin-preflight.md), [ADR 0354](adr/0354-native-install-transaction.md), [ADR 0355](adr/0355-dm-session-write-elevation.md), [ADR 0356](adr/0356-supervisor-restart-backoff-and-pgid-teardown.md), [ADR 0357](adr/0357-deferred-register-contract.md), [ADR 0358](adr/0358-t347-matrix-report-contract.md), [ADR 0359](adr/0359-stability-close-out-verdict.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -684,16 +684,16 @@ items are the first-week friction; P2 items are deferred in §7.
 | ID | Defect | Task |
 |---|---|---|
 | S-01 | Lock did not clear keyboard/pointer grabs; a popup could receive lock-screen keys (closed by T305) | T305 |
-| S-02 | A shell crash while locked leaves a frozen, inputless session | T306 |
-| S-03 | Focus is lost after a Space round-trip, minimize, client crash, or shell crash | T307, T308 |
-| S-04 | No idle/DPMS/auto-lock/suspend; no lock on lid close | T315–T318 |
-| S-05 | X11 apps launch without `DISPLAY` | T309 |
-| S-06 | Mouse/trackpad settings never reach libinput | T320 |
+| S-02 | A shell crash while locked leaves a frozen, inputless session (closed by T306: a trusted-shell loss while locked ends the session) | T306 |
+| S-03 | Focus is lost after a Space round-trip, minimize, client crash, or shell crash (closed by T307/T308) | T307, T308 |
+| S-04 | No idle/DPMS/auto-lock/suspend; no lock on lid close (closed by T315–T318; native power rows remain `OPEN` in T347) | T315–T318 |
+| S-05 | X11 apps launch without `DISPLAY` (closed by T309) | T309 |
+| S-06 | Mouse/trackpad settings never reach libinput (closed by T320) | T320 |
 | S-07 | Brightness never reaches the panel (closed by T319) | T319 |
 | S-08 | Log Out terminates the session through logind (closed by T313) | T313 |
 | S-09 | A hung shell is never recovered (closed by T314) | T314 |
 | S-10 | Clipboard-history serving can block the shell forever (closed by T310) | T310 |
-| S-11 | Portal requests hang when the shell restarts or a second request arrives | T311 |
+| S-11 | Portal requests hang when the shell restarts or a second request arrives (closed by T311) | T311 |
 | S-12 | Cross-filesystem directory moves can partially move and report failure (closed by T312) | T312 |
 
 ### P1 — first-week friction
@@ -703,19 +703,19 @@ items are the first-week friction; P2 items are deferred in §7.
 | S-13 | Media keys do nothing (closed by T321) | T321 |
 | S-14 | The titlebar window menu is unlabeled (closed by T329; the trusted shell renders the compositor-owned model) | T329 |
 | S-15 | Files lacked copy/move/paste, undo, watcher, tabs, New Window, Open With (closed by T330–T334; Open With and the native menu landed in T334) | T330–T334 |
-| S-16 | Screen sharing is stills-only | T335a, T335b |
+| S-16 | Screen sharing is stills-only (closed by T335a/T335b; the portal-owned live stream and trusted client are tested, while the client's captured frames still need a rendering session) | T335a, T335b |
 | S-17 | X11 `_NET_FRAME_EXTENTS` is missing (closed by T327); XDnD is live in both directions (target role T328a, source role T328b) | T327, T328a, T328b |
 | S-18 | Pointer constraints are refused for games/remote desktop; refusals grow unbounded (closed by T322) | T322 |
 | S-19 | DRM outputs get two `wl_output` globals; a failed init leaves a phantom output (closed by T323) | T323 |
-| S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output | T324 |
+| S-20 | Popups and absolute/touch/tablet input are hard-coded to the first output (closed by T324) | T324 |
 | S-21 | `df_output.set_mode` accepts a zero/negative refresh and panics the compositor (closed by T325) | T325 |
 | S-22 | Xwayland restart leaves ghost windows and can lose new X11 windows (closed by T326) | T326 |
 | S-23 | Unpinning every Dock app is overwritten with defaults on next login (closed by T336) | T336 |
-| S-24 | Settings Desktop & Dock and wallpaper paths block the GUI thread | T337, T338 |
-| S-25 | Files desktop spins on compositor loss and creates its background layer twice | T339 |
-| S-26 | No terminal fallback; `Terminal=true` entries fail on Fedora | T340 |
-| S-27 | App index ignores `OnlyShowIn`/`NotShowIn`/`TryExec` | T341 |
-| S-28 | Native bring-up has dependency, transaction, DM-selection, stale-target, and `XCURSOR_PATH` traps (dependency closed by T342; transaction/stale target/`XCURSOR_PATH` closed by T343) | T342–T344 |
+| S-24 | Settings Desktop & Dock and wallpaper paths block the GUI thread (closed by T337/T338) | T337, T338 |
+| S-25 | Files desktop spins on compositor loss and creates its background layer twice (closed by T339) | T339 |
+| S-26 | No terminal fallback; `Terminal=true` entries fail on Fedora (closed by T340) | T340 |
+| S-27 | App index ignores `OnlyShowIn`/`NotShowIn`/`TryExec` (closed by T341) | T341 |
+| S-28 | Native bring-up has dependency, transaction, DM-selection, stale-target, and `XCURSOR_PATH` traps (closed by T342–T344) | T342–T344 |
 | S-29 | Session supervisor can respawn every 50 ms and can kill a reused PGID (closed by T345) | T345 |
 
 ## 5. Acceptance matrix
@@ -786,9 +786,12 @@ waived. The report contract is frozen in
 ### 5.3 Human
 
 T348 batches the human verdict. An agent task is not human-signed-off. The
-verdict reads the T347 report and its native intake, and records the hardware
-profile, the PASS/`OPEN` rows, and the known limits. If the matrix is not PASS,
-the README’s “not yet a daily driver” note stays and the blocker is named.
+2026-11-25 close-out records the verdict as **OPEN**: the T347 matrix has no
+native intake (0 PASS / 0 FAIL / 17 OPEN) and the batched walkthrough was not
+possible in the close-out environment. The README's "not yet a daily driver"
+note stays and names the T347 blocker. When reference A records the native
+rows, this section is updated with the hardware profile, the PASS/`OPEN` rows,
+and the known limits; a P0 `OPEN` row still blocks the flip.
 
 ## 6. Release gate and status transition
 
@@ -804,6 +807,22 @@ The order is fixed:
 
 The README status line changes only at step 4. A green `make gates` alone is
 not a daily-driver claim; it is necessary but not sufficient.
+
+### 6.1 T348 close-out (2026-11-25)
+
+`make gates` and `make verify-stability` are green on the final tree. The 46
+agent tasks T304–T347 landed. T348 fixed two stale QML absence tests
+(`tst_settings_displays`, `tst_settings_absence`) that still assumed controls
+lived on the main pane after T289/T292b moved them into sheets; a closed sheet
+disables its content, so the toggles were no-ops. That is an evidence fix, not
+a product change.
+
+The daily-driver claim is **not flipped**: T347 is `OPEN` (0 PASS / 0 FAIL /
+17 OPEN; no free DRM seat on the close-out host and no native intake), and the
+batched human walkthrough is `OPEN`. The README note stays and names the T347
+blocker. The next set is the T346 deferred register plus reference-A hardware
+evidence; no new surface work is promoted by this close-out.
+[ADR 0359](adr/0359-stability-close-out-verdict.md) records the verdict.
 
 ## 7. Deferred register
 
@@ -841,6 +860,9 @@ there.
 
 - Every landed stability task updates its row in §4 and the matching
   `STATUS.md` gap row. A task that changes a contract sentence updates §3.
+- The close-out is §6.1; the T347 report is the hardware evidence. A green
+  `make gates` is necessary but not sufficient for the README claim, and a
+  headless check never becomes a native row.
 - A new P0/P1 defect gets a task id and a row before it gets a fix.
 - A deferred item moves out of §7 only with a task, a test, and a hardware
   evidence row; its STATUS gap row is closed in the same change. A new

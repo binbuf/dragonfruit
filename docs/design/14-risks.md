@@ -34,6 +34,16 @@ actually perceive as *our* desktop.
 | Shell recovery | The compositor preserves the session when the shell exits, and the supervisor starts a new shell. | A shared GUI-thread hang or shell crash affects both strips. Faster recovery and independent fault containment need separate evidence. |
 | Multi-GPU and rotated displays | The sampled material path has a single-GPU, normal-transform boundary. | Supported fallback behavior and the visual floor need hardware validation. |
 | Compatibility and usability | Compatibility layers, menu projections and per-component keyboard behavior are implemented. | Titlebar menu labels, desktop accessibility, input methods and other product gaps remain in the status register. |
+| Stability close-out | The 46 agent tasks T304–T347 landed; `make gates` and `make verify-stability` are green. | The reference-hardware matrix (T347) is `OPEN` (0 PASS / 0 FAIL / 17 OPEN; no free DRM seat or native intake here). The daily-driver claim stays unflipped until reference A records the native rows. |
+
+The T348 close-out records the batched verdict: the code-side gate is green and
+the hardware/human half is `OPEN`. The report is
+`docs/captures/t347-daily-driver-matrix.md`; rerun
+`make t347-daily-driver-matrix` on the reference laptop and record
+`docs/captures/t347-native-evidence.json`. A green `make gates` is necessary
+but not sufficient for the README's daily-driver claim. See
+[design 27 §6](27-stability-and-daily-driver.md#6-release-gate-and-status-transition)
+and [ADR 0359](adr/0359-stability-close-out-verdict.md).
 
 The accepted deferrals are not silent: [design 27 §7](27-stability-and-daily-driver.md#7-deferred-register)
 is the one register. Every row names a reason, a user impact, an owner, a

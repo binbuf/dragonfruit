@@ -5,6 +5,12 @@ the docs relevant to their task before editing code and update them when
 behaviour changes. Decisions that constrain later work go into `adr/` as
 numbered records.
 
+**Release status (2026-11-25).** The stability set (T304–T348) is agent-done:
+`make gates` and `make verify-stability` are green. The reference-hardware
+daily-driver matrix is `OPEN` (0 PASS / 0 FAIL / 17 OPEN; no native intake), so the
+README's daily-driver note stays. See [design 27 §6](27-stability-and-daily-driver.md#6-release-gate-and-status-transition),
+[STATUS.md](STATUS.md), and [ADR 0359](adr/0359-stability-close-out-verdict.md).
+
 ## Start here
 
 | Document | What it answers |
@@ -29,7 +35,7 @@ numbered records.
 | [24-system-settings.md](24-system-settings.md) | System Settings target: measured window/IA, every the reference design pane row, Linux adaptations, absence/empty states, 2026-11-14 findings register, and the T263–T284 task map in the `system-settings` set |
 | [25-system-settings-visual-parity.md](25-system-settings-visual-parity.md) | The 2026-11-17 mockup target: reduced IA, chrome/density, per-category dispositions, Menu Bar Controls and OS glyph, and the T285–T302b session-sized task map in the `system-settings-2` set |
 | [26-settings-logic.md](26-settings-logic.md) | Per-category behaviour logic: which rows exist on which hardware, and the deliberate divergences from the macOS reference; Energy is the first completed category |
-| [27-stability-and-daily-driver.md](27-stability-and-daily-driver.md) | The daily-driver contract: lock/focus/session/idle/hardware/data/multi-monitor invariants, the T304–T348 stability task map, the reference-hardware matrix (`make t347-daily-driver-matrix`), and the checked deferred register (`scripts/check-deferred-register.py`) |
+| [27-stability-and-daily-driver.md](27-stability-and-daily-driver.md) | The daily-driver contract: lock/focus/session/idle/hardware/data/multi-monitor invariants, the T304–T348 stability task map, the reference-hardware matrix (`make t347-daily-driver-matrix`), and the checked deferred register (`scripts/check-deferred-register.py`). T348 close-out: agent gate green; T347 hardware matrix `OPEN`, so the daily-driver claim is not flipped ([ADR 0359](adr/0359-stability-close-out-verdict.md)). |
 | [settings-business-logic-map.md](settings-business-logic-map.md) | Every Settings pane/row to its owner and absence path |
 | [distro-compatibility.md](distro-compatibility.md) | Fedora/Ubuntu/Debian/Arch host-service and packaging contract |
 | [distro-adapter-contract.md](distro-adapter-contract.md) | Cross-distro adapter traits, command matrix, dependency sets, mock, and probe (T221) |
