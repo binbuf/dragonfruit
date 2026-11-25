@@ -3,9 +3,45 @@
 // values become Qt modifiers/keys before `FilesDesktop` injects them into the
 // offscreen desktop scene. The mapping is pure, so it is exercised here without
 // a compositor or libwayland.
+//
+// T339 adds the process-lifecycle half: one background layer per process, and
+// a fatal compositor loss (EOF on the dispatch fd) that disables the notifier
+// and exits non-zero instead of spinning. `--eof-exit-probe` runs the real
+// process exit path in a child so the test observes the exit code.
 #include <QtTest/QtTest>
 
+#include <QCoreApplication>
+#include <QProcess>
+#include <QSocketNotifier>
+
+#include <unistd.h>
+
 #include "DesktopInput.h"
+#include "DesktopLifecycle.h"
+
+namespace {
+
+// The child-process half of `eofExitsTheProcessNonZero`: wire a dispatch
+// notifier to the production `DesktopLifecycle` (default exit = the process
+// exit), then close the write end. With the old behaviour nothing exits and
+// the notifier spins; the parent sees a timeout or a non-1 exit.
+int runEofExitProbe()
+{
+    int fds[2] = {-1, -1};
+    if (::pipe(fds) != 0)
+        return 2;
+
+    DesktopLifecycle lifecycle;
+    QSocketNotifier notifier(fds[0], QSocketNotifier::Read);
+    QObject::connect(&notifier, &QSocketNotifier::activated, &notifier, [&]() {
+        lifecycle.exitOnCompositorLoss(&notifier);
+    });
+
+    ::close(fds[1]); // the compositor disconnects: EOF on the dispatch fd
+    return QCoreApplication::exec();
+}
+
+} // namespace
 
 class TestFilesDesktop : public QObject
 {
@@ -18,6 +54,9 @@ private slots:
     void unknownEvdevKeysAreIgnored();
     void mouseButtonsMapLeftRightMiddle();
     void doubleClickDetectsASecondPressInWindow();
+    void oneBackgroundSurfacePerProcess();
+    void eofDisablesDispatchAndRequestsOneExit();
+    void eofExitsTheProcessNonZero();
 };
 
 void TestFilesDesktop::xkbModifiersCoverCommandAndShift()
@@ -82,5 +121,89 @@ void TestFilesDesktop::doubleClickDetectsASecondPressInWindow()
     QVERIFY(!desktopIsDoubleClick(true, -1, 400, here, nearby, 6));
 }
 
-QTEST_MAIN(TestFilesDesktop)
+void TestFilesDesktop::oneBackgroundSurfacePerProcess()
+{
+    DesktopLifecycle lifecycle;
+    int creations = 0;
+    const auto create = [&]() {
+        ++creations;
+        return true;
+    };
+
+    QVERIFY(lifecycle.createSurfaceOnce(create));
+    QCOMPARE(creations, 1);
+    QCOMPARE(lifecycle.surfaceCount(), 1);
+
+    // `FilesDesktop::start` used to call `createDesktopSurface()` twice. The
+    // gate makes the second request a no-op, so the process cannot stack a
+    // second `background` layer.
+    QVERIFY(lifecycle.createSurfaceOnce(create));
+    QCOMPARE(creations, 1);
+    QCOMPARE(lifecycle.surfaceCount(), 1);
+
+    // A failed creation is not counted as the one surface.
+    DesktopLifecycle failing;
+    QVERIFY(!failing.createSurfaceOnce([]() { return false; }));
+    QCOMPARE(failing.surfaceCount(), 0);
+}
+
+void TestFilesDesktop::eofDisablesDispatchAndRequestsOneExit()
+{
+    int fds[2] = {-1, -1};
+    QVERIFY(::pipe(fds) == 0);
+
+    int exitCode = 0;
+    int exitRequests = 0;
+    DesktopLifecycle lifecycle([&](int code) {
+        exitCode = code;
+        ++exitRequests;
+    });
+    {
+        QSocketNotifier notifier(fds[0], QSocketNotifier::Read);
+        int activations = 0;
+        QObject::connect(&notifier, &QSocketNotifier::activated, &notifier, [&]() {
+            ++activations;
+            lifecycle.exitOnCompositorLoss(&notifier);
+        });
+
+        ::close(fds[1]); // the compositor disconnects
+
+        QTRY_COMPARE_WITH_TIMEOUT(exitRequests, 1, 2000);
+        QCOMPARE(exitCode, 1);
+        QVERIFY(!notifier.isEnabled());
+        QVERIFY(lifecycle.isExiting());
+        QCOMPARE(lifecycle.surfaceCount(), 0);
+
+        // The disabled notifier stops the spin on the readable-but-dead fd,
+        // and a repeated fatal does not queue a second exit.
+        lifecycle.exitOnCompositorLoss(&notifier);
+        QTest::qWait(50);
+        QCOMPARE(activations, 1);
+        QCOMPARE(exitRequests, 1);
+    }
+    ::close(fds[0]);
+}
+
+void TestFilesDesktop::eofExitsTheProcessNonZero()
+{
+    QProcess process;
+    process.start(QCoreApplication::applicationFilePath(),
+                  {QStringLiteral("--eof-exit-probe")});
+    QVERIFY(process.waitForStarted(5000));
+    QVERIFY2(process.waitForFinished(5000),
+             "the desktop did not exit on EOF; the dispatch notifier kept spinning");
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 1);
+}
+
+int main(int argc, char *argv[])
+{
+    QCoreApplication app(argc, argv);
+    if (argc > 1 && qstrcmp(argv[1], "--eof-exit-probe") == 0)
+        return runEofExitProbe();
+
+    TestFilesDesktop test;
+    return QTest::qExec(&test, argc, argv);
+}
+
 #include "tst_files_desktop.moc"

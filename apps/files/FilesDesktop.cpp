@@ -73,11 +73,21 @@ bool FilesDesktop::start(const QString &socketName, const QString &tokenHex,
             &FilesDesktop::onKeyboardFocused);
     connect(m_protocol, &DesktopProtocol::keyEvent, this, &FilesDesktop::onKeyEvent);
     connect(m_protocol, &DesktopProtocol::surfaceClosed, this, &FilesDesktop::onSurfaceClosed);
-    connect(m_protocol, &DesktopProtocol::fatal, this,
-            [](const QString &message) { fprintf(stderr, "dragonfruit-files-desktop: %s\n",
-                                                  qPrintable(message)); });
+    connect(m_protocol, &DesktopProtocol::fatal, this, [this](const QString &message) {
+        fprintf(stderr, "dragonfruit-files-desktop: %s\n", qPrintable(message));
+        // A lost compositor connection is unrecoverable in-process: every
+        // later request would be marshalled onto a broken display and the
+        // dispatch notifier would spin on a readable-but-dead fd. Disable it
+        // and exit non-zero so systemd's `Restart=always` starts a fresh
+        // process against the compositor's reissued launch token.
+        m_lifecycle.exitOnCompositorLoss(m_notifier);
+    });
 
-    if (!m_protocol->createDesktopSurface())
+    // Exactly one `background` layer (ADR 0169). The gate ignores a repeated
+    // request; the start-up path used to call `createDesktopSurface()` twice
+    // and stack a second layer. Create it after the QML item is ready so the
+    // first commit has a scene.
+    if (!m_lifecycle.createSurfaceOnce([this]() { return m_protocol->createDesktopSurface(); }))
         return false;
 
     // Capture/demo seam (T202): open the desktop background menu once the
@@ -88,9 +98,6 @@ bool FilesDesktop::start(const QString &socketName, const QString &tokenHex,
                 QMetaObject::invokeMethod(m_item, "openBackgroundMenuFixture");
         });
     }
-
-    if (!m_protocol->createDesktopSurface())
-        return false;
 
     const int fd = m_protocol->displayFd();
     if (fd >= 0) {

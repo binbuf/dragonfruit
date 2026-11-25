@@ -1026,7 +1026,13 @@ The macOS model: **the file manager owns the desktop.**
   delivers raw press pairs, the process synthesizes Qt's double-click from a
   second press in the platform window, and a directory open launches the
   browser with the desktop's forced `offscreen` platform removed so the new
-  window maps as a normal Wayland client. A file open uses `filesOpen()`: it
+  window maps as a normal Wayland client. The process owns exactly one
+  `background` layer through `DesktopLifecycle::createSurfaceOnce()`; a lost
+  compositor connection disables the dispatch notifier (the dead fd stays
+  readable) and exits non-zero so the unit's `Restart=always` starts a fresh
+  process against the reissued launch token (ADR
+  [0350](adr/0350-files-desktop-exit-and-single-layer.md)). A file open uses
+  `filesOpen()`: it
   resolves the MIME default desktop entry, falls back to an installed handler,
   then `xdg-open`/`gio open`, launching in a separate process with
   `QT_QPA_PLATFORM` removed (ADR 0190). `QDesktopServices` in the offscreen

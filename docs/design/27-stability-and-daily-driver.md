@@ -250,6 +250,13 @@ No single component failure may require a TTY reboot:
   mtime + size + fallback colour, so a 4K change never freezes the GUI thread
   and a Space switch is a cache hit
   ([ADR 0349](adr/0349-wallpaper-provider-and-luma-async.md), T338);
+- a Files desktop that loses its compositor connection must exit instead of
+  spinning. The dispatch fd stays readable after the compositor goes away, so
+  `DesktopLifecycle` disables the `QSocketNotifier` and exits non-zero;
+  `dragonfruit-files-desktop.service`'s `Restart=always` then starts a fresh
+  process against the reissued launch token. The same object makes a second
+  `background` layer request a no-op, so the process owns exactly one
+  ([ADR 0350](adr/0350-files-desktop-exit-and-single-layer.md), T339);
 - a Settings pane must not block its GUI thread on app-index or a default-apps
   subprocess. The Desktop & Dock default-browser row reads app-index
   `Enumerate` through `QDBusPendingCallWatcher` (5 s bound) and runs

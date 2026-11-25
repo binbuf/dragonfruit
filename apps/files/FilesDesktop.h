@@ -19,6 +19,8 @@
 #include <QSize>
 #include <QString>
 
+#include "DesktopLifecycle.h"
+
 class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
@@ -63,6 +65,9 @@ private:
     QQuickWindow *m_window = nullptr;
     QQuickItem *m_item = nullptr;
     QSocketNotifier *m_notifier = nullptr;
+    // One background layer per process, and a non-zero exit on compositor
+    // loss (T339).
+    DesktopLifecycle m_lifecycle;
 
     int m_width = 0;
     int m_height = 0;

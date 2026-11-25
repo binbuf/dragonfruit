@@ -15,6 +15,9 @@ Type=simple
 # socket, so the socket gate is also the token hand-off gate (T-19.3).
 ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland --timeout 10
 ExecStart=/usr/bin/dragonfruit-files --desktop
+# A lost compositor connection is fatal, not retried in-process: the desktop
+# disables its dispatch notifier and exits non-zero (T339), so Restart=always
+# starts a fresh process against the compositor's reissued launch token.
 Restart=always
 RestartSec=1
 Environment=XDG_CURRENT_DESKTOP=dragonfruit

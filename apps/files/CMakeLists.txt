@@ -114,6 +114,7 @@ if(FILES_WAYLAND_CLIENT_FOUND AND FILES_WAYLAND_SCANNER)
     set(DF_FILES_LOCKSTEP_VERSION "${CMAKE_MATCH_1}")
 
     target_sources(dragonfruit-files PRIVATE
+        DesktopLifecycle.h
         DesktopProtocol.cpp
         DesktopProtocol.h
         DesktopInput.h
