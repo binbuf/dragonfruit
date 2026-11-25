@@ -132,6 +132,35 @@ QJsonObject wallpaperFixtureItem(int pageid, const QString &title, const QString
     };
 }
 
+// T337: app-index `Enumerate` returns one JSON array of installed records. The
+// default-browser row keeps only visible `WebBrowser` entries; the Settings app
+// never scans `.desktop` files itself (T276).
+QVariantList parseDefaultBrowserChoices(const QByteArray &json)
+{
+    QVariantList choices;
+    const QJsonArray records = QJsonDocument::fromJson(json).array();
+    for (const QJsonValue &value : records) {
+        const QJsonObject record = value.toObject();
+        const QJsonArray categories =
+            record.value(QStringLiteral("categories")).toArray();
+        bool browser = false;
+        for (const QJsonValue &category : categories) {
+            if (category.toString().compare(QStringLiteral("WebBrowser"),
+                                            Qt::CaseInsensitive) == 0)
+                browser = true;
+        }
+        if (!browser || record.value(QStringLiteral("noDisplay")).toBool())
+            continue;
+        choices.append(QVariantMap{
+            { QStringLiteral("value"),
+              record.value(QStringLiteral("desktopId")).toString() },
+            { QStringLiteral("label"),
+              record.value(QStringLiteral("name")).toString() }
+        });
+    }
+    return choices;
+}
+
 } // namespace
 
 SettingsBridge::SettingsBridge(QObject *parent)
@@ -145,6 +174,12 @@ SettingsBridge::SettingsBridge(QObject *parent)
         m_client = new MockSettingsClient(this);
     else
         m_client = new DbusSettingsClient(this);
+
+    // T337: the default-browser row is deterministic under the settings
+    // fixture; the live app leaves the mode empty and reads app-index and the
+    // host delegate asynchronously.
+    if (qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE"))
+        m_defaultBrowserFixtureMode = QStringLiteral("ready");
 
     // T268: the one reactive surface is a per-key property map. A binding on
     // `Settings.values["dock.size"]` is notified only when that key changes;
@@ -696,6 +731,11 @@ QString SettingsBridge::defaultBrowser() const
 QString SettingsBridge::defaultBrowserError() const
 {
     return m_defaultBrowserError;
+}
+
+bool SettingsBridge::defaultBrowserLoading() const
+{
+    return m_defaultBrowserLoading;
 }
 
 QVariantMap SettingsBridge::bluetooth() const
@@ -3180,75 +3220,269 @@ void SettingsBridge::refreshWallpapers()
 
 void SettingsBridge::refreshDefaultBrowsers()
 {
-    // T276: the choices are the installed `WebBrowser` records from app-index;
-    // the Settings app never scans `.desktop` files itself. The fixture makes
-    // the row deterministic without a bus. A missing app-index is a normal
-    // absence: no choices and the row says so.
-    const bool fixture = qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE");
-    QVariantList choices;
-    if (fixture) {
-        choices = {
-            QVariantMap{ { QStringLiteral("value"),
-                           QStringLiteral("org.mozilla.firefox.desktop") },
-                         { QStringLiteral("label"), QStringLiteral("Firefox") } },
-            QVariantMap{ { QStringLiteral("value"),
-                           QStringLiteral("org.chromium.Chromium.desktop") },
-                         { QStringLiteral("label"), QStringLiteral("Chromium") } }
-        };
-    } else if (QDBusConnection::sessionBus().isConnected()) {
-        QDBusInterface index(QStringLiteral("org.dragonfruit.AppIndex1"),
-                             QStringLiteral("/org/dragonfruit/AppIndex1"),
-                             QStringLiteral("org.dragonfruit.AppIndex1"),
-                             QDBusConnection::sessionBus(), this);
-        if (index.isValid()) {
-            const QDBusReply<QString> reply = index.call(QStringLiteral("Enumerate"));
-            if (reply.isValid()) {
-                const QJsonArray records =
-                    QJsonDocument::fromJson(reply.value().toUtf8()).array();
-                for (const QJsonValue &value : records) {
-                    const QJsonObject record = value.toObject();
-                    const QJsonArray categories =
-                        record.value(QStringLiteral("categories")).toArray();
-                    bool browser = false;
-                    for (const QJsonValue &category : categories) {
-                        if (category.toString().compare(QStringLiteral("WebBrowser"),
-                                                        Qt::CaseInsensitive) == 0)
-                            browser = true;
-                    }
-                    if (!browser || record.value(QStringLiteral("noDisplay")).toBool())
-                        continue;
-                    choices.append(QVariantMap{
-                        { QStringLiteral("value"),
-                          record.value(QStringLiteral("desktopId")).toString() },
-                        { QStringLiteral("label"),
-                          record.value(QStringLiteral("name")).toString() }
-                    });
-                }
-            }
-        }
+    // T337: opening the pane must never block the GUI thread. The installed
+    // choices come from app-index `Enumerate` over a pending D-Bus call, and
+    // the host default-apps delegate runs through `QProcess` signals with a
+    // timeout. Both keep the last known choices/value until they answer, and a
+    // second refresh while one is in flight coalesces into one follow-up read.
+    if (m_defaultBrowserLoading || m_defaultBrowserProcess) {
+        m_defaultBrowserRefreshQueued = true;
+        return;
     }
-    m_defaultBrowserChoices = choices;
+    const quint64 generation = ++m_defaultBrowserGeneration;
+    m_defaultBrowserLoading = true;
+    m_defaultBrowserError.clear();
+    m_defaultBrowserEnumeratePending = true;
+    m_defaultBrowserProcessPending = false;
+    emit defaultBrowserChanged();
+
+    if (!m_defaultBrowserFixtureMode.isEmpty()) {
+        startDefaultBrowserFixtureRefresh(generation);
+        return;
+    }
+
+    queryDefaultBrowserHost();
+    queryAppIndexBrowsers(generation);
+}
+
+void SettingsBridge::queryAppIndexBrowsers(quint64 generation)
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        // app-index absent is a normal absence: no choices, no spinner.
+        m_defaultBrowserChoices.clear();
+        m_defaultBrowserEnumeratePending = false;
+        finishDefaultBrowserRefresh(generation);
+        return;
+    }
+    const QDBusMessage call = QDBusMessage::createMethodCall(
+        QStringLiteral("org.dragonfruit.AppIndex1"),
+        QStringLiteral("/org/dragonfruit/AppIndex1"),
+        QStringLiteral("org.dragonfruit.AppIndex1"),
+        QStringLiteral("Enumerate"));
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call, 5000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, generation](QDBusPendingCallWatcher *pending) {
+                pending->deleteLater();
+                if (generation != m_defaultBrowserGeneration)
+                    return;
+                const QDBusPendingReply<QString> reply = *pending;
+                // A timeout or error is an absent app-index, not a permanent
+                // spinner; the row keeps its last known value.
+                m_defaultBrowserChoices =
+                    reply.isValid()
+                        ? parseDefaultBrowserChoices(reply.value().toUtf8())
+                        : QVariantList();
+                m_defaultBrowserEnumeratePending = false;
+                finishDefaultBrowserRefresh(generation);
+            });
+}
+
+void SettingsBridge::queryDefaultBrowserHost()
+{
+    // The freedesktop default-apps delegate. Signals are the normal path; the
+    // timeout is only a safety net for a delegate that never answers.
+    startDefaultBrowserProcess(
+        QStringLiteral("xdg-settings"),
+        { QStringLiteral("get"), QStringLiteral("default-web-browser") },
+        1500, QStringLiteral("get"));
+}
+
+void SettingsBridge::startDefaultBrowserProcess(const QString &program,
+                                                const QStringList &arguments,
+                                                int timeoutMs,
+                                                const QString &kind)
+{
+    auto *process = new QProcess(this);
+    m_defaultBrowserProcess = process;
+    m_defaultBrowserProcessKind = kind;
+    m_defaultBrowserProcessPending = kind == QStringLiteral("get");
+
+    auto *timeout = new QTimer(process);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, this, [this, process] {
+        if (process != m_defaultBrowserProcess)
+            return;
+        // The delegate is hung. Kill it; the row keeps its last known value.
+        process->kill();
+        finishDefaultBrowserProcess(process, false, QString());
+    });
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process](QProcess::ProcessError error) {
+                if (process != m_defaultBrowserProcess)
+                    return;
+                if (error == QProcess::FailedToStart)
+                    finishDefaultBrowserProcess(process, false, QString());
+            });
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, process](int exitCode, QProcess::ExitStatus status) {
+                if (process != m_defaultBrowserProcess)
+                    return;
+                const bool ok = status == QProcess::NormalExit && exitCode == 0;
+                finishDefaultBrowserProcess(
+                    process, ok,
+                    QString::fromUtf8(process->readAllStandardOutput()).trimmed());
+            });
+    process->start(program, arguments);
+    timeout->start(timeoutMs);
+}
+
+void SettingsBridge::finishDefaultBrowserProcess(QProcess *process, bool ok,
+                                                 const QString &output)
+{
+    if (process != m_defaultBrowserProcess)
+        return;
+    const QString kind = m_defaultBrowserProcessKind;
+    m_defaultBrowserProcess = nullptr;
+    m_defaultBrowserProcessKind.clear();
+    m_defaultBrowserProcessPending = false;
+    discardDefaultBrowserProcess(process);
+
+    if (kind == QStringLiteral("set")) {
+        if (ok) {
+            // The delegate accepted the stored id; remember it as the host
+            // default so a later refresh does not snap back to the old value.
+            m_defaultBrowserHostDefault = m_defaultBrowser;
+        } else {
+            m_defaultBrowserError =
+                tr("The host default-apps delegate did not accept the change.");
+        }
+        emit defaultBrowserChanged();
+        if (m_defaultBrowserRefreshQueued) {
+            m_defaultBrowserRefreshQueued = false;
+            refreshDefaultBrowsers();
+        }
+        return;
+    }
+
+    if (ok && !output.isEmpty())
+        m_defaultBrowserHostDefault = output;
+    // A missing or hung delegate keeps the last known host default.
+    finishDefaultBrowserRefresh(m_defaultBrowserGeneration);
+}
+
+void SettingsBridge::discardDefaultBrowserProcess(QProcess *process)
+{
+    if (!process)
+        return;
+    if (process->state() == QProcess::NotRunning) {
+        process->deleteLater();
+        return;
+    }
+    // A timeout kills the delegate but the OS may not have reaped it yet.
+    // Delete only after `finished` so QProcess does not warn about (or leak)
+    // a still-running child; the fallback covers a process that ignores the
+    // signal.
+    process->kill();
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            process, &QObject::deleteLater);
+    QTimer::singleShot(500, process, &QObject::deleteLater);
+}
+
+void SettingsBridge::finishDefaultBrowserRefresh(quint64 generation)
+{
+    if (generation != m_defaultBrowserGeneration)
+        return;
+    if (m_defaultBrowserEnumeratePending || m_defaultBrowserProcessPending)
+        return;
+    resolveDefaultBrowser();
+    m_defaultBrowserLoading = false;
+    m_defaultBrowserLoaded = true;
+    emit defaultBrowserChanged();
+    if (m_defaultBrowserRefreshQueued) {
+        m_defaultBrowserRefreshQueued = false;
+        refreshDefaultBrowsers();
+    }
+}
+
+void SettingsBridge::resolveDefaultBrowser()
+{
     const QString stored = value(QStringLiteral("defaults.browser")).toString();
     if (!stored.isEmpty()) {
         m_defaultBrowser = stored;
-    } else if (!choices.isEmpty()) {
-        m_defaultBrowser = choices.first().toMap().value(QStringLiteral("value")).toString();
-    } else {
-        m_defaultBrowser.clear();
+    } else if (!m_defaultBrowserChoices.isEmpty()) {
+        m_defaultBrowser = m_defaultBrowserChoices.first().toMap()
+                               .value(QStringLiteral("value")).toString();
     }
-    if (!fixture) {
-        QProcess process;
-        process.start(QStringLiteral("xdg-settings"),
-                      { QStringLiteral("get"), QStringLiteral("default-web-browser") });
-        if (process.waitForFinished(1500)) {
-            const QString host =
-                QString::fromUtf8(process.readAllStandardOutput()).trimmed();
-            if (!host.isEmpty() && process.exitCode() == 0)
-                m_defaultBrowser = host;
-        }
+    // With neither source, keep the last known value rather than clearing it.
+    if (!m_defaultBrowserHostDefault.isEmpty())
+        m_defaultBrowser = m_defaultBrowserHostDefault;
+}
+
+void SettingsBridge::applyDefaultBrowserFixture(const QString &mode)
+{
+    if (mode == QStringLiteral("absent")) {
+        // Absence is definitive: no installed records, no spinner.
+        m_defaultBrowserChoices.clear();
+        m_defaultBrowserEnumeratePending = false;
+        finishDefaultBrowserRefresh(m_defaultBrowserGeneration);
+        return;
     }
-    m_defaultBrowserLoaded = true;
-    m_defaultBrowserError.clear();
+    m_defaultBrowserChoices = {
+        QVariantMap{ { QStringLiteral("value"),
+                       QStringLiteral("org.mozilla.firefox.desktop") },
+                     { QStringLiteral("label"), QStringLiteral("Firefox") } },
+        QVariantMap{ { QStringLiteral("value"),
+                       QStringLiteral("org.chromium.Chromium.desktop") },
+                     { QStringLiteral("label"), QStringLiteral("Chromium") } }
+    };
+    m_defaultBrowserEnumeratePending = false;
+    if (mode == QStringLiteral("slow-subprocess")
+            || mode == QStringLiteral("timeout-subprocess")) {
+        const bool timeoutMode = mode == QStringLiteral("timeout-subprocess");
+        startDefaultBrowserProcess(
+            QStringLiteral("sh"),
+            { QStringLiteral("-c"),
+              timeoutMode
+                  ? QStringLiteral("exec sleep 5")
+                  : QStringLiteral("sleep 0.8; printf org.example.HostBrowser.desktop") },
+            timeoutMode ? 300 : 3000, QStringLiteral("get"));
+        return;
+    }
+    finishDefaultBrowserRefresh(m_defaultBrowserGeneration);
+}
+
+void SettingsBridge::startDefaultBrowserFixtureRefresh(quint64 generation)
+{
+    const QString mode = m_defaultBrowserFixtureMode;
+    if (mode == QStringLiteral("slow-index")) {
+        // A slow app-index reply: the row stays interactive and keeps its last
+        // known choices until the callback lands.
+        QTimer::singleShot(800, this, [this, generation] {
+            if (generation != m_defaultBrowserGeneration)
+                return;
+            applyDefaultBrowserFixture(QStringLiteral("ready"));
+        });
+        return;
+    }
+    applyDefaultBrowserFixture(mode);
+}
+
+void SettingsBridge::setDefaultBrowserFixture(const QString &mode)
+{
+    if (!qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE"))
+        return;
+    // Invalidate any fixture callback/process still in flight so switching
+    // modes cannot leak a result into the next test.
+    ++m_defaultBrowserGeneration;
+    if (m_defaultBrowserProcess) {
+        QProcess *process = m_defaultBrowserProcess;
+        m_defaultBrowserProcess = nullptr;
+        discardDefaultBrowserProcess(process);
+    }
+    m_defaultBrowserProcessKind.clear();
+    m_defaultBrowserEnumeratePending = false;
+    m_defaultBrowserProcessPending = false;
+    m_defaultBrowserRefreshQueued = false;
+    m_defaultBrowserLoading = false;
+    m_defaultBrowserHostDefault.clear();
+    static const QStringList allowed = {
+        QStringLiteral("ready"), QStringLiteral("slow-index"),
+        QStringLiteral("slow-subprocess"), QStringLiteral("timeout-subprocess"),
+        QStringLiteral("absent")
+    };
+    m_defaultBrowserFixtureMode =
+        allowed.contains(mode) ? mode : QStringLiteral("ready");
     emit defaultBrowserChanged();
 }
 
@@ -3338,17 +3572,17 @@ void SettingsBridge::setDefaultBrowser(const QString &desktopId)
     // freedesktop default-apps delegate applies it for other toolkits; the
     // Settings portal exposes the key read-only as `org.dragonfruit.desktop`.
     set(QStringLiteral("defaults.browser"), desktopId);
-    if (!qEnvironmentVariableIsSet("DF_SETTINGS_FIXTURE")) {
-        QProcess process;
-        process.start(QStringLiteral("xdg-settings"),
-                      { QStringLiteral("set"), QStringLiteral("default-web-browser"),
-                        desktopId });
-        if (!process.waitForFinished(2000) || process.exitCode() != 0) {
-            m_defaultBrowserError =
-                tr("The host default-apps delegate did not accept the change.");
-        }
-    }
     emit defaultBrowserChanged();
+    // T337: the delegate is a signal-driven subprocess, never a blocking wait.
+    // The row is disabled while a read is in flight, so a write cannot race the
+    // read process; if one is somehow live, skip the delegate step.
+    if (m_defaultBrowserFixtureMode.isEmpty() && !m_defaultBrowserProcess) {
+        startDefaultBrowserProcess(
+            QStringLiteral("xdg-settings"),
+            { QStringLiteral("set"), QStringLiteral("default-web-browser"),
+              desktopId },
+            2000, QStringLiteral("set"));
+    }
 }
 
 void SettingsBridge::fetchWallpaperItem(int pageid)

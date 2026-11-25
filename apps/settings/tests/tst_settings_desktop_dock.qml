@@ -22,6 +22,16 @@ Item {
     width: 900
     height: 660
 
+    // T337: a free-running timer proves the GUI thread keeps processing events
+    // while a slow app-index reply or default-apps subprocess is pending.
+    property int responsivenessTicks: 0
+    Timer {
+        id: responsivenessTimer
+        interval: 40
+        repeat: true
+        onTriggered: stage.responsivenessTicks += 1
+    }
+
     TestCase {
         id: testCase
         name: "SettingsDesktopDock"
@@ -47,6 +57,7 @@ Item {
             Settings.set("dock.minimizeReaction", false);
             Settings.set("menu.global", true);
             Settings.set("defaults.browser", "");
+            Settings.setDefaultBrowserFixture("ready");
             Settings.set("overview.hotCornerTopLeft", "mission-control");
             Settings.set("overview.hotCornerTopRight", "notification-center");
             Settings.set("overview.hotCornerBottomLeft", "desktop-reveal");
@@ -775,6 +786,111 @@ Item {
             tryVerify(function() {
                 return pane.defaultBrowserSelect.currentIndex === 0;
             });
+        }
+
+        // T337: a slow app-index `Enumerate` must not freeze the Settings
+        // window. The fixture stands in for a slow reply; the row keeps its
+        // last known choices and shows the loading state until it lands.
+        function test_slow_app_index_does_not_block_the_window() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.browserChoices.length >= 2);
+
+            Settings.setDefaultBrowserFixture("slow-index");
+            stage.responsivenessTicks = 0;
+            responsivenessTimer.start();
+            var started = Date.now();
+            Settings.refreshDefaultBrowsers();
+            var elapsed = Date.now() - started;
+            verify(elapsed < 150,
+                   "refreshDefaultBrowsers returned in " + elapsed + " ms");
+            verify(Settings.defaultBrowserLoading,
+                   "the row is loading while the reply is pending");
+            compare(pane.defaultBrowserRow.enabled, false);
+            verify(pane.browserChoices.length >= 2,
+                   "the last known choices stay visible while loading");
+            verify(pane.defaultBrowserRow.description.indexOf("Looking") >= 0,
+                   "the row shows a loading state");
+
+            wait(200);
+            verify(Settings.defaultBrowserLoading,
+                   "the slow reply is still pending after 200 ms");
+            verify(stage.responsivenessTicks >= 2,
+                   "the GUI thread processed " + stage.responsivenessTicks
+                   + " timer ticks");
+            responsivenessTimer.stop();
+
+            tryVerify(function() { return !Settings.defaultBrowserLoading; }, 3000);
+            compare(pane.browserChoices.length, 2);
+            compare(pane.defaultBrowserRow.enabled, true);
+            compare(Settings.defaultBrowserError, "");
+            compare(pane.defaultBrowserRow.description.indexOf("Looking"), -1);
+        }
+
+        // T337: the host default-apps delegate runs through QProcess signals.
+        // A slow delegate keeps the row responsive and the last known value.
+        function test_slow_default_apps_subprocess_does_not_block() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setDefaultBrowserFixture("slow-subprocess");
+            stage.responsivenessTicks = 0;
+            responsivenessTimer.start();
+            var started = Date.now();
+            Settings.refreshDefaultBrowsers();
+            var elapsed = Date.now() - started;
+            verify(elapsed < 150,
+                   "refreshDefaultBrowsers returned in " + elapsed + " ms");
+            verify(Settings.defaultBrowserLoading);
+            verify(pane.browserChoices.length >= 2,
+                   "app-index choices arrive before the delegate");
+
+            wait(200);
+            verify(Settings.defaultBrowserLoading,
+                   "the delegate is still running after 200 ms");
+            verify(stage.responsivenessTicks >= 2,
+                   "the GUI thread processed " + stage.responsivenessTicks
+                   + " timer ticks");
+            responsivenessTimer.stop();
+
+            tryVerify(function() { return !Settings.defaultBrowserLoading; }, 4000);
+            compare(Settings.defaultBrowser, "org.example.HostBrowser.desktop");
+            compare(Settings.defaultBrowserError, "");
+        }
+
+        // T337: a hung delegate is killed at the timeout; it never blocks and
+        // never spins forever.
+        function test_hung_default_apps_subprocess_times_out() {
+            var shell = make();
+            Settings.setDefaultBrowserFixture("timeout-subprocess");
+            var started = Date.now();
+            Settings.refreshDefaultBrowsers();
+            var elapsed = Date.now() - started;
+            verify(elapsed < 150,
+                   "refreshDefaultBrowsers returned in " + elapsed + " ms");
+            verify(Settings.defaultBrowserLoading);
+            tryVerify(function() { return !Settings.defaultBrowserLoading; }, 3000);
+            var total = Date.now() - started;
+            verify(total >= 250, "the timeout must actually expire (took "
+                   + total + " ms)");
+            verify(total < 2500, "the timeout must end the wait (took "
+                   + total + " ms)");
+            compare(Settings.defaultBrowserChoices.length, 2);
+        }
+
+        // T337: an absent app-index is an absence, not a spinner forever.
+        function test_absent_app_index_shows_an_absence() {
+            var shell = make();
+            var pane = paneOf(shell);
+            Settings.setDefaultBrowserFixture("absent");
+            var started = Date.now();
+            Settings.refreshDefaultBrowsers();
+            verify(Date.now() - started < 100);
+            tryVerify(function() { return !Settings.defaultBrowserLoading; }, 2000);
+            compare(Settings.defaultBrowserChoices.length, 0);
+            compare(pane.defaultBrowserRow.enabled, false);
+            verify(pane.defaultBrowserRow.description.indexOf(
+                       "No installed web browser") >= 0,
+                   "the row states the absence");
         }
 
         // Every rendered row is searchable under Desktop & Dock.

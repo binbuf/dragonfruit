@@ -1536,7 +1536,7 @@ executable map and this document.
 | Overview | Workspace Overview | Section (five toggles) | `overview.*` | T292b: merged into Desktop & Dock; only `overview.switchToAppSpace` is live |
 | Hot Corners… | Hot Corners… | Footer action | `overview.hotCorner*` | opens the Advanced Workspace Overview sheet (four corners + modifiers) |
 | Shortcuts… | Shortcuts… | Footer action | `shortcuts.*` | opens Keyboard → Shortcuts |
-| — | Default web browser | Popup | `defaults.browser` + default-apps delegate | live: installed `WebBrowser` records, applied through `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full portal/mimeapps matrix |
+| — | Default web browser | Popup | `defaults.browser` + default-apps delegate | live: installed `WebBrowser` records, applied through `xdg-settings`; the read is asynchronous with a loading state (T337); the Settings portal exposes the key read-only; T258 owns the full portal/mimeapps matrix |
 
 ### 4.21 Overview — T276
 

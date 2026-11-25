@@ -897,8 +897,10 @@ Every live row has a real consumer:
   corner untouched.
 - The default-browser row lists installed `WebBrowser` records from app-index,
   stores the choice in `defaults.browser`, and applies it through the
-  freedesktop default-apps delegate (`xdg-settings`). The Settings portal
-  exposes the key read-only as `org.dragonfruit.desktop`; T258 owns the full
+  freedesktop default-apps delegate (`xdg-settings`). Both the app-index read
+  and the delegate run asynchronously with a timeout; the row shows a loading
+  state and keeps its last known value (T337). The Settings portal exposes the
+  key read-only as `org.dragonfruit.desktop`; T258 owns the full
   portal/mimeapps matrix.
 
 Rows whose runtime is a later task are visible but disabled with a plain

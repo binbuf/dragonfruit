@@ -88,8 +88,11 @@ Item {
 
     // T276: the default-browser row's installed choices come from app-index
     // through the Settings bridge. Empty is the honest no-browser state.
+    // T337: the read is asynchronous, so the row shows a loading state while
+    // the last known choices stay visible.
     readonly property var browserChoices: Settings.defaultBrowserChoices
     readonly property bool browserAvailable: browserChoices.length > 0
+    readonly property bool browserLoading: Settings.defaultBrowserLoading
 
     // T292a: the rows that live in a closed advanced sheet, in rendered order.
     // `SettingsMap.rowSurface()` answers "dialog" for exactly these ids.
@@ -724,22 +727,24 @@ Item {
                 id: defaultBrowserRow
                 width: parent.width
                 label: qsTr("Default web browser")
-                description: root.browserAvailable
-                    ? (Settings.defaultBrowserError.length > 0
-                       ? Settings.defaultBrowserError
-                       : qsTr("Used for web links and web-search results."))
-                    : qsTr("No installed web browser was found.")
+                description: root.browserLoading
+                    ? qsTr("Looking for installed web browsers…")
+                    : (root.browserAvailable
+                       ? (Settings.defaultBrowserError.length > 0
+                          ? Settings.defaultBrowserError
+                          : qsTr("Used for web links and web-search results."))
+                       : qsTr("No installed web browser was found."))
                 settingsId: "defaultBrowser"
                 owner: "settingsd + default-apps delegate"
                 settingsKey: "defaults.browser"
-                enabled: root.browserAvailable
+                enabled: root.browserAvailable && !root.browserLoading
                 showSeparator: false
 
                 controlData: Select {
                     id: defaultBrowserSelect
                     accessibleName: qsTr("Default web browser")
                     model: root.browserChoices
-                    enabled: root.browserAvailable
+                    enabled: root.browserAvailable && !root.browserLoading
                     onActivated: (index) => {
                         if (index >= 0 && index < root.browserChoices.length)
                             Settings.setDefaultBrowser(

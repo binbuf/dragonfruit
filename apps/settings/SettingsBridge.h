@@ -52,6 +52,7 @@ class VpnClient;
 class WifiClient;
 class NetworkClient;
 class QDBusServiceWatcher;
+class QProcess;
 class QScreen;
 
 class SettingsBridge : public QObject
@@ -121,6 +122,11 @@ class SettingsBridge : public QObject
                    defaultBrowserChanged)
     Q_PROPERTY(QString defaultBrowser READ defaultBrowser NOTIFY defaultBrowserChanged)
     Q_PROPERTY(QString defaultBrowserError READ defaultBrowserError NOTIFY
+                   defaultBrowserChanged)
+    // T337: true while the app-index `Enumerate` or the host default-apps
+    // delegate is in flight. The row shows a loading state and keeps the last
+    // known choices/value; an absent source is an absence, not a spinner.
+    Q_PROPERTY(bool defaultBrowserLoading READ defaultBrowserLoading NOTIFY
                    defaultBrowserChanged)
     // T277: the live StatusNotifier/AppIndicator items from app-index, for the
     // Menu Bar pane's "Allow in the Menu Bar" list. Each entry is
@@ -424,6 +430,7 @@ public:
     QVariantList defaultBrowserChoices() const;
     QString defaultBrowser() const;
     QString defaultBrowserError() const;
+    bool defaultBrowserLoading() const;
     QVariantList thirdPartyMenuBarItems() const { return m_thirdPartyMenuBarItems; }
     bool thirdPartyMenuBarAvailable() const { return m_thirdPartyMenuBarAvailable; }
     QVariantMap bluetooth() const;
@@ -622,6 +629,10 @@ public:
     // freedesktop default-apps delegate to apply it; a missing delegate keeps
     // the persisted choice and reports the error on the row.
     Q_INVOKABLE void setDefaultBrowser(const QString &desktopId);
+    // T337 test/capture seam (`DF_SETTINGS_FIXTURE` only): `ready`,
+    // `slow-index`, `slow-subprocess`, `timeout-subprocess`, or `absent`.
+    // A no-op on the live app.
+    Q_INVOKABLE void setDefaultBrowserFixture(const QString &mode);
 
     // ADR 0240: download one deferred item's full-resolution image. The reply
     // is announced through `wallpaperFetchFinished`; a successful fetch also
@@ -1096,6 +1107,23 @@ private:
     QString wallpaperFixtureJson(const QString &mode) const;
     QString wallpaperFixturePath(int pageid, bool thumb) const;
 
+    // T337: the default-browser read is two asynchronous sources. app-index is
+    // queried with a `QDBusPendingCallWatcher`; the host default-apps delegate
+    // runs through `QProcess` signals with a timeout. Neither path blocks the
+    // GUI thread, and a second refresh coalesces into one follow-up read.
+    void queryAppIndexBrowsers(quint64 generation);
+    void queryDefaultBrowserHost();
+    void startDefaultBrowserProcess(const QString &program,
+                                    const QStringList &arguments, int timeoutMs,
+                                    const QString &kind);
+    void finishDefaultBrowserProcess(QProcess *process, bool ok,
+                                     const QString &output);
+    void discardDefaultBrowserProcess(QProcess *process);
+    void finishDefaultBrowserRefresh(quint64 generation);
+    void resolveDefaultBrowser();
+    void applyDefaultBrowserFixture(const QString &mode);
+    void startDefaultBrowserFixtureRefresh(quint64 generation);
+
 private slots:
     void onPortalResponse(uint response, const QVariantMap &results);
     // T-18.1b: the provider's contract signal and its standard property
@@ -1152,6 +1180,17 @@ private:
     QString m_defaultBrowser;
     QString m_defaultBrowserError;
     bool m_defaultBrowserLoaded = false;
+    // T337: the async read state. `m_defaultBrowserFixtureMode` is empty on the
+    // live app; `DF_SETTINGS_FIXTURE` selects `ready` for deterministic tests.
+    QString m_defaultBrowserFixtureMode;
+    bool m_defaultBrowserLoading = false;
+    bool m_defaultBrowserEnumeratePending = false;
+    bool m_defaultBrowserProcessPending = false;
+    bool m_defaultBrowserRefreshQueued = false;
+    quint64 m_defaultBrowserGeneration = 0;
+    QString m_defaultBrowserHostDefault;
+    QProcess *m_defaultBrowserProcess = nullptr;
+    QString m_defaultBrowserProcessKind;
     // T277: the third-party StatusNotifier items the Menu Bar pane lists.
     QVariantList m_thirdPartyMenuBarItems;
     bool m_thirdPartyMenuBarAvailable = false;

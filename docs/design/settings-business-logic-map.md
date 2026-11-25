@@ -907,7 +907,7 @@ no `mission-control` inventory: the id is a deep-link alias only.
 | Desktop & Workspaces | Show windows from an application | Popup | `stageManager.windowMode` | Disabled: staging is T242 |
 | Widgets | Show Widgets | Segmented | `widgets.show` | Disabled: desktop widgets are T245b |
 | Widgets | Dim widgets on desktop | Popup | `widgets.dim` | Disabled: desktop widgets are T245b |
-| Widgets | Default web browser | Popup | `defaults.browser` + default-apps delegate | Live: app-index `WebBrowser` records, applied by `xdg-settings`; the Settings portal exposes the key read-only; T258 owns the full matrix |
+| Widgets | Default web browser | Popup | `defaults.browser` + default-apps delegate | Live: app-index `WebBrowser` records, applied by `xdg-settings`; the read is asynchronous with a loading state (T337); the Settings portal exposes the key read-only; T258 owns the full matrix |
 | Windows | Prefer tabs when opening documents | Popup | `windows.preferTabs` | Disabled: no first-party tabbed documents |
 | Windows | Ask to keep changes when closing documents | Toggle | `windows.askToKeepChanges` | Disabled: no first-party document app |
 | Windows | Close windows when quitting an application | Toggle | `windows.closeOnQuit` | Disabled: app lifecycle is T243 |

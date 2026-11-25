@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md), [ADR 0348](adr/0348-settings-default-browser-async.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -242,6 +242,17 @@ No single component failure may require a TTY reboot:
   data-control `send` dispatch never loops on `write()`; a second request for
   the same MIME, a new selection, source cancellation, and protocol teardown
   all cancel the in-flight writer;
+- a Settings pane must not block its GUI thread on app-index or a default-apps
+  subprocess. The Desktop & Dock default-browser row reads app-index
+  `Enumerate` through `QDBusPendingCallWatcher` (5 s bound) and runs
+  `xdg-settings` through `QProcess` signals with a 1.5 s read / 2 s write
+  timeout; `waitForFinished` never runs on the GUI thread. The row exposes
+  `defaultBrowserLoading`, keeps its last known choices/value while a read is
+  in flight, and reports a rejected write through `defaultBrowserError`. A
+  missing app-index empties the choices; a failed or timed-out delegate keeps
+  the last known host default. Neither is a spinner: the row is disabled with
+  a reason and never waits forever
+  ([ADR 0348](adr/0348-settings-default-browser-async.md), T337);
 - a portal request must time out or cancel when the shell disappears, and a
   restarted shell must query pending requests. Every interactive completion
   (`FileChooser`, `Screenshot`, `ScreenCast.SelectSources`) is bounded by a
