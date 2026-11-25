@@ -1365,6 +1365,15 @@ fn connector_disconnected(
 /// connector matches is touched. A missing output or connector property is
 /// reported to the caller, which logs it and keeps the session running. The
 /// caller must not hold a borrow of the shared DRM slot.
+///
+/// Turning a panel back on also re-reads the CRTC state into the
+/// `DrmCompositor` (T316 follow-up). The connector write happens outside the
+/// compositor, so after a blank the compositor's cached state still claims the
+/// CRTC is active while the kernel has disabled it. The next frame is then
+/// submitted as a page flip, which cannot re-enable an inactive CRTC and fails
+/// with `EINVAL` ("Page flip commit failed"), leaving the desktop black on
+/// wake. `reset_state()` makes the cached state honest and forces the next
+/// frame through the modeset-capable commit path.
 pub fn set_output_dpms(output_name: &str, on: bool) -> Result<(), String> {
     let Some(shared) = drm_shared_slot() else {
         return Err("the DRM backend is not initialised".to_string());
@@ -1383,6 +1392,24 @@ pub fn set_output_dpms(output_name: &str, on: bool) -> Result<(), String> {
             matched = true;
             set_connector_dpms(drm_device, surface.connector, on)
                 .map_err(|err| format!("{output_name}: {err}"))?;
+            if on {
+                // The CRTC may have been disabled by the blank. Re-sync the
+                // compositor before the wake repaint so its first commit is a
+                // full modeset rather than an invalid page flip.
+                match surface
+                    .drm_output
+                    .with_compositor(|compositor| compositor.reset_state())
+                {
+                    Ok(()) => crate::trace::log(
+                        "dpms",
+                        &format!("output={output_name} on reset-crtc-state"),
+                    ),
+                    Err(err) => eprintln!(
+                        "dragonfruit-compositor: resetting {output_name} after DPMS on \
+                         failed: {err}; the next frame will retry"
+                    ),
+                }
+            }
         }
     }
     if matched {

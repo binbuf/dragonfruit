@@ -20,6 +20,14 @@ All notable user-visible changes are recorded here. The format follows
 
 ### Fixed
 
+- **Display wake after idle blank.** Waking the panel after the idle blank no
+  longer leaves a black desktop. The connector DPMS write happens outside the
+  DRM compositor, so the first frame after wake was submitted as a page flip
+  against a CRTC the kernel had disabled; it failed with `EINVAL` ("Page flip
+  commit failed") and the screen stayed black until the session was restarted.
+  The wake path now re-reads the kernel CRTC state before the repaint, so the
+  first frame is a full modeset and the lock screen or desktop returns
+  immediately.
 - **Integer settings persist live.** Choosing `Never` (or any other integer
   value) in a Settings dropdown now sticks. QML hands an integral JavaScript
   number to the settings client as an `int`, but the client only normalized

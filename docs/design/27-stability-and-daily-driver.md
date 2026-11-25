@@ -497,11 +497,16 @@ side: `idle-blank` blanks every on output, while `idle-awake` and
 `resume_session` wake every off output and request a repaint. A blanked output
 is render-gated because an atomic commit would set the CRTC active and turn the
 panel back on; `frame_finish` also reapplies DPMS off once for a frame that was
-queued just before the blank. Nested and headless keep the state and report a
-named fallback through `df_output.dpms` (`none|nested|headless|failed`); a
-failed DRM write is logged, leaves the previous state live, and never ends the
-session. The actual panel-off remains hardware-open for the T347 DRM pass;
-headless conformance proves the request/ack and the fallback.
+queued just before the blank. The wake path re-reads the kernel CRTC state into
+the `DrmCompositor` before the repaint: the connector write bypasses the
+compositor, and without that resync the first wake frame is submitted as a page
+flip against an inactive CRTC and fails with `EINVAL` (the black-on-wake
+regression seen in a native session). Nested and headless keep the state and
+report a named fallback through `df_output.dpms`
+(`none|nested|headless|failed`); a failed DRM write is logged, leaves the
+previous state live, and never ends the session. The actual panel-off remains
+hardware-open for the T347 DRM pass; headless conformance proves the
+request/ack and the fallback.
 
 T317 lands the shell effects. `shell/src/idlepolicy.*` reads `idle.dim`,
 `idle.blank`, `idle.lock`, `idle.suspend`, and `power.preventSleep` from

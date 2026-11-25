@@ -59,3 +59,18 @@ the session.
 - If the connector has no `DPMS` property or the write is rejected, the panel
   stays in its previous state and the shell shows `failed`; a later request
   retries.
+
+## Amendment — 2026-11-24: wake must resync the compositor state
+
+A real native session showed the blank/wake path was incomplete: the first
+frames after `idle-awake` failed with `Page flip commit failed …
+Invalid argument` (`EINVAL`), and the desktop could stay black until the
+session was restarted. The connector `DPMS` write happens outside
+`DrmCompositor`, so after a blank the compositor's cached CRTC state still
+claimed the output was active while the kernel had disabled it. The next frame
+was therefore submitted as a page flip, which cannot re-enable an inactive
+CRTC. `set_output_dpms(name, true)` now calls
+`DrmCompositor::reset_state()` after the connector write succeeds, re-reading
+the kernel CRTC state and forcing the next frame through the modeset-capable
+commit path. The reset runs only on wake, so a frame queued just before the
+blank is not turned into a modeset that would briefly re-enable the panel.
