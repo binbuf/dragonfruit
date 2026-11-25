@@ -12,6 +12,8 @@
 //! xdg-desktop-portal-dragonfruit --print-interfaces   # one per line
 //! xdg-desktop-portal-dragonfruit --print-identity     # name, path, backend
 //! xdg-desktop-portal-dragonfruit --check-frontend     # present/absent/unknown
+//! xdg-desktop-portal-dragonfruit --check-screencast   # pipewire/stills + why
+//! xdg-desktop-portal-dragonfruit --check-screencast --create  # + a live node
 //! xdg-desktop-portal-dragonfruit --install-data PREFIX
 //! ```
 
@@ -40,6 +42,13 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Some("--check-frontend") => return check_frontend(),
+        Some("--check-screencast") => {
+            // `--check-screencast [--create SELECTOR]`: with `--create`, open a
+            // real stream through the bridge on the primary output and print
+            // the node id a client links to (the T335b live check's seam).
+            let create = args.next().as_deref() == Some("--create");
+            return check_screencast(create);
+        }
         Some("--install-data") => {
             let Some(prefix) = args.next().map(PathBuf::from) else {
                 eprintln!("xdg-desktop-portal-dragonfruit: --install-data needs a PREFIX");
@@ -102,6 +111,39 @@ fn check_frontend() -> ExitCode {
     }
 }
 
+/// Print whether the live screen-share bridge is reachable (T335b). A session
+/// with no compositor provisioning reports `stills` and why; that is a
+/// supported state, so the exit code stays 0.
+fn check_screencast(create: bool) -> ExitCode {
+    let registry = portal::screencast::registry_live();
+    let mut registry = portal::screencast::lock(&registry);
+    // One monitor stream of the primary output, created exactly as a portal
+    // `Start` would: the bridge issues `create_screencast` and reports the
+    // node. A refusal is the named fallback, never a placeholder id. With
+    // `--create` a single process does both, because a launch token is
+    // one-time: a second process could not open a second bridge.
+    let created = if create {
+        Some(registry.create_stream_for_check())
+    } else {
+        None
+    };
+    println!("{}", registry.stream_mode().as_str());
+    if let Some(error) = registry.transport_error() {
+        eprintln!("xdg-desktop-portal-dragonfruit: {error}");
+    }
+    match created {
+        None => ExitCode::SUCCESS,
+        Some(Ok(node_id)) => {
+            println!("node {node_id}");
+            ExitCode::SUCCESS
+        }
+        Some(Err(error)) => {
+            eprintln!("xdg-desktop-portal-dragonfruit: no live node: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn print_help() {
     println!(
         "xdg-desktop-portal-dragonfruit — T-13.1a portal backend\n\
@@ -112,6 +154,7 @@ fn print_help() {
            --print-interfaces         list advertised portal interfaces\n\
            --print-identity           print D-Bus name, object path, backend\n\
            --check-frontend           print present/absent/unknown and exit 0\n\
+           --check-screencast         print pipewire/stills and why, exit 0\n\
            --install-data PREFIX      install .portal, portals.conf, .service\n\
            -h, --help                 show this help",
         name = portal::DBUS_NAME

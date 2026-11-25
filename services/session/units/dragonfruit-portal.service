@@ -30,7 +30,11 @@ Environment=XDG_CURRENT_DESKTOP=dragonfruit
 Environment=XDG_SESSION_TYPE=wayland
 Environment=WAYLAND_DISPLAY=dragonfruit-wayland
 Environment=GTK_CSD=0
-PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+# The portal's own one-time token for the live screen-share bridge (T335b,
+# ADR 0346): it lets the backend reach the compositor's `create_screencast` as
+# a separate trusted client, without the shell's token. A session without it
+# serves the named stills fallback.
+PassEnvironment=DISPLAY DRAGONFRUIT_SCREENCAST_BRIDGE_TOKEN
 
 [Install]
 WantedBy=dragonfruit-session.target

@@ -36,6 +36,11 @@ pub const TOKENS_ENV: &str = "DRAGONFRUIT_LAUNCH_TOKENS";
 /// Suffix of the per-session token hand-off file.
 pub const TOKEN_FILE_SUFFIX: &str = ".launch-token";
 
+/// Suffix of the per-session portal screen-share bridge token hand-off file
+/// (T335b). The backend reads the same value from
+/// `DRAGONFRUIT_SCREENCAST_BRIDGE_TOKEN`.
+pub const PORTAL_TOKEN_FILE_SUFFIX: &str = ".portal-launch-token";
+
 /// Single-token environment variable for the Files desktop process (T-19.3).
 /// Unlike [`TOKEN_ENV`] (the shell's), this token is minted for
 /// [`TrustedRole::DesktopIcons`], so the desktop surface may create a
@@ -54,6 +59,7 @@ pub fn parse_token_entry(entry: &str) -> Option<(TrustedRole, [u8; TOKEN_BYTES])
     let (role, hex) = match entry.split_once(':') {
         Some(("shell", hex)) => (TrustedRole::Shell, hex),
         Some(("desktop", hex)) => (TrustedRole::DesktopIcons, hex),
+        Some(("portal", hex)) => (TrustedRole::Portal, hex),
         Some(_) => return None,
         None => (TrustedRole::Shell, entry),
     };
@@ -70,6 +76,11 @@ pub enum TrustedRole {
     Shell,
     /// The Files desktop-icon surface (T-19, later).
     DesktopIcons,
+    /// The portal backend's live screen-share bridge (T335b). It creates and
+    /// releases `create_screencast` streams and nothing else; its separate
+    /// token lets the portal hold its own connection, so a portal crash or
+    /// restart never disturbs the shell's manager object.
+    Portal,
 }
 
 impl TrustedRole {
@@ -78,6 +89,7 @@ impl TrustedRole {
         match self {
             TrustedRole::Shell => "shell",
             TrustedRole::DesktopIcons => "desktop-icons",
+            TrustedRole::Portal => "portal",
         }
     }
 
@@ -91,6 +103,8 @@ impl TrustedRole {
         match self {
             TrustedRole::Shell => layer >= 2,
             TrustedRole::DesktopIcons => layer == 0,
+            // The portal bridge is a stream-only client: it renders nothing.
+            TrustedRole::Portal => false,
         }
     }
 }
@@ -257,7 +271,31 @@ impl TrustModel {
         LaunchToken { value, role }
     }
 
+    /// Find a token the session already minted for `role`, so its hand-off
+    /// file and environment agree on one value. `None` when `value` was never
+    /// minted for that role: a *presented* token is bound to an existing mint,
+    /// never adopted, so a restarted compositor cannot be handed a token it
+    /// never issued and trust it.
+    pub fn bind_minted(
+        &mut self,
+        role: TrustedRole,
+        value: [u8; TOKEN_BYTES],
+    ) -> Option<LaunchToken> {
+        let record = self.tokens.get(&value)?;
+        (record.role == role && record.boot_id == self.boot_id)
+            .then_some(LaunchToken { value, role })
+    }
+
     fn insert(&mut self, value: [u8; TOKEN_BYTES], role: TrustedRole) {
+        // A consumed token is not addressable again: an entropy collision must
+        // never silently re-open a spent one-time token.
+        if self
+            .tokens
+            .get(&value)
+            .is_some_and(|record| record.consumed)
+        {
+            return;
+        }
         self.tokens.insert(
             value,
             TokenRecord {
@@ -513,6 +551,24 @@ mod tests {
         let rendered = format!("{token:?}");
         assert!(!rendered.contains(&token.to_hex()));
         assert!(rendered.contains("redacted"));
+    }
+
+    #[test]
+    fn a_mint_never_reopens_a_consumed_token() {
+        // T335b: the compositor re-issues a role's token when that process
+        // disconnects. A fresh mint that lands on a spent value (an entropy
+        // collision) must not make the spent one-time token usable again.
+        let mut trust = TrustModel::new();
+        let spent = trust.mint_with_value(TrustedRole::Portal, token_value(7));
+        trust
+            .authenticate(spent.as_bytes(), df_ipc::LOCKSTEP_VERSION)
+            .unwrap();
+        let _collision = trust.mint_with_value(TrustedRole::Shell, token_value(7));
+        assert_eq!(
+            trust.authenticate(spent.as_bytes(), df_ipc::LOCKSTEP_VERSION),
+            Err(Refusal::TokenConsumed),
+            "a re-mint must not resurrect a consumed token"
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 /// Every hand-off file a compositor session leaves in `$XDG_RUNTIME_DIR`: the
-/// socket, its lock, both launch tokens, and the Xwayland `DISPLAY` file.
+/// socket, its lock, all three launch tokens, and the Xwayland `DISPLAY` file.
 ///
 /// The list mirrors the compositor's clean teardown
 /// (`dragonfruit_compositor::session`) and the dev-tool
@@ -16,6 +16,7 @@ pub fn compositor_artifacts(socket: &Path) -> Vec<PathBuf> {
         socket.with_extension("lock"),
         socket.with_extension("launch-token"),
         socket.with_extension("desktop-launch-token"),
+        socket.with_extension("portal-launch-token"),
         socket.with_extension("x11-display"),
     ]
 }

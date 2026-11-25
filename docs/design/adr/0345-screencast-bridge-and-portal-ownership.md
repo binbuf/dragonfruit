@@ -1,6 +1,8 @@
 # 0345 — The portal owns live screen share; the shell bridge is a documented gap
 
-- Status: Accepted
+- Status: Superseded in part by
+  [0346](0346-screencast-bridge-trusted-portal-client.md) (decision 3 and the
+  open live-client outcome); decisions 1, 2, and 4 remain in force
 - Date: 2026-11-24
 - Task: T335b
 - Amends: decision 6 of ADR

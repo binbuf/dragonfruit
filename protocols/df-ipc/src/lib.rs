@@ -40,6 +40,15 @@ pub const LOCKSTEP_VERSION: u32 = 1;
 /// file to [`LOCKSTEP_VERSION`].
 pub const LOCKSTEP_MARKER: &str = "dragonfruit lockstep-version:";
 
+/// Environment variable carrying the portal screen-share bridge's one-time
+/// launch token (T335b, [ADR 0346](../../docs/design/adr/0346-screencast-bridge-trusted-client.md)).
+///
+/// The compositor mints a portal-role token and writes it to
+/// `$XDG_RUNTIME_DIR/<socket>.portal-launch-token`; the session manager hands
+/// the same value to the portal backend in this variable, which the backend
+/// presents in `df_core.authenticate` before it binds `df_toplevel_manager`.
+pub const SCREENCAST_BRIDGE_TOKEN_ENV: &str = "DRAGONFRUIT_SCREENCAST_BRIDGE_TOKEN";
+
 /// The fixed keymap conventions (T-03).
 ///
 /// The macOS-Cmd role maps to **Super/Mod4** and Option maps to **Alt**.

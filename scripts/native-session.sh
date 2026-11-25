@@ -1017,7 +1017,8 @@ stop_native_session() {
             "$XDG_RUNTIME_DIR/dragonfruit-wayland.lock" \
             "$XDG_RUNTIME_DIR/dragonfruit-wayland.x11-display" \
             "$XDG_RUNTIME_DIR/dragonfruit-wayland.launch-token" \
-            "$XDG_RUNTIME_DIR/dragonfruit-wayland.desktop-launch-token"
+            "$XDG_RUNTIME_DIR/dragonfruit-wayland.desktop-launch-token" \
+            "$XDG_RUNTIME_DIR/dragonfruit-wayland.portal-launch-token"
     fi
 }
 

@@ -59,14 +59,18 @@ compositor:
 - **Versioned.** The handshake compares lockstep versions before the token,
   so a misconfigured shell does not burn its token (FR-6).
 - **Role-scoped.** A token admits the role it was minted for (`shell`,
-  `desktop-icons`).
+  `desktop-icons`, `portal`).
 
 **Provisioning.** At startup the compositor mints a shell token and writes it
 0600 to `$XDG_RUNTIME_DIR/<socket>.launch-token`, then removes the file at
 teardown. `DRAGONFRUIT_LAUNCH_TOKENS` (comma-separated hex) provisions
 additional tokens — used by the session manager and the conformance tests;
 `DRAGONFRUIT_LAUNCH_TOKEN` is the single-token hand-off the session manager
-exports to the shell process (T-24). Tokens are never logged (`Debug`
+exports to the shell process (T-24). A single-token value is *bound* to a token
+the compositor already minted for that role; a value it never minted is
+ignored, and a consumed token is never re-opened. The desktop and portal roles
+also get their own hand-off files (`<socket>.desktop-launch-token`,
+`<socket>.portal-launch-token`, ADR 0346). Tokens are never logged (`Debug`
 redacts the value).
 
 ## Chrome surfaces (`df_shell`, `df_layer_surface`)
@@ -223,7 +227,12 @@ is acked with `done` after the scene applies it (FR-3).
   stops the host tool before replying. The shell binds the manager at 16 and
   does not send v17; wiring a bridge from the portal's `CompositorWatch` to
   this request is a documented gap
-  ([ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md)).
+  ([ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md)). Since
+  [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md) the portal
+  backend is a third trusted role (`portal:<hex>` in `DRAGONFRUIT_LAUNCH_TOKENS`,
+  hand-off `<socket>.portal-launch-token`): it opens its own v17 manager
+  connection and creates the streams, and a presented token is only bound to an
+  existing mint (never adopted).
   `set_launch_origin` hands the Dock entry's tile rectangle to the compositor
   so a launching app's window appears from it and minimize/restore scale into
   and out of it (T-02.1b/T-02.2); it is keyed by `app_id` and remembered for

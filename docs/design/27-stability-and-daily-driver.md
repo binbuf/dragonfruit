@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -322,10 +322,19 @@ No single component failure may require a TTY reboot:
   every stream that client created. A stream refusal is per-stream and named
   (`df_stream_mode = stills`, `df_fallback =
   pipewire-producer-unavailable`); the picker says the app will receive still
-  images. The shell does not claim v17 and no shipped bridge answers the
-  portal's `CompositorWatch`, so a live client stream is a documented gap that
-  `make t335b-screencast-client` records as `OPEN` (T335b,
-  [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md)).
+  images. The live half is the portal's own trusted client: the backend holds
+  the portal role's one-time token (`<socket>.portal-launch-token`), opens its
+  own `df_toplevel_manager` v17 connection, and creates the stream; one
+  dedicated thread owns that connection, a reopen is verified before the picker
+  is told `pipewire`, and the compositor releases the portal's streams when the
+  connection ends. A presented token is bound to an existing mint, never
+  adopted, so a restarted session cannot accidentally trust an old value.
+  Captured pixels still come from the nested/DRM capture pass, so the client's
+  frames need a session that renders; `make t335b-screencast-client` proves the
+  transport and the graph node on the headless rail and records the nested
+  frame run (T335b,
+  [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md),
+  [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md)).
 
 Clipboard serving is the bounded write in that list. The writer holds the
 payload's implicit share for the life of the transfer, so no per-write copy is

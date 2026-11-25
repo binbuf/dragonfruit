@@ -105,7 +105,8 @@ if [ "$probe_rc" -ne 0 ]; then
     fi
     runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
     rm -f "$runtime/$socket" "$runtime/$socket.lock" \
-          "$runtime/$socket.launch-token" "$runtime/$socket.desktop-launch-token"
+          "$runtime/$socket.launch-token" "$runtime/$socket.desktop-launch-token" \
+          "$runtime/$socket.portal-launch-token"
     marker="$(grep -m1 'DRM bring-up:' "$self_report" 2>/dev/null || true)"
 
     {

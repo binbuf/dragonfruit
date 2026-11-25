@@ -774,6 +774,10 @@ pub enum SyntheticCommand {
     /// `locked` flag, the live lock-surface count, and whether a client
     /// currently holds keyboard focus, followed by `end`. Never unlocks.
     QueryLock,
+    /// Read-only live screen-share introspection (T335b): one `screencast`
+    /// line per live stream (token, output, geometry) and the stream count,
+    /// followed by `end`. The shell bridge and the leak tests read it.
+    QueryScreencast,
     /// Read-only pointer-location introspection: the global logical pointer
     /// position, followed by `end`. Used to prove login starts centred on the
     /// primary output.
@@ -1044,12 +1048,13 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("policy") => SyntheticCommand::QueryPolicy,
             Some("menubar") => SyntheticCommand::QueryMenuBar,
             Some("lock") => SyntheticCommand::QueryLock,
+            Some("screencast") => SyntheticCommand::QueryScreencast,
             Some("pointer") => SyntheticCommand::QueryPointer,
             Some("session") => SyntheticCommand::QuerySession,
             Some("magnifier") => SyntheticCommand::QueryMagnifier,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, scale, identity, focus, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, menubar, lock, pointer, session, magnifier)"
+                    "query requires a known subject (decorations, scale, identity, focus, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, menubar, lock, pointer, session, magnifier, screencast)"
                         .into(),
                 );
             }
@@ -1423,6 +1428,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryLock => {
                 unreachable!("query lock is handled by apply_datagram")
             }
+            SyntheticCommand::QueryScreencast => {
+                unreachable!("query screencast is handled by apply_datagram")
+            }
             SyntheticCommand::QueryPointer => {
                 unreachable!("query pointer is handled by apply_datagram")
             }
@@ -1747,6 +1755,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryLock) => {
                 if let Some((socket, peer)) = &reply {
                     let report = lock_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryScreencast) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = screencast_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -2826,6 +2843,25 @@ fn lock_report(state: &DfState) -> String {
         state.lock.surface_count(),
         on_lock as u32,
     )
+}
+
+/// The `query screencast` report (T335b): every live screen-share stream as
+/// `screencast token=<n> output=<name> <w>x<h>@<fps>`, then
+/// `screencast-count <n>` and `end`.
+///
+/// The lanes are sorted by token, so a test proves a release left no stream
+/// behind by reading the count, without reaching into compositor internals.
+fn screencast_report(state: &DfState) -> String {
+    let streams = state.screencast_streams();
+    let mut report = String::new();
+    for (token, output, geometry) in &streams {
+        report.push_str(&format!(
+            "screencast token={token} output={output} {}x{}@{}\n",
+            geometry.width, geometry.height, geometry.fps
+        ));
+    }
+    report.push_str(&format!("screencast-count {}\nend\n", streams.len()));
+    report
 }
 
 /// The `query pointer` report: the global logical pointer location.

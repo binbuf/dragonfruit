@@ -60,6 +60,11 @@ pub const LAUNCH_TOKEN: &str = "DRAGONFRUIT_LAUNCH_TOKEN";
 /// `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`; the Files desktop's role-scoped token
 /// (T-19.3). It may create only the compositor's `background` layer.
 pub const DESKTOP_LAUNCH_TOKEN: &str = "DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN";
+/// `DRAGONFRUIT_SCREENCAST_BRIDGE_TOKEN`; the portal backend's one-time token
+/// for its live screen-share bridge (T335b, ADR 0346). The compositor mints it
+/// under the portal role, so the bridge may create and release streams over
+/// `df_toplevel_manager` v17 without holding the shell's token.
+pub const SCREENCAST_BRIDGE_TOKEN: &str = df_ipc::SCREENCAST_BRIDGE_TOKEN_ENV;
 /// `DRAGONFRUIT_DEV_RETURN`; the desktop the real-session harness should
 /// restore, set only for a session the dev harness armed (T-12.6b).
 pub const DEV_RETURN: &str = crate::dev_session::DEV_RETURN;
@@ -86,6 +91,7 @@ pub struct SessionEnvironment {
     x11_display: Option<String>,
     launch_token: Option<String>,
     desktop_launch_token: Option<String>,
+    screencast_bridge_token: Option<String>,
     dev_return: Option<String>,
     dev_bin: Option<String>,
 }
@@ -99,6 +105,7 @@ impl SessionEnvironment {
             x11_display: None,
             launch_token: None,
             desktop_launch_token: None,
+            screencast_bridge_token: None,
             dev_return: None,
             dev_bin: None,
         }
@@ -131,6 +138,14 @@ impl SessionEnvironment {
         self
     }
 
+    /// Attach the portal screen-share bridge's role-scoped launch token
+    /// (T335b). The caller mints it once with [`generate_launch_token`]; never
+    /// log the value.
+    pub fn with_screencast_bridge_token(mut self, token: impl Into<String>) -> Self {
+        self.screencast_bridge_token = Some(token.into());
+        self
+    }
+
     /// Mark this session as started by the real-session harness and name the
     /// desktop to return to (T-12.6b). The shell shows **"Quit to \<session\>"**
     /// only when this is set.
@@ -152,11 +167,13 @@ impl SessionEnvironment {
         self.with_launch_token(generate_launch_token())
     }
 
-    /// Mint and attach both the shell and desktop launch tokens. This is the
-    /// normal session-start path: each role gets its own one-time value.
+    /// Mint and attach the shell, desktop, and portal bridge launch tokens.
+    /// This is the normal session-start path: each role gets its own one-time
+    /// value.
     pub fn with_generated_tokens(self) -> Self {
         self.with_generated_token()
             .with_desktop_launch_token(generate_launch_token())
+            .with_screencast_bridge_token(generate_launch_token())
     }
 
     /// The compositor's private socket basename (the `WAYLAND_DISPLAY` value).
@@ -178,6 +195,12 @@ impl SessionEnvironment {
     /// returned value.
     pub fn desktop_launch_token(&self) -> Option<&str> {
         self.desktop_launch_token.as_deref()
+    }
+
+    /// The portal screen-share bridge's role-scoped launch token, if any.
+    /// Never log the returned value.
+    pub fn screencast_bridge_token(&self) -> Option<&str> {
+        self.screencast_bridge_token.as_deref()
     }
 
     /// The desktop the harness should return to, if this is a harness-armed
@@ -229,12 +252,26 @@ impl SessionEnvironment {
         env
     }
 
-    /// The environment for the compositor, which issues both tokens: the base
-    /// plus the shell and desktop tokens when attached.
+    /// The environment for the portal backend: the base plus its
+    /// screen-share bridge token when attached (T335b). The bridge token is
+    /// never part of the shell's or any other service's environment.
+    pub fn portal(&self) -> Vec<(String, String)> {
+        let mut env = self.base();
+        if let Some(token) = &self.screencast_bridge_token {
+            env.push((SCREENCAST_BRIDGE_TOKEN.to_string(), token.clone()));
+        }
+        env
+    }
+
+    /// The environment for the compositor, which issues every token: the base
+    /// plus the shell, desktop, and portal bridge tokens when attached.
     pub fn issuer(&self) -> Vec<(String, String)> {
         let mut env = self.trusted();
         if let Some(token) = &self.desktop_launch_token {
             env.push((DESKTOP_LAUNCH_TOKEN.to_string(), token.clone()));
+        }
+        if let Some(token) = &self.screencast_bridge_token {
+            env.push((SCREENCAST_BRIDGE_TOKEN.to_string(), token.clone()));
         }
         env
     }

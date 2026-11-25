@@ -3317,6 +3317,7 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
 pub fn provision(state: &mut DfState) {
     let mut shell_token: Option<trust::LaunchToken> = None;
     let mut desktop_token: Option<trust::LaunchToken> = None;
+    let mut portal_token: Option<trust::LaunchToken> = None;
     if let Ok(list) = std::env::var(trust::TOKENS_ENV) {
         for entry in list
             .split(',')
@@ -3330,26 +3331,33 @@ pub fn provision(state: &mut DfState) {
             match role {
                 TrustedRole::DesktopIcons => desktop_token.get_or_insert(token),
                 TrustedRole::Shell => shell_token.get_or_insert(token),
+                TrustedRole::Portal => portal_token.get_or_insert(token),
             };
         }
     }
     // The single-token hand-off (T-24): the session manager may pass the
-    // shell's token directly instead of a list.
+    // shell's token directly instead of a list. A token the session manager
+    // *presents* must be one of the pre-minted values: accepting an arbitrary
+    // value here would turn any readable environment entry into a trusted
+    // role (a restarted compositor would trust a portal token it never minted).
     if shell_token.is_none() {
         if let Ok(hex) = std::env::var(trust::TOKEN_ENV) {
             if let Some(value) = trust::LaunchToken::parse_hex(&hex) {
-                shell_token = Some(state.shell.trust.mint_with_value(TrustedRole::Shell, value));
+                shell_token = state.shell.trust.bind_minted(TrustedRole::Shell, value);
             }
         }
     }
     if let Ok(hex) = std::env::var(trust::DESKTOP_TOKEN_ENV) {
         if let Some(value) = trust::LaunchToken::parse_hex(&hex) {
-            desktop_token = Some(
-                state
-                    .shell
-                    .trust
-                    .mint_with_value(TrustedRole::DesktopIcons, value),
-            );
+            desktop_token = state
+                .shell
+                .trust
+                .bind_minted(TrustedRole::DesktopIcons, value);
+        }
+    }
+    if let Ok(hex) = std::env::var(df_ipc::SCREENCAST_BRIDGE_TOKEN_ENV) {
+        if let Some(value) = trust::LaunchToken::parse_hex(&hex) {
+            portal_token = state.shell.trust.bind_minted(TrustedRole::Portal, value);
         }
     }
     let shell_token = shell_token.unwrap_or_else(|| state.shell.trust.mint(TrustedRole::Shell));
@@ -3366,6 +3374,16 @@ pub fn provision(state: &mut DfState) {
         &desktop_token,
         trust::DESKTOP_TOKEN_FILE_SUFFIX,
         "desktop launch token",
+    );
+    // T335b: the portal's live screen-share bridge gets its own one-time token
+    // and hand-off file, so it is provisioned exactly like the shell and the
+    // desktop process and the backend can read its value at startup.
+    let portal_token = portal_token.unwrap_or_else(|| state.shell.trust.mint(TrustedRole::Portal));
+    write_token_file(
+        state,
+        &portal_token,
+        trust::PORTAL_TOKEN_FILE_SUFFIX,
+        "portal launch token",
     );
 }
 
@@ -3391,6 +3409,7 @@ fn reissue_token(state: &mut DfState, role: TrustedRole) {
     let (suffix, label) = match role {
         TrustedRole::Shell => (trust::TOKEN_FILE_SUFFIX, "launch token"),
         TrustedRole::DesktopIcons => (trust::DESKTOP_TOKEN_FILE_SUFFIX, "desktop launch token"),
+        TrustedRole::Portal => (trust::PORTAL_TOKEN_FILE_SUFFIX, "portal launch token"),
     };
     write_token_file(state, &token, suffix, label);
     println!(
@@ -3404,7 +3423,11 @@ pub fn remove_token_file(socket_name: &str) {
     let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR") else {
         return;
     };
-    for suffix in [trust::TOKEN_FILE_SUFFIX, trust::DESKTOP_TOKEN_FILE_SUFFIX] {
+    for suffix in [
+        trust::TOKEN_FILE_SUFFIX,
+        trust::DESKTOP_TOKEN_FILE_SUFFIX,
+        trust::PORTAL_TOKEN_FILE_SUFFIX,
+    ] {
         let path = std::path::PathBuf::from(&runtime).join(format!("{socket_name}{suffix}"));
         let _ = std::fs::remove_file(path);
     }

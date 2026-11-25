@@ -24,6 +24,8 @@ pub fn teardown_artifacts(socket: &Path) -> Vec<PathBuf> {
         socket.with_extension("lock"),
         socket.with_extension("launch-token"),
         socket.with_extension("desktop-launch-token"),
+        // T335b: the portal screen-share bridge's one-time token.
+        socket.with_extension("portal-launch-token"),
         socket.with_extension("x11-display"),
     ]
 }
@@ -175,6 +177,7 @@ mod tests {
                 "/run/user/1000/dragonfruit-soak-3.lock",
                 "/run/user/1000/dragonfruit-soak-3.launch-token",
                 "/run/user/1000/dragonfruit-soak-3.desktop-launch-token",
+                "/run/user/1000/dragonfruit-soak-3.portal-launch-token",
                 "/run/user/1000/dragonfruit-soak-3.x11-display",
             ]
         );

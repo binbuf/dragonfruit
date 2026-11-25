@@ -85,6 +85,11 @@ pub struct ServiceSpec {
     /// role-scoped `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` (T-19.3). The
     /// compositor sets this too, because it issues both tokens.
     pub desktop_trusted: bool,
+    /// A trusted portal backend: the session environment gives it the
+    /// role-scoped `DRAGONFRUIT_SCREENCAST_BRIDGE_TOKEN` for its live
+    /// screen-share bridge (T335b). The compositor sets this too, because it
+    /// issues every token.
+    pub portal_trusted: bool,
 }
 
 impl ServiceSpec {
@@ -102,6 +107,7 @@ impl ServiceSpec {
             gate: false,
             trusted: false,
             desktop_trusted: false,
+            portal_trusted: false,
         }
     }
 
@@ -153,6 +159,13 @@ impl ServiceSpec {
         self
     }
 
+    /// Mark this service as the portal backend; the session environment hands
+    /// it the screen-share bridge token (T335b).
+    pub fn portal_trusted(mut self, portal_trusted: bool) -> Self {
+        self.portal_trusted = portal_trusted;
+        self
+    }
+
     /// Add one environment variable for the child.
     pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.push((key.into(), value.into()));
@@ -196,7 +209,8 @@ impl SessionPlan {
                 .ends_session(true)
                 .gate(true)
                 .trusted(true)
-                .desktop_trusted(true),
+                .desktop_trusted(true)
+                .portal_trusted(true),
             ServiceSpec::new("shell", "dragonfruit-shell")
                 .stage(1)
                 .policy(RestartPolicy::Always)
@@ -212,7 +226,9 @@ impl SessionPlan {
             ServiceSpec::new("notifications", "dragonfruit-notifications").stage(1),
             ServiceSpec::new("system-status", "dragonfruit-system-status").stage(1),
             ServiceSpec::new("wallpaperd", "dragonfruit-wallpaperd").stage(1),
-            ServiceSpec::new("portal", "xdg-desktop-portal-dragonfruit").stage(2),
+            ServiceSpec::new("portal", "xdg-desktop-portal-dragonfruit")
+                .stage(2)
+                .portal_trusted(true),
         ])
     }
 
@@ -232,9 +248,14 @@ impl SessionPlan {
             .map(|spec| {
                 let mut spec = spec.clone();
                 spec.env = match (spec.trusted, spec.desktop_trusted) {
+                    // The compositor issues every token (shell, desktop, and
+                    // the portal bridge, T335b).
                     (true, true) => env.issuer(),
                     (true, false) => env.trusted(),
                     (false, true) => env.desktop_trusted(),
+                    // The portal backend is the one non-shell consumer of a
+                    // bridge token.
+                    (false, false) if spec.portal_trusted => env.portal(),
                     (false, false) => env.base(),
                 };
                 spec
@@ -388,7 +409,8 @@ mod tests {
 
         let environment = SessionEnvironment::default_socket()
             .with_launch_token("tok")
-            .with_desktop_launch_token("desktop-tok");
+            .with_desktop_launch_token("desktop-tok")
+            .with_screencast_bridge_token("bridge-tok");
         let plan = SessionPlan::default_session_for(&environment);
         plan.validate()
             .expect("environment does not break the plan");
@@ -413,6 +435,17 @@ mod tests {
                 "{} desktop token",
                 spec.name
             );
+            // T335b: only the portal backend gets the screen-share bridge
+            // token, never the shell or any other service.
+            let has_bridge_token = spec
+                .env
+                .iter()
+                .any(|(key, _)| key == env::SCREENCAST_BRIDGE_TOKEN);
+            assert_eq!(
+                has_bridge_token, spec.portal_trusted,
+                "{} bridge token",
+                spec.name
+            );
         }
 
         let compositor = plan
@@ -431,11 +464,20 @@ mod tests {
             .find(|spec| spec.name == "files-desktop")
             .unwrap();
         assert!(
-            compositor.trusted && compositor.desktop_trusted,
-            "the compositor issues both tokens"
+            compositor.trusted && compositor.desktop_trusted && compositor.portal_trusted,
+            "the compositor issues every token"
         );
-        assert!(shell.trusted && !shell.desktop_trusted);
-        assert!(desktop.desktop_trusted && !desktop.trusted);
+        assert!(shell.trusted && !shell.desktop_trusted && !shell.portal_trusted);
+        assert!(desktop.desktop_trusted && !desktop.trusted && !desktop.portal_trusted);
+        let portal = plan
+            .services
+            .iter()
+            .find(|spec| spec.name == "portal")
+            .unwrap();
+        assert!(
+            portal.portal_trusted && !portal.trusted && !portal.desktop_trusted,
+            "only the portal backend holds the bridge token"
+        );
     }
 
     #[test]

@@ -109,7 +109,6 @@ use crate::input::gestures::GestureRecognizer;
 use crate::input::hot_corners::{parse_hot_corner_modifier, HotCornerAction, HotCornerDetector};
 use crate::input::keymap::parse_binding;
 use crate::input::settings::InputSettings;
-use crate::pointer_policy::{PointerConfig, PointerController, PointerKind};
 use crate::input::shortcuts::{GrabArbiter, Shortcut, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::{GestureBudgetTrace, LatencyInstrument};
@@ -121,6 +120,7 @@ use crate::overview::grid::{
 use crate::overview::reveal::reveal_frame;
 use crate::overview::switcher::preview_area;
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
+use crate::pointer_policy::{PointerConfig, PointerController, PointerKind};
 use crate::screencast_producer::ScreencastProducer;
 use crate::shell::ShellProtocolState;
 use crate::suspend::SuspendModel;
@@ -5596,8 +5596,9 @@ impl DfState {
             .count()
     }
 
-    /// The live streams, as `(token, output, geometry)` for diagnostics.
-    #[allow(dead_code)] // the T335b conformance test and a future status line read it
+    /// The live streams, as `(token, output, geometry)` for diagnostics. Read
+    /// by the synthetic `query screencast` report, which is how the T335b
+    /// tests prove a disconnect or a manager rebind left no producer running.
     pub fn screencast_streams(&self) -> Vec<(u32, String, StreamGeometryReport)> {
         let mut streams: Vec<_> = self
             .screencast_streams
@@ -6814,7 +6815,9 @@ impl DfState {
         if let Some(profile) = accel_profile {
             match profile {
                 "flat" => pointer.accel_profile = crate::input::settings::AccelProfile::Flat,
-                "adaptive" => pointer.accel_profile = crate::input::settings::AccelProfile::Adaptive,
+                "adaptive" => {
+                    pointer.accel_profile = crate::input::settings::AccelProfile::Adaptive
+                }
                 _ => {}
             }
         }

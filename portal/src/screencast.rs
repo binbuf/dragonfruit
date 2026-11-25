@@ -564,6 +564,15 @@ impl ScreenCastRegistry {
         Self::default()
     }
 
+    /// An empty registry over the shipped live transport (T335b): the
+    /// compositor bridge opened from the backend's session provisioning, or
+    /// the named stills fallback when that provisioning is absent.
+    pub fn live() -> Self {
+        ScreenCastRegistry::with_transport(Box::new(
+            crate::stream::LiveTransport::from_environment(),
+        ))
+    }
+
     /// An empty registry over `transport`, for the live path and tests.
     pub fn with_transport(transport: Box<dyn StreamTransport>) -> Self {
         ScreenCastRegistry {
@@ -771,9 +780,63 @@ impl ScreenCastRegistry {
             .unwrap_or_default()
     }
 
+    /// Create one monitor stream through the transport and return its node id,
+    /// without a D-Bus session (the T335b live check, `--check-screencast
+    /// --create`). The node is not owned by a session, so the caller owns it;
+    /// a refusal is the transport's named fallback.
+    pub fn create_stream_for_check(&mut self) -> Result<u32, String> {
+        let source = crate::stream::StreamSource {
+            id: "monitor:".to_owned(),
+            source_type: SourceType::Monitor,
+            cursor_mode: 1,
+        };
+        let negotiated = self.negotiator.negotiate(&source);
+        if negotiated.mode != StreamMode::PipeWire {
+            let reason = negotiated
+                .fallback
+                .map(|reason| reason.as_str())
+                .unwrap_or("stills");
+            // The bridge's own detail names what the compositor refused with.
+            return Err(match self.negotiator.transport_error() {
+                Some(detail) => format!("stills fallback ({reason}): {detail}"),
+                None => format!("stills fallback ({reason})"),
+            });
+        }
+        Ok(negotiated.node_id)
+    }
+
     /// The number of live nodes across every session.
     pub fn live_node_count(&self) -> usize {
         self.nodes.values().map(Vec::len).sum()
+    }
+
+    /// Re-open the live transport's compositor connection after the party it
+    /// depends on left (the presenter-loss watch, T335b). Lists the live
+    /// streams were released by the caller first. Returns whether a verified
+    /// live connection is open afterwards; on a stills transport this is a
+    /// no-op.
+    ///
+    /// A restart re-issues the portal token, so the reopen re-reads the
+    /// backend's provisioning; `connect` substitutes a test resolver.
+    pub fn reconnect_transport(&mut self) -> bool {
+        self.rescan_transport(None)
+    }
+
+    /// [`Self::reconnect_transport`] over a caller's resolver (a test's own
+    /// socket and token), so it never writes the process environment.
+    pub fn rescan_transport(&mut self, connect: Option<crate::stream::ConnectFn>) -> bool {
+        self.nodes.clear();
+        self.negotiator.rescan(connect)
+    }
+
+    /// Why the live transport is not connected, for the log and the
+    /// diagnostic surface. `None` on a stills transport (nothing to connect).
+    pub fn transport_error(&self) -> Option<String> {
+        if self.negotiator.mode() == StreamMode::PipeWire {
+            None
+        } else {
+            self.negotiator.transport_error()
+        }
     }
 
     /// Release one session's nodes and forget them.
@@ -813,6 +876,14 @@ pub type SharedScreenCast = Arc<Mutex<ScreenCastRegistry>>;
 /// the honest state for a session with no shell or no PipeWire host.
 pub fn registry() -> SharedScreenCast {
     Arc::new(Mutex::new(ScreenCastRegistry::new()))
+}
+
+/// The shared registry the daemon serves (T335b): the live transport opened
+/// from the session provisioning, or the named stills fallback when the
+/// portal was not given a compositor bridge. Must be built on the thread that
+/// serves stream requests (the daemon's main thread).
+pub fn registry_live() -> SharedScreenCast {
+    Arc::new(Mutex::new(ScreenCastRegistry::live()))
 }
 
 /// Lock a registry, recovering from a poisoned mutex so a panicking D-Bus call

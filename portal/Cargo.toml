@@ -39,6 +39,18 @@ zbus = { version = "=5.19.0", features = ["blocking-api"] }
 # executor; `futures-lite` provides the race and the one-shot poll.
 async-io = "=2.6.0"
 futures-lite = "=2.6.1"
+# T335b: the live screen-share bridge is a trusted client of the private
+# protocol (ADR 0346). `wayland-client` is the compositor-tested runtime the
+# generated bindings are written against; `wayland-scanner` generates them at
+# build time from the one checked-in XML. The only other libc surface is
+# `poll(2)` for the bounded create wait.
+wayland-client = "0.31"
+wayland-scanner = "0.31"
+# Referenced by the generated 0.31 bindings and by the scanner's bitfield
+# enums; both stay pinned in lockstep with `wayland-client` via `Cargo.lock`.
+wayland-backend = "0.3"
+bitflags = "2"
+libc = "0.2"
 
 [dev-dependencies]
 serde = "=1.0.229"

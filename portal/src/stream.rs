@@ -16,10 +16,13 @@
 //! [ADR 0081](../../docs/design/adr/0081-screencast-stream-negotiation-and-stills-fallback.md)
 //! and [ADR 0344](../../docs/design/adr/0344-screencast-producer-process-boundary.md)).
 //! The transport asks for a node through [`CompositorWatch`]. The shipped
-//! daemon configures no watch endpoint, so every stream is the named
-//! [`FallbackReason::ProducerUnavailable`] fallback: a standard client cannot
-//! yet receive live frames because no shipped bridge answers the watch
-//! ([ADR 0345](../../docs/design/adr/0345-screencast-bridge-and-portal-ownership.md)).
+//! transport is [`LiveTransport`]: its watch is
+//! [`crate::screencast_bridge::ScreenCastBridge`], the portal's own trusted
+//! client of the compositor, opened from the session provisioning
+//! ([ADR 0346](../../docs/design/adr/0346-screencast-bridge-trusted-portal-client.md)).
+//! A session with no provisioning, a refused handshake, or a compositor without
+//! a PipeWire host is the named [`FallbackReason::ProducerUnavailable`]
+//! fallback, so a standard client is never handed a placeholder node.
 //! Rather than returning a placeholder node id with no explanation, every
 //! stream carries its mode (`df_stream_mode`: `pipewire` or `stills`) and, in
 //! fallback, the reason (`df_fallback`). The shell reads the same mode off the
@@ -29,6 +32,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use zbus::zvariant::{OwnedValue, Str};
 
@@ -139,6 +143,48 @@ pub trait StreamTransport: Send {
     /// Release a node created by [`StreamTransport::create`]. The default is a
     /// no-op; the stills fallback never creates one.
     fn destroy(&mut self, _node_id: u32) {}
+
+    /// Open a fresh compositor connection after the party the streams depend
+    /// on left. Returns whether a live transport is available afterwards. The
+    /// default holds no connection and reports the current availability.
+    fn reconnect(&mut self) -> bool {
+        self.mode() == StreamMode::PipeWire
+    }
+
+    /// Why this transport is not live, for the log and the diagnostics. The
+    /// default is `None`: a transport that holds no connection has nothing to
+    /// report.
+    fn error(&self) -> Option<String> {
+        None
+    }
+
+    /// The one-thread coordinator for batches of [`StreamTransport`] calls.
+    ///
+    /// A live transport's connection (the Wayland bridge, T335b) belongs to
+    /// one thread, while the portal serves requests on several. Every call that
+    /// may reach the transport — a `Start`, a release, a close, a reconnect —
+    /// runs through this, so the transport never sees two threads. The default
+    /// is the call itself: a transport with no connection has nothing to
+    /// confine.
+    fn on_stream_thread<R>(&mut self, call: impl FnOnce(&mut Self) -> R) -> R
+    where
+        Self: Sized,
+    {
+        call(self)
+    }
+
+    /// Reopen the connection. A transport that can take a resolver (`LiveTransport`)
+    /// installs it first, so a test never writes the process environment.
+    fn rescan(&mut self, connect: Option<ConnectFn>) -> bool {
+        let _ = connect;
+        self.reconnect()
+    }
+
+    /// Prove the live connection still answers, now. Only a transport that
+    /// holds a connection implements this; the default has nothing to check.
+    fn health(&mut self) -> Result<(), WatchError> {
+        Ok(())
+    }
 }
 
 /// The shipped transport: no stream, but the fallback is explicit.
@@ -166,16 +212,14 @@ impl StreamTransport for StillsTransport {
 /// has no rate option; the compositor clamps it).
 pub const DEFAULT_STREAM_FPS: u32 = 30;
 
-/// The live transport (T335a): it asks the compositor for a PipeWire video
-/// node through an injected [`CompositorWatch`] and reports the node id the
-/// client links to.
+/// The live transport (T335a) over an injected [`CompositorWatch`]: it asks
+/// for a PipeWire video node and reports the node id the client links to.
 ///
-/// The watch is a seam because the portal crate never links the compositor or
-/// a PipeWire client: the shipped backend answers through the trusted shell's
-/// one private-protocol connection ([`ShellBridgeWatch`]), and the tests use
-/// a deterministic stand-in ([`FnWatch`]). A creation the compositor refuses
-/// is the [`FallbackReason::ProducerUnavailable`] fallback — never a fake node
-/// id.
+/// The direct watch is a seam for the negotiation tests ([`FnWatch`]) and the
+/// no-compositor path ([`AbsentCompositor`]); the shipped daemon uses
+/// [`LiveTransport`], which owns the bridge connection on one thread. A
+/// creation the compositor refuses is the
+/// [`FallbackReason::ProducerUnavailable`] fallback — never a fake node id.
 pub struct PipeWireTransport {
     watch: Box<dyn CompositorWatch>,
     nodes: Mutex<HashMap<u32, String>>,
@@ -244,6 +288,439 @@ impl StreamTransport for PipeWireTransport {
     }
 }
 
+/// The shipped live transport (T335b): the compositor bridge, reopened on
+/// demand.
+///
+/// The bridge is a trusted client of the compositor, and its one connection is
+/// the lifetime of every stream it created. When the party those streams
+/// depend on goes away, the compositor releases them; the next `Start` must
+/// therefore open a **fresh** connection rather than reuse a dead one
+/// ([`LiveTransport::reconnect`]). Until a bridge is open the transport
+/// honestly reports [`StreamMode::Stills`], so the picker names the fallback
+/// and a `Start` is the named refusal — a live session is never promised by a
+/// stream that cannot deliver frames.
+///
+/// ## One thread owns the connection
+///
+/// A Wayland event queue belongs to the thread that created it, while the
+/// portal's bus object dispatches a `Start` on whichever executor thread is
+/// free. So the connection lives on one worker thread: the first request
+/// starts it, and every create, release, resume, and reopen is a job on that
+/// thread, in order. The transport itself is the message port the bus threads
+/// use. A job never nests because jobs only ever touch the bridge they own.
+pub struct LiveTransport {
+    /// The connection, its records, and the resolver that opens it. `Some`
+    /// before the worker starts; the worker owns it afterwards.
+    state: Option<Box<LiveState>>,
+    /// The service side's end of the worker, once started.
+    worker: Option<Worker>,
+    mode: StreamMode,
+    watch_error: Option<String>,
+    /// A resolver a caller installed for the next reopen
+    /// ([`LiveTransport::rescan_with`]); otherwise the open one is reused.
+    pending: Option<ConnectFn>,
+    /// Why the last create was refused (the compositor's own detail), cleared
+    /// by the next create that succeeds.
+    last_create_error: Option<String>,
+}
+
+impl LiveState {
+    /// Release one node. A released node is forgotten, so a second release
+    /// never reaches the compositor as a ghost; a node of the previous
+    /// connection is simply unknown here.
+    fn destroy(&mut self, node_id: u32) {
+        let Some(token) = self.nodes.remove(&node_id) else {
+            return;
+        };
+        if let Some(watch) = self.watch.as_mut() {
+            watch.destroy(&token);
+        }
+    }
+
+    /// Prove the bridge still answers (see [`CompositorWatch::health`]).
+    fn health(&mut self) -> Result<(), WatchError> {
+        match self.watch.as_mut() {
+            Some(watch) => watch.health(),
+            None => Err(WatchError(self.watch_error.clone().unwrap_or_else(|| {
+                "the live transport is not connected".to_owned()
+            }))),
+        }
+    }
+}
+
+/// Everything the connection's thread owns.
+struct LiveState {
+    /// Opens the bridge from the backend's provisioning.
+    connect: ConnectFn,
+    watch: Option<Box<dyn CompositorWatch>>,
+    watch_error: Option<String>,
+    /// The compositor-side token of each live node, so a release addresses the
+    /// stream the create made.
+    nodes: HashMap<u32, String>,
+    /// The picker's current answer (`pipewire` only while a bridge is open).
+    mode: StreamMode,
+}
+
+/// How [`LiveTransport`] opens its watch: the shipped bridge resolves the
+/// environment; a test opens a socket by hand. It runs on the connection's
+/// thread.
+pub type ConnectFn = Box<dyn FnMut() -> Result<Box<dyn CompositorWatch>, String> + Send>;
+
+/// A call for the connection's thread; it reports through its own channel.
+type Job = Box<dyn FnOnce(&mut LiveState) + Send>;
+
+/// One message to the connection's thread.
+enum Message {
+    /// Run `call` on the connection.
+    Job(Job),
+    /// Hand the connection back and exit ([`Drop for LiveTransport`]).
+    Return(std::sync::mpsc::Sender<Box<LiveState>>),
+}
+
+/// The service side's end of the connection's thread.
+struct Worker {
+    sender: std::sync::mpsc::Sender<Message>,
+}
+
+impl Worker {
+    /// Run `call` on the connection's thread, in order, and wait for its
+    /// answer. A worker that ended (a panic inside a job) is an error, so the
+    /// caller degrades to the named fallback rather than hanging.
+    fn run<R: Send + 'static>(
+        &self,
+        call: impl FnOnce(&mut LiveState) -> R + Send + 'static,
+    ) -> Result<R, WorkerLost> {
+        let (result_sender, result_receiver) = std::sync::mpsc::channel();
+        let job: Job = Box::new(move |state| {
+            let result = call(state);
+            let _ = result_sender.send(result);
+        });
+        self.sender
+            .send(Message::Job(job))
+            .map_err(|_| WorkerLost)?;
+        result_receiver.recv().map_err(|_| WorkerLost)
+    }
+}
+
+/// The name of the connection's thread (visible in a backtrace).
+const CONNECTION_THREAD: &str = "dragonfruit-screencast-bridge";
+
+/// The connection's thread ended (it panics with a job that panics).
+#[derive(Debug, Clone, Copy)]
+pub struct WorkerLost;
+
+impl std::fmt::Display for WorkerLost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the screen-share bridge thread is gone; the request never reached the compositor"
+        )
+    }
+}
+
+impl std::error::Error for WorkerLost {}
+
+impl LiveTransport {
+    /// A live transport over `connect`. The connection is opened immediately on
+    /// the calling thread; a failure is recorded and named, never fatal.
+    pub fn new(mut connect: ConnectFn) -> Self {
+        let (watch, watch_error) = match connect() {
+            Ok(watch) => (Some(watch), None),
+            Err(error) => (None, Some(error)),
+        };
+        let mode = if watch.is_some() {
+            StreamMode::PipeWire
+        } else {
+            StreamMode::Stills
+        };
+        LiveTransport {
+            state: Some(Box::new(LiveState {
+                connect,
+                watch,
+                watch_error,
+                nodes: HashMap::new(),
+                mode,
+            })),
+            worker: None,
+            mode,
+            watch_error: None,
+            pending: None,
+            last_create_error: None,
+        }
+    }
+
+    /// The shipped transport: open the compositor bridge from the backend's
+    /// provisioning ([`crate::screencast_bridge_from_environment_watch`]).
+    pub fn from_environment() -> Self {
+        LiveTransport::new(Box::new(crate::screencast_bridge_from_environment_watch))
+    }
+
+    /// Whether a bridge is open right now.
+    pub fn is_connected(&self) -> bool {
+        self.state.as_ref().map_or_else(
+            || self.mode == StreamMode::PipeWire,
+            |state| state.watch.is_some(),
+        )
+    }
+
+    /// Why the last connection attempt failed (cleared by a successful one).
+    pub fn error(&self) -> Option<String> {
+        // The last create's refusal is the most recent truth: a compositor
+        // with no PipeWire host has an open bridge but refuses the node, and
+        // that detail is what the diagnostic must show.
+        self.last_create_error
+            .clone()
+            .or_else(|| {
+                self.state
+                    .as_ref()
+                    .and_then(|state| state.watch_error.clone())
+            })
+            .or_else(|| self.watch_error.clone())
+    }
+
+    /// The compositor-side token of a live node (`None` once released, or after
+    /// a reconnect).
+    pub fn find_token(&self, node_id: u32) -> Option<String> {
+        self.state
+            .as_ref()
+            .and_then(|state| state.nodes.get(&node_id).cloned())
+    }
+
+    /// Open a fresh bridge and drop the previous one: the old connection's
+    /// streams are gone with it, and a reused connection would answer nothing.
+    /// A session restart re-issues the portal token, so this re-reads the
+    /// backend's provisioning. Returns whether a verified bridge is open
+    /// afterwards.
+    pub fn reconnect(&mut self) -> bool {
+        let pending = self.pending.take();
+        match self.dispatch(move |state| LiveTransport::reattach(state, pending)) {
+            Ok(reopened) => {
+                self.mode = if reopened {
+                    StreamMode::PipeWire
+                } else {
+                    StreamMode::Stills
+                };
+                self.watch_error = if reopened {
+                    None
+                } else {
+                    self.state
+                        .as_ref()
+                        .and_then(|state| state.watch_error.clone())
+                        .or_else(|| Some("the reopen was refused".to_owned()))
+                };
+                reopened
+            }
+            Err(_) => {
+                self.mode = StreamMode::Stills;
+                self.watch_error = Some(WorkerLost.to_string());
+                false
+            }
+        }
+    }
+
+    /// [`LiveTransport::reconnect`] over `connect` instead of the backend's
+    /// provisioning: a test's own socket and token, so no test writes the
+    /// process environment.
+    pub fn rescan_with(&mut self, connect: ConnectFn) -> bool {
+        self.pending = Some(connect);
+        self.reconnect()
+    }
+
+    /// Reopen `state` over its resolver, verified. A connect alone is not proof
+    /// of life: a compositor that just died can leave its socket path
+    /// answering for a moment. The handshake plus one flushed request is the
+    /// verification, so the picker is never told `pipewire` by a connection
+    /// that is already gone.
+    fn reattach(state: &mut LiveState, pending: Option<ConnectFn>) -> bool {
+        if let Some(connect) = pending {
+            state.connect = connect;
+        }
+        state.watch = None;
+        // The old connection's streams are gone with it; their tokens would
+        // address nothing on the new one.
+        state.nodes.clear();
+        let (watch, watch_error) = match (state.connect)() {
+            Ok(mut watch) => match watch.health() {
+                Ok(()) => (Some(watch), None),
+                Err(error) => (None, Some(error.0)),
+            },
+            Err(error) => (None, Some(error)),
+        };
+        state.watch = watch;
+        state.watch_error = watch_error;
+        state.mode = if state.watch.is_some() {
+            StreamMode::PipeWire
+        } else {
+            StreamMode::Stills
+        };
+        state.mode == StreamMode::PipeWire
+    }
+
+    /// Run `call` on the connection's thread, starting that thread with the
+    /// first call. Everything the call does — a create, a release, a reopen —
+    /// happens there, in order.
+    fn dispatch<R: Send + 'static>(
+        &mut self,
+        call: impl FnOnce(&mut LiveState) -> R + Send + 'static,
+    ) -> Result<R, WorkerLost> {
+        if let Some(worker) = self.worker.as_ref() {
+            let r = worker.run(call);
+            return r;
+        }
+        // The first call: the caller's thread becomes the connection's thread,
+        // and the call itself runs here before the loop takes over.
+        let Some(mut state) = self.state.take() else {
+            return Err(WorkerLost);
+        };
+        let result = call(&mut state);
+        self.mode = state.mode;
+        self.watch_error = state.watch_error.clone();
+        let (sender, receiver) = std::sync::mpsc::channel::<Message>();
+        let shared = Arc::new(Mutex::new(Some(state)));
+        let slot = shared.clone();
+        let spawn = std::thread::Builder::new()
+            .name(CONNECTION_THREAD.to_owned())
+            .spawn(move || {
+                for message in receiver {
+                    match message {
+                        Message::Job(job) => {
+                            // The state is in the slot between jobs; a job
+                            // only borrows it and puts it back before the next.
+                            let mut guard =
+                                slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                            if let Some(mut state) = guard.take() {
+                                job(&mut state);
+                                *guard = Some(state);
+                            }
+                        }
+                        Message::Return(back) => {
+                            let state = slot
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                .take();
+                            if let Some(state) = state {
+                                let _ = back.send(state);
+                            }
+                            return;
+                        }
+                    }
+                }
+            });
+        match spawn {
+            Ok(_handle) => {
+                self.worker = Some(Worker { sender });
+            }
+            Err(error) => {
+                // No second thread: the calls keep running on the bus threads,
+                // and the bridge itself refuses a request from a thread other
+                // than the one that opened its queue (never corrupting it).
+                self.watch_error = Some(format!("cannot start the bridge thread: {error}"));
+                if let Ok(mut guard) = shared.lock() {
+                    self.state = guard.take();
+                }
+            }
+        }
+        Ok(result)
+    }
+}
+
+impl Drop for LiveTransport {
+    fn drop(&mut self) {
+        let Some(worker) = self.worker.take() else {
+            return;
+        };
+        // Ask the connection's thread to hand the bridge back, then close it
+        // here on the dropping thread. Bounded, so a wedged compositor cannot
+        // hang shutdown; the process exit closes the socket regardless.
+        let (back, received) = std::sync::mpsc::channel();
+        if worker.sender.send(Message::Return(back)).is_ok() {
+            if let Ok(state) = received.recv_timeout(Duration::from_secs(1)) {
+                self.state = Some(state);
+            }
+        }
+    }
+}
+
+impl StreamTransport for LiveTransport {
+    fn mode(&self) -> StreamMode {
+        self.mode
+    }
+
+    fn create(&mut self, source: &StreamSource) -> Result<u32, FallbackReason> {
+        let source = source.clone();
+        let created = self.dispatch(move |state| {
+            // A compositor that started after the portal (a session restart
+            // race) is found here; a reopened connection is verified.
+            if state.watch.is_none() && !LiveTransport::reattach(state, None) {
+                return Err("the screen-share bridge is not connected".to_owned());
+            }
+            let Some(watch) = state.watch.as_mut() else {
+                return Err("the screen-share bridge is not connected".to_owned());
+            };
+            let created = watch
+                .create(&source.id, &source, DEFAULT_STREAM_FPS)
+                .map_err(|error| error.0)?;
+            state.nodes.insert(created.node_id, created.token);
+            Ok(created.node_id)
+        });
+        match created {
+            Ok(Ok(node_id)) => {
+                self.last_create_error = None;
+                Ok(node_id)
+            }
+            Ok(Err(detail)) => {
+                self.last_create_error = Some(detail);
+                Err(FallbackReason::ProducerUnavailable)
+            }
+            Err(lost) => {
+                self.last_create_error = Some(lost.to_string());
+                Err(FallbackReason::ProducerUnavailable)
+            }
+        }
+    }
+
+    fn destroy(&mut self, node_id: u32) {
+        let _ = self.dispatch(move |state| state.destroy(node_id));
+    }
+
+    fn reconnect(&mut self) -> bool {
+        LiveTransport::reconnect(self)
+    }
+
+    fn rescan(&mut self, connect: Option<ConnectFn>) -> bool {
+        match connect {
+            Some(connect) => self.rescan_with(connect),
+            None => self.reconnect(),
+        }
+    }
+
+    fn health(&mut self) -> Result<(), WatchError> {
+        let checked = self.dispatch(LiveState::health);
+        match checked {
+            Ok(result) => result,
+            Err(lost) => Err(WatchError(lost.to_string())),
+        }
+    }
+
+    fn error(&self) -> Option<String> {
+        LiveTransport::error(self)
+    }
+
+    fn on_stream_thread<R>(&mut self, call: impl FnOnce(&mut Self) -> R) -> R
+    where
+        Self: Sized,
+    {
+        // A batch runs on a bus thread, so its last step re-reads the mode the
+        // connection's thread settled on (a reopen or a fallback changes it).
+        let result = call(self);
+        if let Ok((mode, error)) = self.dispatch(|state| (state.mode, state.watch_error.clone())) {
+            self.mode = mode;
+            self.watch_error = error;
+        }
+        result
+    }
+}
+
 /// One node the compositor created.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatedNode {
@@ -282,6 +759,13 @@ pub trait CompositorWatch: Send {
     /// Release a stream. Idempotent; a compositor that is already gone needs no
     /// answer.
     fn destroy(&mut self, token: &str);
+
+    /// Prove the connection still answers, now, so a reconnect never reports
+    /// live for a compositor that has already gone. The default holds no
+    /// connection and always passes.
+    fn health(&mut self) -> Result<(), WatchError> {
+        Ok(())
+    }
 }
 
 /// A compositor that is not there: every stream is the named fallback.
@@ -301,13 +785,14 @@ impl CompositorWatch for AbsentCompositor {
     fn destroy(&mut self, _token: &str) {}
 }
 
-/// The shipped watch: the trusted shell's private-protocol connection resolves
-/// `create_screencast` and the stream's events.
+/// A watch configured with a bridge endpoint but no connection: every creation
+/// is the named fallback.
 ///
-/// The shell bridge issues `create_screencast` on its existing private-protocol
-/// connection (v17) and publishes the answer here; the portal never opens a
-/// compositor connection itself. A backend without a shell bridge (or with a
-/// shell that has no compositor) is the named fallback, never a fake node.
+/// T335b superseded the idea of relaying streams through the shell (the shell
+/// binds v16 and never shares screens); the shipped watch is now
+/// [`crate::screencast_bridge::ScreenCastBridge`], the portal's own trusted
+/// client ([ADR 0346](../../docs/design/adr/0346-screencast-bridge-trusted-portal-client.md)).
+/// This type stays for the "configured but absent" diagnostic used by the tests.
 #[derive(Debug, Clone, Default)]
 pub struct ShellBridgeWatch {
     /// The endpoint the shell bridge publishes at (the trusted shell's
@@ -446,6 +931,26 @@ impl StreamNegotiator {
     /// Release a live node.
     pub fn destroy(&mut self, node_id: u32) {
         self.transport.destroy(node_id);
+    }
+
+    /// Ask the transport to open a fresh compositor connection, when it has
+    /// one to open ([`LiveTransport::reconnect`]). The default is a no-op for
+    /// transports that hold no connection.
+    pub fn reconnect(&mut self) -> bool {
+        self.transport.reconnect()
+    }
+
+    /// Reopen over a caller's resolver when the transport is the live one (a
+    /// test's own socket and token); otherwise the transport's own reconnect.
+    /// The resolver is installed on the transport, which runs it on the
+    /// connection's thread.
+    pub fn rescan(&mut self, connect: Option<ConnectFn>) -> bool {
+        self.transport.rescan(connect)
+    }
+
+    /// Why the transport is not live, when it can say (`None` otherwise).
+    pub fn transport_error(&self) -> Option<String> {
+        self.transport.error()
     }
 }
 
@@ -672,6 +1177,80 @@ mod tests {
         assert_eq!(transport.token(node), None);
         // A second release is a no-op: nothing reaches the compositor.
         transport.destroy(node);
+    }
+
+    /// A watch whose creation is answered by `node` and whose releases are
+    /// recorded, for the `LiveTransport` ladder tests.
+    fn live_watch(node: u32) -> (Box<dyn CompositorWatch>, Arc<Mutex<Vec<String>>>) {
+        let destroyed = Arc::new(Mutex::new(Vec::new()));
+        let create: CreateFn = Arc::new(move |_source| Ok(node));
+        (
+            Box::new(FnWatch::new(create).recording_destroys(destroyed.clone())),
+            destroyed,
+        )
+    }
+
+    #[test]
+    fn a_live_transport_without_a_bridge_reports_stills_and_the_reason() {
+        let mut transport = LiveTransport::new(Box::new(|| Err("no launch token".to_owned())));
+        assert!(!transport.is_connected());
+        assert_eq!(transport.error().as_deref(), Some("no launch token"));
+        assert_eq!(
+            transport.mode(),
+            StreamMode::Stills,
+            "a stream that cannot receive frames is never advertised as live"
+        );
+        assert_eq!(
+            transport.create(&source("monitor:DP-1")),
+            Err(FallbackReason::ProducerUnavailable)
+        );
+    }
+
+    #[test]
+    fn a_live_transport_creates_releases_and_reconnects() {
+        let mut connects = 0;
+        let mut transport = LiveTransport::new(Box::new(move || {
+            connects += 1;
+            Ok(live_watch(700 + connects).0)
+        }));
+        assert!(transport.is_connected());
+        assert_eq!(transport.mode(), StreamMode::PipeWire);
+        let node = transport.create(&source("monitor:DP-1")).unwrap();
+        assert_eq!(node, 701);
+        assert_eq!(transport.error(), None);
+
+        // The presenter left: the next Start must not reuse the dead
+        // connection, so a reconnect opens a fresh one with a fresh node.
+        assert!(transport.reconnect());
+        assert_eq!(transport.find_token(node), None, "old tokens are dropped");
+        let next = transport.create(&source("window:7")).unwrap();
+        assert_eq!(next, 702, "the new connection answers");
+    }
+
+    #[test]
+    fn a_live_transport_retries_once_when_its_bridge_was_absent() {
+        // The compositor comes up after the portal: the first attempt fails,
+        // every later one succeeds.
+        let attempts = Arc::new(Mutex::new(0u32));
+        let seen = attempts.clone();
+        let mut transport = LiveTransport::new(Box::new(move || {
+            let mut attempts = match seen.lock() {
+                Ok(attempts) => attempts,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            *attempts += 1;
+            if *attempts == 1 {
+                Err("the compositor is not up yet".to_owned())
+            } else {
+                Ok(live_watch(810).0)
+            }
+        }));
+        assert_eq!(transport.mode(), StreamMode::Stills);
+        // The compositor appeared after the portal started: the next Start
+        // finds it instead of reporting stills forever.
+        assert_eq!(transport.create(&source("monitor:DP-1")), Ok(810));
+        assert_eq!(transport.mode(), StreamMode::PipeWire);
+        assert_eq!(transport.error(), None);
     }
 
     #[test]

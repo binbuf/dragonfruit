@@ -42,7 +42,8 @@ cleanup() {
         kill -KILL -"$pgid" 2>/dev/null || true
     done
     rm -f "$SYNTH" "$XDG_RUNTIME_DIR/$SOCK" "$XDG_RUNTIME_DIR/$SOCK.lock" \
-        "$XDG_RUNTIME_DIR/$SOCK.launch-token" "$XDG_RUNTIME_DIR/$SOCK.x11-display" 2>/dev/null
+        "$XDG_RUNTIME_DIR/$SOCK.launch-token" "$XDG_RUNTIME_DIR/$SOCK.portal-launch-token" \
+        "$XDG_RUNTIME_DIR/$SOCK.x11-display" 2>/dev/null
     [ "$KEEP_SCRATCH" = "1" ] || rm -rf "$SCRATCH"
 }
 trap cleanup EXIT

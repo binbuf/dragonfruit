@@ -787,6 +787,19 @@ fn presenter_watch_loop(
                          live screen cast stream(s)"
                     );
                 }
+                // The bridge's streams die with the connection they were
+                // created on (the compositor releases them), so the next
+                // `Start` opens a fresh one rather than reusing a dead one
+                // (T335b). A stills transport has nothing to reopen.
+                let live = registry.reconnect_transport();
+                if let Some(error) = registry.transport_error() {
+                    eprintln!(
+                        "xdg-desktop-portal-dragonfruit: screen share bridge not reopened \
+                         ({error}); Start will name the stills fallback"
+                    );
+                } else if live {
+                    eprintln!("xdg-desktop-portal-dragonfruit: screen share bridge reopened");
+                }
                 cancelled
             };
             let cancelled = chooser::lock(&chooser).cancel_all()
@@ -851,7 +864,13 @@ pub fn serve_with_screencast(
 /// Returns an error only when the bus or the well-known name cannot be
 /// obtained; a session with no frontend is not an error.
 pub fn run() -> zbus::Result<()> {
-    let (_connection, _backend) = serve(None)?;
+    // The shipped registry is the live one (T335b): the compositor bridge is
+    // opened from the backend's provisioning (`DRAGONFRUIT_SCREENCAST_BRIDGE_*`)
+    // on this thread, and a session without it serves the named stills
+    // fallback exactly as before.
+    let screencast = screencast::registry_live();
+    let (_connection, _backend) =
+        serve_with_screencast(None, liveness::COMPLETION_TIMEOUT, screencast)?;
 
     // The object server runs on its own executor; parking the main thread
     // keeps the process (and the name) alive without a poll loop.

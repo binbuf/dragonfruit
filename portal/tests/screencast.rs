@@ -806,3 +806,356 @@ fn a_silent_compositor_never_becomes_a_fake_node() {
         })
         .is_err());
 }
+
+// --- T335b: the shipped bridge over a real compositor ----------------------
+
+/// Why [`LiveBridgeCompositor`] could not start: the compositor binary or the
+/// runtime directory a real session provides is missing. The caller records
+/// that as a skip with the exact reason rather than a silent pass.
+fn compositor_binary() -> Option<std::path::PathBuf> {
+    let candidates = [
+        std::env::var_os("DRAGONFRUIT_COMPOSITOR_BIN").map(std::path::PathBuf::from),
+        Some(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../target/debug/dragonfruit-compositor"),
+        ),
+        Some(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../target/release/dragonfruit-compositor"),
+        ),
+    ];
+    candidates.into_iter().flatten().find(|path| path.is_file())
+}
+
+/// Wait until a killed compositor's socket path no longer accepts, bounded so
+/// a leaked listener fails the test loudly instead of hanging it.
+fn wait_socket_released(path: &std::path::Path) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        match std::os::unix::net::UnixStream::connect(path) {
+            Ok(_) => std::thread::sleep(Duration::from_millis(20)),
+            Err(_) => return,
+        }
+    }
+    panic!(
+        "{} still accepts after its compositor exited",
+        path.display()
+    );
+}
+
+/// A compositor command ready to spawn: the binary, the headless backend, and
+/// the user-space DRM sysroot this developer tree links against (absent on a
+/// normal host, where the default loader path already works).
+fn compositor_command(binary: &std::path::Path, socket_name: &str, tokens: &str) -> Command {
+    let mut command = Command::new(binary);
+    command
+        .arg("--backend")
+        .arg("headless")
+        .arg("--socket-name")
+        .arg(socket_name)
+        .env("DRAGONFRUIT_LAUNCH_TOKENS", tokens)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(home) = std::env::var_os("HOME") {
+        let lib = std::path::PathBuf::from(&home).join(".local/df-toolchain/usr/lib64");
+        if lib.is_dir() {
+            // Merge with the caller's path: a Makefile target already exports
+            // the toolchain. Replacing it would drop the rest of the loader
+            // search path the compositor links against.
+            let mut dirs = vec![lib];
+            if let Some(existing) = std::env::var_os("LD_LIBRARY_PATH") {
+                dirs.extend(std::env::split_paths(&existing));
+            }
+            if let Ok(joined) = std::env::join_paths(dirs) {
+                command.env("LD_LIBRARY_PATH", joined);
+            }
+        }
+    }
+    command
+}
+
+/// A headless compositor provisioned with a portal-role launch token, the way
+/// a session manager does it: the token is in the compositor's environment,
+/// in its `<socket>.portal-launch-token` hand-off file, and in the portal's
+/// `DRAGONFRUIT_SCREENCAST_BRIDGE_TOKEN`.
+struct LiveBridgeCompositor {
+    child: Child,
+    socket_name: String,
+    token: String,
+    runtime_dir: std::path::PathBuf,
+}
+
+impl LiveBridgeCompositor {
+    fn start() -> Result<Self, String> {
+        let Some(binary) = compositor_binary() else {
+            return Err("no built dragonfruit-compositor (run `make build`)".to_owned());
+        };
+        let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from)
+        else {
+            return Err("XDG_RUNTIME_DIR is not set".to_owned());
+        };
+        let socket_name = format!("dragonfruit-t335b-bridge-{}", std::process::id());
+        let token = "7a".repeat(32);
+        let socket = runtime_dir.join(&socket_name);
+        let hand_off = runtime_dir.join(format!("{socket_name}.portal-launch-token"));
+        let mut child = compositor_command(&binary, &socket_name, &format!("portal:{token}"))
+            .spawn()
+            .map_err(|error| format!("cannot start the compositor: {error}"))?;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !socket.exists() || !hand_off.exists() {
+            if let Ok(Some(status)) = child.try_wait() {
+                return Err(format!("the compositor exited before ready: {status}"));
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                return Err("the compositor never became ready".to_owned());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(LiveBridgeCompositor {
+            child,
+            socket_name,
+            token,
+            runtime_dir,
+        })
+    }
+
+    fn stop(mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        // The kill is the test's own child, so waiting for the socket to be
+        // released is reliable: the partially closed listener's socket keeps
+        // `connect(2)` succeeding for a moment after the process dies, and a
+        // port reused too early would make this test's assertions flaky.
+        wait_socket_released(&self.runtime_dir.join(&self.socket_name));
+        for suffix in [
+            "",
+            ".lock",
+            ".launch-token",
+            ".desktop-launch-token",
+            ".portal-launch-token",
+            ".x11-display",
+        ] {
+            let _ = std::fs::remove_file(
+                self.runtime_dir
+                    .join(format!("{}{suffix}", self.socket_name)),
+            );
+        }
+    }
+}
+
+/// T335b acceptance: the shipped bridge is the live transport of the served
+/// registry. Against a real compositor it opens as a trusted client, reports
+/// `pipewire` to the picker, and — because the headless rail has no PipeWire
+/// host — a `Start` is the *named*, per-stream stills fallback rather than a
+/// promised node. When the compositor goes away the transport drops back to
+/// `stills` (so the picker stops promising frames), and `reconnect_transport`
+/// is the presenter-loss seam that reopens a fresh connection.
+#[test]
+fn the_shipped_bridge_is_live_against_a_compositor_and_reconnects_after_it_leaves() {
+    let compositor = match LiveBridgeCompositor::start() {
+        Ok(compositor) => compositor,
+        Err(reason) => {
+            eprintln!("SKIP the live bridge check: {reason}");
+            return;
+        }
+    };
+    // Absolute sockets keep this check off the session bus entirely.
+    let runtime_dir = compositor.runtime_dir.to_string_lossy().into_owned();
+    // SAFETY: set before the bridge is built and restored before the test ends;
+    // this test owns the process environment for its duration.
+    let previous_runtime = std::env::var_os("XDG_RUNTIME_DIR");
+    let previous_token = std::env::var_os(xdg_desktop_portal_dragonfruit::BRIDGE_TOKEN_ENV);
+    let previous_socket = std::env::var_os(xdg_desktop_portal_dragonfruit::BRIDGE_SOCKET_ENV);
+    std::env::set_var("XDG_RUNTIME_DIR", &runtime_dir);
+    std::env::set_var(
+        xdg_desktop_portal_dragonfruit::BRIDGE_SOCKET_ENV,
+        &compositor.socket_name,
+    );
+
+    // The launcher hands the backend exactly the value the compositor
+    // provisioned for the portal role (its hand-off file). A value the
+    // compositor never minted is not adopted (it mints its own and writes it
+    // here), so this file is the one source of the bridge token.
+    let hand_off = compositor
+        .runtime_dir
+        .join(format!("{}.portal-launch-token", compositor.socket_name));
+    let provisioned = std::fs::read_to_string(&hand_off)
+        .expect("the compositor writes the portal token hand-off file")
+        .trim()
+        .to_owned();
+    assert_eq!(
+        provisioned, compositor.token,
+        "the hand-off file carries the value the session manager exports"
+    );
+    std::env::set_var(
+        xdg_desktop_portal_dragonfruit::BRIDGE_TOKEN_ENV,
+        &provisioned,
+    );
+
+    let shared = xdg_desktop_portal_dragonfruit::screencast::registry_live();
+    let mut registry = xdg_desktop_portal_dragonfruit::screencast::lock(&shared);
+    assert_eq!(
+        registry.stream_mode(),
+        StreamMode::PipeWire,
+        "a provisioned bridge reports a live transport: {:?}",
+        registry.transport_error()
+    );
+    assert_eq!(registry.transport_error(), None);
+
+    registry
+        .create_session("org.example.T335b", "/session/t335b")
+        .expect("a session is registered");
+    let mut request = xdg_desktop_portal_dragonfruit::ScreenCastRequest {
+        handle: "/request/t335b".to_owned(),
+        session_handle: "/session/t335b".to_owned(),
+        app_id: "org.example.T335b".to_owned(),
+        options: Default::default(),
+        raw_options: HashMap::new(),
+    };
+    request.options.types = 1;
+    registry.begin_select(request).expect("the picker opens");
+    registry.complete(
+        "/request/t335b",
+        vec![ScreenCastSelection::monitor("monitor:")],
+    );
+    let response = registry
+        .start("/session/t335b")
+        .expect("Start answers for a chosen source");
+    let streams = response.streams();
+    let stream = streams.first().expect("one stream");
+    assert_eq!(
+        stream.mode,
+        StreamMode::Stills,
+        "the headless rail has no PipeWire host, so this is the named fallback"
+    );
+    assert_eq!(
+        stream.fallback,
+        Some(FallbackReason::ProducerUnavailable),
+        "the refusal is named, never a silent live-looking stream"
+    );
+    assert_eq!(stream.node_id, 0);
+    assert_eq!(
+        registry.live_node_count(),
+        0,
+        "a fallback creates no node, so nothing can leak"
+    );
+
+    // The compositor leaves (a crash, a session restart), and the replacement
+    // on the same socket is a *new* session: it never minted the old token, so
+    // reusing it would be refused (the one-time token contract). The owner
+    // re-issues the portal token for the restarted session and hands the new
+    // value to the backend, which is what this test simulates below.
+    let bridge_socket_name = compositor.socket_name.clone();
+    compositor.stop();
+    let Some(binary) = compositor_binary() else {
+        panic!("the compositor binary vanished mid-test");
+    };
+    // The restarted session provisions the portal role again: it mints its own
+    // one-time token (the old one is dead with the old session). The old
+    // hand-off file is removed first, so the wait below never reads the
+    // previous session's value.
+    let hand_off = std::path::Path::new(&runtime_dir)
+        .join(format!("{bridge_socket_name}.portal-launch-token"));
+    let _ = std::fs::remove_file(&hand_off);
+    let mut restarted = compositor_command(&binary, &bridge_socket_name, "portal:")
+        .spawn()
+        .expect("a replacement compositor starts");
+    let socket_path = std::path::Path::new(&runtime_dir).join(&bridge_socket_name);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !socket_path.exists() || !hand_off.exists() {
+        if let Ok(Some(status)) = restarted.try_wait() {
+            panic!("the replacement compositor exited before ready: {status}");
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the replacement compositor never became ready"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // The presenter-loss seam: release, then reopen. A reopen that still
+    // presents the *previous* session's one-time token is refused by the new
+    // session (it never minted that value), so the transport must report the
+    // refusal and never claim `pipewire` — a reuse is not a live bridge.
+    let stale_resolver = {
+        let socket = socket_path.to_string_lossy().into_owned();
+        let stale_token = "7a".repeat(32);
+        Box::new(move || {
+            xdg_desktop_portal_dragonfruit::ScreenCastBridge::connect(&socket, &stale_token).map(
+                |bridge| {
+                    Box::new(bridge) as Box<dyn xdg_desktop_portal_dragonfruit::CompositorWatch>
+                },
+            )
+        }) as Box<dyn FnMut() -> Result<_, String> + Send>
+    };
+    registry.release_streams();
+    assert!(
+        !registry.rescan_transport(Some(stale_resolver)),
+        "a dead session's token never reopens a live bridge"
+    );
+    assert_eq!(registry.stream_mode(), StreamMode::Stills);
+    assert!(
+        registry.transport_error().is_some(),
+        "a failed reopen says why"
+    );
+
+    // The restarted session wrote a fresh portal token. The owner reads it from
+    // the compositor's hand-off file (the provisioned source) and hands it to
+    // the backend; with it the reopen is verified live again — not merely
+    // "connected".
+    let hand_off_token = std::fs::read_to_string(&hand_off)
+        .expect("the restarted session writes its portal token")
+        .trim()
+        .to_owned();
+    assert!(
+        hand_off_token.len() == 64 && hand_off_token.bytes().all(|b| b.is_ascii_hexdigit()),
+        "the hand-off file carries a fresh one-time token"
+    );
+    assert_ne!(
+        hand_off_token,
+        "7a".repeat(32),
+        "the restarted session never re-issues the old session's token"
+    );
+    let fresh_resolver = {
+        let socket = socket_path.to_string_lossy().into_owned();
+        let token = hand_off_token.clone();
+        Box::new(move || {
+            xdg_desktop_portal_dragonfruit::ScreenCastBridge::connect(&socket, &token).map(
+                |bridge| {
+                    Box::new(bridge) as Box<dyn xdg_desktop_portal_dragonfruit::CompositorWatch>
+                },
+            )
+        }) as Box<dyn FnMut() -> Result<_, String> + Send>
+    };
+    assert!(
+        registry.rescan_transport(Some(fresh_resolver)),
+        "the fresh token reopens the bridge: {:?}",
+        registry.transport_error()
+    );
+    assert_eq!(registry.stream_mode(), StreamMode::PipeWire);
+    assert_eq!(registry.transport_error(), None);
+
+    let _ = restarted.kill();
+    let _ = restarted.wait();
+    wait_socket_released(&socket_path);
+
+    match previous_runtime {
+        Some(value) => std::env::set_var("XDG_RUNTIME_DIR", value),
+        None => std::env::remove_var("XDG_RUNTIME_DIR"),
+    }
+    for (name, previous) in [
+        (
+            xdg_desktop_portal_dragonfruit::BRIDGE_TOKEN_ENV,
+            previous_token,
+        ),
+        (
+            xdg_desktop_portal_dragonfruit::BRIDGE_SOCKET_ENV,
+            previous_socket,
+        ),
+    ] {
+        match previous {
+            Some(value) => std::env::set_var(name, value),
+            None => std::env::remove_var(name),
+        }
+    }
+}

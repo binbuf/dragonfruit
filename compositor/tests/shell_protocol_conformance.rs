@@ -9798,6 +9798,157 @@ fn screencast_create_is_answered_with_the_named_fallback() {
     proc.shutdown();
 }
 
+/// T335b: the portal's screen-share bridge is its own trusted client
+/// ([ADR 0346](../../docs/design/adr/0346-screencast-bridge-trusted-client.md)).
+/// A `portal:` token authenticates a client that is not the shell, it may bind
+/// `df_toplevel_manager` and create streams, and those streams are released
+/// when its connection goes away — while the shell's own connection and
+/// streams are untouched.
+#[test]
+fn the_portal_bridge_is_a_separate_trusted_client_with_bounded_streams() {
+    let portal_token = "5d".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-bridge-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-bridge",
+        &[format!("portal:{portal_token}")],
+        Some(&synthetic_path),
+    );
+    // The portal's token has its own hand-off file, exactly like the shell's.
+    let portal_file = proc.socket_path.with_extension("portal-launch-token");
+    assert_eq!(
+        std::fs::read_to_string(&portal_file)
+            .expect("the portal token hand-off file exists")
+            .trim(),
+        portal_token,
+        "the compositor mints the portal role's token under its own file"
+    );
+
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.output_names.is_empty(),
+    );
+    let output = state.output_names[0].clone();
+
+    // --- the portal bridge: a second connection with the portal token -------
+    let input = SyntheticInput::connect(&synthetic_path);
+    let before = input.query("query screencast");
+    assert!(
+        before.contains("screencast-count 0"),
+        "the session starts with no live stream: {before}"
+    );
+
+    let (portal_conn, mut portal_queue, mut portal_state) = connect(&proc.socket_path);
+    let (portal_core_name, portal_core_version) =
+        portal_state.core_global.expect("df_core advertised");
+    let portal_core = bind_core(
+        &mut portal_state,
+        &portal_queue,
+        portal_core_name,
+        portal_core_version,
+    );
+    portal_core.authenticate(1, portal_token.clone());
+    wait_for(
+        &portal_conn,
+        &mut portal_queue,
+        &mut portal_state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (portal_manager_name, portal_manager_version) = portal_state
+        .manager_global
+        .expect("the portal bridge may bind the manager");
+    assert_eq!(portal_manager_version, 17);
+    let portal_manager = bind_manager(
+        &mut portal_state,
+        &portal_queue,
+        portal_manager_name,
+        portal_manager_version,
+    );
+
+    // The headless rail has no PipeWire host: the create is answered with the
+    // named fallback, which also proves the portal token reaches the stream
+    // dispatch rather than being refused at the bind.
+    portal_manager.create_screencast(71, output.clone(), 32, 24, 30);
+    let _ = portal_conn.flush();
+    wait_for(
+        &portal_conn,
+        &mut portal_queue,
+        &mut portal_state,
+        Duration::from_secs(20),
+        |state| !state.screencast_failed.is_empty() || !state.screencast_nodes.is_empty(),
+    );
+    assert!(
+        portal_state.screencast_nodes.is_empty(),
+        "no host: no node id is invented ({:?})",
+        portal_state.screencast_nodes
+    );
+    assert_eq!(portal_state.screencast_failed[0].0, 71);
+    assert_eq!(
+        portal_state.screencast_failed[0].1,
+        "pipewire-producer-unavailable"
+    );
+
+    // The bridge disconnects (a portal restart). The shell's own connection is
+    // still live, so the shell can ask again.
+    drop(portal_manager);
+    drop(portal_core);
+    drop(portal_conn);
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(
+        state.authenticated.is_some(),
+        "the shell's session survives the bridge leaving"
+    );
+    manager.create_screencast(72, output, 32, 24, 30);
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(20),
+        |state| {
+            state
+                .screencast_failed
+                .iter()
+                .any(|(token, _, _)| *token == 72)
+                || state
+                    .screencast_nodes
+                    .iter()
+                    .any(|(token, _, _, _, _, _)| *token == 72)
+        },
+    );
+
+    // Nothing was left behind that a disconnect could strand: the rail never
+    // creates a stream, so the count stays zero with both connections open.
+    let after = input.query("query screencast");
+    assert!(
+        after.contains("screencast-count 0"),
+        "a disconnect leaves no stream: {after}"
+    );
+
+    drop(manager);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
 /// T-16.3b acceptance: fractional output scale renders chrome correctly.
 ///
 /// A top bar anchored to the primary output is configured for the output's

@@ -23,6 +23,8 @@ const STATIC_ENV: [(&str, &str); 4] = [
 /// passes `DISPLAY` through, and the trusted units pass their role's token.
 const SHELL_TOKEN_ENV: &str = "DRAGONFRUIT_LAUNCH_TOKEN";
 const DESKTOP_TOKEN_ENV: &str = "DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN";
+// T335b: the portal backend's own screen-share bridge token (ADR 0346).
+const SCREENCAST_TOKEN_ENV: &str = "DRAGONFRUIT_SCREENCAST_BRIDGE_TOKEN";
 
 /// A parsed unit file: section -> repeated key entries.
 type Sections = BTreeMap<String, Vec<(String, String)>>;
@@ -251,6 +253,12 @@ fn the_files_desktop_is_the_role_scoped_background_client() {
         !pass.split_whitespace().any(|key| key == SHELL_TOKEN_ENV),
         "the desktop does not receive the shell token: {pass}"
     );
+    assert!(
+        !pass
+            .split_whitespace()
+            .any(|key| key == SCREENCAST_TOKEN_ENV),
+        "the desktop does not receive the screen-share bridge token: {pass}"
+    );
     let env: BTreeSet<String> = values(&desktop, "Service", "Environment")
         .into_iter()
         .map(str::to_string)
@@ -307,6 +315,17 @@ fn every_service_carries_the_session_environment() {
                 pass.split_whitespace().any(|k| k == DESKTOP_TOKEN_ENV),
                 "{file} passes {DESKTOP_TOKEN_ENV}"
             );
+        } else if file == "dragonfruit-portal.service" {
+            // T335b: the portal's live bridge is its own trusted client, so it
+            // gets its own token and never the shell's.
+            assert!(
+                pass.split_whitespace().any(|k| k == SCREENCAST_TOKEN_ENV),
+                "{file} passes {SCREENCAST_TOKEN_ENV}"
+            );
+            assert!(
+                !pass.split_whitespace().any(|k| k == SHELL_TOKEN_ENV),
+                "{file} does not receive the shell token"
+            );
         } else {
             assert!(
                 pass.split_whitespace().any(|k| k == SHELL_TOKEN_ENV),
@@ -315,8 +334,9 @@ fn every_service_carries_the_session_environment() {
         }
         if file == "dragonfruit-compositor.service" {
             assert!(
-                pass.split_whitespace().any(|k| k == DESKTOP_TOKEN_ENV),
-                "{file} passes both role tokens"
+                pass.split_whitespace().any(|k| k == DESKTOP_TOKEN_ENV)
+                    && pass.split_whitespace().any(|k| k == SCREENCAST_TOKEN_ENV),
+                "{file} passes every role token"
             );
         }
         // The compositor's socket gate: the shell and the stage services wait

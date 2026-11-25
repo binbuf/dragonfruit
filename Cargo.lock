@@ -717,11 +717,16 @@ name = "dragonfruit-portal"
 version = "0.3.0"
 dependencies = [
  "async-io",
+ "bitflags 2.13.2",
  "df-ipc",
  "dragonfruit-files-core",
  "dragonfruit-settingsd",
  "futures-lite",
+ "libc",
  "serde",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
  "zbus",
 ]
 

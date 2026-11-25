@@ -28,11 +28,13 @@
 //!   normalization the presenter's capture result uses.
 //! * [`stream`] — the ScreenCast stream transport (T-13.4b, live in T335a): the
 //!   negotiation seam that turns a chosen source into a live PipeWire node or
-//!   names the stills-only fallback, and the [`stream::PipeWireTransport`]
-//!   that asks the compositor for a node through an injected
-//!   [`stream::CompositorWatch`]. A session owns its live nodes (T335b): a
-//!   second `Start` replaces them, a close releases them, and the
+//!   names the stills-only fallback, and the [`stream::LiveTransport`] that
+//!   runs the shipped bridge on one thread. A session owns its live nodes
+//!   (T335b): a second `Start` replaces them, a close releases them, and the
 //!   presenter-loss watch releases every stream.
+//! * [`screencast_bridge`] — the portal's own trusted compositor client
+//!   (T335b): it presents the portal role's launch token, binds
+//!   `df_toplevel_manager` v17, and creates/releases the stream nodes.
 //!
 //! Settings and GlobalShortcuts landed in T-13.1b; FileChooser in T-13.2a;
 //! Screenshot in T-13.3a, ScreenCast in T-13.4a, and the stream negotiation in
@@ -51,6 +53,7 @@ pub mod interfaces;
 pub mod liveness;
 pub mod model;
 pub mod screencast;
+pub mod screencast_bridge;
 pub mod screenshot;
 pub mod settings;
 pub mod shortcuts;
@@ -83,16 +86,36 @@ pub use screencast::{
     ScreenCastSelection, ScreenCastSession, ScreenCastStream, SourceType, SCREENCAST_INTERFACE,
     SCREENCAST_VERSION,
 };
+pub use screencast_bridge::{
+    ScreenCastBridge, BRIDGE_SOCKET_ENV, BRIDGE_TOKEN_ENV, CREATE_TIMEOUT, LOCKSTEP_VERSION,
+    MANAGER_VERSION,
+};
 pub use screenshot::{
     CaptureMode, ScreenshotError, ScreenshotOptions, ScreenshotRegistry, ScreenshotRequest,
     ScreenshotResponse, SCREENSHOT_INTERFACE, SCREENSHOT_VERSION,
 };
 pub use stream::{
-    AbsentCompositor, CompositorWatch, CreatedNode, FallbackReason, FnWatch, NegotiatedStream,
-    PipeWireTransport, ShellBridgeWatch, StillsTransport, StreamMode, StreamNegotiator,
-    StreamSource, StreamTransport, WatchError, DEFAULT_STREAM_FPS, STREAM_FALLBACK_PROPERTY,
-    STREAM_MODE_PROPERTY,
+    AbsentCompositor, CompositorWatch, ConnectFn, CreatedNode, FallbackReason, FnWatch,
+    LiveTransport, NegotiatedStream, PipeWireTransport, ShellBridgeWatch, StillsTransport,
+    StreamMode, StreamNegotiator, StreamSource, StreamTransport, WatchError, DEFAULT_STREAM_FPS,
+    STREAM_FALLBACK_PROPERTY, STREAM_MODE_PROPERTY,
 };
+
+/// Open the live screen-share bridge from this process's provisioning
+/// (`XDG_RUNTIME_DIR`, [`BRIDGE_TOKEN_ENV`], [`BRIDGE_SOCKET_ENV`]) as the
+/// [`CompositorWatch`] the live transport consumes.
+///
+/// This is the one resolver the shipped daemon uses; it must be called on the
+/// thread that later issues stream requests, because the bridge's wayland
+/// event queue belongs to that thread. Tests substitute their own resolver at
+/// the same seam.
+pub fn screencast_bridge_from_environment_watch() -> Result<Box<dyn CompositorWatch>, String> {
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from);
+    let token = std::env::var(BRIDGE_TOKEN_ENV).ok();
+    let socket = std::env::var(BRIDGE_SOCKET_ENV).ok();
+    screencast_bridge::from_environment(runtime_dir.as_deref(), token.as_deref(), socket.as_deref())
+        .map(|bridge| Box::new(bridge) as Box<dyn CompositorWatch>)
+}
 
 #[cfg(test)]
 mod tests {
