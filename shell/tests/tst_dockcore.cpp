@@ -500,10 +500,16 @@ private slots:
                       QStringLiteral("browser"),
                       {}, {QStringLiteral("Network"), QStringLiteral("WebBrowser")}),
         });
-        QCOMPARE(resolveDefaultDockPins(index),
+        QCOMPARE(resolveDefaultDockPins(index, /*terminalAvailable=*/true),
                  (QStringList{QStringLiteral("org.dragonfruit.Files.desktop"),
                               QStringLiteral("org.dragonfruit.Settings.desktop"),
                               QStringLiteral("term.desktop"),
+                              QStringLiteral("browse.desktop")}));
+        // T340: a corpus with a TerminalEmulator record but no installed
+        // emulator must not seed a terminal tile.
+        QCOMPARE(resolveDefaultDockPins(index, /*terminalAvailable=*/false),
+                 (QStringList{QStringLiteral("org.dragonfruit.Files.desktop"),
+                              QStringLiteral("org.dragonfruit.Settings.desktop"),
                               QStringLiteral("browse.desktop")}));
     }
 

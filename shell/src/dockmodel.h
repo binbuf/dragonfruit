@@ -137,8 +137,11 @@ QStringList movePinnedEntry(const QStringList &pinnedIds, int index, int delta);
 // The default pinned set (T-10 section 19): Files, Settings, Terminal,
 // Browser, resolved against the installed `.desktop` corpus by trying a small
 // candidate list per slot and taking the first that resolves. Unresolved slots
-// are skipped so the Dock never opens with broken default tiles.
-QStringList resolveDefaultDockPins(const DesktopEntryIndex &index);
+// are skipped so the Dock never opens with broken default tiles. The Terminal
+// slot is added only when `terminalAvailable` (T340): a Terminal tile that can
+// never launch is worse than no tile.
+QStringList resolveDefaultDockPins(const DesktopEntryIndex &index,
+                                   bool terminalAvailable);
 
 // Build the Dock's ordered entries. `running` is the shell projection
 // (kind "temporary" with `windows`, `active`, plus per-window "minimized"

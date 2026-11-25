@@ -279,7 +279,9 @@ build_deb() {
     # The QML modules the shell imports at startup are runtime requirements,
     # not suggestions: a minimal install without them cannot load the shell.
     depends="libc6, libgomp1, libstdc++6, libqt6core6t64 (>= $QT_MIN) | libqt6core6 (>= $QT_MIN), libqt6gui6 (>= $QT_MIN), libqt6quick6 (>= $QT_MIN), libqt6qml6 (>= $QT_MIN), libqt6qmlmeta6 (>= $QT_MIN), libqt6qmlmodels6 (>= $QT_MIN), libqt6qmlworkerscript6 (>= $QT_MIN), libqt6opengl6 (>= $QT_MIN), libqt6dbus6 (>= $QT_MIN), libqt6network6 (>= $QT_MIN), qt6-wayland (>= $QT_MIN), qml6-module-qtqml (>= $QT_MIN), qml6-module-qtqml-workerscript (>= $QT_MIN), qml6-module-qtquick (>= $QT_MIN), qml6-module-qtquick-window (>= $QT_MIN), qml6-module-qtquick-shapes (>= $QT_MIN), qml6-module-qtquick-vectorimage (>= $QT_MIN), libwayland-client0, libxkbcommon0, libdrm2, libgbm1, libinput10, libseat1, libudev1, libsystemd0, libdbus-1-3, libegl1, libgl1, libopengl0, libpam0g, systemd, dbus, xdg-desktop-portal, xwayland"
-    recommends="xdg-desktop-portal-gtk, network-manager, bluez, pipewire, wireplumber, upower, udisks2, polkitd, flatpak, cups, sane-utils, colord, fprintd, accountsservice, gnome-online-accounts, orca, speech-dispatcher, ibus, fcitx5"  # df-allow-desktop-name: distro package names
+    # A terminal is the fallback for `Terminal=true` entries (T340). Debian's
+    # virtual package lets the user's installed emulator satisfy it.
+    recommends="xdg-desktop-portal-gtk, network-manager, bluez, pipewire, wireplumber, upower, udisks2, polkitd, flatpak, cups, sane-utils, colord, fprintd, accountsservice, gnome-online-accounts, orca, speech-dispatcher, ibus, fcitx5, x-terminal-emulator"  # df-allow-desktop-name: distro package names
     suggests="gnome-software, plasma-discover, snapd, ufw, firewalld, restic, pika-backup, timeshift, tracker, baloo-kf5, recoll, espeak-ng, localsend"  # df-allow-desktop-name: distro package names
 
     # Use # as the delimiter: the Depends value itself contains | alternatives.
@@ -377,6 +379,7 @@ depend = dbus
 depend = pam
 depend = xdg-desktop-portal
 depend = xorg-xwayland
+optdepend = ptyxis: launch Terminal=true desktop entries
 EOF
 
     # Pacman verifies .MTREE on install; makepkg builds it the same way.

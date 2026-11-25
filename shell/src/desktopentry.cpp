@@ -4,6 +4,7 @@
 #include "launch_env.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QStandardPaths>
 
 namespace {
@@ -129,7 +130,90 @@ void expandToken(const QString &token, const DesktopEntry &entry, const QStringL
     flush();
 }
 
+bool executableOnPath(const QString &program, const QStringList &searchPaths)
+{
+    if (program.isEmpty())
+        return false;
+    if (program.contains(QLatin1Char('/'))) {
+        const QFileInfo info(program);
+        return info.isFile() && info.isExecutable();
+    }
+    return !QStandardPaths::findExecutable(program, searchPaths).isEmpty();
+}
+
+TerminalLaunch makeTerminal(const QString &program, const QStringList &arguments,
+                            const QString &source)
+{
+    TerminalLaunch terminal;
+    terminal.program = program;
+    terminal.arguments = arguments;
+    terminal.source = source;
+    return terminal;
+}
+
 } // namespace
+
+TerminalLaunch resolveTerminal(const QProcessEnvironment &environment,
+                               const QStringList &searchPaths)
+{
+    // 1. The user's explicit choice. It may carry its own arguments (for
+    //    example `alacritty --class Terminal`); the app command follows `-e`.
+    //    A stale value falls through to the remaining candidates.
+    const QString configured = environment.value(QStringLiteral("TERMINAL")).trimmed();
+    if (!configured.isEmpty()) {
+        const QStringList tokens = tokenizeExec(configured);
+        if (!tokens.isEmpty() && executableOnPath(tokens.first(), searchPaths)) {
+            QStringList arguments = tokens.mid(1);
+            arguments << QStringLiteral("-e");
+            return makeTerminal(tokens.first(), arguments, QStringLiteral("TERMINAL"));
+        }
+    }
+
+    // 2. The freedesktop launcher: it owns the terminal choice and accepts the
+    //    command directly after `--`, so no `-e` is added.
+    if (executableOnPath(QStringLiteral("xdg-terminal-exec"), searchPaths))
+        return makeTerminal(QStringLiteral("xdg-terminal-exec"),
+                            {QStringLiteral("--")},
+                            QStringLiteral("xdg-terminal-exec"));
+
+    // 3. The Debian alternatives wrapper (and the traditional fallback).
+    if (executableOnPath(QStringLiteral("x-terminal-emulator"), searchPaths))
+        return makeTerminal(QStringLiteral("x-terminal-emulator"),
+                            {QStringLiteral("-e")},
+                            QStringLiteral("x-terminal-emulator"));
+
+    // 4. A common terminal, in preference order. The prefix is the terminal's
+    //    own "run this command" separator.
+    struct Candidate {
+        const char *name;
+        const char *prefix;
+    };
+    // df-allow-desktop-name: freedesktop terminal program names, not desktop
+    // identity.
+    static constexpr Candidate candidates[] = {
+        {"ptyxis", "--"},   {"gnome-terminal", "--"}, {"konsole", "-e"},  // df-allow-desktop-name
+        {"alacritty", "-e"}, {"kitty", "--"},          {"foot", "--"},
+        {"xterm", "-e"},
+    };
+    for (const Candidate &candidate : candidates) {
+        const QString program = QString::fromLatin1(candidate.name);
+        if (executableOnPath(program, searchPaths))
+            return makeTerminal(program, {QString::fromLatin1(candidate.prefix)},
+                                QStringLiteral("common-list"));
+    }
+
+    return TerminalLaunch{};
+}
+
+QString terminalLaunchError(const TerminalLaunch &terminal)
+{
+    if (terminal.found())
+        return QString();
+    return QStringLiteral(
+        "No terminal emulator is installed. Install xdg-terminal-exec or a "
+        "terminal such as ptyxis, gnome-terminal, konsole, alacritty, kitty, "  // df-allow-desktop-name
+        "foot, or xterm.");
+}
 
 void DesktopEntryIndex::loadFromRecords(const QList<DesktopEntry> &entries)
 {
@@ -200,7 +284,8 @@ bool DesktopEntryIndex::isLaunchable(const DesktopEntry &entry)
 }
 
 QStringList DesktopEntryIndex::buildLaunchCommand(const DesktopEntry &entry,
-                                                  const QStringList &files)
+                                                  const QStringList &files,
+                                                  const TerminalLaunch &terminal)
 {
     if (!isLaunchable(entry))
         return QStringList();
@@ -211,22 +296,13 @@ QStringList DesktopEntryIndex::buildLaunchCommand(const DesktopEntry &entry,
         expandToken(token, entry, files, argv);
 
     // Terminal applications need an emulator wrapping the command. app-index
-    // carries only the `Terminal` flag, so the launcher keeps this heuristic:
-    // honor $TERMINAL, else the distro-agnostic `x-terminal-emulator`
-    // alternative; if neither is available the command runs unwrapped.
+    // carries only the `Terminal` flag, so the launcher resolves one (T340).
+    // Never run a `Terminal=true` command unwrapped: with no terminal the
+    // empty result becomes a visible launch failure at the caller.
     if (entry.terminal) {
-        QStringList term;
-        const QByteArray configured = qgetenv("TERMINAL");
-        if (!configured.isEmpty()) {
-            term = tokenizeExec(QString::fromLocal8Bit(configured));
-        } else if (!QStandardPaths::findExecutable(QStringLiteral("x-terminal-emulator"))
-                        .isEmpty()) {
-            term << QStringLiteral("x-terminal-emulator");
-        }
-        if (!term.isEmpty()) {
-            term << QStringLiteral("-e");
-            argv = term + argv;
-        }
+        if (!terminal.found())
+            return QStringList();
+        argv = QStringList{terminal.program} + terminal.arguments + argv;
     }
     return argv;
 }

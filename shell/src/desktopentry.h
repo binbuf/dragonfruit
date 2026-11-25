@@ -31,6 +31,30 @@ struct DesktopEntry {
     bool operator==(const DesktopEntry &) const = default;
 };
 
+// The terminal emulator that wraps a `Terminal=true` entry (T340). `program`
+// is empty when none was found. `arguments` are the emulator's own prefix
+// arguments (for example `-e` or `--`) placed before the app command.
+struct TerminalLaunch {
+    QString program;
+    QStringList arguments;
+    QString source; // "TERMINAL", "xdg-terminal-exec", ...
+    bool found() const { return !program.isEmpty(); }
+};
+
+// Resolve a terminal for `Terminal=true` entries, in order: `$TERMINAL`,
+// `xdg-terminal-exec`, `x-terminal-emulator`, then a common list: ptyxis,
+// gnome-terminal, konsole, alacritty, kitty, foot, xterm.  // df-allow-desktop-name
+// `searchPaths` is the PATH to search; empty uses the process PATH. A
+// configured `$TERMINAL` that is not executable falls through. Pure and
+// unit-tested (tst_desktopentry).
+TerminalLaunch resolveTerminal(const QProcessEnvironment &environment,
+                               const QStringList &searchPaths = QStringList());
+
+// The visible reason a `Terminal=true` entry cannot be launched because no
+// terminal exists. Empty when `terminal` was found. Never run the command
+// unwrapped.
+QString terminalLaunchError(const TerminalLaunch &terminal);
+
 class DesktopEntryIndex
 {
 public:
@@ -56,9 +80,14 @@ public:
     // The argv for launching `entry`. `files` are substituted for the file
     // field codes (%f/%F/%u/%U); `%i` becomes `--icon <icon>`, `%c` the name,
     // `%k` the desktop-file path, `%%` a literal percent; the deprecated
-    // codes (%d/%D/%n/%N/%v/%m) are dropped. Empty when not launchable.
-    static QStringList buildLaunchCommand(const DesktopEntry &entry,
-                                          const QStringList &files = QStringList());
+    // codes (%d/%D/%n/%N/%v/%m) are dropped. A `Terminal=true` entry is
+    // wrapped in `terminal`; when that is absent the result is empty (never
+    // the unwrapped command). Empty when not launchable. The default terminal
+    // is resolved from the process environment; tests pass one explicitly.
+    static QStringList buildLaunchCommand(
+        const DesktopEntry &entry, const QStringList &files = QStringList(),
+        const TerminalLaunch &terminal =
+            resolveTerminal(QProcessEnvironment::systemEnvironment()));
 
 private:
     void insert(const DesktopEntry &entry);

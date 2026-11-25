@@ -65,6 +65,8 @@ Recommends:     speech-dispatcher
 Recommends:     ibus
 Recommends:     fcitx5
 Recommends:     firewalld
+# A terminal is the fallback for `Terminal=true` entries (T340).
+Recommends:     ptyxis
 
 %description
 Dragonfruit is a Wayland desktop environment built with Rust and Qt Quick.

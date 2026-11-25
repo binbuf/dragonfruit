@@ -140,7 +140,8 @@ QStringList movePinnedEntry(const QStringList &pinnedIds, int index, int delta)
     return out;
 }
 
-QStringList resolveDefaultDockPins(const DesktopEntryIndex &index)
+QStringList resolveDefaultDockPins(const DesktopEntryIndex &index,
+                                   bool terminalAvailable)
 {
     QStringList resolved;
     auto add = [&resolved](const QString &id) {
@@ -157,7 +158,10 @@ QStringList resolveDefaultDockPins(const DesktopEntryIndex &index)
         add(settings.id);
 
     // Terminal and browser are chosen by the freedesktop registered category
-    // so no distribution-specific desktop id is hardcoded (T-01 FR-3).
+    // so no distribution-specific desktop id is hardcoded (T-01 FR-3). The
+    // terminal pin exists only when a terminal actually resolves (T340); a
+    // stale `.desktop` record with no emulator installed must not seed a tile
+    // whose every launch fails.
     auto firstWithCategory = [&index](const QString &category) -> QString {
         for (const DesktopEntry &entry : index.entries()) {
             if (entry.noDisplay)
@@ -167,7 +171,8 @@ QStringList resolveDefaultDockPins(const DesktopEntryIndex &index)
         }
         return QString();
     };
-    add(firstWithCategory(QStringLiteral("TerminalEmulator")));
+    if (terminalAvailable)
+        add(firstWithCategory(QStringLiteral("TerminalEmulator")));
     add(firstWithCategory(QStringLiteral("WebBrowser")));
     return resolved;
 }

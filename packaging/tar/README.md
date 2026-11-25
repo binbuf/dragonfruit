@@ -45,6 +45,8 @@ The bundle is dynamically linked. It needs:
 - Wayland, libxkbcommon, DRM/GBM, libinput, libseat, udev/systemd, D-Bus
 - a systemd user manager and a Wayland-capable display manager
 - Xwayland for X11 applications (optional, but expected on a desktop)
+- a terminal emulator (recommended) for `Terminal=true` desktop entries; without
+  one those launches fail visibly instead of running unwrapped
 
 Use the Fedora RPM or Debian package when one is available: the package
 manager installs the matching runtime dependencies and tracks upgrades.

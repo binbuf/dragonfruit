@@ -8835,7 +8835,10 @@ void ShellController::seedDefaultDockPins()
         writeDockSetting(QStringLiteral("dock.pinsInitialized"), true);
         return;
     case DockPinSeedAction::Seed: {
-        const QStringList defaults = resolveDefaultDockPins(m_appIndexCatalog.index());
+        const TerminalLaunch terminal =
+            resolveTerminal(QProcessEnvironment::systemEnvironment());
+        const QStringList defaults =
+            resolveDefaultDockPins(m_appIndexCatalog.index(), terminal.found());
         m_defaultPinsSeeded = true;
         if (!defaults.isEmpty()) {
             writeDockSetting(QStringLiteral("dock.pinned"), defaults);
@@ -10260,9 +10263,16 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
         failDockLaunch(desktopId, QStringLiteral("no usable .desktop entry"));
         return;
     }
-    const QStringList argv = DesktopEntryIndex::buildLaunchCommand(entry, files);
+    const TerminalLaunch terminal =
+        resolveTerminal(QProcessEnvironment::systemEnvironment());
+    const QStringList argv =
+        DesktopEntryIndex::buildLaunchCommand(entry, files, terminal);
     if (argv.isEmpty()) {
-        failDockLaunch(desktopId, QStringLiteral("empty launch command"));
+        const QString terminalError = entry.terminal ? terminalLaunchError(terminal)
+                                                     : QString();
+        failDockLaunch(desktopId,
+                       terminalError.isEmpty() ? QStringLiteral("empty launch command")
+                                               : terminalError);
         return;
     }
     // Hand the acted-on entry's tile to the compositor before the child is

@@ -232,6 +232,27 @@ set_tests_properties(tst_dockcore PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Terminal fallback and `Terminal=true` tests (T340): $TERMINAL,
+# xdg-terminal-exec, x-terminal-emulator, the common terminal list, the absent
+# path (never unwrapped), a fixture launch, and the Dock's conditional Terminal
+# pin. No Wayland, QML, or compositor.
+qt_add_executable(tst_desktopentry
+    tst_desktopentry.cpp
+)
+target_link_libraries(tst_desktopentry PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_desktopentry
+    COMMAND tst_desktopentry
+)
+set_tests_properties(tst_desktopentry PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Filesystem move tests (T312): same-filesystem rename, cross-filesystem
 # copy-to-sibling + rename, mid-copy rollback, metadata preservation, name
 # collisions, and permission-denied cleanup. No Wayland, QML, or compositor.
