@@ -3570,31 +3570,141 @@ Rectangle {
     // resolve the same optics.
     readonly property string activePopoverPreset: "menuDetached"
     readonly property real activePopoverRadius: Theme.controls.contextMenu.radius
-    // A submenu is a separate card. Blurring the bounding union paints an
-    // unwanted glass slab through the gap and below the shorter panel.
-    readonly property var activePopoverSurfaceRegions: {
+    // T351: the three bounds a popover publishes are deliberately separate.
+    // The card/arrow box is what the popover lays out; the paint extents add
+    // the QML shadow ring and the rotated arrow tip; the picking region is the
+    // card body only. The persistent Dock plate is never part of any of them.
+    readonly property real popoverShadowBlur: Theme.controls.popup.shadowBlur
+    readonly property real popoverShadowOffsetX: 0
+    readonly property real popoverShadowOffsetY:
+        Theme.controls.elevation.high.offsetY
+    // The outer Shadow layer is a rounded rect offset by the elevation and
+    // grown by the blur on every side. These are the reach values before the
+    // output/headroom clamp.
+    readonly property real popoverShadowLeft:
+        popoverShadowBlur - Math.min(0, popoverShadowOffsetX)
+    readonly property real popoverShadowRight:
+        popoverShadowBlur + Math.max(0, popoverShadowOffsetX)
+    readonly property real popoverShadowTop:
+        popoverShadowBlur - Math.min(0, popoverShadowOffsetY)
+    readonly property real popoverShadowBottom:
+        popoverShadowBlur + Math.max(0, popoverShadowOffsetY)
+    // A 45-degree arrow of `arrowSize` reaches `(sqrt(2) - 1) / 2` beyond the
+    // square it is declared in. The card's bottom band already reserves
+    // `arrowSize / 2`; this is the tip past the root box.
+    readonly property real popoverArrowTip:
+        (Math.SQRT2 - 1) / 2 * Theme.controls.popover.arrowSize
+    // The card body (without the empty arrow-side band) in Dock-scene
+    // coordinates. Placement still uses the full popover box; this rect is the
+    // interactive/material body.
+    readonly property var activePopoverCardRect: {
+        var rect = activePopoverRect;
+        if (rect.w <= 0 || rect.h <= 0)
+            return rect;
+        var popup = visualPopover;
+        var arrowBand = popup && popup.arrowSize !== undefined
+                        ? popup.arrowSize / 2 : 0;
+        return { x: rect.x, y: rect.y, w: rect.w,
+                 h: Math.max(0, rect.h - arrowBand) };
+    }
+    // The actual card bodies. A submenu is a separate card: blurring the
+    // bounding union paints an unwanted glass slab through the gap and below
+    // the shorter panel, so the menu keeps its per-card list. An arrowed
+    // popover contributes its body only; the arrow itself is painted in QML
+    // with the matching material treatment.
+    readonly property var activePopoverCardRegions: {
         var rect = activePopoverRect;
         if (rect.w <= 0 || rect.h <= 0)
             return [];
-        var regions;
         if (visualPopover === entryMenu) {
-            regions = entryMenu.regions.map(function(region) {
+            return entryMenu.regions.map(function(region) {
                 return Object.assign({}, region, {
                     x: entryMenu.x + region.x, y: entryMenu.y + region.y
                 });
             });
-        } else {
-            var radius = activePopoverRadius;
-            regions = [{ key: "menu", preset: activePopoverPreset,
-                         x: rect.x, y: rect.y, w: rect.w, h: rect.h,
-                         tl: radius, tr: radius, br: radius, bl: radius,
-                         overscan: 20 }];
         }
+        var radius = activePopoverRadius;
+        var card = activePopoverCardRect;
+        return [{ key: "menu", preset: activePopoverPreset,
+                  x: card.x, y: card.y, w: card.w, h: card.h,
+                  tl: radius, tr: radius, br: radius, bl: radius,
+                  overscan: 20 }];
+    }
+    readonly property var activePopoverSurfaceRegions: {
         var dx = Math.floor(popoverRect.x);
         var dy = Math.floor(popoverRect.y);
-        return regions.map(function(region) {
+        return activePopoverCardRegions.map(function(region) {
             return Object.assign({}, region, { x: region.x - dx, y: region.y - dy });
         });
+    }
+    // The painted extent of the open popover: the laid-out box plus the full
+    // shadow ring and the rotated arrow tip, still in Dock-scene coordinates.
+    // The shell clamps this to the output/headroom before committing the crop.
+    readonly property var activePopoverPaintRect: {
+        var rect = activePopoverRect;
+        if (rect.w <= 0 || rect.h <= 0)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        var left = rect.x - popoverShadowLeft;
+        var top = rect.y - popoverShadowTop;
+        var right = rect.x + rect.w + popoverShadowRight;
+        var bottom = rect.y + rect.h + popoverShadowBottom;
+        var popup = visualPopover;
+        if (popup && popup.arrowSize !== undefined)
+            bottom = Math.max(bottom, rect.y + rect.h + popoverArrowTip);
+        return { x: left, y: top, w: right - left, h: bottom - top };
+    }
+    // The interactive footprint is the card body, not the whole painted box:
+    // the shadow ring, the empty arrow-side bands, and the transparent corner
+    // tips stay click-through. Each card contributes a small set of rounded
+    // spans because the Wayland input region is rectangular only.
+    function popoverInputRectsForRegion(region, dx, dy) {
+        var x = region.x - dx;
+        var y = region.y - dy;
+        var w = region.w;
+        var h = region.h;
+        if (w <= 0 || h <= 0)
+            return [];
+        var radius = Math.max(region.tl || 0, region.tr || 0,
+                              region.bl || 0, region.br || 0);
+        radius = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
+        if (radius <= 0)
+            return [{ x: Math.floor(x), y: Math.floor(y),
+                      w: Math.ceil(w), h: Math.ceil(h) }];
+        // Inset at `depth` from a rounded edge, following the circular arc.
+        function insetAt(depth) {
+            var d = Math.max(0, Math.min(radius, depth));
+            return radius - Math.sqrt(Math.max(0,
+                radius * radius - (radius - d) * (radius - d)));
+        }
+        var out = [];
+        var steps = 4;
+        for (var i = 0; i < steps; ++i) {
+            var d0 = radius * i / steps;
+            var d1 = radius * (i + 1) / steps;
+            var inset = insetAt(d0);
+            out.push({ x: Math.floor(x + inset), y: Math.floor(y + d0),
+                       w: Math.ceil(w - 2 * inset), h: Math.ceil(d1 - d0) });
+        }
+        if (h > 2 * radius)
+            out.push({ x: Math.floor(x), y: Math.floor(y + radius),
+                       w: Math.ceil(w), h: Math.ceil(h - 2 * radius) });
+        for (var j = 0; j < steps; ++j) {
+            var b0 = radius * j / steps;
+            var b1 = radius * (j + 1) / steps;
+            var bInset = insetAt(b0);
+            out.push({ x: Math.floor(x + bInset), y: Math.floor(y + h - b1),
+                       w: Math.ceil(w - 2 * bInset), h: Math.ceil(b1 - b0) });
+        }
+        return out;
+    }
+    readonly property var activePopoverInputRects: {
+        var dx = Math.floor(popoverRect.x);
+        var dy = Math.floor(popoverRect.y);
+        var out = [];
+        for (var i = 0; i < activePopoverCardRegions.length; ++i)
+            out = out.concat(popoverInputRectsForRegion(
+                activePopoverCardRegions[i], dx, dy));
+        return out;
     }
     // A popover accepts pointer input only while logically open; the visible
     // close tail must not intercept clicks (T202).
@@ -3635,15 +3745,37 @@ Rectangle {
         return { x: x, y: y, w: w, h: h };
     }
 
-    // The union of the open popover and the hover label; the shell commits it
-    // to the Dock's overlay surface (T-10 section 5, T-14.7i). They never show
-    // together, but the union keeps the close tail of either covered. The rect
-    // is clamped into the pre-sized buffer's real image bounds: a menu taller
-    // than the headroom is pinned to the buffer top, and reporting its full
-    // height would make the shell's `QImage::copy` return a null image (no
-    // overlay at all). The visible part is committed instead.
-    readonly property var popoverRect: {
+    // The card/arrow coverage of the open popover and hover label, without
+    // the shadow ring. This is the placement and regression-check rect; the
+    // shell commits `popoverRect` (the paint extent) instead.
+    readonly property var popoverCardRect: {
         var a = activePopoverRect;
+        var b = tooltipRect;
+        var aValid = a.w > 0 && a.h > 0;
+        var bValid = b.w > 0 && b.h > 0;
+        if (!aValid && !bValid)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        if (!aValid)
+            return clampPopoverRect(b);
+        if (!bValid)
+            return clampPopoverRect(a);
+        var x0 = Math.min(a.x, b.x);
+        var y0 = Math.min(a.y, b.y);
+        var x1 = Math.max(a.x + a.w, b.x + b.w);
+        var y1 = Math.max(a.y + a.h, b.y + b.h);
+        return clampPopoverRect({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    }
+
+    // The union of the open popover's paint extent and the hover label; the
+    // shell commits it to the Dock's overlay surface (T-10 section 5,
+    // T-14.7i). They never show together, but the union keeps the close tail
+    // of either covered. The rect is clamped into the pre-sized buffer's real
+    // image bounds: a menu taller than the headroom is pinned to the buffer
+    // top, and reporting its full height would make the shell's
+    // `QImage::copy` return a null image (no overlay at all). The visible part
+    // is committed instead.
+    readonly property var popoverRect: {
+        var a = activePopoverPaintRect;
         var b = tooltipRect;
         var aValid = a.w > 0 && a.h > 0;
         var bValid = b.w > 0 && b.h > 0;

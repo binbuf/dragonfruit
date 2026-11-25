@@ -174,6 +174,9 @@ public:
     // T202: one detached-menu material region for the active Dock popover,
     // plus the same open-only input contract as the menu-bar popup.
     void setDockPopupPanelRegions(const QVariantList &regions);
+    // T351: the picking region is the card body, separate from the painted
+    // crop. Empty rects preserve the legacy whole-surface input region.
+    void setDockPopupInputRects(const QList<QRect> &rects);
     void setDockPopupInputActive(bool active);
     void dismissDockPopupInput();
 
@@ -1248,6 +1251,9 @@ private:
         std::array<int, 6> placement{}; // top, right, bottom, left, width, height
         QPoint origin;
         QVariantList regions;
+        // T351: explicit picking rects in surface-local coordinates. Empty
+        // keeps the legacy whole-surface input region while `inputActive`.
+        QList<QRect> inputRects;
         bool inputActive = false;
         bool operator==(const PopupFrameGeometry &) const = default;
     };

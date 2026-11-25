@@ -1294,6 +1294,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             Qt::QueuedConnection);
     connect(m_dockItem, SIGNAL(activePopoverSurfaceRegionsChanged()),
             this, SLOT(scheduleDockRender()), Qt::QueuedConnection);
+    connect(m_dockItem, SIGNAL(activePopoverInputRectsChanged()),
+            this, SLOT(scheduleDockRender()), Qt::QueuedConnection);
     connect(m_dockItem, SIGNAL(inputRectsChanged()), this, SLOT(scheduleDockRender()));
     connect(m_dockItem, SIGNAL(revealStateChanged()), this,
             SLOT(onDockRevealStateChanged()));
@@ -13070,6 +13072,21 @@ void ShellController::renderDock()
             m_dockItem->property("popoverInputActive").toBool();
         m_protocol->setDockPopupPanelRegions(
             m_dockItem->property("activePopoverSurfaceRegions").toList());
+        // T351: the picking region is the card body, not the painted crop.
+        // The shadow ring, empty arrow-side bands, and corner cutouts stay
+        // click-through while the popup is open.
+        QList<QRect> popupInputRects;
+        const QVariantList rawPopupInputRects =
+            m_dockItem->property("activePopoverInputRects").toList();
+        for (const QVariant &value : rawPopupInputRects) {
+            const QVariantMap rect = value.toMap();
+            popupInputRects.append(
+                QRect(qFloor(rect.value(QStringLiteral("x")).toReal()),
+                      qFloor(rect.value(QStringLiteral("y")).toReal()),
+                      qCeil(rect.value(QStringLiteral("w")).toReal()),
+                      qCeil(rect.value(QStringLiteral("h")).toReal())));
+        }
+        m_protocol->setDockPopupInputRects(popupInputRects);
         m_protocol->setDockPopupInputActive(popoverInputActive);
         m_protocol->setDockPopupGeometry(top, right, bottom, left, popover);
         if (independentPopup) {

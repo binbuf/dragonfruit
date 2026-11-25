@@ -3618,7 +3618,10 @@ Item {
             left.openEntryMenu(left.items[0]);
             waitForRendering(stage);
             verify(left.popoverRect.w > 0);
-            verify(left.popoverRect.x >= left.plateRect.x + left.plateRect.w);
+            // Placement is the card; the paint extent may overlap the plate by
+            // the popup shadow (T351).
+            verify(left.popoverCardRect.x
+                   >= left.plateRect.x + left.plateRect.w);
 
             var right = make(dockComponent, {
                 width: 124, height: 720, position: "right",
@@ -3627,7 +3630,8 @@ Item {
             right.openEntryMenu(right.items[0]);
             waitForRendering(stage);
             verify(right.popoverRect.w > 0);
-            verify(right.popoverRect.x + right.popoverRect.w <= right.plateRect.x);
+            verify(right.popoverCardRect.x + right.popoverCardRect.w
+                   <= right.plateRect.x);
         }
 
         function test_menu_hide_and_show_follow_the_hidden_apps() {
@@ -3893,11 +3897,20 @@ Item {
             });
             dock.openEntryMenu(dock.items[1]);
             waitForRendering(stage);
-            var rect = dock.popoverRect;
+            // The card is placed inside the output; the paint extent adds the
+            // shadow ring, which the compositor clips at the output edge
+            // (T351). It must still stay inside the pre-sized buffer budget.
+            var rect = dock.popoverCardRect;
             verify(rect.x >= 0);
             verify(rect.x + rect.w <= 400 + 0.001);
             verify(rect.y >= -320 - 0.001);
             verify(rect.y + rect.h <= dock.height + 0.001);
+            var paint = dock.popoverRect;
+            verify(paint.x >= -dock.popoverGutter - 0.001);
+            verify(paint.x + paint.w
+                   <= dock.width + dock.popoverGutter + 0.001);
+            verify(paint.y >= -dock.popoverHeadroom - 0.001);
+            verify(paint.y + paint.h <= dock.height + 0.001);
 
             // A vertical Dock keeps its popover beside the plate and inside
             // the output's horizontal extent.
@@ -3909,11 +3922,18 @@ Item {
             });
             left.openEntryMenu(left.items[0]);
             waitForRendering(stage);
-            var leftRect = left.popoverRect;
+            var leftRect = left.popoverCardRect;
             verify(leftRect.x >= left.plateRect.x + left.plateRect.w - 0.001);
             verify(leftRect.x + leftRect.w <= 400 + 0.001);
             verify(leftRect.y >= -0.001);
             verify(leftRect.y + leftRect.h <= 720 + 0.001);
+            // The paint extent adds the shadow ring but is still clamped to
+            // the output/headroom budget.
+            var leftPaint = left.popoverRect;
+            verify(leftPaint.x >= -left.popoverGutter - 0.001);
+            verify(leftPaint.x + leftPaint.w
+                   <= left.width + left.popoverGutter + 0.001);
+            verify(leftPaint.y >= -left.popoverHeadroom - 0.001);
         }
 
         function test_app_options_submenu_has_assign_login_and_show_in_files() {

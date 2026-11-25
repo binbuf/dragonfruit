@@ -9471,6 +9471,39 @@ fn dock_popup_is_bottom_anchored_and_reserves_nothing() {
         "pointer must enter the Dock popup in popup-local coordinates: got ({mx}, {my})"
     );
 
+    // T351: the shell publishes the card body as an explicit input region so
+    // the shadow ring and the empty arrow-side band stay click-through. The
+    // synthetic popup is 220x160; restrict picking to its top 150 px and move
+    // into the excluded bottom band (global y=675, popup-local y=155). The
+    // popup must not receive that enter; the Dock underneath does, at its own
+    // local (400, 50).
+    let compositor = state.compositor.clone().expect("wl_compositor bound");
+    let region = compositor.create_region(&qh, ());
+    region.add(0, 0, 220, 150);
+    popup_surface.set_input_region(Some(&region));
+    popup_surface.commit();
+    let _ = queue.roundtrip(&mut state);
+
+    state.pointer_enters = 0;
+    state.pointer_enter_positions.clear();
+    input.send("motion-abs 0.3125 0.9375"); // (400, 675) on the 1280x720 output
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    let (mx, my) = *state
+        .pointer_enter_positions
+        .last()
+        .expect("Dock enter below the popup input region");
+    assert!(
+        (mx - 400.0).abs() < 1.0 && (my - 50.0).abs() < 1.0,
+        "the excluded popup band must pass the pointer to the Dock: got ({mx}, {my})"
+    );
+
+    drop(region);
     drop(popup);
     drop(popup_surface);
     drop(dock);

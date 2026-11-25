@@ -825,6 +825,21 @@ open/close Behavior only scales *down*) and is clamped to the real offscreen
 image, so a scale animation cannot leave a stale rect and a menu taller than
 the headroom still commits a valid, clipped copy.
 
+**Popup footprints (T351).** A Dock popover publishes three separate bounds.
+`activePopoverRect`/`popoverCardRect` is the card/arrow coverage used for
+placement and regression checks. `popoverRect` is the paint extent: the card
+box plus the rotated arrow tip and the full permitted `Shadow` reach, clamped
+to the output/headroom budget before the shell commits the overlay crop. The
+material regions stop at the card body; the arrow is painted in QML with the
+matching card fill. `activePopoverInputRects` is the picking region: the card
+bodies only, expressed as a few rounded spans per card and committed as the
+popup surface's Wayland input region. The shadow ring, empty arrow-side bands,
+and transparent corner tips are click-through, while the card body stays fully
+interactive and logical close still empties the input region immediately. The
+persistent plate's `plateRect`/`panelRect` are never inputs to this math; the
+plate is only the popover anchor. See
+[ADR 0362](adr/0362-dock-popup-footprints.md).
+
 ### Dock minimize-to-icon reaction
 
 When a window minimizes, its app entry can give a short acknowledgment bounce so

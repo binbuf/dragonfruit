@@ -2640,15 +2640,21 @@ bool ShellProtocol::applyDockSurfaceGeometry(wl_surface *surface)
 }
 
 static void setPopupPointerInput(wl_compositor *compositor, wl_surface *surface,
-                                 bool active)
+                                 bool active, const QList<QRect> &rects = {})
 {
-    if (active) {
+    if (active && rects.isEmpty()) {
+        // Legacy whole-surface input region.
         wl_surface_set_input_region(surface, nullptr);
         return;
     }
     wl_region *region = wl_compositor_create_region(compositor);
     if (!region)
         return;
+    if (active) {
+        // T351: an explicit picking region. Empty rects mean "no input".
+        for (const QRect &rect : rects)
+            wl_region_add(region, rect.x(), rect.y(), rect.width(), rect.height());
+    }
     wl_surface_set_input_region(surface, region);
     wl_region_destroy(region);
 }
@@ -2678,8 +2684,10 @@ bool ShellProtocol::applyPopupSurfaceGeometry(wl_surface *surface)
     }
     if (!previous || previous->regions != next.regions)
         setMenuPanelRegions(layer, next.regions);
-    if (!previous || previous->inputActive != next.inputActive)
-        setPopupPointerInput(m_compositor, surface, next.inputActive);
+    if (!previous || previous->inputActive != next.inputActive
+            || previous->inputRects != next.inputRects)
+        setPopupPointerInput(m_compositor, surface, next.inputActive,
+                             next.inputRects);
     frame->origin = next.origin;
     frame->committed = next;
     return true;
@@ -2704,6 +2712,7 @@ bool ShellProtocol::hidePopupSurface(wl_surface *surface, df_layer_surface *laye
     if (!surface || !layer)
         return false;
     frame.next.inputActive = false;
+    frame.next.inputRects.clear();
     frame.next.regions.clear();
     if (!mapped)
         return true;
@@ -2771,6 +2780,11 @@ bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int lef
 void ShellProtocol::setDockPopupPanelRegions(const QVariantList &regions)
 {
     m_dockPopupFrame.next.regions = regions;
+}
+
+void ShellProtocol::setDockPopupInputRects(const QList<QRect> &rects)
+{
+    m_dockPopupFrame.next.inputRects = rects;
 }
 
 void ShellProtocol::setDockPopupInputActive(bool active)

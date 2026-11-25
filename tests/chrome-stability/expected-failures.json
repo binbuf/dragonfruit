@@ -102,17 +102,59 @@
     },
     {
       "test": "test_chooser_arrow_is_inside_the_committed_crop",
-      "expected": "fail",
+      "expected": "pass",
       "owner": "T351",
       "setup": "Bottom Dock 1280x160 with a two-window entry; open the real Dock window chooser",
-      "symptom": "popoverRect ends at the popup box; the rotated arrow tip extends about 1.66 logical px below the committed crop"
+      "symptom": "the committed paint crop includes the rotated arrow tip and the full shadow reach at 1x/1.5x/2x",
+      "scales": [1, 1.5, 2]
     },
     {
       "test": "test_chooser_material_region_excludes_the_arrow_gaps",
-      "expected": "fail",
+      "expected": "pass",
       "owner": "T351",
       "setup": "Bottom Dock 1280x160 with a two-window entry; open the real Dock window chooser",
-      "symptom": "the material descriptor covers the full popup rectangle, including the empty bands beside the arrow"
+      "symptom": "the material descriptor stops at the card body; the empty bands beside the arrow stay transparent",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_chooser_input_region_excludes_the_arrow_band_and_shadow",
+      "expected": "pass",
+      "owner": "T351",
+      "setup": "Bottom Dock 1280x160 with a two-window entry; open the real Dock window chooser",
+      "symptom": "the picking region is the card body; the shadow, empty arrow band and rounded corners stay click-through",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_dock_popup_footprint_for_bottom_left_and_right_anchors",
+      "expected": "pass",
+      "owner": "T351",
+      "setup": "Bottom, left and right Docks with a two-window entry; open the real Dock window chooser",
+      "symptom": "every anchor publishes card coverage, full arrow/shadow paint extents, and a card-body picking region",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_dock_context_menu_paint_and_input_bounds",
+      "expected": "pass",
+      "owner": "T351",
+      "setup": "Bottom Dock 1280x160 with a running entry; open the Dock context menu",
+      "symptom": "the context menu crop includes the shadow while picking stays on the card",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_chooser_silhouette_and_shadow_on_a_patterned_underlay",
+      "expected": "pass",
+      "owner": "T351",
+      "setup": "Bottom Dock over a 16 px checkerboard; open the real Dock window chooser",
+      "symptom": "the card, arrow and shadow paint while the empty arrow band and rounded corners show the underlay (pixel case stays at 1x; geometry covers 1.5x/2x)",
+      "scales": [1]
+    },
+    {
+      "test": "test_dock_plate_geometry_survives_a_popup_interaction",
+      "expected": "pass",
+      "owner": "T351",
+      "setup": "Bottom Dock 1280x160; open and close the real Dock window chooser",
+      "symptom": "the persistent plate geometry and its painted pixels below the popup shadow match the baseline",
+      "scales": [1]
     },
     {
       "test": "test_attached_menu_has_square_top_corners_on_a_patterned_underlay",

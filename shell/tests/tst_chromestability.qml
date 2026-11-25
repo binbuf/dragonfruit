@@ -435,6 +435,7 @@ Item {
             verify(chooser !== null && chooser.open);
             var arrow = chooserArrowBounds(dock, chooser);
             var rect = dock.popoverRect;
+            var card = dock.activePopoverRect;
             verify(rect.w > 0 && rect.h > 0, "the chooser commits a crop");
             verify(rect.x <= arrow.x + 0.01,
                    "the crop includes the arrow left edge");
@@ -444,6 +445,19 @@ Item {
                    "the crop includes the arrow right edge");
             verify(rect.y + rect.h + 0.01 >= arrow.y + arrow.h,
                    "the crop includes the rotated arrow tip");
+            // T351: the paint extent is the card plus the full shadow ring,
+            // not only the arrow band. With no pre-sized budget in this
+            // fixture the rect is the exact un-clamped extent.
+            verify(rect.x <= card.x - dock.popoverShadowLeft + 0.01,
+                   "the crop includes the left shadow reach");
+            verify(rect.y <= card.y - dock.popoverShadowTop + 0.01,
+                   "the crop includes the top shadow reach");
+            verify(rect.x + rect.w + 0.01
+                   >= card.x + card.w + dock.popoverShadowRight,
+                   "the crop includes the right shadow reach");
+            verify(rect.y + rect.h + 0.01
+                   >= card.y + card.h + dock.popoverShadowBottom,
+                   "the crop includes the bottom shadow reach");
             saveShot(stage, "t349-chooser-arrow.png");
             dock.closePopovers();
         }
@@ -465,7 +479,277 @@ Item {
                              - chooser.arrowSize / 2;
             verify(regions[0].y + regions[0].h <= cardBottom + 0.5,
                    "the material region stops at the card, not the arrow gap");
+            // The arrow is drawn in QML over the same card fill; the empty
+            // bands on either side never receive the material descriptor.
+            verify(regions[0].h < chooser.height,
+                   "the material card excludes the arrow-side band");
             dock.closePopovers();
+        }
+
+        function popoverInputContains(dock, x, y) {
+            var rect = dock.popoverRect;
+            var lx = x - Math.floor(rect.x);
+            var ly = y - Math.floor(rect.y);
+            var rects = dock.activePopoverInputRects;
+            for (var i = 0; i < rects.length; ++i) {
+                var r = rects[i];
+                if (lx >= r.x && lx < r.x + r.w
+                        && ly >= r.y && ly < r.y + r.h)
+                    return true;
+            }
+            return false;
+        }
+
+        // The picking region is the card body: the shadow ring, the empty
+        // arrow-side band, and the transparent rounded corners stay clear.
+        function test_chooser_input_region_excludes_the_arrow_band_and_shadow() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            var card = dock.activePopoverCardRect;
+            verify(dock.activePopoverInputRects.length > 0,
+                   "the chooser publishes a picking region");
+            verify(popoverInputContains(dock, card.x + card.w / 2,
+                                        card.y + card.h / 2),
+                   "the card body is interactive");
+            var bandY = card.y + card.h + chooser.arrowSize / 4;
+            verify(!popoverInputContains(dock, card.x + 2, bandY),
+                   "the empty arrow-side band stays click-through");
+            verify(!popoverInputContains(dock,
+                                         card.x + card.w + 6,
+                                         card.y + card.h / 2),
+                   "the shadow ring stays click-through");
+            verify(!popoverInputContains(dock, card.x + 1, card.y + 1),
+                   "the transparent card corner stays click-through");
+            dock.closePopovers();
+        }
+
+        // The same paint/material/input split holds for the other Dock
+        // anchors; the persistent plate is only an anchor and never part of
+        // the popup footprint.
+        function test_dock_popup_footprint_for_bottom_left_and_right_anchors() {
+            var anchors = [
+                { position: "bottom", width: 1280, height: 160 },
+                { position: "left", width: 124, height: 720 },
+                { position: "right", width: 124, height: 720 }
+            ];
+            for (var i = 0; i < anchors.length; ++i) {
+                var spec = anchors[i];
+                var dock = make(dockComponent, {
+                    width: spec.width, height: spec.height,
+                    position: spec.position,
+                    entries: [ multiWindow("files", "Files",
+                                           windowList("w", 2)) ]
+                });
+                dock.openChooser(dock.items[0]);
+                waitForRendering(stage);
+                var chooser = findChild(dock, "windowChooser");
+                verify(chooser !== null && chooser.open,
+                       spec.position + ": the chooser is open");
+                var paint = dock.popoverRect;
+                var card = dock.activePopoverRect;
+                verify(paint.x <= card.x - dock.popoverShadowLeft + 0.01,
+                       spec.position + ": paint includes the left shadow");
+                verify(paint.y <= card.y - dock.popoverShadowTop + 0.01,
+                       spec.position + ": paint includes the top shadow");
+                verify(paint.x + paint.w + 0.01
+                       >= card.x + card.w + dock.popoverShadowRight,
+                       spec.position + ": paint includes the right shadow");
+                verify(paint.y + paint.h + 0.01
+                       >= card.y + card.h + dock.popoverShadowBottom,
+                       spec.position + ": paint includes the bottom shadow");
+                verify(paint.y + paint.h + 0.01
+                       >= chooser.y + chooser.height + dock.popoverArrowTip,
+                       spec.position + ": paint includes the rotated arrow tip");
+                var regions = dock.activePopoverSurfaceRegions;
+                compare(regions.length, 1,
+                        spec.position + ": one material card");
+                verify(regions[0].h < chooser.height,
+                       spec.position + ": material stops at the card body");
+                var body = dock.activePopoverCardRect;
+                verify(popoverInputContains(dock, body.x + body.w / 2,
+                                            body.y + body.h / 2),
+                       spec.position + ": the card body is interactive");
+                verify(!popoverInputContains(dock,
+                                             body.x + body.w + 6,
+                                             body.y + body.h / 2),
+                       spec.position + ": the shadow stays click-through");
+                dock.closePopovers();
+            }
+        }
+
+        // The context menu shares the same footprint split: no arrow, but the
+        // shadow is a paint extent while picking stays on the card.
+        function test_dock_context_menu_paint_and_input_bounds() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            var menu = findChild(dock, "entryMenu");
+            verify(menu !== null && menu.open);
+            var paint = dock.popoverRect;
+            var card = dock.activePopoverRect;
+            verify(paint.x <= card.x - dock.popoverShadowLeft + 0.01,
+                   "the menu crop includes the left shadow");
+            verify(paint.y <= card.y - dock.popoverShadowTop + 0.01,
+                   "the menu crop includes the top shadow");
+            verify(paint.x + paint.w + 0.01
+                   >= card.x + card.w + dock.popoverShadowRight,
+                   "the menu crop includes the right shadow");
+            verify(paint.y + paint.h + 0.01
+                   >= card.y + card.h + dock.popoverShadowBottom,
+                   "the menu crop includes the bottom shadow");
+            var regions = dock.activePopoverSurfaceRegions;
+            compare(regions.length, 1, "the menu has one material card");
+            verify(popoverInputContains(dock, card.x + card.w / 2,
+                                        card.y + card.h / 2),
+                   "the menu body is interactive");
+            verify(!popoverInputContains(dock, card.x + card.w + 6,
+                                         card.y + card.h / 2),
+                   "the menu shadow stays click-through");
+            dock.closePopovers();
+        }
+
+        function popupShadow(item) {
+            for (var i = 0; i < item.children.length; ++i) {
+                if (item.children[i].cutoutBounds !== undefined)
+                    return item.children[i];
+            }
+            return null;
+        }
+
+        // A patterned underlay makes the silhouette observable. The shadow is
+        // hidden for the body/gap/corner phase (it is a separate paint extent,
+        // covered by the next phase) so the card itself is the only thing
+        // over the underlay. Then the shadow returns and must paint outside
+        // the card inside the committed crop.
+        function test_chooser_silhouette_and_shadow_on_a_patterned_underlay() {
+            var under = createTemporaryObject(checkerItemComponent, stage,
+                { x: 0, y: 0, width: stage.width, height: stage.height });
+            var dock = make(dockComponent, {
+                x: 0, y: 420, width: 800, height: 160,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            var baseline = grabImage(stage);
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            wait(60);
+            var chooser = findChild(dock, "windowChooser");
+            var paint = dock.popoverRect;
+            var card = dock.activePopoverCardRect;
+            function stageX(localX) { return Math.round(dock.x + localX); }
+            function stageY(localY) { return Math.round(dock.y + localY); }
+
+            var shadow = popupShadow(chooser);
+            verify(shadow !== null, "the chooser draws a shadow");
+            shadow.visible = false;
+            waitForRendering(stage);
+            wait(40);
+            var image = grabImage(stage);
+
+            var bodyX = stageX(card.x + card.w / 2);
+            var bodyY = stageY(card.y + card.h / 2);
+            verify(!nearColor(image, bodyX, bodyY,
+                              baseline.pixel(bodyX, bodyY)),
+                   "the card body paints over the underlay");
+
+            var bandX = stageX(card.x + 3);
+            var bandY = stageY(card.y + card.h + chooser.arrowSize / 4);
+            verify(nearColor(image, bandX, bandY,
+                             baseline.pixel(bandX, bandY)),
+                   "the empty arrow-side band leaves the underlay clear");
+
+            var cornerX = stageX(card.x + 2);
+            var cornerY = stageY(card.y + 2);
+            verify(nearColor(image, cornerX, cornerY,
+                             baseline.pixel(cornerX, cornerY)),
+                   "the rounded card corner leaves the underlay clear");
+
+            var arrow = findChild(chooser, "chooserArrow");
+            var arrowX = stageX(chooser.x + arrow.x + arrow.width / 2);
+            var arrowY = stageY(chooser.y + arrow.y + arrow.height / 2 + 1);
+            verify(!nearColor(image, arrowX, arrowY,
+                              baseline.pixel(arrowX, arrowY)),
+                   "the arrow paints with the card treatment");
+
+            shadow.visible = true;
+            waitForRendering(stage);
+            wait(40);
+            var shadowImage = grabImage(stage);
+            var shadowX = stageX(card.x + card.w / 2);
+            var shadowY = stageY(card.y - 2);
+            verify(shadowX >= stageX(paint.x)
+                   && shadowX <= stageX(paint.x + paint.w),
+                   "the shadow sample is inside the committed crop");
+            verify(shadowY >= stageY(paint.y)
+                   && shadowY <= stageY(paint.y + paint.h),
+                   "the shadow sample is inside the committed crop height");
+            verify(!nearColor(shadowImage, shadowX, shadowY,
+                              baseline.pixel(shadowX, shadowY)),
+                   "the shadow paints outside the card");
+            saveShot(stage, "t351-chooser-underlay.png");
+            dock.closePopovers();
+        }
+
+        // The persistent plate is not part of the popup footprint. Its
+        // geometry and its painted pixels below the popup shadow stay
+        // identical before, during, and after a chooser interaction.
+        function test_dock_plate_geometry_survives_a_popup_interaction() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            var plate = dock.plateRect;
+            var panel = dock.panelRect;
+            var before = grabImage(dock);
+            saveShot(dock, "t351-plate-before.png");
+            var samples = [];
+            var sampleY = Math.round(panel.y + panel.h * 0.8);
+            for (var i = 1; i < 10; ++i) {
+                var sampleX = Math.round(panel.x + panel.w * i / 10);
+                samples.push({ x: sampleX, y: sampleY,
+                               color: before.pixel(sampleX, sampleY) });
+            }
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.plateRect.x, plate.x, "plate x during the popup");
+            compare(dock.plateRect.y, plate.y, "plate y during the popup");
+            compare(dock.plateRect.w, plate.w, "plate width during the popup");
+            compare(dock.plateRect.h, plate.h, "plate height during the popup");
+            compare(dock.panelRect.x, panel.x, "panel x during the popup");
+            compare(dock.panelRect.y, panel.y, "panel y during the popup");
+            compare(dock.panelRect.w, panel.w, "panel width during the popup");
+            compare(dock.panelRect.h, panel.h, "panel height during the popup");
+            var during = grabImage(dock);
+            saveShot(dock, "t351-plate-during.png");
+            for (var j = 0; j < samples.length; ++j) {
+                verify(nearColor(during, samples[j].x, samples[j].y,
+                                 samples[j].color, 0.01),
+                       "the plate paints the same below the popup shadow");
+            }
+            dock.closePopovers();
+            waitForRendering(stage);
+            compare(dock.plateRect.x, plate.x, "plate x after the popup");
+            compare(dock.plateRect.y, plate.y, "plate y after the popup");
+            compare(dock.plateRect.w, plate.w, "plate width after the popup");
+            compare(dock.plateRect.h, plate.h, "plate height after the popup");
+            compare(dock.panelRect.x, panel.x, "panel x after the popup");
+            compare(dock.panelRect.y, panel.y, "panel y after the popup");
+            compare(dock.panelRect.w, panel.w, "panel width after the popup");
+            compare(dock.panelRect.h, panel.h, "panel height after the popup");
+            var after = grabImage(dock);
+            saveShot(dock, "t351-plate-after.png");
+            for (var k = 0; k < samples.length; ++k) {
+                verify(nearColor(after, samples[k].x, samples[k].y,
+                                 samples[k].color, 0.01),
+                       "the plate returns to the baseline after the popup");
+            }
         }
 
         // --- Menu silhouettes on a patterned underlay -----------------------

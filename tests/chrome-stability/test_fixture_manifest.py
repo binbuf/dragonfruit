@@ -37,21 +37,28 @@ class ManifestTests(unittest.TestCase):
         )
         self.assertEqual({case.test for case in cases}, qml_tests)
 
-    def test_pre_fix_reproducers_name_their_owner_and_setup(self) -> None:
+    def test_no_pre_fix_reproducers_remain(self) -> None:
+        # T351 flipped the last two Dock chooser reproducers. A new row must
+        # arrive as an expected failure with its owning task named; once that
+        # task lands, flip it to pass rather than leaving a permanent XFAIL.
         cases = fixtures.load_manifest(MANIFEST)
-        expected_failures = {case.test: case for case in cases
-                             if case.expected == "fail"}
         self.assertEqual(
-            set(expected_failures),
-            {
-                "test_chooser_arrow_is_inside_the_committed_crop",
-                "test_chooser_material_region_excludes_the_arrow_gaps",
-            },
+            {case.test for case in cases if case.expected == "fail"},
+            set(),
         )
-        for case in expected_failures.values():
-            self.assertIn(case.owner, {"T351"})
-            self.assertTrue(case.setup)
-            self.assertTrue(case.symptom)
+
+    def test_dock_chooser_rows_cover_one_and_a_half_and_two_x(self) -> None:
+        cases = fixtures.load_manifest(MANIFEST)
+        chooser_rows = [case for case in cases
+                        if case.test in {
+                            "test_chooser_arrow_is_inside_the_committed_crop",
+                            "test_chooser_material_region_excludes_the_arrow_gaps",
+                        }]
+        self.assertEqual(len(chooser_rows), 2)
+        for case in chooser_rows:
+            self.assertEqual(case.expected, "pass")
+            self.assertEqual(case.owner, "T351")
+            self.assertEqual(case.scales, (1.0, 1.5, 2.0))
 
     def test_status_anchor_rows_cover_one_and_a_half_and_two_x(self) -> None:
         cases = fixtures.load_manifest(MANIFEST)
