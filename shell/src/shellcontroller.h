@@ -54,7 +54,9 @@
 #include "systemstatusmodel.h"
 #include "trayclient.h"
 #include "trashbridge.h"
+#include "wallpaperluma.h"
 #include "wallpaperpolicy.h"
+#include "wallpaperproviderclient.h"
 
 class SystemStatusClient;
 class ThemeBinding;
@@ -96,13 +98,9 @@ public:
 
 private slots:
     void schedulePopupGeometry();
-    // T-18.1b: the wallpaper provider's source properties and restart. Reading
-    // them is cheap (no network); absence is normal.
-    void refreshWallpaperProvider();
-    void onWallpaperProviderItemsChanged();
-    void onWallpaperProviderPropertiesChanged(const QString &interface,
-                                              const QVariantMap &changed,
-                                              const QStringList &invalidated);
+    // T338: the worker-thread luma result for the menu bar. A stale result
+    // (another wallpaper applied meanwhile) is ignored by key.
+    void onWallpaperLumaReady(const QString &key, double luma);
     void onConfigured(int width, int height, quint32 serial);
     void onFocusedAppChanged(const QString &appId, const QString &title);
     // T-14.2b: a focus-scoped application accelerator the compositor matched.
@@ -1455,15 +1453,14 @@ private:
     // value does not re-send the protocol requests.
     WallpaperSettings m_wallpaperSettings;
     bool m_wallpaperSent = false;
-    // T200: top-band luma per wallpaper source/colour, so a Space switch does
-    // not re-decode a 4K image just to colour the menu-bar text.
-    QHash<QString, double> m_menuBarLumaCache;
-    // T-18.1b: the provider's live `DefaultSource` / `BuiltinDefaultSource`
-    // (empty when the provider is absent or has not resolved them). Kept
-    // across a provider restart so the desktop is not visibly reset.
-    QString m_providerDefault;
-    QString m_providerBuiltinDefault;
-    QDBusServiceWatcher *m_wallpaperWatcher = nullptr;
+    // T338: the menu-bar luma is decoded off the GUI thread from a scaled
+    // thumbnail and cached by source + mtime + fallback colour. `m_menuBarLumaKey`
+    // is the key currently shown so a stale worker result is ignored.
+    std::unique_ptr<WallpaperLuma> m_wallpaperLuma;
+    QString m_menuBarLumaKey;
+    // T338: the provider's resolved defaults are read asynchronously and
+    // coalesced; a missing or slow provider keeps the last known values.
+    std::unique_ptr<WallpaperProviderClient> m_wallpaperProvider;
     // T-09.5: the last display selection forwarded, so an unchanged settings
     // value does not re-send the protocol requests.
     DisplaySettings m_displaySettings;

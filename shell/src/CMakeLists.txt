@@ -146,7 +146,9 @@ add_library(dragonfruit-shell-dockcore STATIC
     systemstatusmodel.cpp
     trayclient.cpp
     trashbridge.cpp
+    wallpaperluma.cpp
     wallpaperpolicy.cpp
+    wallpaperproviderclient.cpp
 )
 # The settingsd client is shared with the Settings app (T-09.1b); it lives in
 # its own library so both processes link the same implementation (ADR 0036).

@@ -467,6 +467,30 @@ set_tests_properties(tst_settingsclient PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Wallpaper luma/provider tests (T338): a large image is decoded off the GUI
+# thread from a scaled thumbnail, and the provider's property read is async and
+# coalesced against a slow mock. The provider half needs a private session bus;
+# the luma half still runs on a bus-less host.
+qt_add_executable(tst_wallpaperluma
+    tst_wallpaperluma.cpp
+)
+target_link_libraries(tst_wallpaperluma PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_wallpaperluma
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_wallpaperluma>
+    )
+else()
+    add_test(NAME tst_wallpaperluma COMMAND tst_wallpaperluma)
+endif()
+set_tests_properties(tst_wallpaperluma PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Shell watchdog tests (T314): the GUI-thread heartbeat sends READY/WATCHDOG
 # on the event loop, a blocked GUI thread stops the beats, and the restart
 # chord maps to the stable `restart-shell` action. No Wayland, D-Bus, or QML.

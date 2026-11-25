@@ -9088,10 +9088,12 @@ void ShellController::applyWallpaperPolicy()
         m_settingsClient ? m_settingsClient->values() : QVariantMap());
     // The settingsd keys persist, but the provider's live properties are
     // authoritative when a key is empty (settingsd absent, or not yet written).
-    if (settings.builtinDefault.isEmpty() && !m_providerBuiltinDefault.isEmpty())
-        settings.builtinDefault = m_providerBuiltinDefault;
-    if (settings.providerSource.isEmpty() && !m_providerDefault.isEmpty())
-        settings.providerSource = m_providerDefault;
+    if (m_wallpaperProvider) {
+        if (settings.builtinDefault.isEmpty())
+            settings.builtinDefault = m_wallpaperProvider->builtinDefaultSource();
+        if (settings.providerSource.isEmpty())
+            settings.providerSource = m_wallpaperProvider->defaultSource();
+    }
     // Last resort (provider absent too): resolve the shipped asset locally so
     // the out-of-box background never depends on a service being up.
     if (settings.builtinDefault.isEmpty())
@@ -9113,18 +9115,29 @@ void ShellController::applyWallpaperPolicy()
 
 void ShellController::updateMenuBarLuminance()
 {
-    if (!m_item || !m_protocol)
+    if (!m_item || !m_protocol || !m_wallpaperLuma)
         return;
     QString source = m_protocol->activeWallpaperSource();
     QColor color = m_protocol->activeWallpaperColor();
     if (source.isEmpty() && !color.isValid())
         source = m_wallpaperSettings.effectiveSource();
-    const QString key = source + QLatin1Char('|')
-            + (color.isValid() ? color.name(QColor::HexArgb) : QString());
-    auto cached = m_menuBarLumaCache.constFind(key);
-    if (cached == m_menuBarLumaCache.constEnd())
-        cached = m_menuBarLumaCache.insert(key, wallpaperTopBandLuminance(source, color));
-    m_item->setProperty("backgroundLuma", cached.value());
+    // T338: the luma decode is a worker-thread thumbnail pass. A cache hit or
+    // a solid Space resolves immediately; otherwise the bar keeps its current
+    // value until `lumaReady` arrives.
+    const QString key = WallpaperLuma::keyFor(source, color);
+    m_menuBarLumaKey = key;
+    if (const std::optional<double> luma =
+            m_wallpaperLuma->request(key, source, color)) {
+        m_item->setProperty("backgroundLuma", *luma);
+    }
+}
+
+void ShellController::onWallpaperLumaReady(const QString &key, double luma)
+{
+    // A newer wallpaper may have been applied while this decode was in
+    // flight; only the key still on screen may update the bar.
+    if (m_item && key == m_menuBarLumaKey)
+        m_item->setProperty("backgroundLuma", luma);
 }
 
 void ShellController::connectAppIndex()
@@ -9166,82 +9179,23 @@ void ShellController::applyAppIndexCatalog()
 
 void ShellController::connectWallpaperProvider()
 {
+    // T338: the luma worker exists even when no bus is available; the menu bar
+    // still gets the solid fallback immediately.
+    m_wallpaperLuma = std::make_unique<WallpaperLuma>(this);
+    connect(m_wallpaperLuma.get(), &WallpaperLuma::lumaReady, this,
+            &ShellController::onWallpaperLumaReady);
+
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected())
         return;
-    m_wallpaperWatcher = new QDBusServiceWatcher(
-        kWallpaperService, bus,
-        QDBusServiceWatcher::WatchForRegistration | QDBusServiceWatcher::WatchForUnregistration,
-        this);
-    // A provider (re)start re-reads its resolved defaults; an unregistration
-    // keeps the last known values so a restart leaves the desktop unchanged.
-    connect(m_wallpaperWatcher, &QDBusServiceWatcher::serviceRegistered, this,
-            [this](const QString &) { refreshWallpaperProvider(); });
-    // The standard property notification covers `DefaultSource` and
-    // `BuiltinDefaultSource`; the contract signals are a belt-and-braces
-    // refresh for a first fill.
-    bus.connect(kWallpaperService, kWallpaperPath,
-                QStringLiteral("org.freedesktop.DBus.Properties"),
-                QStringLiteral("PropertiesChanged"), this,
-                SLOT(onWallpaperProviderPropertiesChanged(QString, QVariantMap, QStringList)));
-    bus.connect(kWallpaperService, kWallpaperPath, kWallpaperInterface,
-                QStringLiteral("ItemsChanged"), this,
-                SLOT(onWallpaperProviderItemsChanged()));
-    refreshWallpaperProvider();
-}
-
-void ShellController::refreshWallpaperProvider()
-{
-    QDBusConnection bus = QDBusConnection::sessionBus();
-    if (!bus.isConnected())
-        return;
-    const auto readProperty = [&bus](const QString &name) -> QString {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            kWallpaperService, kWallpaperPath,
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << kWallpaperInterface << name;
-        const QDBusMessage reply = bus.call(call);
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-            return QString();
-        QVariant value = reply.arguments().constFirst();
-        if (value.userType() == qMetaTypeId<QDBusVariant>())
-            value = value.value<QDBusVariant>().variant();
-        return value.toString();
-    };
-    const QString providerDefault = readProperty(QStringLiteral("DefaultSource"));
-    const QString builtinDefault = readProperty(QStringLiteral("BuiltinDefaultSource"));
-    if (providerDefault == m_providerDefault && builtinDefault == m_providerBuiltinDefault)
-        return;
-    m_providerDefault = providerDefault;
-    m_providerBuiltinDefault = builtinDefault;
-    applyWallpaperPolicy();
-}
-
-void ShellController::onWallpaperProviderItemsChanged()
-{
-    // A first fill or a refreshed catalogue may have moved DefaultSource; the
-    // property read is local and cheap.
-    refreshWallpaperProvider();
-}
-
-void ShellController::onWallpaperProviderPropertiesChanged(const QString &interface,
-                                                           const QVariantMap &changed,
-                                                           const QStringList &invalidated)
-{
-    Q_UNUSED(interface);
-    Q_UNUSED(invalidated);
-    bool moved = false;
-    if (changed.contains(QStringLiteral("DefaultSource"))) {
-        m_providerDefault = changed.value(QStringLiteral("DefaultSource")).toString();
-        moved = true;
-    }
-    if (changed.contains(QStringLiteral("BuiltinDefaultSource"))) {
-        m_providerBuiltinDefault =
-            changed.value(QStringLiteral("BuiltinDefaultSource")).toString();
-        moved = true;
-    }
-    if (moved)
-        applyWallpaperPolicy();
+    // The provider's resolved defaults are a second wallpaper input. The
+    // client reads them asynchronously (one coalesced `GetAll`, short bound)
+    // and keeps the last values across a provider restart.
+    m_wallpaperProvider = std::make_unique<WallpaperProviderClient>(
+        kWallpaperService, kWallpaperPath, kWallpaperInterface);
+    connect(m_wallpaperProvider.get(), &WallpaperProviderClient::changed, this,
+            &ShellController::applyWallpaperPolicy);
+    m_wallpaperProvider->start();
 }
 
 void ShellController::waitForInitialSettings()

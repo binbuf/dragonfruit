@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "wallpaperpolicy.h"
 
-#include <QImageReader>
-
 namespace {
 
 QVariant readValue(const QVariantMap &values, const QString &key, const QVariant &fallback)
@@ -85,16 +83,4 @@ double wallpaperTopBandLuminance(const QImage &image, const QColor &fallback)
     }
     const QColor color = fallback.isValid() ? fallback : QColor(128, 128, 128);
     return 0.299 * color.redF() + 0.587 * color.greenF() + 0.114 * color.blueF();
-}
-
-double wallpaperTopBandLuminance(const QString &source, const QColor &fallback)
-{
-    if (!source.isEmpty()) {
-        QImageReader reader(source);
-        reader.setAutoTransform(true);
-        const QImage image = reader.read();
-        if (!image.isNull())
-            return wallpaperTopBandLuminance(image, fallback);
-    }
-    return wallpaperTopBandLuminance(QImage(), fallback);
 }
