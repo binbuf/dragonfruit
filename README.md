@@ -30,7 +30,7 @@ Our goal is to bring the visual polish, consistency, and intuitive flow of macOS
 **Fedora** has been the inital development and testing platform. From an existing Wayland session:
 
 ```bash
-sudo dnf install rustc cargo qt6-qtdeclarative-devel cmake ninja-build \
+sudo dnf install rustc cargo qt6-qtdeclarative-devel qt6-qtwayland cmake ninja-build \
   libxkbcommon-devel wayland-devel libdrm-devel mesa-libgbm-devel \
   libinput-devel libseat-devel systemd-devel
 
@@ -38,6 +38,10 @@ git clone https://github.com/binbuf/dragonfruit.git
 cd dragonfruit
 make dev
 ```
+
+The Qt 6 Wayland platform plugin (`qt6-qtwayland` on Fedora) is a separate
+package on several distributions; `scripts/check-native-deps.sh` checks for it
+without root and prints the install command for your distro.
 
 `make dev` builds and runs Dragonfruit **in a window**, without replacing your current desktop. For native-session installation and recovery, run `make help` and review the scripts before proceeding.
 

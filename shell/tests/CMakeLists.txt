@@ -232,6 +232,26 @@ set_tests_properties(tst_dockcore PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Qt platform-plugin lookup (T342): the shell's Wayland-QPA availability check
+# and the offscreen fallback decision. Pure filesystem/environment logic; no
+# plugin is loaded and no display is required.
+qt_add_executable(tst_qpaplatform
+    tst_qpaplatform.cpp
+)
+target_link_libraries(tst_qpaplatform PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_qpaplatform
+    COMMAND tst_qpaplatform
+)
+set_tests_properties(tst_qpaplatform PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Terminal fallback and `Terminal=true` tests (T340): $TERMINAL,
 # xdg-terminal-exec, x-terminal-emulator, the common terminal list, the absent
 # path (never unwrapped), a fixture launch, and the Dock's conditional Terminal

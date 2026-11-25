@@ -11,6 +11,8 @@
 #include <QCommandLineParser>
 #include <QFile>
 #include <QGuiApplication>
+#include <QLibraryInfo>
+#include <QProcessEnvironment>
 #include <QThread>
 #include <QDebug>
 
@@ -21,6 +23,30 @@
 #include "systemfont.h"
 #include "i18n.h"
 #include "gpuchromeframeproducer.h"
+#include "qpaplatform.h"
+
+namespace {
+
+bool qtWaylandPlatformPluginAvailable()
+{
+    return waylandQpaPluginPresent(qpaPluginDirectories(
+        QLibraryInfo::path(QLibraryInfo::PluginsPath),
+        QProcessEnvironment::systemEnvironment()));
+}
+
+void useOffscreenQpa(const QString &reason)
+{
+    qWarning().noquote()
+        << QStringLiteral(
+               "%1; falling back to the offscreen QPA. "
+               "Install the Qt 6 Wayland platform plugin (for example "
+               "qt6-qtwayland on Fedora or qt6-wayland on Debian/Arch) to "
+               "use the GPU chrome rail.")
+               .arg(reason);
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+}
+
+} // namespace
 
 int main(int argc, char *argv[])
 {
@@ -40,14 +66,28 @@ int main(int argc, char *argv[])
     // QPA for the Qt-side GL context only. The chrome surfaces stay on the
     // shell's own libwayland connection (ADR 0195); no QQuickWindow is shown,
     // so the QPA creates no toplevel. A missing/no-GPU host falls back to the
-    // offscreen software rail in the producer.
-    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
+    // offscreen software rail in the producer. The Wayland QPA is a separate
+    // distro package on some hosts (T342); check for it before
+    // QGuiApplication aborts on the missing plugin.
+    const QString requestedPlatform = qEnvironmentVariable("QT_QPA_PLATFORM");
+    if (requestedPlatform.isEmpty()) {
         if (GpuChromeFrameProducer::environmentRequested()
             && !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
-            qputenv("QT_QPA_PLATFORM", "wayland");
+            if (qtWaylandPlatformPluginAvailable()) {
+                qputenv("QT_QPA_PLATFORM", "wayland");
+            } else {
+                useOffscreenQpa(QStringLiteral(
+                    "the Qt Wayland platform plugin is missing"));
+            }
         } else {
             qputenv("QT_QPA_PLATFORM", "offscreen");
         }
+    } else if (qpaPlatformIsWayland(requestedPlatform)
+               && !qtWaylandPlatformPluginAvailable()) {
+        useOffscreenQpa(
+            QStringLiteral("QT_QPA_PLATFORM=%1 was requested but the Qt "
+                           "Wayland platform plugin is missing")
+                .arg(requestedPlatform));
     }
 
     QGuiApplication app(argc, argv);

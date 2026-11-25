@@ -76,6 +76,26 @@ The portable tar's `install.sh`/`uninstall.sh` follow the same rules. The
 uninstaller removes exactly the paths in the staged manifest and keeps user
 settings under `~/.config/dragonfruit/` and `~/.local/state/dragonfruit/`.
 
+## Qt Wayland platform plugin
+
+The shell requests the Wayland QPA when GPU chrome is available, so the Qt 6
+Wayland platform plugin is a hard runtime dependency even though it is packaged
+separately from Qt Base on several distributions. Package names differ:
+
+| Distribution | Package |
+|---|---|
+| Fedora | `qt6-qtwayland` |
+| Debian / Ubuntu | `qt6-wayland` |
+| Arch | `qt6-wayland` |
+| openSUSE | `qt6-wayland` (some builds ship `libqwayland.so` in `libQt6Gui6`) |
+| Alpine | `qt6-qtwayland` |
+
+The RPM, DEB, and Arch metadata above declare the plugin. A source build can
+check the host with `scripts/check-native-deps.sh`, which is read-only and
+never installs packages; it reports the missing package and the distro command.
+Without the plugin the shell logs a warning and uses the offscreen software
+rail rather than aborting (ADR [0353](../docs/design/adr/0353-qt-wayland-platform-plugin-preflight.md)).
+
 ## Release CI
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on

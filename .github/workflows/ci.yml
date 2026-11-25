@@ -34,7 +34,7 @@ jobs:
           sudo apt-get install -y \
             libxkbcommon-dev libwayland-dev ninja-build \
             libdrm-dev libgbm-dev libinput-dev libseat-dev libudev-dev \
-            xwayland x11-utils
+            qt6-wayland xwayland x11-utils
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -51,6 +51,12 @@ jobs:
 
       - name: Prepare log directory
         run: mkdir -p logs
+
+      # T342: a source build needs the Qt Wayland platform plugin for the
+      # shell's GPU chrome rail. This is the same read-only, distro-aware
+      # check the native session runs before arming a login.
+      - name: Native dependency preflight (T342)
+        run: bash ./scripts/check-native-deps.sh 2>&1 | tee logs/native-deps.log
 
       - name: Format check
         run: cargo fmt --all -- --check 2>&1 | tee logs/rust-fmt.log

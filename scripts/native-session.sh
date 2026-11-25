@@ -517,6 +517,17 @@ remove_native_capture() {
 # prevents "I logged out and now every login is a black screen".
 preflight_login_environment() {
     local libs name src output missing=0
+    local -a qpa_args=()
+    if [ -f "$root/scripts/check-native-deps.sh" ]; then
+        if [ -d "$DF_TOOLCHAIN/lib64" ]; then
+            qpa_args+=(--plugin-dir "$DF_TOOLCHAIN/lib64/qt6/plugins/platforms")
+        elif [ -d "$DF_TOOLCHAIN/lib" ]; then
+            qpa_args+=(--plugin-dir "$DF_TOOLCHAIN/lib/qt6/plugins/platforms")
+        fi
+        if ! bash "$root/scripts/check-native-deps.sh" "${qpa_args[@]}"; then
+            die "refusing to arm the login until the Qt Wayland platform plugin is installed (pass --skip-preflight to override)"
+        fi
+    fi
     libs="$(session_library_path)"
     if ! command -v ldd >/dev/null 2>&1; then
         say "preflight: ldd is unavailable; skipping the loader check"
@@ -572,14 +583,14 @@ packages_for() {
     case "$1" in
         dnf|yum)
             printf '%s\n' "gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config \
-                qt6-qtbase-devel qt6-qtdeclarative-devel wayland-devel \
+                qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwayland wayland-devel \
                 libxkbcommon-devel libdrm-devel mesa-libgbm-devel \
                 libinput-devel libseat-devel systemd-devel dbus-daemon \
                 rust cargo curl"
             ;;
         apt-get)
             printf '%s\n' "build-essential pkg-config cmake ninja-build \
-                qt6-base-dev qt6-declarative-dev qt6-wayland-dev \
+                qt6-base-dev qt6-declarative-dev qt6-wayland-dev qt6-wayland \
                 libxkbcommon-dev libwayland-dev libdrm-dev libgbm-dev \
                 libinput-dev libseat-dev libsystemd-dev libdbus-1-dev \
                 libegl-dev libgl-dev cargo rustc curl"
@@ -591,14 +602,14 @@ packages_for() {
             ;;
         zypper)
             printf '%s\n' "gcc gcc-c++ make cmake ninja pkg-config \
-                qt6-base-devel qt6-declarative-devel wayland-devel \
+                qt6-base-devel qt6-declarative-devel qt6-wayland wayland-devel \
                 libxkbcommon-devel libdrm-devel Mesa-libgbm-devel \
                 libinput-devel libseat-devel systemd-devel dbus-1-devel \
                 rust cargo curl"
             ;;
         apk)
             printf '%s\n' "build-base pkgconf cmake ninja qt6-qtbase-dev \
-                qt6-qtdeclarative-dev wayland-dev libxkbcommon-dev libdrm-dev \
+                qt6-qtdeclarative-dev qt6-qtwayland wayland-dev libxkbcommon-dev libdrm-dev \
                 mesa-dev libinput-dev libseat-dev dbus-dev rust cargo curl"
             ;;
         *)
@@ -609,6 +620,7 @@ packages_for() {
 
 missing_prereqs() {
     local missing=() command
+    local -a qpa_args=()
     for command in cc c++ make cmake ninja pkg-config cargo rustc systemctl; do
         if ! command -v "$command" >/dev/null 2>&1; then
             missing+=("$command")
@@ -617,6 +629,21 @@ missing_prereqs() {
     if command -v pkg-config >/dev/null 2>&1; then
         if ! pkg-config --exists Qt6Core Qt6Quick Qt6Qml Qt6Test Qt6DBus 2>/dev/null; then
             missing+=("Qt6 development files")
+        fi
+    fi
+    # The shell's GPU chrome rail needs the Qt Wayland platform plugin, which
+    # some distributions package separately from Qt Base (T342). Restrict the
+    # check to the Qt tree the native session will actually load when the dev
+    # toolchain is present; otherwise fall back to the system search.
+    if [ -f "$root/scripts/check-native-deps.sh" ]; then
+        if [ -d "$DF_TOOLCHAIN/lib64" ]; then
+            qpa_args+=(--plugin-dir "$DF_TOOLCHAIN/lib64/qt6/plugins/platforms")
+        elif [ -d "$DF_TOOLCHAIN/lib" ]; then
+            qpa_args+=(--plugin-dir "$DF_TOOLCHAIN/lib/qt6/plugins/platforms")
+        fi
+        if ! bash "$root/scripts/check-native-deps.sh" --quiet "${qpa_args[@]}" \
+            >/dev/null 2>&1; then
+            missing+=("Qt 6 Wayland platform plugin")
         fi
     fi
     if [ "${#missing[@]}" -gt 0 ]; then

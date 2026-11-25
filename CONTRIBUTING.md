@@ -40,7 +40,7 @@ The quick start in the [README](README.md#quick-start) installs the native
 dependencies. The short version from a Fedora host is:
 
 ```bash
-sudo dnf install rustc cargo qt6-qtdeclarative-devel cmake ninja-build \
+sudo dnf install rustc cargo qt6-qtdeclarative-devel qt6-qtwayland cmake ninja-build \
   libxkbcommon-devel wayland-devel libdrm-devel mesa-libgbm-devel \
   libinput-devel libseat-devel systemd-devel
 
@@ -48,6 +48,11 @@ git clone https://github.com/binbuf/dragonfruit.git
 cd dragonfruit
 make dev
 ```
+
+The Qt 6 Wayland platform plugin (`qt6-qtwayland` on Fedora) is a separate
+package on several distributions. `scripts/check-native-deps.sh` checks for it
+without root, and `scripts/native-session.sh start` runs that check before it
+arms a login.
 
 `make dev` builds and runs Dragonfruit **in a window** on your existing session.
 It is the safe default: your host desktop is never replaced, and teardown

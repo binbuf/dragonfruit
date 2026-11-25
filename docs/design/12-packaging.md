@@ -129,6 +129,11 @@ They follow three rules:
    resolve them. Qt and system libraries are never copied inside the package:
    a bundled Qt would fight the distro's platform plugins, theming, and
    security updates. Only our own binaries, QML modules, and data are shipped.
+   The Qt 6 Wayland platform plugin is part of that set even though its package
+   name differs: `qt6-qtwayland` on Fedora and Alpine, `qt6-wayland` on
+   Debian/Ubuntu, Arch, and openSUSE. A source build checks it with
+   `scripts/check-native-deps.sh`; the shell falls back to the offscreen QPA
+   with a warning rather than aborting when it is absent.
 2. **Build on the oldest supported release of each family.** A binary built
    against the oldest Qt runs on newer releases of the same family (the Qt 6
    soname is stable across minors). The declared Qt version is derived from
