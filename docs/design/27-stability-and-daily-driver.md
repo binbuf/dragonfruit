@@ -7,7 +7,7 @@
 | **Scope** | The correctness, safety, recovery, and hardware-wiring bar for a single-user daily-driver session |
 | **Contract owner** | This document |
 | **Executable plan** | [`docs/tasks/stability/`](../tasks/stability/README.md) (local, gitignored), tasks T304–T348 |
-| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md), [ADR 0348](adr/0348-settings-default-browser-async.md), [ADR 0349](adr/0349-wallpaper-provider-and-luma-async.md), [ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md), [ADR 0353](adr/0353-qt-wayland-platform-plugin-preflight.md), [ADR 0354](adr/0354-native-install-transaction.md), [ADR 0355](adr/0355-dm-session-write-elevation.md), [ADR 0356](adr/0356-supervisor-restart-backoff-and-pgid-teardown.md), [ADR 0357](adr/0357-deferred-register-contract.md) |
+| **Decisions** | [ADR 0311](adr/0311-stability-daily-driver-gate.md), [ADR 0312](adr/0312-lock-loss-ends-the-session.md), [ADR 0313](adr/0313-idle-dpms-ownership.md), [ADR 0314](adr/0314-pointer-constraints-are-unprivileged.md), [ADR 0315](adr/0315-one-output-global-and-output-scoped-input.md), [ADR 0316](adr/0316-settings-consumer-conformance.md), [ADR 0317](adr/0317-lock-and-suspend-tear-down-client-grabs.md), [ADR 0318](adr/0318-focus-clearing-is-one-helper.md), [ADR 0319](adr/0319-teardown-focus-restore.md), [ADR 0320](adr/0320-launch-time-xwayland-display-handoff.md), [ADR 0321](adr/0321-asynchronous-clipboard-source-write.md), [ADR 0322](adr/0322-portal-request-liveness.md), [ADR 0323](adr/0323-cross-filesystem-move-atomicity.md), [ADR 0324](adr/0324-log-out-through-logind.md), [ADR 0325](adr/0325-shell-watchdog-and-restart-chord.md), [ADR 0326](adr/0326-per-output-dpms.md), [ADR 0327](adr/0327-shell-idle-effects.md), [ADR 0328](adr/0328-lock-before-sleep.md), [ADR 0329](adr/0329-panel-brightness-through-logind.md), [ADR 0330](adr/0330-pointer-settings-libinput-application.md), [ADR 0331](adr/0331-media-keys-input-action-steps.md), [ADR 0332](adr/0332-xwayland-disconnect-teardown.md), [ADR 0333](adr/0333-net-frame-extents.md), [ADR 0334](adr/0334-xdnd-bridge-as-target.md), [ADR 0335](adr/0335-xdnd-bridge-as-source.md), [ADR 0344](adr/0344-screencast-producer-process-boundary.md), [ADR 0345](adr/0345-screencast-bridge-and-portal-ownership.md), [ADR 0346](adr/0346-screencast-bridge-trusted-portal-client.md), [ADR 0347](adr/0347-dock-pin-initialization-marker.md), [ADR 0348](adr/0348-settings-default-browser-async.md), [ADR 0349](adr/0349-wallpaper-provider-and-luma-async.md), [ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md), [ADR 0353](adr/0353-qt-wayland-platform-plugin-preflight.md), [ADR 0354](adr/0354-native-install-transaction.md), [ADR 0355](adr/0355-dm-session-write-elevation.md), [ADR 0356](adr/0356-supervisor-restart-backoff-and-pgid-teardown.md), [ADR 0357](adr/0357-deferred-register-contract.md), [ADR 0358](adr/0358-t347-matrix-report-contract.md) |
 
 This document defines what **working daily driver** means for Dragonfruit. It
 is deliberately narrower than the total-experience design
@@ -731,29 +731,64 @@ items are the first-week friction; P2 items are deferred in §7.
 ### 5.2 Native (reference A)
 
 T347 runs the matrix on the reference laptop and writes a report with one row
-per check and a PASS/FAIL/`OPEN` verdict:
+per check and a PASS/FAIL/`OPEN` verdict. The executable half is
+`make t347-daily-driver-matrix` (`scripts/t347-daily-driver-matrix.py`). It
+captures the host profile and DRM seat state, runs the headless conformance
+checks below, and writes `docs/captures/t347-daily-driver-matrix.md` plus a
+machine-readable `.json`. It always writes a complete matrix: a host without a
+free DRM seat gets `OPEN` rows with the exact rerun command, never a skipped
+check. A failed headless check is `FAIL` and blocks the gate.
 
-| Check | Pass condition |
-|---|---|
-| Cold login | Usable desktop in < 5 s; no error dialog; chrome and wallpaper present |
-| Workday | 8 hours of normal use; no shell/compositor restart; no stuck focus; no leaked sockets |
-| Idle soak | 24 hours; dim → blank → lock → suspend at the configured stages; input wakes; no runaway CPU |
-| Suspend/resume | 20 cycles; session survives; lock is shown on wake; Wi-Fi/Bluetooth/audio recover |
-| Lid close | 20 cycles; locks before sleep; external display resumes |
-| Lock/unlock | 50 cycles; PAM; no key leak to a client; shell restart while locked ends the session safely |
-| Shell kill | 20 unlocked kills → chrome back < 2 s; 20 locked kills → session ends safely, never frozen; a blocked GUI thread is watchdog-killed and restarted |
-| Hotplug | 20 plug/unplug cycles; one output each; no phantom; popups/touch on the right output |
-| Launch | X11 app, Wayland app, Flatpak file dialog, screenshot, screen share fallback |
-| Data | Cross-filesystem move; interrupt; source intact; retry clean |
-| Battery | Drain measurement on the reference laptop; no idle wakeups above the existing budget |
-| Journal | No panics, no GPU errors, no repeated service restarts, no leaked processes |
+Native results are recorded in the local, gitignored
+`docs/captures/t347-native-evidence.json`. A `PASS` or `FAIL` row must name a
+`note` and an `artifact`; an incomplete `PASS` stays `OPEN`, and a headless
+`FAIL` always wins over an intake `PASS`:
+
+```json
+{
+  "profile": "reference-A",
+  "recorded": "2026-11-25T10:00:00Z",
+  "rows": {
+    "cold-login": {
+      "verdict": "PASS",
+      "note": "4.2 s from login to usable desktop",
+      "artifact": "docs/captures/t347-native/cold-login.txt"
+    }
+  }
+}
+```
+
+| Check | Pass condition | Headless proof (report check id) |
+|---|---|---|
+| Cold login | Usable desktop in < 5 s; no error dialog; chrome and wallpaper present | `startup` |
+| Workday | 8 hours of normal use; no shell/compositor restart; no stuck focus; no leaked sockets | `startup`, `shell-kill`, `idle-trace` |
+| Idle soak | 24 hours; dim → blank → lock → suspend at the configured stages; input wakes; no runaway CPU | `idle-policy`, `idle-trace` |
+| Suspend/resume | 20 cycles; session survives; lock is shown on wake; Wi-Fi/Bluetooth/audio recover | `suspend`, `adapters` |
+| Lid close | 20 cycles; locks before sleep; external display resumes | `suspend` |
+| Lock/unlock | 50 cycles; PAM; no key leak to a client; shell restart while locked ends the session safely | `lock` |
+| Shell kill | 20 unlocked kills → chrome back < 2 s; 20 locked kills → session ends safely, never frozen; a blocked GUI thread is watchdog-killed and restarted | `shell-kill`, `lock` |
+| Hotplug | 20 plug/unplug cycles; one output each; no phantom; popups/touch on the right output | `hotplug` |
+| Launch | X11 app, Wayland app, Flatpak file dialog, screenshot, screen share fallback | `launch`, `portals` (report rows `launch-x11`, `launch-wayland`, `launch-flatpak`) |
+| Data | Cross-filesystem move; interrupt; source intact; retry clean | `data` |
+| Battery | Drain measurement on the reference laptop; no idle wakeups above the existing budget | native measurement only |
+| Journal | No panics, no GPU errors, no repeated service restarts, no leaked processes | `journal` |
+| Reference keyboard / media keys | Volume/mute/brightness keys step 5%, show the OSD, and leak no key to the client | `media-keys` (native `wev` row) |
+| Latency / scanout | Input-to-present within one frame; scanout counters observed on the reference GPU | `latency` (native `make t238-native-acceptance`) |
+
+The report expands `Launch` into `launch-x11`, `launch-wayland`, and
+`launch-flatpak`, and records `file-dialog-screenshot` separately. The
+`suspend-resume` row includes the post-resume audio/Wi-Fi/Bluetooth check.
+Every `OPEN` row names the missing capability, the reason, the exact rerun
+command, the owner, and the artifact path it expects; a P0 failure is never
+waived. The report contract is frozen in
+[ADR 0358](adr/0358-t347-matrix-report-contract.md).
 
 ### 5.3 Human
 
 T348 batches the human verdict. An agent task is not human-signed-off. The
-verdict records the hardware profile, the PASS/`OPEN` rows, and the known
-limits. If the matrix is not PASS, the README’s “not yet a daily driver” note
-stays and the blocker is named.
+verdict reads the T347 report and its native intake, and records the hardware
+profile, the PASS/`OPEN` rows, and the known limits. If the matrix is not PASS,
+the README’s “not yet a daily driver” note stays and the blocker is named.
 
 ## 6. Release gate and status transition
 
@@ -761,7 +796,9 @@ The order is fixed:
 
 1. `make verify-stability` is green for every task.
 2. `make gates` is green on the final tree.
-3. T347 has a PASS or an explicit `OPEN` with a command for every row.
+3. T347 has a PASS or an explicit `OPEN` with a command for every row; the
+   report is `docs/captures/t347-daily-driver-matrix.md` and the native intake
+   is `docs/captures/t347-native-evidence.json`.
 4. T348 records the human verdict and updates `STATUS.md`, `14-risks.md`,
    `README.md`, and the task set progress.
 

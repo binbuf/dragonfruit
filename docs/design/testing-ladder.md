@@ -140,3 +140,12 @@ behavior you want while developing a display server.
 
 Multi-GPU, laptop + dock hotplug, suspend/resume cycles, NVIDIA
 (soak-scripted, from T-31 onward).
+
+The daily-driver matrix is the T347 gate
+([27-stability-and-daily-driver.md](27-stability-and-daily-driver.md) §5.2).
+Run `make t347-daily-driver-matrix` on the reference laptop: it writes the
+hardware profile, the headless half of every row, and a PASS/FAIL/`OPEN`
+report under `docs/captures/t347-daily-driver-matrix.md`. Native results are
+recorded in the local, gitignored
+`docs/captures/t347-native-evidence.json`; a host without a free DRM seat gets
+`OPEN` rows with the exact rerun command, not a skipped check.

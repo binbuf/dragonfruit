@@ -78,7 +78,7 @@ endif
 	t272-network-capture t272a-network-capability-capture t273-data-panes-capture t274-appearance-capture t275-accessibility-capture t276-desktop-capture t277-quick-settings-menu-bar-capture t278-personalization-capture t279-accounts-security-capture t280-devices-capture t281-linux-specific-capture t285-settings-ia-capture t286-settings-shell-capture t287-settings-general-capture t288-settings-connectivity-capture t289-settings-battery-displays-capture t290-settings-appearance-capture t291a-settings-accessibility-vision-capture t291b-settings-accessibility-physical-motor-capture t291c-settings-accessibility-hearing-capture t291d-settings-accessibility-speech-capture t291e-settings-accessibility-general-capture t292a-settings-desktop-dock-capture t292b-settings-workspace-overview-capture t293a-settings-menu-bar-capture t293b-settings-menu-bar-controls-capture \
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare t238-dock-popover-ab t238-dock-popover-ab-native t238-material-regions t238-material-workloads t238-shadow-capture t238-decoration-matrix t238-nested-responsiveness t238-presenter-lifecycle t238-native-acceptance t238-wake-swap-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
-        t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update stage dist package \
+        t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture t347-daily-driver-matrix check-t347-matrix i18n-update stage dist package \
         files-capture t230d-files-capture t330-files-capture t331-files-capture t333-files-capture t334-files-capture t334-files-live-capture t231-extras-capture t232-extras-capture t233-menubar-capture t234-notifications-capture t235-control-center-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-glass-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-motion-calibration t235a-dock-perimeter-capture dock-plate-corners-capture dock-icon-mask-capture glass-reference-manifest glass-reference-verify glass-selftest glass-presets-check menubar-veil-check menubar-veil-capture menu-families-check menu-families-capture t329-window-menu-capture first-party-chrome-check first-party-chrome-capture t230b-window-styles-capture nested-acceptance-check nested-acceptance-capture t335a-screencast t335b-screencast-client glass-baseline-capture glass-baseline-check dock-optics-capture check-desktop-names check-naming check-assets check-no-capture-grab check-design-tokens check-i18n check-phosphor check-tabler distro-contract-check check-native-deps check-native-session clean install
 
 help:
@@ -176,6 +176,8 @@ help:
 	@echo "  make t17-visual-floor-capture — T-17.3 visual-floor/reduced-motion chrome stills + gallery review sheet"
 	@echo "  make t17-leak-lock-soak — T-17.5b leak tripwire + lock enforcement transcript"
 	@echo "  make t17-premium-gate-capture — T-17.6 assembled-desktop still + premium-gate sign-off transcript"
+	@echo "  make t347-daily-driver-matrix — T347 hardware profile + headless checks + PASS/FAIL/OPEN matrix report"
+	@echo "  make check-t347-matrix — T347 report-builder regression tests"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make t230d-files-capture — T230d measured Files chrome, toolbar-hidden and Get Info stills"
 	@echo "  make t330-files-capture — T330 copy/cut/paste and the paste conflict sheet"
@@ -307,6 +309,7 @@ verify-stability: gate-checks
 	$(CARGO) test -p dragonfruit-files-core
 	$(MAKE) check-settings-consumers
 	$(MAKE) check-deferred-register
+	$(MAKE) check-t347-matrix
 	$(MAKE) qml-test
 
 # T304/ADR 0316: the behavioral half of the Settings map gate. A live
@@ -325,6 +328,12 @@ check-settings-consumers:
 check-deferred-register:
 	python3 scripts/check-deferred-register.py
 	python3 tests/docs/test_deferred_register.py
+
+# T347: the matrix report builder's regression tests. The matrix itself is a
+# hardware run; this pins the row/verdict contract, the no-seat OPEN behavior,
+# and the fail-closed intake rules.
+check-t347-matrix:
+	python3 tests/docs/test_t347_daily_driver_matrix.py
 
 # T304: the local baseline. Writes the current known-gap list into the
 # gitignored task progress directory so later sessions can see what T304 saw.
@@ -1041,6 +1050,16 @@ t17-leak-lock-soak: cargo-build
 # headless rows.
 t17-premium-gate-capture: build
 	bash scripts/capture-t17-premium-gate.sh
+
+# T347: the reference-hardware daily-driver matrix. Captures the host hardware
+# profile and DRM seat state, runs the headless conformance checks for every
+# matrix row, and writes docs/captures/t347-daily-driver-matrix.{md,json}. A
+# host without a free DRM seat gets an OPEN row with the exact rerun command,
+# never a skipped check; a headless failure is FAIL and exits non-zero. Native
+# PASS/FAIL rows are read from the local, gitignored
+# docs/captures/t347-native-evidence.json.
+t347-daily-driver-matrix: cargo-build check-t347-matrix
+	python3 scripts/t347-daily-driver-matrix.py
 
 # T-10.7: the Files slice capture. Needs a host Wayland session, `spectacle`,
 # `ffmpeg`, `gdbus`, Pillow and the built tree; drives the nested demo over the

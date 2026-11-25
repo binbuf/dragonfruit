@@ -346,6 +346,12 @@ An `OPEN` row must include:
 - the impact (which task/surface is blocked);
 - a fallback used in the meantime.
 
+T347's `docs/captures/t347-daily-driver-matrix.md` is the native instance:
+every `OPEN` row names the capability, the reason, the rerun command, the
+owner, and the artifact path it expects; the local, gitignored
+`docs/captures/t347-native-evidence.json` records the native verdict when the
+reference laptop can run it.
+
 Do not mark a task done with an unrecorded `OPEN` row.
 
 ## 11. CI
