@@ -92,6 +92,33 @@ root and no built tree:
 bash scripts/check-native-session.sh
 ```
 
+### Display-manager preselection and elevation
+
+`make native` arms the next login through the DM's own session state and then
+asks the host to log out. The state files are root-owned, so the arm writes
+them through the host's privilege helper: GDM prefers AccountsService
+`SetXSession` when `gdbus` is installed, and SDDM/LightDM (or GDM without the
+D-Bus tool) use `pkexec` — or `sudo` when `pkexec` is absent. `pkexec` is the
+default because the shell's **Quit to \<previous desktop\>** action has no
+terminal for a `sudo` password. Only the one DM file is elevated; the session
+still runs as your user.
+
+The harness reads the selection back after the write. If a detected DM refuses
+the write (dismissed polkit prompt, no helper, read-only `/etc`) or the value
+does not come back as `dragonfruit`, the arm fails **before** the logout and
+prints the host's message; the previous desktop stays selected and no
+round-trip state is written. Fix the helper or run with the session chosen
+manually in the greeter. A host with no recognized display manager is not an
+error: the arm still writes its state, prints
+`DM session: UNSUPPORTED — pick the session in the greeter`, and you select
+**Dragonfruit** by hand after logout.
+
+`make native-return` / `make native-recover` restore the captured DM bytes
+through the same elevation, so a root-owned file is restored on the return
+path too. From a text console with no working graphical session, run
+`bash scripts/native-session.sh recover`; its snapshot restore runs under
+`sudo` and does not depend on the built dev tool.
+
 The native two-pass material is the default: the scene-texture/Kawase path and
 the Glass compose both run unless explicitly disabled. For a diagnostic
 run or a quick rollback, opt out with:

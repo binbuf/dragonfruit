@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted — amended by [ADR 0355](0355-dm-session-write-elevation.md) (T344):
+the adapters now write root-owned files through elevation and a detected DM's
+failed write is `Selected::Failed`, not a silent `Unsupported`.
 
 ## Context
 

@@ -207,6 +207,17 @@ impl<'a> RoundTrip<'a> {
     pub fn arm(&self, autologin_requested: bool) -> std::io::Result<ArmOutcome> {
         let backups = self.capture_backups()?;
         let selected = self.selector.select_dragonfruit();
+        if let Selected::Failed { dm, reason } = &selected {
+            // A detected DM that refused the write (or did not read back) is
+            // not a greeter fallback: logging out here would return the human
+            // to the host desktop with Dragonfruit unselected. Roll back any
+            // partial write and refuse to arm.
+            let _ = self.restore_backups(&backups);
+            return Err(std::io::Error::other(format!(
+                "display-manager session selection failed on {dm}: {reason}; \
+                 the round trip was not armed"
+            )));
+        }
         let dm = self.selector.dm().map(|dm| dm.as_str()).unwrap_or("");
         let autologin = self.snapshot(autologin_requested);
         let state = DevSessionState::armed(
@@ -215,13 +226,18 @@ impl<'a> RoundTrip<'a> {
             autologin_requested,
             autologin,
         )
-        .with_backups(backups)
+        .with_backups(backups.clone())
         .with_dev_bin(
             std::env::current_exe()
                 .ok()
                 .map(|path| path.to_string_lossy().into_owned()),
         );
-        dev_session::write(&self.state_home, &state)?;
+        if let Err(error) = dev_session::write(&self.state_home, &state) {
+            // The state file is what makes the return transactional; without
+            // it the DM must not be left pointing at Dragonfruit.
+            let _ = self.restore_backups(&backups);
+            return Err(error);
+        }
         Ok(ArmOutcome::Armed {
             selected,
             autologin_requested,
@@ -265,8 +281,15 @@ impl<'a> RoundTrip<'a> {
         };
 
         // The exact snapshots are authoritative: they are what makes the round
-        // trip byte-identical even when a DM file gained or lost a key.
-        let mut restored_files = state.restore_backups()?;
+        // trip byte-identical even when a DM file gained or lost a key. They go
+        // back through the same elevated file API the arm used (T344), so a
+        // root-owned file is restored on `--return`/`--recover` too.
+        let mut restored_files = if state.backups.is_empty() {
+            0
+        } else {
+            self.restore_backups(&state.backups)?;
+            state.backups.len()
+        };
         if restored_files == 0 {
             // Fallback for a state written without backups (an older schema):
             // use the T-12.6a semantic restore.
@@ -296,7 +319,9 @@ impl<'a> RoundTrip<'a> {
     }
 
     /// Capture the session-selection and autologin files the arm may edit, in
-    /// that order, skipping duplicates.
+    /// that order, skipping duplicates. The read uses the selector's elevated
+    /// file API, so a root-owned DM file is captured rather than silently
+    /// failing the arm.
     fn capture_backups(&self) -> std::io::Result<Vec<FileBackup>> {
         let mut backups = Vec::new();
         for path in [self.selector.session_file(), self.selector.autologin_file()]
@@ -309,9 +334,18 @@ impl<'a> RoundTrip<'a> {
             {
                 continue;
             }
-            backups.push(FileBackup::capture(&path)?);
+            backups.push(self.selector.capture_snapshot(&path)?);
         }
         Ok(backups)
+    }
+
+    /// Write a list of captured files back through the selector's file API.
+    fn restore_backups(&self, backups: &[FileBackup]) -> std::io::Result<()> {
+        for backup in backups {
+            self.selector
+                .restore_snapshot(Path::new(&backup.path), backup.contents.as_deref())?;
+        }
+        Ok(())
     }
 
     /// The autologin snapshot to restore later. A host without a supported DM
@@ -342,6 +376,7 @@ pub fn state_path(state_home: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use crate::session_selector::Dm;
+    use std::io;
 
     /// A unique scratch directory, removed on drop.
     struct Scratch(PathBuf);
@@ -622,6 +657,164 @@ mod tests {
             scratch.read("etc/gdm/custom.conf"),
             "[daemon]\n",
             "requested=false never arms"
+        );
+    }
+
+    // --- T344: a denied DM write fails the arm; elevation round-trips -----
+
+    use crate::dm_access::{DmFiles, ElevatedFiles, LocalFiles, Privilege};
+    use std::sync::{Arc, Mutex};
+
+    /// A direct backend that refuses writes, as a root-owned DM file does.
+    struct DeniedFiles;
+
+    impl DmFiles for DeniedFiles {
+        fn read(&self, path: &Path) -> io::Result<Option<String>> {
+            LocalFiles.read(path)
+        }
+
+        fn write(&self, path: &Path, _text: &str) -> io::Result<()> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("{} is root-owned", path.display()),
+            ))
+        }
+
+        fn remove(&self, path: &Path) -> io::Result<()> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("{} is root-owned", path.display()),
+            ))
+        }
+    }
+
+    #[derive(Default)]
+    struct FakePrivilege {
+        calls: Mutex<Vec<String>>,
+    }
+
+    impl FakePrivilege {
+        fn calls(&self) -> Vec<String> {
+            self.calls.lock().expect("calls").clone()
+        }
+    }
+
+    impl Privilege for FakePrivilege {
+        fn available(&self) -> bool {
+            true
+        }
+        fn write(&self, path: &Path, text: &str) -> io::Result<()> {
+            self.calls
+                .lock()
+                .expect("calls")
+                .push(format!("write {}", path.display()));
+            LocalFiles.write(path, text)
+        }
+        fn read(&self, path: &Path) -> io::Result<Option<String>> {
+            self.calls
+                .lock()
+                .expect("calls")
+                .push(format!("read {}", path.display()));
+            LocalFiles.read(path)
+        }
+        fn remove(&self, path: &Path) -> io::Result<()> {
+            self.calls
+                .lock()
+                .expect("calls")
+                .push(format!("remove {}", path.display()));
+            LocalFiles.remove(path)
+        }
+    }
+
+    struct SharedPrivilege(Arc<FakePrivilege>);
+
+    impl Privilege for SharedPrivilege {
+        fn available(&self) -> bool {
+            self.0.available()
+        }
+        fn write(&self, path: &Path, text: &str) -> io::Result<()> {
+            self.0.write(path, text)
+        }
+        fn read(&self, path: &Path) -> io::Result<Option<String>> {
+            self.0.read(path)
+        }
+        fn remove(&self, path: &Path) -> io::Result<()> {
+            self.0.remove(path)
+        }
+    }
+
+    fn elevated_selector(scratch: &Scratch, privilege: &Arc<FakePrivilege>) -> SessionSelector {
+        let files: Arc<dyn DmFiles> = Arc::new(ElevatedFiles::new(
+            Box::new(DeniedFiles),
+            Box::new(SharedPrivilege(Arc::clone(privilege))),
+        ));
+        SessionSelector::fixture_with_files(scratch.root(), scratch.home(), "dfdev", files)
+    }
+
+    #[test]
+    fn a_denied_dm_write_fails_the_arm_and_leaves_no_state() {
+        let scratch = gdm_fixture("denied-arm");
+        let selector = SessionSelector::fixture_with_files(
+            scratch.root(),
+            scratch.home(),
+            "dfdev",
+            Arc::new(DeniedFiles),
+        );
+        let trip = round_trip(&scratch, &selector);
+
+        let error = trip
+            .arm(false)
+            .expect_err("a denied write must fail the arm");
+        assert!(error.to_string().contains("not armed"), "{error}");
+        assert!(error.to_string().contains("root-owned"), "{error}");
+        assert!(
+            !state_path(&scratch.state_home()).exists(),
+            "no state means the return path cannot mistake a half-armed host"
+        );
+        assert_eq!(
+            scratch.read("var/lib/AccountsService/users/dfdev"),
+            "[User]\nLanguage=en_US\nXSession=existing\n"
+        );
+    }
+
+    #[test]
+    fn an_elevated_arm_and_restore_round_trip_is_byte_identical() {
+        let scratch = gdm_fixture("elevated-bytes");
+        let privilege = Arc::new(FakePrivilege::default());
+        let selector = elevated_selector(&scratch, &privilege);
+        let trip = round_trip(&scratch, &selector);
+
+        trip.arm(true).expect("arm through elevation");
+        trip.commit_ready().expect("ready through elevation");
+        assert_eq!(
+            scratch.read("var/lib/AccountsService/users/dfdev"),
+            "[User]\nLanguage=en_US\nXSession=dragonfruit\n"
+        );
+        assert!(scratch
+            .read("etc/gdm/custom.conf")
+            .contains("AutomaticLoginEnable=true"));
+
+        let outcome = trip.restore().expect("restore through elevation");
+        assert!(outcome.cleared);
+        assert_eq!(
+            scratch.read("var/lib/AccountsService/users/dfdev"),
+            "[User]\nLanguage=en_US\nXSession=existing\n"
+        );
+        assert_eq!(scratch.read("etc/gdm/custom.conf"), "[daemon]\n");
+        assert!(!state_path(&scratch.state_home()).exists());
+
+        let calls = privilege.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|call| call.starts_with("write ") && call.contains("AccountsService")),
+            "the arm elevated the session write: {calls:?}"
+        );
+        assert!(
+            calls
+                .iter()
+                .any(|call| call.starts_with("write ") && call.ends_with("custom.conf")),
+            "the ready beat elevated the autologin write: {calls:?}"
         );
     }
 

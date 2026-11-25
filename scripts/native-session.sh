@@ -912,6 +912,12 @@ EOF
         sudo install -m 0644 "$tmp" "$dropin"
     fi
     rm -f "$tmp"
+    # T344: a write that reports success but does not read back is the silent
+    # failure this path exists to prevent. `file_contains` elevates only when
+    # the drop-in is not user-readable.
+    if ! file_contains 'PreselectedSession=dragonfruit.desktop' "$dropin"; then
+        die "$dropin does not read back the Dragonfruit preselect; the next login is not armed"
+    fi
     say "preselected Dragonfruit in the login-manager greeter"
 }
 
@@ -929,6 +935,9 @@ remove_plasma_login_preselect() {
         rm -f "$dropin"
     else
         sudo rm -f "$dropin"
+    fi
+    if [ -e "$dropin" ]; then
+        die "$dropin still exists after removal; the login-manager preselect was not restored"
     fi
     say "removed the login-manager Dragonfruit preselect"
 }

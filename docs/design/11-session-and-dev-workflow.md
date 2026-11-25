@@ -802,6 +802,20 @@ explicit root and home, so the acceptance suite drives real reads and
 exact-byte writes against fixture directories with no DM installed. The
 decision is frozen in [ADR 0173](adr/0173-display-manager-session-selection-seam.md).
 
+T344 closes the silent-failure hole on a *detected* DM. The state files are
+root-owned, so the adapters take a file API (`dm_access::DmFiles`) instead of
+calling `std::fs` directly. A direct `EACCES`/`EPERM` is retried through
+`pkexec` (a polkit prompt works from the shell's no-terminal return action) or
+`sudo`; the elevated write is `tee` into the one DM file, so an existing 0600
+AccountsService file keeps its mode. GDM prefers the documented
+`org.freedesktop.Accounts.User.SetXSession` system-bus method when `gdbus` is
+installed (5 s bound) and falls back to the elevated file. After every write
+the adapter reads the selection back: a refusal, a missing helper, or a value
+that is not `dragonfruit` is `Selected::Failed`, and `RoundTrip::arm` refuses
+to log out and rolls the captured files back. `--return` and `--recover`
+restore the captured bytes through the same elevation. The decision is frozen
+in [ADR 0355](adr/0355-dm-session-write-elevation.md).
+
 ### The round-trip state file (T-12.6b)
 
 The round trip is one state file, not a set of ad-hoc writes.

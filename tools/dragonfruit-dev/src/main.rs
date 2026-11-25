@@ -33,6 +33,7 @@ use second_vt::{
 use session_selector::SessionSelector;
 
 mod demo;
+mod dm_access;
 mod round_trip;
 mod second_vt;
 mod session_selector;
@@ -221,7 +222,10 @@ is safe to run next to the host desktop.
 --real --round-trip is the T-12.6b display-manager round trip: it writes
 $XDG_STATE_HOME/dragonfruit/dev-session.json, selects the Dragonfruit session
 via the T-12.6a DM seam, and asks the host session manager to log out (never
-SIGKILL). `--autologin` additionally arms the DM autologin at the
+SIGKILL). A root-owned DM file is written through GDM's AccountsService
+SetXSession when available, otherwise through pkexec/sudo; the selection is
+read back, and a refused or stale write fails the arm instead of logging out
+with the host desktop still selected (T344). `--autologin` additionally arms the DM autologin at the
 session-ready beat (`--ready`, run from inside the session). The next login
 exports DRAGONFRUIT_DEV_RETURN, and its \"Quit to <previous desktop>\" item
 runs `--return`; a crashed round trip is finished by `--recover` on the next
@@ -1277,6 +1281,12 @@ fn run_real_session(args: &DevArgs) -> ExitCode {
         match trip.arm(args.autologin) {
             Ok(ArmOutcome::Armed { selected, .. }) => {
                 println!("{}", selected.marker());
+                if selected.is_unsupported() {
+                    eprintln!(
+                        "dragonfruit dev: warning: no supported display manager was detected; \
+                         pick the Dragonfruit session in the greeter after logout"
+                    );
+                }
                 println!(
                     "dragonfruit dev: round trip armed — state at {}",
                     round_trip::state_path(&state_home).display()
