@@ -478,8 +478,20 @@ exists the launcher returns no command — never the unwrapped app — and the D
 raises its launch-failure notification. The default Dock pins include a
 Terminal tile only when a terminal resolves, and the DEB/RPM/Arch metadata
 recommends one. The decision is frozen in
-[ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md). The app index
-honors `OnlyShowIn`, `NotShowIn`, and `TryExec`.
+[ADR 0351](adr/0351-terminal-resolution-and-visible-failure.md).
+
+The app index parses `OnlyShowIn`, `NotShowIn`, and `TryExec`. `Enumerate` —
+the catalog behind the Applications drawer, the Add Application picker, and
+the Dock's default pins — omits an entry whose non-empty `OnlyShowIn` does not
+name a desktop in `XDG_CURRENT_DESKTOP` (the session exports `dragonfruit`),
+whose `NotShowIn` names one, or whose non-empty `TryExec` does not resolve as
+an executable (directly when absolute, otherwise on `PATH`). `Resolve` and
+`Lookup` keep the full identity corpus, so a running app still resolves when
+its launcher entry is hidden. `NoDisplay`/`Hidden` stay in the catalog with
+their flag and the shell's launcher filter still removes them. With no
+`XDG_CURRENT_DESKTOP`, `OnlyShowIn` entries hide and `NotShowIn` entries stay
+visible. The decision is frozen in
+[ADR 0352](adr/0352-app-index-desktop-visibility-filters.md).
 
 X11 launch is also a data path in both directions. The compositor's XDnD
 bridge owns a dedicated X11 connection, publishes an `XdndAware` bridge window

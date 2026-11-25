@@ -45,6 +45,9 @@ pub fn record_value(
         "noDisplay": record.no_display,
         "categories": record.categories,
         "startupWmClass": record.startup_wm_class,
+        "onlyShowIn": record.only_show_in,
+        "notShowIn": record.not_show_in,
+        "tryExec": record.try_exec,
     });
     if let Some(source) = source {
         object["source"] = Value::String(source.as_str().to_owned());
@@ -57,10 +60,12 @@ pub fn record_json(record: &AppRecord, source: IdentitySource, theme: &IconTheme
     record_value(record, Some(source), theme).to_string()
 }
 
-/// Every installed record as a JSON array of objects.
+/// Every record the Applications drawer should offer as a JSON array of
+/// objects. `OnlyShowIn`/`NotShowIn`/`TryExec` filters are applied here; a
+/// hidden record is still resolvable by id (`Lookup`/`Resolve`) for identity.
 pub fn records_json(index: &AppIndex, theme: &IconTheme) -> String {
     let records: Vec<Value> = index
-        .records()
+        .visible_records()
         .map(|record| record_value(record, None, theme))
         .collect();
     Value::Array(records).to_string()
@@ -208,5 +213,51 @@ mod tests {
         assert_eq!(value["icon"], "firefox");
         assert_eq!(value["iconPath"], "");
         assert_eq!(value["valid"], true);
+    }
+
+    // A second desktop name is fixture data only; the naming gate exempts it.
+    const OTHER_DESKTOP: &str = "GNOME"; // df-allow-desktop-name: fixture desktop name
+
+    #[test]
+    fn records_json_omits_entries_hidden_by_the_desktop_filters() {
+        let dir = std::env::temp_dir().join(format!(
+            "df-app-index-view-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("other.desktop"),
+            format!(
+                "[Desktop Entry]\nType=Application\nName=Other\n\
+                 OnlyShowIn={OTHER_DESKTOP};\nExec=other\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("normal.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Normal\nExec=normal\n",
+        )
+        .unwrap();
+
+        let index = AppIndex::from_dirs_with(
+            [dir.clone()],
+            ["dragonfruit".to_owned()],
+            Vec::<std::path::PathBuf>::new(),
+        );
+        let theme = IconTheme::from_roots([], ["hicolor".to_owned()], []);
+        let records: Value = serde_json::from_str(&records_json(&index, &theme)).unwrap();
+        let ids: Vec<&str> = records
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["desktopId"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["normal.desktop"]);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

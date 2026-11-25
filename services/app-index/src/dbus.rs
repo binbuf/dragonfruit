@@ -746,8 +746,10 @@ impl AppIndex1 {
         }
     }
 
-    /// Every installed record as a JSON array. The shell uses this for the
-    /// Dock's default pins and its local fallback.
+    /// Every visible installed record as a JSON array. Entries hidden by
+    /// `OnlyShowIn`/`NotShowIn`/`TryExec` are omitted; the shell uses this
+    /// for the Applications drawer, the Add Application picker, and the
+    /// Dock's default pins.
     fn enumerate(&self) -> String {
         let index = lock(&self.index);
         view::records_json(&index, &self.theme)

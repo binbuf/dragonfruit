@@ -129,12 +129,44 @@ pub struct AppRecord {
     pub categories: Vec<String>,
     /// The `StartupWMClass` value, if any.
     pub startup_wm_class: Option<String>,
+    /// `OnlyShowIn` desktop names (semicolon-separated in the file).
+    pub only_show_in: Vec<String>,
+    /// `NotShowIn` desktop names (semicolon-separated in the file).
+    pub not_show_in: Vec<String>,
+    /// The raw `TryExec` program, empty when the entry does not declare one.
+    pub try_exec: String,
 }
 
 impl AppRecord {
     /// True when the entry declares a usable single-line Exec.
     pub fn is_launchable(&self) -> bool {
         !self.no_display && !self.exec.trim().is_empty() && !self.exec.contains('\n')
+    }
+
+    /// True when this entry is intended for at least one of `desktops`.
+    ///
+    /// `OnlyShowIn` is a whitelist: a non-empty list that names none of the
+    /// current desktops hides the entry. `NotShowIn` is a blacklist. Names are
+    /// compared case-insensitively because the desktop-name contract is
+    /// lowercase while third-party files often spell names in capitals.
+    ///
+    /// `TryExec` is not checked here: whether the program exists is a
+    /// filesystem fact resolved once at scan time (see [`AppIndex`]).
+    pub fn shows_in(&self, desktops: &[String]) -> bool {
+        let matches = |names: &[String]| {
+            names.iter().any(|name| {
+                desktops
+                    .iter()
+                    .any(|desktop| name.eq_ignore_ascii_case(desktop))
+            })
+        };
+        if !self.only_show_in.is_empty() && !matches(&self.only_show_in) {
+            return false;
+        }
+        if matches(&self.not_show_in) {
+            return false;
+        }
+        true
     }
 }
 
@@ -147,6 +179,9 @@ struct AppEntry {
     stems: Vec<String>,
     /// The executable basename parsed from `Exec`, lowercased.
     executable: Option<String>,
+    /// Whether a non-empty `TryExec` names an executable on this machine.
+    /// Always true when the entry has no `TryExec`.
+    try_exec_found: bool,
 }
 
 /// The application index: a scanned `.desktop` corpus plus the resolution
@@ -157,6 +192,12 @@ pub struct AppIndex {
     /// The `applications` directories this index was built from, in
     /// precedence order. Kept so `refresh` can re-scan exactly the same set.
     dirs: Vec<PathBuf>,
+    /// The desktop names this index filters against (`XDG_CURRENT_DESKTOP`,
+    /// colon-separated and lowercased). Empty means no desktop is known.
+    desktops: Vec<String>,
+    /// The `PATH` used to resolve a non-absolute `TryExec`, kept so `refresh`
+    /// re-evaluates the same search path.
+    search_paths: Vec<PathBuf>,
     /// Identity strings no rule matched (the heuristic input).
     misses: BTreeSet<String>,
     /// Install/uninstall/update observations, oldest first, bounded by
@@ -177,12 +218,38 @@ impl AppIndex {
     /// Build an index from an explicit set of `applications` directories.
     /// Directories that do not exist are skipped; the first directory that
     /// provides a given desktop id wins (desktop-entry spec precedence).
+    ///
+    /// Visibility is evaluated against the process `XDG_CURRENT_DESKTOP` and
+    /// `PATH`; tests and nested runs use [`AppIndex::from_dirs_with`] for an
+    /// explicit environment.
     pub fn from_dirs(dirs: impl IntoIterator<Item = PathBuf>) -> Self {
+        Self::from_dirs_with(dirs, current_desktops(), executable_search_paths())
+    }
+
+    /// Build an index with an explicit desktop-name list and `PATH`.
+    ///
+    /// `desktops` are the names in `XDG_CURRENT_DESKTOP` (already split on
+    /// `:`); `search_paths` resolves a non-absolute `TryExec`. Passing an empty
+    /// `desktops` is the no-desktop-environment case: `OnlyShowIn` entries
+    /// hide and `NotShowIn` entries stay visible.
+    pub fn from_dirs_with(
+        dirs: impl IntoIterator<Item = PathBuf>,
+        desktops: impl IntoIterator<Item = String>,
+        search_paths: impl IntoIterator<Item = PathBuf>,
+    ) -> Self {
         let dirs: Vec<PathBuf> = dirs.into_iter().collect();
-        let entries = scan(&dirs);
+        let desktops: Vec<String> = desktops
+            .into_iter()
+            .map(|desktop| desktop.trim().to_ascii_lowercase())
+            .filter(|desktop| !desktop.is_empty())
+            .collect();
+        let search_paths: Vec<PathBuf> = search_paths.into_iter().collect();
+        let entries = scan(&dirs, &search_paths);
         AppIndex {
             entries,
             dirs,
+            desktops,
+            search_paths,
             misses: BTreeSet::new(),
             events: VecDeque::new(),
             revision: 0,
@@ -198,7 +265,7 @@ impl AppIndex {
     /// resolution counters and the miss set are untouched: a refresh is
     /// maintenance, not a query.
     pub fn refresh(&mut self) -> Vec<IndexEvent> {
-        let wanted = scan(&self.dirs);
+        let wanted = scan(&self.dirs, &self.search_paths);
         let previous: BTreeMap<&str, &AppEntry> = self
             .entries
             .iter()
@@ -217,11 +284,19 @@ impl AppIndex {
                     desktop_id: entry.record.desktop_id.clone(),
                     name: entry.record.name.clone(),
                 }),
-                Some(existing) if existing.record != entry.record => events.push(IndexEvent {
-                    kind: IndexEventKind::Updated,
-                    desktop_id: entry.record.desktop_id.clone(),
-                    name: entry.record.name.clone(),
-                }),
+                // `TryExec` availability is a filesystem fact outside the
+                // parsed record; a program appearing or disappearing changes
+                // the catalog's visibility and must still be an update.
+                Some(existing)
+                    if existing.record != entry.record
+                        || existing.try_exec_found != entry.try_exec_found =>
+                {
+                    events.push(IndexEvent {
+                        kind: IndexEventKind::Updated,
+                        desktop_id: entry.record.desktop_id.clone(),
+                        name: entry.record.name.clone(),
+                    })
+                }
                 Some(_) => {}
             }
         }
@@ -327,9 +402,27 @@ impl AppIndex {
         self.events.drain(..).collect()
     }
 
-    /// Every installed record, ordered by desktop id.
+    /// Every installed record, ordered by desktop id. This is the identity
+    /// corpus: an entry hidden from the drawer by `OnlyShowIn`, `NotShowIn`,
+    /// or a missing `TryExec` is still resolvable here.
     pub fn records(&self) -> impl Iterator<Item = &AppRecord> {
         self.entries.iter().map(|entry| &entry.record)
+    }
+
+    /// The records the Applications drawer should offer: installed (a
+    /// non-empty `TryExec` resolves) and intended for one of this index's
+    /// desktops. `NoDisplay`/`Hidden` records stay here with their flag; the
+    /// shell still filters them out of launcher lists.
+    pub fn visible_records(&self) -> impl Iterator<Item = &AppRecord> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.try_exec_found && entry.record.shows_in(&self.desktops))
+            .map(|entry| &entry.record)
+    }
+
+    /// The desktop names this index filters against.
+    pub fn desktops(&self) -> &[String] {
+        &self.desktops
     }
 
     /// Identity strings that did not resolve (the heuristic input).
@@ -539,11 +632,11 @@ fn executable_of(exec: &str) -> Option<String> {
 /// Scan every directory in `dirs` into one ordered entry list. Directories
 /// that do not exist are skipped; the first directory that provides a given
 /// desktop id wins (desktop-entry spec precedence).
-fn scan(dirs: &[PathBuf]) -> Vec<AppEntry> {
+fn scan(dirs: &[PathBuf], search_paths: &[PathBuf]) -> Vec<AppEntry> {
     let mut entries = Vec::new();
     let mut seen = BTreeSet::new();
     for dir in dirs {
-        scan_dir(dir, dir, &mut entries, &mut seen);
+        scan_dir(dir, dir, search_paths, &mut entries, &mut seen);
     }
     entries.sort_by(|a, b| a.record.desktop_id.cmp(&b.record.desktop_id));
     entries
@@ -551,20 +644,26 @@ fn scan(dirs: &[PathBuf]) -> Vec<AppEntry> {
 
 /// Recursively scan `dir` for `.desktop` entries; `root` is the top of the
 /// applications tree, used to build spec-style desktop file ids.
-fn scan_dir(root: &Path, dir: &Path, out: &mut Vec<AppEntry>, seen: &mut BTreeSet<String>) {
+fn scan_dir(
+    root: &Path,
+    dir: &Path,
+    search_paths: &[PathBuf],
+    out: &mut Vec<AppEntry>,
+    seen: &mut BTreeSet<String>,
+) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
     for item in read.flatten() {
         let path = item.path();
         if path.is_dir() {
-            scan_dir(root, &path, out, seen);
+            scan_dir(root, &path, search_paths, out, seen);
             continue;
         }
         if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
             continue;
         }
-        let Some(entry) = parse_desktop_file(root, &path) else {
+        let Some(entry) = parse_desktop_file(root, &path, search_paths) else {
             continue;
         };
         // Most specific data dir wins; XDG order puts $XDG_DATA_HOME first.
@@ -574,7 +673,7 @@ fn scan_dir(root: &Path, dir: &Path, out: &mut Vec<AppEntry>, seen: &mut BTreeSe
     }
 }
 
-fn parse_desktop_file(root: &Path, path: &Path) -> Option<AppEntry> {
+fn parse_desktop_file(root: &Path, path: &Path, search_paths: &[PathBuf]) -> Option<AppEntry> {
     let contents = std::fs::read_to_string(path).ok()?;
     let desktop_id = desktop_id_for(root, path)?;
     let mut record = parse_record(&desktop_id, &contents)?;
@@ -600,12 +699,14 @@ fn parse_desktop_file(root: &Path, path: &Path) -> Option<AppEntry> {
         .map(|value| vec![normalize(value)])
         .unwrap_or_default();
     let executable = executable_of(&record.exec);
+    let try_exec_found = try_exec_found(&record.try_exec, search_paths);
 
     Some(AppEntry {
         record,
         wm_classes,
         stems,
         executable,
+        try_exec_found,
     })
 }
 
@@ -648,6 +749,9 @@ pub fn parse_record(desktop_id: &str, contents: &str) -> Option<AppRecord> {
                     .map(str::to_owned)
                     .collect();
             }
+            "OnlyShowIn" => record.only_show_in = desktop_names(value),
+            "NotShowIn" => record.not_show_in = desktop_names(value),
+            "TryExec" => record.try_exec = value.to_owned(),
             "Terminal" => record.terminal = value.eq_ignore_ascii_case("true"),
             "Type" => is_application = value == "Application",
             "Hidden" | "NoDisplay" if value.eq_ignore_ascii_case("true") => {
@@ -658,6 +762,74 @@ pub fn parse_record(desktop_id: &str, contents: &str) -> Option<AppRecord> {
     }
 
     is_application.then_some(record)
+}
+
+/// Split a semicolon-separated desktop-name list, dropping empty parts.
+fn desktop_names(value: &str) -> Vec<String> {
+    value
+        .split(';')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The desktop names in `XDG_CURRENT_DESKTOP`, which the spec defines as a
+/// colon-separated list. An unset/empty value yields the no-desktop case.
+fn current_desktops() -> Vec<String> {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .ok()
+        .map(|value| {
+            value
+                .split(':')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The process `PATH` entries used for a relative `TryExec`.
+fn executable_search_paths() -> Vec<PathBuf> {
+    std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).collect())
+        .unwrap_or_default()
+}
+
+/// A non-empty `TryExec` is installed only when it names an executable. An
+/// absolute value is checked directly; any other value is looked up in
+/// `PATH`, as the desktop-entry spec defines. An empty `TryExec` is not a
+/// filter.
+fn try_exec_found(try_exec: &str, search_paths: &[PathBuf]) -> bool {
+    let try_exec = try_exec.trim();
+    if try_exec.is_empty() {
+        return true;
+    }
+    if Path::new(try_exec).is_absolute() {
+        return is_executable(Path::new(try_exec));
+    }
+    search_paths
+        .iter()
+        .any(|dir| is_executable(&dir.join(try_exec)))
+}
+
+fn is_executable(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 /// Build a desktop file id per the desktop-entry spec: the path relative to
@@ -696,6 +868,27 @@ mod tests {
     fn write_desktop(dir: &Path, name: &str, body: &str) {
         fs::write(dir.join(name), body).unwrap();
     }
+
+    fn write_executable(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+
+    fn visible_ids(index: &AppIndex) -> Vec<String> {
+        index
+            .visible_records()
+            .map(|record| record.desktop_id.clone())
+            .collect()
+    }
+
+    // A second desktop name is fixture data only; the naming gate exempts it.
+    const OTHER_DESKTOP: &str = "GNOME"; // df-allow-desktop-name: fixture desktop name
 
     #[test]
     fn shipped_first_party_entries_are_launchable() {
@@ -984,5 +1177,220 @@ mod tests {
         assert_eq!(index.misses().count(), 0);
 
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn only_show_in_entries_are_hidden_outside_their_desktops() {
+        let dir = temp_dir("only-show-in");
+        write_desktop(
+            &dir,
+            "other-desktop-only.desktop",
+            &format!(
+                "[Desktop Entry]\nType=Application\nName=Other Desktop Only\n\
+                 OnlyShowIn={OTHER_DESKTOP};\nExec=other-desktop-only\n"
+            ),
+        );
+        write_desktop(
+            &dir,
+            "dragonfruit.desktop",
+            &format!(
+                "[Desktop Entry]\nType=Application\nName=Dragonfruit\n\
+                 OnlyShowIn=dragonfruit;{OTHER_DESKTOP};\nExec=dragonfruit-app\n"
+            ),
+        );
+        write_desktop(
+            &dir,
+            "normal.desktop",
+            "[Desktop Entry]\nType=Application\nName=Normal\nExec=normal-app\n",
+        );
+
+        let index = AppIndex::from_dirs_with(
+            [dir.clone()],
+            ["dragonfruit".to_owned()],
+            Vec::<PathBuf>::new(),
+        );
+        assert_eq!(
+            visible_ids(&index),
+            vec!["dragonfruit.desktop", "normal.desktop"]
+        );
+        // Identity is not removed: a running other-desktop app still resolves.
+        assert!(index.lookup("other-desktop-only.desktop").is_some());
+
+        // The same corpus under the other desktop hides the Dragonfruit-only
+        // entry.
+        let other = AppIndex::from_dirs_with(
+            [dir.clone()],
+            [OTHER_DESKTOP.to_owned()],
+            Vec::<PathBuf>::new(),
+        );
+        assert_eq!(
+            visible_ids(&other),
+            vec![
+                "dragonfruit.desktop",
+                "normal.desktop",
+                "other-desktop-only.desktop"
+            ]
+        );
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn not_show_in_entries_are_hidden_in_the_listed_desktop() {
+        let dir = temp_dir("not-show-in");
+        write_desktop(
+            &dir,
+            "not-other.desktop",
+            &format!(
+                "[Desktop Entry]\nType=Application\nName=Not Other\n\
+                 NotShowIn={OTHER_DESKTOP};\nExec=not-other\n"
+            ),
+        );
+        write_desktop(
+            &dir,
+            "not-dragonfruit.desktop",
+            "[Desktop Entry]\nType=Application\nName=Not Dragonfruit\n\
+             NotShowIn=dragonfruit;\nExec=not-dragonfruit\n",
+        );
+
+        let index = AppIndex::from_dirs_with(
+            [dir.clone()],
+            ["dragonfruit".to_owned()],
+            Vec::<PathBuf>::new(),
+        );
+        assert_eq!(visible_ids(&index), vec!["not-other.desktop"]);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_missing_try_exec_hides_the_entry_and_an_empty_one_does_not() {
+        let apps = temp_dir("try-exec-apps");
+        let bin = temp_dir("try-exec-bin");
+        write_executable(&bin, "installed-tool");
+        let absolute = write_executable(&bin, "absolute-tool");
+
+        write_desktop(
+            &apps,
+            "missing.desktop",
+            "[Desktop Entry]\nType=Application\nName=Missing\n\
+             TryExec=definitely-not-installed\nExec=missing-app\n",
+        );
+        write_desktop(
+            &apps,
+            "installed.desktop",
+            "[Desktop Entry]\nType=Application\nName=Installed\n\
+             TryExec=installed-tool\nExec=installed-tool\n",
+        );
+        write_desktop(
+            &apps,
+            "absolute.desktop",
+            &format!(
+                "[Desktop Entry]\nType=Application\nName=Absolute\nTryExec={}\n\
+                 Exec=absolute-tool\n",
+                absolute.display()
+            ),
+        );
+        write_desktop(
+            &apps,
+            "empty.desktop",
+            "[Desktop Entry]\nType=Application\nName=Empty\nTryExec=\nExec=empty-app\n",
+        );
+
+        let index =
+            AppIndex::from_dirs_with([apps.clone()], ["dragonfruit".to_owned()], [bin.clone()]);
+        assert_eq!(
+            visible_ids(&index),
+            vec!["absolute.desktop", "empty.desktop", "installed.desktop"]
+        );
+
+        // Removing the program makes the entry "not installed" on refresh,
+        // and the visibility change is an update so consumers re-read.
+        fs::remove_file(bin.join("installed-tool")).unwrap();
+        let mut index = index;
+        let events = index.refresh();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, IndexEventKind::Updated);
+        assert_eq!(events[0].desktop_id, "installed.desktop");
+        assert_eq!(
+            visible_ids(&index),
+            vec!["absolute.desktop", "empty.desktop"]
+        );
+
+        fs::remove_dir_all(&apps).ok();
+        fs::remove_dir_all(&bin).ok();
+    }
+
+    #[test]
+    fn no_desktop_environment_hides_only_show_in_and_keeps_not_show_in() {
+        let dir = temp_dir("no-desktop");
+        write_desktop(
+            &dir,
+            "only.desktop",
+            "[Desktop Entry]\nType=Application\nName=Only\nOnlyShowIn=dragonfruit;\n\
+             Exec=only\n",
+        );
+        write_desktop(
+            &dir,
+            "not.desktop",
+            "[Desktop Entry]\nType=Application\nName=Not\nNotShowIn=dragonfruit;\n\
+             Exec=not\n",
+        );
+        write_desktop(
+            &dir,
+            "normal.desktop",
+            "[Desktop Entry]\nType=Application\nName=Normal\nExec=normal\n",
+        );
+
+        let index =
+            AppIndex::from_dirs_with([dir.clone()], Vec::<String>::new(), Vec::<PathBuf>::new());
+        assert_eq!(visible_ids(&index), vec!["normal.desktop", "not.desktop"]);
+        assert_eq!(index.desktops(), &[] as &[String]);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn no_display_and_hidden_records_stay_in_the_catalog() {
+        let dir = temp_dir("no-display");
+        write_desktop(
+            &dir,
+            "nodisplay.desktop",
+            "[Desktop Entry]\nType=Application\nName=No Display\nNoDisplay=true\n\
+             Exec=nodisplay\n",
+        );
+        write_desktop(
+            &dir,
+            "hidden.desktop",
+            "[Desktop Entry]\nType=Application\nName=Hidden\nHidden=true\nExec=hidden\n",
+        );
+
+        let index = AppIndex::from_dirs_with(
+            [dir.clone()],
+            ["dragonfruit".to_owned()],
+            Vec::<PathBuf>::new(),
+        );
+        // The visibility filter is only OnlyShowIn/NotShowIn/TryExec; the
+        // shell keeps filtering NoDisplay/Hidden through the record flag.
+        assert_eq!(
+            visible_ids(&index),
+            vec!["hidden.desktop", "nodisplay.desktop"]
+        );
+        assert!(index.records().all(|record| record.no_display));
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn try_exec_lookup_checks_an_absolute_path_directly_and_others_on_path() {
+        let bin = temp_dir("try-exec-helper");
+        let tool = write_executable(&bin, "tool");
+        assert!(try_exec_found("tool", std::slice::from_ref(&bin)));
+        assert!(!try_exec_found("tool", &[]));
+        assert!(try_exec_found(&tool.to_string_lossy(), &[]));
+        assert!(!try_exec_found("/definitely/not/here", &[]));
+        assert!(try_exec_found("", &[]));
+
+        fs::remove_dir_all(&bin).ok();
     }
 }

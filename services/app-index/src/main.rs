@@ -11,7 +11,7 @@
 //! ```text
 //! dragonfruit-app-index --resolve <identity>        # one record object
 //! dragonfruit-app-index --resolve-window <class> [instance]   # one record object
-//! dragonfruit-app-index --enumerate                 # every record, JSON array
+//! dragonfruit-app-index --enumerate                 # visible records, JSON array
 //! dragonfruit-app-index --misses                    # the miss set
 //! dragonfruit-app-index --refresh                   # rescan + index events
 //! dragonfruit-app-index --icon <name> [size]        # themed icon path
