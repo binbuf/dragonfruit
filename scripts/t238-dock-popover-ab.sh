@@ -38,7 +38,9 @@ OUT_DIR="${OUT_DIR:-docs/captures/t238-dock-popover-ab}"
 CYCLES="${CYCLES:-100}"
 INTERVAL_MS="${INTERVAL_MS:-300}"
 SETTLE="${SETTLE:-1.0}"
+CHROME_GPU="${CHROME_GPU:-1}"
 CHROME_GPU_SURFACES="${CHROME_GPU_SURFACES:-dock,dock-popup}"
+T238_MODES="${T238_MODES:-shared stable independent}"
 
 t21_capture_init "t238-dock-popover-ab"
 t21_require_host "$OUT_DIR/open.txt" "T238 Dock popover stable-size A/B"
@@ -74,7 +76,7 @@ run_config() {
         QML_IMPORT_PATH="$T21_ROOT/build/qml" \
         DRAGONFRUIT_CHROME_STATS=1 \
         DRAGONFRUIT_CHROME_TRACE=1 \
-        DRAGONFRUIT_CHROME_GPU=1 \
+        DRAGONFRUIT_CHROME_GPU="$CHROME_GPU" \
         DRAGONFRUIT_CHROME_GPU_SURFACES="$CHROME_GPU_SURFACES" \
         DRAGONFRUIT_POPUP_TARGETS="$mode" \
         DRAGONFRUIT_DOCK_STABLE_POPOVER="$stable" \
@@ -97,13 +99,17 @@ run_config() {
     t21_stop_compositor
 }
 
-run_config shared shared 0
-run_config stable stable 1
-run_config independent independent 0
+REPORTS=()
+for mode in $T238_MODES; do
+    case "$mode" in
+        shared) run_config shared shared 0; REPORTS+=("$OUT_DIR/shared/report.json") ;;
+        stable) run_config stable stable 1; REPORTS+=("$OUT_DIR/stable/report.json") ;;
+        independent) run_config independent independent 0; REPORTS+=("$OUT_DIR/independent/report.json") ;;
+        *) echo "t238-dock-popover-ab: unknown mode '$mode'" >&2; exit 1 ;;
+    esac
+done
 
-python3 scripts/t238-dock-popover-ab-driver.py summary \
-    "$OUT_DIR/shared/report.json" \
-    "$OUT_DIR/stable/report.json" \
-    "$OUT_DIR/independent/report.json" | tee "$OUT_DIR/report.md"
+python3 scripts/t238-dock-popover-ab-driver.py summary "${REPORTS[@]}" \
+    | tee "$OUT_DIR/report.md"
 
 echo "t238-dock-popover-ab: wrote $OUT_DIR/report.md" >&2

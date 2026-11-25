@@ -73,7 +73,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test settings-qml-refresh qml-test qml-test-serial glass-shader-test t238-native-build t238-native-round-trip \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-debug native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e gates verify-fast verify-settings verify-stability check-settings-consumers check-deferred-register t304-stability-baseline gate-checks \
-        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture \
+        idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture t21-doctor t21-material-tiers-capture t21-region-render t21-stable-damage t21-degrade-load t21-chrome-baseline t21-gpu-probe t21-dmabuf-ring t21-dmabuf-dock t21-gpu-rollout t21-refresh-144 t21-frame-scheduler t21-vrr-mixed-refresh drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture t222-settings-map-capture t223-settings-search-capture t224-settings-apply-capture verify-chrome-stability t349-gpu-smoke t349-chrome-baselines \
         t225-network-panes-capture t226-general-panes-capture t227-settings-panes-capture t228-privacy-accounts-capture t229-input-users-printers-capture t229a-settings-panes-capture t263-settings-window-capture t264-settings-navigation-capture t265-settings-search-capture t266-settings-components-capture t267-settings-accessibility-capture t268-settings-performance t269-general-capture t270-general-system-capture t271-wifi-bluetooth-capture t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
 	t272-network-capture t272a-network-capability-capture t273-data-panes-capture t274-appearance-capture t275-accessibility-capture t276-desktop-capture t277-quick-settings-menu-bar-capture t278-personalization-capture t279-accounts-security-capture t280-devices-capture t281-linux-specific-capture t285-settings-ia-capture t286-settings-shell-capture t287-settings-general-capture t288-settings-connectivity-capture t289-settings-battery-displays-capture t290-settings-appearance-capture t291a-settings-accessibility-vision-capture t291b-settings-accessibility-physical-motor-capture t291c-settings-accessibility-hearing-capture t291d-settings-accessibility-speech-capture t291e-settings-accessibility-general-capture t292a-settings-desktop-dock-capture t292b-settings-workspace-overview-capture t293a-settings-menu-bar-capture t293b-settings-menu-bar-controls-capture \
         t21-scanout-counters t21-direct-scanout-native t21-presentation-bench t21-presentation-compare t238-dock-popover-ab t238-dock-popover-ab-native t238-material-regions t238-material-workloads t238-shadow-capture t238-decoration-matrix t238-nested-responsiveness t238-presenter-lifecycle t238-native-acceptance t238-wake-swap-audit \
@@ -88,6 +88,9 @@ help:
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
 	@echo "  make gates    — the full release gate: e2e + serial qml-test"
 	@echo "  make verify-fast — same gate, parallel qml-test (CTEST_JOBS=$(CTEST_JOBS))"
+	@echo "  make verify-chrome-stability — T349 chrome fixture gate (Qt suites + protocol/timing + manifest)"
+	@echo "  make t349-gpu-smoke — T349 nested GPU ring/alpha smoke at 1x/1.5x/2x"
+	@echo "  make t349-chrome-baselines — T349 shared-memory + nested GPU popup baselines"
 	@echo "  make verify-stability — T304 per-task stability gate (Rust + settings consumers + qml-test)"
 	@echo "  make check-settings-consumers — T304 live settings key must have a consumer/test entry"
 	@echo "  make check-deferred-register — T346 deferred rows have reason/impact/owner/trigger/STATUS"
@@ -290,6 +293,41 @@ gates: gate-checks
 verify-fast: gate-checks
 	$(MAKE) e2e
 	$(MAKE) qml-test
+
+# T349: the deterministic chrome fixture gate. It runs the popup/menu Qt
+# suites, the shell-protocol and presentation-timing Rust tests, the material
+# geometry checks, and the fixture manifest. The four status-anchor reproducers
+# and the Dock chooser footprint reproducers are expected to fail until T350
+# and T351 flip their manifest rows; the manifest is the gate. No native seat
+# or GPU is required, so this target runs in either evidence case.
+CHROME_QT_RE := ^(tst_design_system|tst_menubar|tst_dock|tst_chromescale|tst_chromebufferpool|tst_chromestats|tst_gpucapabilities|tst_dmabufcommit|tst_chromeframeproducer|tst_chromepointer|tst_chromepointerui|tst_materialpolicy|tst_notifications|tst_controlcenter|tst_osd|tst_chooserui|tst_windowmenu)$$
+verify-chrome-stability: build
+	$(MAKE) glass-presets-check
+	$(MAKE) glass-shader-test
+	$(MAKE) menubar-veil-check
+	$(MAKE) menu-families-check
+	$(MAKE) control-center-materials-check
+	$(MAKE) notification-materials-check
+	$(MAKE) first-party-chrome-check
+	$(CTEST) --test-dir $(BUILD_DIR) -R '$(CHROME_QT_RE)' --output-on-failure
+	$(CARGO) test -p dragonfruit-compositor \
+	    --test shell_protocol_conformance \
+	    --test animation_clock \
+	    --test latency_trace
+	python3 tests/chrome-stability/test_fixture_manifest.py
+	python3 tests/chrome-stability/run_fixtures.py
+
+# T349: nested GPU ring/alpha smoke at 1x/1.5x/2x. Needs a host Wayland/GL
+# session; writes docs/captures/stability2/t349-gpu-smoke.txt (OPEN when no
+# host session is available). The deterministic fixture gate above still runs.
+t349-gpu-smoke: build
+	bash scripts/t349-gpu-smoke.sh
+
+# T349: shared-memory and nested-GPU popup baselines using the real Dock
+# chooser path. Writes docs/captures/stability2/t349-baselines/. Needs a host
+# Wayland session; the script records an explicit OPEN artifact otherwise.
+t349-chrome-baselines: build
+	bash scripts/t349-chrome-baselines.sh
 
 # The Settings-set per-task verify: its visual-parity tasks are QML-only, so
 # the e2e half (Rust adapters, compositor, headless demo) is redundant. Any

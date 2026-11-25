@@ -8,7 +8,9 @@
 // producer on a rail without GL (the offscreen QPA) and requires a clean
 // recorded reason instead of a black frame.
 #include <QCommandLineParser>
+#include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
@@ -17,9 +19,12 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTextStream>
+#include <QThread>
+#include <QVector>
 #include <QtMath>
 
 #include <cstdio>
+#include <cstring>
 
 #include "gpuchromeframeproducer.h"
 #include "gpuchromeprobe.h"
@@ -54,6 +59,220 @@ QString colorText(const QColor &color)
     return color.name(QColor::HexArgb);
 }
 
+bool imagesEqual(const QImage &a, const QImage &b)
+{
+    if (a.isNull() || b.isNull() || a.size() != b.size()
+        || a.format() != b.format())
+        return false;
+    for (int y = 0; y < a.height(); ++y) {
+        if (std::memcmp(a.constScanLine(y), b.constScanLine(y),
+                        static_cast<size_t>(a.bytesPerLine())) != 0)
+            return false;
+    }
+    return true;
+}
+
+bool premultipliedAlphaOk(const QImage &image, qreal dpr)
+{
+    const QRgb corner = image.pixel(0, 0);
+    if (qAlpha(corner) != 0 || qRed(corner) != 0 || qGreen(corner) != 0
+        || qBlue(corner) != 0)
+        return false;
+    const int x = qBound(0, qRound(40 * dpr), image.width() - 1);
+    const int y = qBound(0, qRound(68 * dpr), image.height() - 1);
+    const QRgb alphaCard = image.pixel(x, y);
+    const int alpha = qAlpha(alphaCard);
+    if (qAbs(alpha - 0x80) > 6)
+        return false;
+    return qRed(alphaCard) <= alpha && qGreen(alphaCard) <= alpha
+        && qBlue(alphaCard) <= alpha;
+}
+
+bool waitForReadyFrame(GpuChromeFrameProducer &producer, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        if (producer.hasReadyFrame(GpuChromeFrameProducer::PrimaryView))
+            return true;
+        if (!producer.hasPendingFrame(GpuChromeFrameProducer::PrimaryView))
+            return false;
+        QThread::msleep(1);
+    }
+    return false;
+}
+
+int runRingCheck(GpuChromeFrameProducer &producer, qreal dpr,
+                 const QString &outPath)
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+import QtQuick
+Rectangle {
+    id: root
+    width: 160
+    height: 90
+    color: "transparent"
+    property color cardColor: "#ff0000"
+    Rectangle {
+        x: 20; y: 12; width: 90; height: 40; radius: 8
+        color: root.cardColor
+    }
+    Rectangle {
+        x: 20; y: 58; width: 40; height: 20; radius: 4
+        color: "#80336699"
+    }
+}
+)",
+                      QUrl());
+    if (component.isError()) {
+        line(QStringLiteral("verdict=fail reason=ring-qml-error %1")
+                 .arg(component.errorString().trimmed()));
+        return 1;
+    }
+    QObject *object = component.create();
+    auto *root = qobject_cast<QQuickItem *>(object);
+    if (!root) {
+        line(QStringLiteral("verdict=fail reason=ring-qml-root-not-item"));
+        delete object;
+        return 1;
+    }
+    root->setParentItem(producer.window()->contentItem());
+    root->setWidth(kLogicalWidth);
+    root->setHeight(kLogicalHeight);
+    producer.window()->setColor(Qt::transparent);
+    producer.window()->resize(QSize(kLogicalWidth, kLogicalHeight));
+    producer.resize(QSize(kLogicalWidth, kLogicalHeight) * dpr);
+    producer.window()->update();
+
+    const auto setCard = [&](const QColor &color) {
+        root->setProperty("cardColor", color);
+        producer.window()->update();
+    };
+    const auto exportOne = [&](const QColor &color, ChromeDmabufFrame *frame,
+                               QImage *image) {
+        setCard(color);
+        QString reason;
+        if (!producer.exportFrame(frame, &reason)) {
+            line(QStringLiteral("ring export failed: %1").arg(reason));
+            return false;
+        }
+        *image = producer.readbackCurrentFrame();
+        line(QStringLiteral(
+                 "ring export slot=%1 serial=%2 size=%3x%4 format=%5")
+                 .arg(frame->slot)
+                 .arg(frame->serial)
+                 .arg(frame->size.width())
+                 .arg(frame->size.height())
+                 .arg(GpuChromeCapabilities::formatName(frame->format)));
+        return !image->isNull();
+    };
+
+    ChromeDmabufFrame red;
+    ChromeDmabufFrame green;
+    ChromeDmabufFrame blue;
+    QImage redImage;
+    QImage greenImage;
+    QImage blueImage;
+    if (!exportOne(QColor(255, 0, 0), &red, &redImage)
+        || !exportOne(QColor(0, 255, 0), &green, &greenImage)
+        || !exportOne(QColor(0, 0, 255), &blue, &blueImage)) {
+        line(QStringLiteral("verdict=fail reason=ring-export"));
+        delete object;
+        return 1;
+    }
+    const bool distinctSlots = red.slot != green.slot && green.slot != blue.slot
+        && red.slot != blue.slot;
+    const bool paintedDistinct = !imagesEqual(redImage, greenImage)
+        && !imagesEqual(greenImage, blueImage)
+        && !imagesEqual(redImage, blueImage);
+
+    // Keep the blue frame owned so the next two submits reuse the other two
+    // slots. Both reuse the unchanged blue scene with a 1x1 damage report.
+    producer.releaseDmabufFrame(red.slot, red.serial);
+    producer.releaseDmabufFrame(green.slot, green.serial);
+
+    ChromeSceneDamage damage;
+    damage.known = true;
+    damage.rect = QRect(0, 0, 1, 1);
+    QVector<ChromeDmabufFrame> reusedFrames;
+    bool fullFrameOk = true;
+    bool outsideDamageOk = true;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        QString reason;
+        if (!producer.submitFrame(GpuChromeFrameProducer::PrimaryView, damage,
+                                  &reason)) {
+            line(QStringLiteral("ring submit failed: %1").arg(reason));
+            fullFrameOk = false;
+            break;
+        }
+        if (!waitForReadyFrame(producer, 5000)) {
+            line(QStringLiteral("ring frame never became ready"));
+            fullFrameOk = false;
+            break;
+        }
+        ChromeDmabufFrame reused;
+        if (!producer.takeCompletedFrame(GpuChromeFrameProducer::PrimaryView,
+                                         &reused, &reason)) {
+            line(QStringLiteral("ring take failed: %1").arg(reason));
+            fullFrameOk = false;
+            break;
+        }
+        const QImage image = producer.readbackCurrentFrame();
+        const bool equal = imagesEqual(image, blueImage);
+        fullFrameOk = fullFrameOk && equal;
+        const int sx = qBound(0, qRound(65 * dpr), image.width() - 1);
+        const int sy = qBound(0, qRound(32 * dpr), image.height() - 1);
+        const bool outside = !image.isNull()
+            && image.pixel(sx, sy) == blueImage.pixel(sx, sy);
+        outsideDamageOk = outsideDamageOk && outside;
+        line(QStringLiteral(
+                 "ring reuse slot=%1 damage=%2 full_frame_ok=%3 "
+                 "outside_damage_ok=%4")
+                 .arg(reused.slot)
+                 .arg(reused.damage.known() ? QStringLiteral("region")
+                                            : QStringLiteral("full"))
+                 .arg(equal ? 1 : 0)
+                 .arg(outside ? 1 : 0));
+        reusedFrames.append(reused);
+    }
+
+    const bool premultipliedOk = premultipliedAlphaOk(blueImage, dpr);
+    const QString absoluteOut = QFileInfo(outPath).absoluteFilePath();
+    QDir().mkpath(QFileInfo(outPath).absolutePath());
+    const bool saved = !blueImage.isNull() && blueImage.save(outPath);
+    line(QStringLiteral(
+             "ring_check dpr=%1 slots=%2,%3,%4 distinct_slots=%5 "
+             "painted_distinct=%6 reused=%7 full_frame_ok=%8 "
+             "outside_damage_ok=%9 premultiplied_ok=%10 saved=%11 capture=%12")
+             .arg(dpr, 0, 'g', 4)
+             .arg(red.slot)
+             .arg(green.slot)
+             .arg(blue.slot)
+             .arg(distinctSlots ? 1 : 0)
+             .arg(paintedDistinct ? 1 : 0)
+             .arg(reusedFrames.size())
+             .arg(fullFrameOk ? 1 : 0)
+             .arg(outsideDamageOk ? 1 : 0)
+             .arg(premultipliedOk ? 1 : 0)
+             .arg(saved ? 1 : 0)
+             .arg(absoluteOut));
+
+    for (const ChromeDmabufFrame &frame : reusedFrames)
+        producer.releaseDmabufFrame(frame.slot, frame.serial);
+    producer.releaseDmabufFrame(blue.slot, blue.serial);
+
+    const bool pass = distinctSlots && paintedDistinct
+        && reusedFrames.size() == 2 && fullFrameOk && outsideDamageOk
+        && premultipliedOk && saved;
+    line(QStringLiteral("verdict=%1")
+             .arg(pass ? QStringLiteral("pass") : QStringLiteral("fail")));
+    delete object;
+    return pass ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -85,18 +304,24 @@ int main(int argc, char *argv[])
     QCommandLineOption exportOption(
         QStringLiteral("export"),
         QStringLiteral("Export the rendered FBO as a dmabuf"));
+    QCommandLineOption ringCheckOption(
+        QStringLiteral("ring-check"),
+        QStringLiteral("Paint three slots, reuse two with partial damage, and "
+                       "check premultiplied alpha"));
     parser.addOption(outOption);
     parser.addOption(dprOption);
     parser.addOption(framesOption);
     parser.addOption(probeOnlyOption);
     parser.addOption(fallbackOption);
     parser.addOption(exportOption);
+    parser.addOption(ringCheckOption);
     parser.process(app);
 
     const qreal dpr = qMax(0.25, parser.value(dprOption).toDouble());
     const int frames = qMax(1, parser.value(framesOption).toInt());
     const bool expectFallback = parser.isSet(fallbackOption);
     const bool probeOnly = parser.isSet(probeOnlyOption);
+    const bool ringCheck = parser.isSet(ringCheckOption);
 
     line(QStringLiteral("platform=%1 chrome_gpu=%2 dpr=%3")
              .arg(app.platformName(),
@@ -140,6 +365,10 @@ int main(int argc, char *argv[])
                           ? GpuChromeCapabilities::describe(probe.selected.pair)
                           : QStringLiteral("none")));
         return 0;
+    }
+    if (ringCheck) {
+        producer.setDmabufFormats(probe.formats);
+        return runRingCheck(producer, dpr, parser.value(outOption));
     }
 
     QQmlEngine engine;

@@ -47,6 +47,22 @@ set_tests_properties(tst_dock PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Chrome stability fixtures (T349). Not a CTest target: the pre-fix
+# reproducers are expected to fail until their owning tasks land, so
+# `tests/chrome-stability/run_fixtures.py` compares the per-function results
+# with the checked-in manifest. `make verify-chrome-stability` runs it.
+qt_add_executable(tst_chromestability
+    tst_chromestability.cpp
+)
+target_link_libraries(tst_chromestability PRIVATE
+    Qt6::QuickTest
+    Qt6::Quick
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-menubarplugin
+    dragonfruit-shell-dockplugin
+)
+qt_import_qml_plugins(tst_chromestability)
+
 # Chrome scale geometry tests (T-21.1b): logical surface size -> physical
 # buffer size, 1x/1.5x/2x buffer-scale/viewport choice, and the pointer
 # round-trip. No Wayland, QML, or compositor.

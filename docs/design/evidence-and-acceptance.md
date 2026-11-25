@@ -210,6 +210,24 @@ auto-hide and a concurrent window workload. Cover 60/120/144 Hz and
 scale, adaptive sync when supported, and the shared-memory fallback.
 Check focus, placement, and stale popup frames alongside timing.
 
+The deterministic chrome gate is `make verify-chrome-stability` (T349). It
+runs the popup/menu Qt suites, the shell-protocol and presentation-timing
+tests, the material geometry checks, and the offscreen
+`tst_chromestability` fixtures. Pre-fix reproducers live in
+`tests/chrome-stability/expected-failures.json` with an owning task, setup,
+and symptom; the gate passes only while an expected-failure row still fails.
+The owning task flips its row to `pass` when the fix lands. This is agent
+evidence on the software scene graph, not a native presentation claim
+([ADR 0360](adr/0360-chrome-stability-fixture-gate.md)).
+
+Keep the evidence classes separate: the Qt fixture reports the declared
+geometry and QML silhouette, `make t349-gpu-smoke` reads back the producer FBO
+for ring reuse and premultiplied alpha, `make t349-chrome-baselines` records
+the real Dock chooser counters for shared memory and nested GPU, and native
+scanout is still the hardware row. A missing host session produces an explicit
+`OPEN` artifact with the exact command; the deterministic fixture gate runs
+either way.
+
 The native popup comparison and native material workload are starting
 points for the hardware run. Extend them to cover the Menu Bar and
 context-menu families. Keep captures and traces local under repository
