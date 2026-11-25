@@ -140,8 +140,8 @@ private slots:
         QTest::newRow("konsole") << QStringLiteral("konsole") << QStringLiteral("-e");
         QTest::newRow("alacritty")
             << QStringLiteral("alacritty") << QStringLiteral("-e");
-        QTest::newRow("kitty") << QStringLiteral("kitty") << QStringLiteral("--");
-        QTest::newRow("foot") << QStringLiteral("foot") << QStringLiteral("--");
+        QTest::newRow("kitty") << QStringLiteral("kitty") << QStringLiteral("-e");
+        QTest::newRow("foot") << QStringLiteral("foot") << QStringLiteral("-e");
         QTest::newRow("xterm") << QStringLiteral("xterm") << QStringLiteral("-e");
     }
 
@@ -217,7 +217,7 @@ private slots:
         QCOMPARE(terminal.program, QStringLiteral("foot"));
         const QStringList argv =
             DesktopEntryIndex::buildLaunchCommand(terminalEntry(), {}, terminal);
-        QCOMPARE(argv, (QStringList{QStringLiteral("foot"), QStringLiteral("--"),
+        QCOMPARE(argv, (QStringList{QStringLiteral("foot"), QStringLiteral("-e"),
                                     QStringLiteral("myapp"), QStringLiteral("--flag")}));
 
         QProcess process;
@@ -234,7 +234,7 @@ private slots:
         const QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
         const QStringList lines = output.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         QVERIFY(lines.contains(QStringLiteral("TERMINAL")));
-        QVERIFY(lines.contains(QStringLiteral("ARG:--")));
+        QVERIFY(lines.contains(QStringLiteral("ARG:-e")));
         QVERIFY(lines.contains(QStringLiteral("ARG:myapp")));
         QVERIFY(lines.contains(QStringLiteral("ARG:--flag")));
     }

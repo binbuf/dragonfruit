@@ -192,7 +192,7 @@ TerminalLaunch resolveTerminal(const QProcessEnvironment &environment,
     // identity.
     static constexpr Candidate candidates[] = {
         {"ptyxis", "--"},   {"gnome-terminal", "--"}, {"konsole", "-e"},  // df-allow-desktop-name
-        {"alacritty", "-e"}, {"kitty", "--"},          {"foot", "--"},
+        {"alacritty", "-e"}, {"kitty", "-e"},          {"foot", "-e"},
         {"xterm", "-e"},
     };
     for (const Candidate &candidate : candidates) {
