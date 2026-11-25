@@ -12,7 +12,7 @@
 //! itself is Wayland-only in that case).
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use x11rb::connection::Connection;
@@ -72,7 +72,7 @@ impl CompositorProcess {
         synthetic_path: Option<&Path>,
         scale: f64,
     ) -> Self {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
+        let mut command = common::compositor_command();
         command
             .arg("--backend")
             .arg("headless")

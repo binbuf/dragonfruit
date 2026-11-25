@@ -20,7 +20,7 @@
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
@@ -58,7 +58,7 @@ impl CompositorProcess {
         let socket_path = PathBuf::from(&runtime_dir).join(&socket_name);
 
         let _ = std::fs::remove_file(synthetic);
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut child = common::compositor_command()
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")

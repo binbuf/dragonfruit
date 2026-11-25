@@ -29,7 +29,7 @@
 use std::os::fd::{AsFd, AsRawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
@@ -507,7 +507,7 @@ impl CompositorProcess {
         let log = std::fs::File::create(&log_path).expect("failed to create compositor log");
         let log_err = log.try_clone().expect("failed to clone compositor log");
 
-        let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
+        let mut command = common::compositor_command();
         command
             .arg("--backend")
             .arg("headless")

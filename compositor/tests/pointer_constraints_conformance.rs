@@ -18,7 +18,7 @@
 
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
@@ -304,7 +304,7 @@ impl CompositorProcess {
         let stdout_path = std::env::temp_dir().join(format!("{socket_name}.stdout"));
         let stdout_file = std::fs::File::create(&stdout_path).expect("create stdout log");
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut child = common::compositor_command()
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")

@@ -6,7 +6,7 @@
 //! Spawns the compositor on the headless backend, connects as a Wayland
 //! client, and asserts the exact set of advertised globals.
 
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{wl_registry, wl_surface};
@@ -144,7 +144,7 @@ impl Drop for CompositorProcess {
 
 impl CompositorProcess {
     fn start(socket_name: &str) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut child = common::compositor_command()
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")

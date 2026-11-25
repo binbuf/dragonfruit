@@ -24,7 +24,7 @@
 
 use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -133,7 +133,7 @@ impl CompositorProcess {
         let _ = std::fs::remove_file(&synthetic_path);
         let _ = std::fs::remove_file(&sender_path);
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut child = common::compositor_command()
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")

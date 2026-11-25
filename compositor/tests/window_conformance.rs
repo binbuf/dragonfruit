@@ -17,7 +17,7 @@
 
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -565,7 +565,7 @@ impl CompositorProcess {
         synthetic_output_path: Option<&Path>,
     ) -> Self {
         let socket_name = format!("{socket_name}-{}", std::process::id());
-        let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
+        let mut command = common::compositor_command();
         command
             .arg("--backend")
             .arg("headless")

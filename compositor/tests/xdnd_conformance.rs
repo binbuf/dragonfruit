@@ -13,7 +13,7 @@
 //! `xwayland_conformance.rs`.
 
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use dragonfruit_compositor::xdnd::{
@@ -50,7 +50,7 @@ impl Drop for CompositorProcess {
 
 impl CompositorProcess {
     fn start(socket_name: &str) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut child = common::compositor_command()
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")
