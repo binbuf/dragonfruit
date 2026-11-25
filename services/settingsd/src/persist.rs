@@ -240,12 +240,24 @@ fn from_document(path: &Path, mut root: Map<String, Json>) -> Result<Loaded, Loa
     };
 
     // A migration fills keys the older revision predates with their default.
+    // Capture whether the file itself named the Dock pin list first: the fill
+    // below would otherwise make every key look present (T336).
+    let pinned_was_present = raw_keys.contains_key("dock.pinned");
     if migrated {
         for spec in KEYS {
             raw_keys
                 .entry(spec.key.to_owned())
                 .or_insert_with(|| value_to_json(&spec.default.to_value()).unwrap_or(Json::Null));
         }
+    }
+
+    // T336: the Dock pin marker is a first-run fact, not a derived one. A file
+    // that already names `dock.pinned` (even as an empty list) has been
+    // through a seed or a user edit, so the migration marks it initialized; a
+    // file that never named it is a first run and leaves the marker false for
+    // the shell to seed once.
+    if migrated && pinned_was_present {
+        raw_keys.insert("dock.pinsInitialized".to_owned(), Json::Bool(true));
     }
 
     let mut settings = Settings::new();
@@ -691,6 +703,56 @@ mod tests {
         assert!(!again.migrated);
         assert_eq!(again.schema, SCHEMA_VERSION);
         assert_eq!(again.settings, loaded.settings);
+    }
+
+    #[test]
+    fn the_dock_pin_marker_migrates_from_the_pinned_list() {
+        // T336: a revision-38 file whose Dock was emptied on purpose still
+        // names `dock.pinned` (an empty list), so the migration marks it
+        // initialized and the shell never re-seeds it.
+        let scratch = Scratch::new("migrate-dock-marker");
+        let path = scratch.file();
+        write_raw(
+            &path,
+            "{\n  \"schema\": 38,\n  \"keys\": { \"dock.pinned\": [] }\n}\n",
+        );
+        let loaded = load(&path).unwrap();
+        assert!(loaded.migrated);
+        assert_eq!(
+            loaded.settings.get("dock.pinned").unwrap(),
+            &Value::TextList(Vec::new())
+        );
+        assert_eq!(
+            loaded.settings.get("dock.pinsInitialized").unwrap(),
+            &Value::Bool(true)
+        );
+        // The marker survives the rewritten file, so the next daemon start
+        // still sees an initialized (and deliberately empty) Dock.
+        loaded.persistence.save(&loaded.settings).unwrap();
+        let reloaded = load(&path).unwrap();
+        assert!(!reloaded.migrated);
+        assert_eq!(
+            reloaded.settings.get("dock.pinsInitialized").unwrap(),
+            &Value::Bool(true)
+        );
+        assert_eq!(
+            reloaded.settings.get("dock.pinned").unwrap(),
+            &Value::TextList(Vec::new())
+        );
+
+        // A revision-38 file that never named `dock.pinned` is a first run:
+        // the marker stays false so the shell seeds the defaults once.
+        let first = scratch.file().with_file_name("first-run.json");
+        write_raw(
+            &first,
+            "{\n  \"schema\": 38,\n  \"keys\": { \"dock.size\": 0.7 }\n}\n",
+        );
+        let loaded = load(&first).unwrap();
+        assert!(loaded.migrated);
+        assert_eq!(
+            loaded.settings.get("dock.pinsInitialized").unwrap(),
+            &Value::Bool(false)
+        );
     }
 
     #[test]

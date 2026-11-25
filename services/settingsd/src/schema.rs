@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 38;
+pub const SCHEMA_VERSION: u32 = 39;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -645,7 +645,22 @@ pub const KEYS: &[KeySpec] = &[
         semantic: KeySemantic::None,
         stored_only: false,
         since: 1,
-        summary: "Ordered desktop ids pinned to the Dock; empty seeds defaults.",
+        summary: "Ordered desktop ids pinned to the Dock; empty is valid once `dock.pinsInitialized` is set.",
+    },
+    KeySpec {
+        key: "dock.pinsInitialized",
+        group: KeyGroup::Dock,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "shell/Dock",
+        consumer: "shell/Dock",
+        semantic: KeySemantic::None,
+        stored_only: false,
+        since: 39,
+        summary: "Set once the Dock's pinned set is seeded or edited; an empty list then stays empty.",
     },
     KeySpec {
         key: "dock.pinnedFolders",
@@ -5262,6 +5277,24 @@ mod tests {
         assert!(slideshow.validate(&Value::Integer(1440)).is_ok());
         assert!(slideshow.validate(&Value::Integer(1441)).is_err());
         assert!(slideshow.validate(&Value::Integer(-1)).is_err());
+    }
+
+    /// The Dock first-run marker (T336), additive in revision 39. The marker
+    /// is the only first-run signal: `dock.pinned` being empty is a valid
+    /// user choice, so the shell seeds only while the marker is false.
+    #[test]
+    fn the_dock_pin_initialization_marker_is_declared_in_revision_thirty_nine() {
+        let spec = spec("dock.pinsInitialized").expect("dock.pinsInitialized is declared");
+        assert_eq!(spec.group, KeyGroup::Dock);
+        assert_eq!(spec.kind, KeyType::Bool);
+        assert_eq!(spec.default, KeyDefault::Bool(false));
+        assert_eq!(spec.owner, "shell/Dock");
+        assert_eq!(spec.consumer, "shell/Dock");
+        assert_eq!(spec.since, 39);
+        assert!(spec.since <= SCHEMA_VERSION);
+        assert!(spec.validate(&Value::Bool(true)).is_ok());
+        assert!(spec.validate(&Value::Bool(false)).is_ok());
+        assert!(spec.validate(&Value::Text("yes".into())).is_err());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

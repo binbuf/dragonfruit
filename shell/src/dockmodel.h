@@ -80,6 +80,10 @@ struct DockConfig {
     bool minimizeReaction = false;
     bool reduceMotion = false;
     QStringList pinned;
+    // T336: the first-run marker. `pinned` being empty is a valid user choice
+    // once this is true, so the marker — never the list — decides whether the
+    // shell may seed the installed defaults.
+    bool pinsInitialized = false;
     // Ordered absolute folder paths pinned to the Dock as folder stacks
     // (T-14.7k). Independent of `pinned` so app pins keep their exact
     // `desktopId` semantics.
@@ -91,6 +95,25 @@ struct DockConfig {
 // Read the Dock keys out of a settings value map (missing keys fall back to
 // the schema defaults). Pure and unit-testable.
 DockConfig dockConfigFromValues(const QVariantMap &values);
+
+// T336: what the shell should do about the installed default pins.
+enum class DockPinSeedAction {
+    // `dock.pinsInitialized` is set: the user's set (including an empty one)
+    // is durable, so do not write anything.
+    Skip,
+    // Legacy pins exist without the marker: write only the marker.
+    MarkInitialized,
+    // First run: resolve and write the default pins, then the marker.
+    Seed,
+    // The app-index corpus has not answered yet; retry on its resync.
+    Wait,
+};
+
+// Decide from the typed Dock config whether the defaults may be seeded. The
+// list is never the signal: an empty `pinned` with the marker set is a
+// deliberate user choice. `defaultsResolved` says the app-index corpus is
+// available to resolve the defaults. Pure and unit-tested (tst_dockcore).
+DockPinSeedAction dockPinSeedAction(const DockConfig &config, bool defaultsResolved);
 
 // The recency list the Dock should render (T236): `recentIds` when
 // `dock.showRecentApps` is on, empty when it is off. One place decides the

@@ -1045,7 +1045,11 @@ private:
     // Write one `dock.*` key through the settings client (settingsd is the
     // single owner) and refresh the typed local view.
     void writeDockSetting(const QString &key, const QVariant &value);
-    // Seed the installed default pinned set once, when `dock.pinned` is empty.
+    // Write the complete `dock.pinned` set from a user action, and set the
+    // T336 first-run marker so clearing every pin is durable.
+    void writeDockPins(const QStringList &ids);
+    // Seed the installed default pinned set once, while `dock.pinsInitialized`
+    // is false; an empty list with the marker set is a valid user choice.
     void seedDefaultDockPins();
     // Project `m_folderStacks` onto the Dock QML: the Downloads stack's
     // `downloads*` properties (the default member, unchanged) and the

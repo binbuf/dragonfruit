@@ -76,8 +76,9 @@ class SettingsConsumerGateTests(unittest.TestCase):
         )
         live = [row for row in specs if not row["stored_only"]]
         # T320 closed the last pointer/backlight known gaps and made the
-        # libinput-appliable pointer family keys live.
-        self.assertEqual(len(live), 174)
+        # libinput-appliable pointer family keys live; T336 added the Dock
+        # pin-initialization marker.
+        self.assertEqual(len(live), 175)
         self.assertEqual(len(gaps), 0)
 
     def test_live_key_without_entry_fails(self) -> None:

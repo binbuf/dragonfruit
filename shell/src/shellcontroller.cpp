@@ -8439,7 +8439,7 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
             } else {
                 QStringList ids = m_dockConfig.pinned;
                 ids.append(id);
-                writeDockSetting(QStringLiteral("dock.pinned"), ids);
+                writeDockPins(ids);
                 rebuildDockEntries();
                 qInfo() << "shell: Dock pinned" << id << "from an external drop";
             }
@@ -8794,36 +8794,59 @@ void ShellController::writeDockSetting(const QString &key, const QVariant &value
     m_dockConfig = dockConfigFromValues(m_settingsClient->values());
 }
 
-// Seed the installed default pinned set once per session when `dock.pinned` is
-// empty (the schema default). This is the shell's only "first run" decision;
-// settingsd owns the value from then on.
+// Write the complete `dock.pinned` set from a user action. The first write
+// also marks the Dock initialized (T336): once the user has touched the set —
+// including clearing every pin — the next login must not re-seed defaults.
+void ShellController::writeDockPins(const QStringList &ids)
+{
+    writeDockSetting(QStringLiteral("dock.pinned"), ids);
+    if (!m_dockConfig.pinsInitialized)
+        writeDockSetting(QStringLiteral("dock.pinsInitialized"), true);
+}
+
+// Seed the installed default pinned set once per install. The marker, not an
+// empty list, is the first-run signal: a user who unpins everything keeps
+// `dock.pinned` empty with `dock.pinsInitialized` set, and the next login
+// leaves the Dock empty. This is the shell's only "first run" decision;
+// settingsd owns the values from then on.
 void ShellController::seedDefaultDockPins()
 {
     if (m_defaultPinsSeeded)
         return;
     // When settingsd is up, wait for its first snapshot: seeding before the
-    // persisted `dock.pinned` is read would overwrite the user's pins.
+    // persisted `dock.pinned`/`dock.pinsInitialized` is read would overwrite
+    // the user's pins.
     if (m_settingsClient && m_settingsClient->isAvailable()
         && !m_settingsSnapshotReceived) {
         return;
     }
-    if (!m_dockConfig.pinned.isEmpty()) {
+    const bool defaultsResolved = !m_appIndexCatalog.index().isEmpty();
+    switch (dockPinSeedAction(m_dockConfig, defaultsResolved)) {
+    case DockPinSeedAction::Wait:
+        // app-index has not answered yet (the shell and the service start in
+        // parallel); leave the seed armed for the registration resync.
+        return;
+    case DockPinSeedAction::Skip:
         m_defaultPinsSeeded = true;
         return;
-    }
-    const QStringList defaults = resolveDefaultDockPins(m_appIndexCatalog.index());
-    if (defaults.isEmpty()) {
-        // An empty corpus means app-index has not answered yet (the shell and
-        // the service start in parallel); leave the seed armed so the
-        // registration resync can resolve the defaults. Once a real corpus
-        // has no default apps, there is nothing to retry.
-        if (!m_appIndexCatalog.index().isEmpty())
-            m_defaultPinsSeeded = true;
+    case DockPinSeedAction::MarkInitialized:
+        // A legacy install already has pins; only the marker is missing.
+        m_defaultPinsSeeded = true;
+        writeDockSetting(QStringLiteral("dock.pinsInitialized"), true);
+        return;
+    case DockPinSeedAction::Seed: {
+        const QStringList defaults = resolveDefaultDockPins(m_appIndexCatalog.index());
+        m_defaultPinsSeeded = true;
+        if (!defaults.isEmpty()) {
+            writeDockSetting(QStringLiteral("dock.pinned"), defaults);
+            rebuildDockEntries();
+        }
+        // A real corpus with no resolvable default apps still completes the
+        // first run, so a later resync does not seed.
+        writeDockSetting(QStringLiteral("dock.pinsInitialized"), true);
         return;
     }
-    m_defaultPinsSeeded = true;
-    writeDockSetting(QStringLiteral("dock.pinned"), defaults);
-    rebuildDockEntries();
+    }
 }
 
 // The divider resize handle (T-10 section 5): the live preview re-lays-out the
@@ -9705,7 +9728,7 @@ void ShellController::onDockAppPinToggled(const QString &desktopId, bool pinned)
         return;
     // The single writer path: settingsd owns `dock.pinned`; the picker and the
     // Dock both re-read it, so they cannot disagree (ADR 0090).
-    writeDockSetting(QStringLiteral("dock.pinned"), ids);
+    writeDockPins(ids);
     // The pinned set changed, so every recorded tile may describe a moved or
     // removed entry; drop them and let the next click repopulate (T-14.7l).
     m_dockTiles.clear();
@@ -11366,7 +11389,7 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         } else {
             QStringList ids = m_dockConfig.pinned;
             ids.append(id);
-            writeDockSetting(QStringLiteral("dock.pinned"), ids);
+            writeDockPins(ids);
             rebuildDockEntries();
         }
     } else if (action == QLatin1String("remove_from_dock")) {
@@ -11374,7 +11397,7 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         if (!id.isEmpty() && m_dockConfig.pinned.contains(id)) {
             QStringList ids = m_dockConfig.pinned;
             ids.removeAll(id);
-            writeDockSetting(QStringLiteral("dock.pinned"), ids);
+            writeDockPins(ids);
             rebuildDockEntries();
         }
     } else if (action == QLatin1String("quit")) {
@@ -11536,7 +11559,7 @@ void ShellController::onDockPinnedOrderChanged(const QVariant &desktopIds)
         if (!id.isEmpty() && !ids.contains(id))
             ids.append(id);
     }
-    writeDockSetting(QStringLiteral("dock.pinned"), ids);
+    writeDockPins(ids);
     // The pinned set changed; drop the recorded tiles (T-14.7l).
     m_dockTiles.clear();
     rebuildDockEntries();

@@ -69,6 +69,12 @@
       "state": "verified",
       "task": "T304"
     },
+    "dock.pinsInitialized": {
+      "consumer": "shell/Dock",
+      "test": "shell/tests/tst_dockcore.cpp",
+      "state": "verified",
+      "task": "T336"
+    },
     "dock.pinnedFolders": {
       "consumer": "shell/Dock",
       "test": "shell/tests/tst_dock.qml",

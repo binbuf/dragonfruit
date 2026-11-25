@@ -166,7 +166,7 @@ namespace {
 
 QVariantMap buildSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 38). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 39). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -182,6 +182,7 @@ QVariantMap buildSchemaDefaults()
     values.insert(QStringLiteral("dock.chooserOnHover"), false);
     values.insert(QStringLiteral("dock.minimizeReaction"), false);
     values.insert(QStringLiteral("dock.pinned"), QStringList());
+    values.insert(QStringLiteral("dock.pinsInitialized"), false);
     values.insert(QStringLiteral("workspaces.count"), qlonglong(3));
     values.insert(QStringLiteral("gestures.enabled"), true);
     values.insert(QStringLiteral("gestures.spaceSwitch"), true);

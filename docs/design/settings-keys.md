@@ -41,7 +41,8 @@ compares against `libs/settings-client`, so the client cache cannot drift.
 | `dock.minimizedAnimation` | s | `scale` | `genie`/`scale`/`none` | shell/Dock | compositor/window motion | Minimize/restore animation style. |
 | `dock.titlebarDoubleClick` | s | `zoom` | `zoom`/`minimize`/`none` | settingsd | compositor/window decoration (SSD) | Action on a titlebar double-click. |
 | `dock.showRecentApps` | b | false | | shell/Dock | shell/Dock | Show recent/suggested apps in the Dock. |
-| `dock.pinned` | as | `[]` | | shell/Dock | shell/Dock | Ordered desktop ids pinned to the Dock; empty seeds defaults. |
+| `dock.pinned` | as | `[]` | | shell/Dock | shell/Dock | Ordered desktop ids pinned to the Dock; empty is valid once `dock.pinsInitialized` is set. |
+| `dock.pinsInitialized` | b | false | | shell/Dock | shell/Dock | Set once the Dock's pinned set is seeded or edited; an empty list then stays empty. |
 | `dock.pinnedFolders` | as | `[]` | | shell/Dock | shell/Dock | Ordered absolute folder paths pinned to the Dock as stacks; empty seeds the Downloads default. |
 | `dock.chooserOnHover` | b | false | | shell/Dock | shell/Dock | Open a grouped app's window chooser on hover dwell, and retarget it along the Dock. |
 | `dock.minimizeReaction` | b | false | | shell/Dock | shell/Dock | Bounce an app's Dock tile once when one of its windows minimizes; off by default. |

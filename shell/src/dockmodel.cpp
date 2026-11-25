@@ -97,8 +97,20 @@ DockConfig dockConfigFromValues(const QVariantMap &values)
     config.minimizeReaction = read("dock.minimizeReaction", false).toBool();
     config.reduceMotion = read("accessibility.reduceMotion", false).toBool();
     config.pinned = read("dock.pinned", QStringList()).toStringList();
+    config.pinsInitialized = read("dock.pinsInitialized", false).toBool();
     config.pinnedFolders = read("dock.pinnedFolders", QStringList()).toStringList();
     return config;
+}
+
+DockPinSeedAction dockPinSeedAction(const DockConfig &config, bool defaultsResolved)
+{
+    if (config.pinsInitialized)
+        return DockPinSeedAction::Skip;
+    if (!config.pinned.isEmpty())
+        return DockPinSeedAction::MarkInitialized;
+    if (!defaultsResolved)
+        return DockPinSeedAction::Wait;
+    return DockPinSeedAction::Seed;
 }
 
 QStringList dockRecentIds(const DockConfig &config, const QStringList &recentIds)

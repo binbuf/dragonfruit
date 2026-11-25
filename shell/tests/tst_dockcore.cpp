@@ -524,6 +524,7 @@ private slots:
         QCOMPARE(config.minimizeReaction, false);
         QCOMPARE(config.reduceMotion, false);
         QCOMPARE(config.pinned, QStringList());
+        QCOMPARE(config.pinsInitialized, false);
     }
 
     void dockConfigReadsOverridesAndFallsBackOnMissingKeys()
@@ -535,6 +536,7 @@ private slots:
         values.insert(QStringLiteral("accessibility.reduceMotion"), true);
         values.insert(QStringLiteral("dock.chooserOnHover"), true);
         values.insert(QStringLiteral("dock.minimizeReaction"), true);
+        values.insert(QStringLiteral("dock.pinsInitialized"), true);
         const DockConfig config = dockConfigFromValues(values);
         QCOMPARE(config.size, 0.9);
         QCOMPARE(config.autohide, true);
@@ -542,6 +544,7 @@ private slots:
         QCOMPARE(config.reduceMotion, true);
         QCOMPARE(config.chooserOnHover, true);
         QCOMPARE(config.minimizeReaction, true);
+        QCOMPARE(config.pinsInitialized, true);
         // Keys absent from the map keep the schema default.
         QCOMPARE(config.magnification, 0.5);
         QCOMPARE(config.showRecentApps, false);
@@ -592,6 +595,29 @@ private slots:
 
         values.insert(QStringLiteral("dock.position"), QStringLiteral("left"));
         QCOMPARE(dockConfigFromValues(values).position, QStringLiteral("left"));
+    }
+
+    // T336: the first-run marker, not an empty list, decides whether the
+    // shell may write the installed defaults.
+    void dockPinSeedUsesTheMarkerNotEmptyList()
+    {
+        DockConfig config;
+        // First run: no marker, empty list, resolved corpus.
+        QCOMPARE(dockPinSeedAction(config, true), DockPinSeedAction::Seed);
+        // app-index has not answered yet: retry on its resync.
+        QCOMPARE(dockPinSeedAction(config, false), DockPinSeedAction::Wait);
+        // The user emptied the Dock: the marker makes it durable.
+        config.pinsInitialized = true;
+        QCOMPARE(dockPinSeedAction(config, true), DockPinSeedAction::Skip);
+        QCOMPARE(dockPinSeedAction(config, false), DockPinSeedAction::Skip);
+        // Legacy pins without the marker: only the marker is written.
+        DockConfig legacy;
+        legacy.pinned = QStringList{QStringLiteral("a.desktop")};
+        QCOMPARE(dockPinSeedAction(legacy, true), DockPinSeedAction::MarkInitialized);
+        QCOMPARE(dockPinSeedAction(legacy, false), DockPinSeedAction::MarkInitialized);
+        // A legacy install with the marker set never re-seeds.
+        legacy.pinsInitialized = true;
+        QCOMPARE(dockPinSeedAction(legacy, true), DockPinSeedAction::Skip);
     }
 
     void settingsChangeReLaysOutTheDock()
