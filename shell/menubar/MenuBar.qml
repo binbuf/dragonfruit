@@ -164,6 +164,20 @@ Rectangle {
         h: menuBar.outputHeight > 0 ? menuBar.outputHeight
           : (Window.window ? Window.window.height : menuBar.height)
     })
+    // The status popups are hosted by zero-sized items that are direct
+    // children of the bar. `hostBounds` is output-local (the bar scene's
+    // origin is the owning output's top-left), so map it into the popup
+    // host's parent coordinates before handing it to the shared `Popup`
+    // clamp. This keeps a popup on the bar's output even when the bar itself
+    // sits at a non-primary origin in a larger scene.
+    function popupBoundsIn(item) {
+        var bounds = menuBar.hostBounds;
+        var parent = item ? item.parent : null;
+        if (!parent)
+            return { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h };
+        var p = menuBar.mapToItem(parent, bounds.x, bounds.y);
+        return { x: p.x, y: p.y, w: bounds.w, h: bounds.h };
+    }
 
     signal keyboardFocusReleaseRequested()
 
@@ -324,6 +338,9 @@ Rectangle {
         if (activeStatusPopup) {
             var statusPopup = activeStatusPopup.popup;
             if (statusPopup.open) {
+                // The popup surface is placed in window coordinates, so this
+                // includes the bar's reveal transform. The compositor owns
+                // the output's layout origin; the target stays output-local.
                 var statusOrigin =
                     activeStatusPopup.mapToItem(null, statusPopup.x, statusPopup.y);
                 return { x: statusOrigin.x, y: statusOrigin.y,
@@ -1398,6 +1415,7 @@ Rectangle {
         objectName: "wifiMenu"
         model: menuBar.wifiMenu
         anchorItem: menuBar.statusItemFor("wifi")
+        availableRect: menuBar.popupBoundsIn(wifiMenuPopup)
         materialPreset: "statusMenu"
         materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
@@ -1415,6 +1433,7 @@ Rectangle {
         objectName: "volumeMenu"
         model: menuBar.volumeMenu
         anchorItem: menuBar.statusItemFor("volume")
+        availableRect: menuBar.popupBoundsIn(volumeMenuPopup)
         materialPreset: "statusMenu"
         materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
@@ -1433,6 +1452,7 @@ Rectangle {
         objectName: "batteryMenu"
         model: menuBar.batteryMenu
         anchorItem: menuBar.statusItemFor("battery")
+        availableRect: menuBar.popupBoundsIn(batteryMenuPopup)
         materialPreset: "statusMenu"
         materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
@@ -1449,6 +1469,7 @@ Rectangle {
         objectName: "bluetoothMenu"
         model: menuBar.bluetoothMenu
         anchorItem: menuBar.statusItemFor("bluetooth")
+        availableRect: menuBar.popupBoundsIn(bluetoothMenuPopup)
         materialPreset: "statusMenu"
         materialBackdrop: "trusted"
         materialBlurActive: menuBar.popupMaterialBlurActive
@@ -1469,6 +1490,7 @@ Rectangle {
         id: dateTimePanel
         objectName: "dateTimePanel"
         anchorItem: menuBar.statusItemFor("clock")
+        availableRect: menuBar.popupBoundsIn(dateTimePanel)
         showSeconds: menuBar.showSeconds
         use24Hour: menuBar.use24Hour
         materialBlurActive: menuBar.popupMaterialBlurActive

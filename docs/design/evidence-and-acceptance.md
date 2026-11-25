@@ -216,9 +216,12 @@ tests, the material geometry checks, and the offscreen
 `tst_chromestability` fixtures. Pre-fix reproducers live in
 `tests/chrome-stability/expected-failures.json` with an owning task, setup,
 and symptom; the gate passes only while an expected-failure row still fails.
-The owning task flips its row to `pass` when the fix lands. This is agent
-evidence on the software scene graph, not a native presentation claim
-([ADR 0360](adr/0360-chrome-stability-fixture-gate.md)).
+The owning task flips its row to `pass` when the fix lands. A row may declare
+`scales`; the runner then repeats that fixture at each device scale. The
+status-anchor rows run at 1×/1.5×/2× and cover secondary-output bounds, the
+right-edge clamp, a status-row relayout, an output resize, and pointer/keyboard
+parity. This is agent evidence on the software scene graph, not a native
+presentation claim ([ADR 0360](adr/0360-chrome-stability-fixture-gate.md)).
 
 Keep the evidence classes separate: the Qt fixture reports the declared
 geometry and QML silhouette, `make t349-gpu-smoke` reads back the producer FBO

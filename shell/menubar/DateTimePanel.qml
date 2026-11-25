@@ -20,6 +20,8 @@ Item {
     property bool showSeconds: false
     property bool use24Hour: false
     property Item anchorItem: null
+    // The owning output's bounds in this panel's parent coordinates (T350).
+    property var availableRect: null
 
     property alias popup: popup
     property alias open: popup.open
@@ -171,6 +173,7 @@ Item {
         id: popup
         objectName: "dateTimePopup"
         anchorItem: root.anchorItem
+        availableRect: root.availableRect
         preferredWidth: 318
         accessibleRole: Accessible.Pane
         accessibleName: qsTr("Date & Time")

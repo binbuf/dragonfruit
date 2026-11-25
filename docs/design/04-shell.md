@@ -181,6 +181,18 @@ they have no trusted compositor backdrop. The Bluetooth slot now reads the
 existing bridge-host adapter and Menu Bar visibility key; it raises the same
 power/device/settings actions as the Quick Settings tile and hides on absence.
 
+Status popups (Wi-Fi, Bluetooth, Sound, Battery, and Date & Time) are hosted by
+items in the bar scene. Each host receives the owning output's logical bounds
+in its parent coordinates and passes them to the shared `Popup` as
+`availableRect`, so the clamp uses the output rather than the host's own width
+([ADR 0361](adr/0361-status-popup-output-anchors.md)). Pointer and keyboard
+activation both go through `openStatusMenu`, so they share one live anchor; a
+status-row relayout or an output resize re-runs the clamp while the popup is
+open. The committed dropdown target remains in window coordinates and keeps
+the bar reveal transform, while QML popup geometry stays output-local and the
+compositor applies the output's layout origin. The clock panel uses the same
+bounds contract, so its placement is unchanged.
+
 Menu-bar rendering follows the chrome frame pacer
 ([ADR 0285](adr/0285-menu-bar-rendering-follows-frame-pacer.md)). Pointer
 motion, clock ticks, policy changes, and popup geometry mark the `menubar`

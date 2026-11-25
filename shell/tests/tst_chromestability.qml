@@ -131,6 +131,10 @@ Item {
         function makeBar(props) {
             var base = {
                 width: 800,
+                // The bar's output bounds are deterministic in the fixture;
+                // a test overrides them for a secondary output or a resize.
+                outputWidth: 800,
+                outputHeight: 640,
                 statusItems: statusItems(false),
                 wifiMenu: wifiModel(),
                 volumeMenu: audioModel(),
@@ -160,14 +164,37 @@ Item {
 
         // The committed origin is the popup's own position mapped into the bar
         // and the controller's `dropdownRect`. A nonzero width is not enough:
-        // the starting revision opens the four status menus at x=0 because
-        // their root Item has no width to clamp against.
-        function verifyStatusAnchor(id, bar) {
-            var menuObjectName = id === "wifi" ? "wifiMenu"
+        // the starting revision opened the four status menus at x=0 because
+        // their root Item had no width to clamp against. T350 supplies the
+        // owning output's bounds in the popup host's parent coordinates, so the
+        // shared Popup clamp lands at the status item and stays output-local.
+        function statusHostObjectName(id) {
+            return id === "wifi" ? "wifiMenu"
                 : id === "volume" ? "volumeMenu"
                 : id === "battery" ? "batteryMenu"
                 : id === "bluetooth" ? "bluetoothMenu"
                 : "dateTimePanel";
+        }
+
+        function expectedStatusPopupPosition(bar, id, popup) {
+            var anchor = bar.statusItemFor(id);
+            verify(anchor !== null, id + " status item exists");
+            var bounds = bar.hostBounds;
+            var anchorPoint = anchor.mapToItem(bar, 0, anchor.height);
+            return {
+                x: Math.max(bounds.x,
+                            Math.min(bounds.x + bounds.w - popup.width,
+                                     anchorPoint.x)),
+                y: Math.max(bounds.y,
+                            Math.min(bounds.y + bounds.h - popup.height,
+                                     anchorPoint.y + popup.anchorOffset)),
+                bounds: bounds,
+                anchorPoint: anchorPoint
+            };
+        }
+
+        function verifyStatusAnchor(id, bar, closeAfter) {
+            var menuObjectName = statusHostObjectName(id);
             bar.openStatusMenu(id);
             waitForRendering(stage);
             compare(bar.openStatusItem, id, id + " opens");
@@ -177,22 +204,29 @@ Item {
             verify(popup.open, id + " popup is open");
             verify(popup.width > 0, id + " popup has a positive width");
 
-            var anchor = bar.statusItemFor(id);
-            verify(anchor !== null, id + " status item exists");
-            var anchorPoint = anchor.mapToItem(bar, 0, anchor.height);
-            var expectedX = Math.max(0,
-                Math.min(bar.width - popup.width, anchorPoint.x));
-            var expectedY = anchorPoint.y + popup.anchorOffset;
-
-            compare(popup.x, expectedX, id + " popup x follows the status item");
-            compare(popup.y, expectedY, id + " popup y follows the status item");
-            compare(bar.dropdownX, expectedX,
-                    id + " committed target x follows the status item");
-            compare(bar.dropdownY, expectedY,
-                    id + " committed target y follows the status item");
+            var expected = expectedStatusPopupPosition(bar, id, popup);
+            fuzzyCompare(popup.x, expected.x, 0.001,
+                         id + " popup x follows the status item");
+            fuzzyCompare(popup.y, expected.y, 0.001,
+                         id + " popup y follows the status item");
+            fuzzyCompare(bar.dropdownX, expected.x, 0.001,
+                         id + " committed target x follows the status item");
+            fuzzyCompare(bar.dropdownY, expected.y, 0.001,
+                         id + " committed target y follows the status item");
             verify(bar.dropdownWidth > 0, id + " committed target has width");
+            verify(bar.dropdownHeight > 0, id + " committed target has height");
+            verify(popup.x >= expected.bounds.x - 0.001
+                   && popup.x + popup.width
+                      <= expected.bounds.x + expected.bounds.w + 0.001,
+                   id + " popup stays inside the output horizontally");
+            verify(popup.y >= expected.bounds.y - 0.001
+                   && popup.y + popup.height
+                      <= expected.bounds.y + expected.bounds.h + 0.001,
+                   id + " popup stays inside the output vertically");
             saveShot(stage, "t349-status-" + id + ".png");
-            bar.closeStatusMenu(true);
+            if (closeAfter !== false)
+                bar.closeStatusMenu(true);
+            return { popup: popup, expected: expected };
         }
 
         function test_status_anchor_wifi() {
@@ -212,9 +246,28 @@ Item {
                                makeBar({ statusItems: statusItems(true) }));
         }
 
-        // The clock is the working control: matching its box makes the shared
-        // Popup clamp use the bar width. T350 must keep this behaviour while
-        // fixing the four status hosts.
+        // A secondary output has its own logical bounds. The bar scene is
+        // output-local, and the popup clamp must use the owning output's
+        // bounds rather than the bar's own width. The compositor applies the
+        // output's layout origin when it places the popup layer surface.
+        function test_status_anchor_on_a_non_primary_output_origin() {
+            var bar = makeBar({
+                width: 360, outputWidth: 1280, outputHeight: 720,
+                statusItems: statusItems(true)
+            });
+            var result = verifyStatusAnchor("battery", bar, false);
+            verify(result.popup.x + result.popup.width <= 1280 + 0.001,
+                   "the popup stays inside the secondary output");
+            verify(result.popup.x > 360 - result.popup.width,
+                   "the popup uses the output bounds, not the bar width");
+            verify(bar.dropdownX >= 0 && bar.dropdownX < 1280,
+                   "the committed target is output-local");
+            bar.closeStatusMenu(true);
+        }
+
+        // The clock is the working control: it already supplied a valid host
+        // width. T350 keeps its placement while routing it through the same
+        // output bounds as the other status popups.
         function test_status_anchor_clock() {
             var bar = makeBar({ statusItems: [], showDate: true });
             var clock = bar.statusItemFor("clock");
@@ -226,26 +279,135 @@ Item {
             verify(panel !== null);
             var popup = panel.popup;
             verify(popup.open);
-            var anchorPoint = clock.mapToItem(bar, 0, clock.height);
-            var expectedX = Math.max(0,
-                Math.min(bar.width - popup.width, anchorPoint.x));
-            compare(popup.x, expectedX, "clock popup x stays on the clock");
-            compare(bar.dropdownX, expectedX,
-                    "clock committed target x stays on the clock");
+            var expected = expectedStatusPopupPosition(bar, "clock", popup);
+            fuzzyCompare(popup.x, expected.x, 0.001,
+                         "clock popup x stays on the clock");
+            fuzzyCompare(popup.y, expected.y, 0.001,
+                         "clock popup y stays on the clock");
+            fuzzyCompare(bar.dropdownX, expected.x, 0.001,
+                         "clock committed target x stays on the clock");
             bar.closeStatusMenu(true);
         }
 
         // Right-edge clamp: a status item near the right edge must place the
-        // popup inside the bar, not at x=0 and not off the right edge.
+        // popup inside the output, not at x=0 and not off the right edge.
         function test_status_anchor_right_edge_clamp() {
-            var bar = makeBar({ width: 360, statusItems: statusItems(true) });
+            var bar = makeBar({ width: 360, outputWidth: 360,
+                                outputHeight: 640,
+                                statusItems: statusItems(true) });
+            verifyStatusAnchor("battery", bar);
+            var popup = findChild(bar, "batteryMenu").popup;
+            fuzzyCompare(popup.x + popup.width, bar.outputWidth, 0.001,
+                         "the right-edge popup clamps to the output");
+        }
+
+        // Left-edge clamp: an output narrower than the popup forces the
+        // surface to the output origin instead of a negative x.
+        function test_status_anchor_left_edge_clamp() {
+            var bar = makeBar({ width: 200, outputWidth: 200,
+                                outputHeight: 640,
+                                statusOverflowCapacity: 7,
+                                statusItems: statusItems(true) });
+            verifyStatusAnchor("battery", bar);
+            var popup = findChild(bar, "batteryMenu").popup;
+            fuzzyCompare(popup.x, 0, 0.001,
+                         "the narrow output clamps the popup to the left edge");
+            verify(popup.width <= 200 + 0.001,
+                   "the popup never grows past the output");
+        }
+
+        // A fractional bar edge must still resolve to a finite output-local
+        // origin and a right edge inside the output.
+        function test_status_anchor_fractional_edge() {
+            var bar = makeBar({ width: 360.5, outputWidth: 361,
+                                outputHeight: 640,
+                                statusItems: statusItems(true) });
+            verifyStatusAnchor("battery", bar);
+            var popup = findChild(bar, "batteryMenu").popup;
+            verify(popup.x + popup.width <= 361 + 0.001,
+                   "a fractional edge stays inside the output");
+        }
+
+        // Pointer and keyboard activation both go through
+        // `activateStatusItem` -> `openStatusMenu`, so the shared anchor
+        // calculation must produce the same origin for both.
+        function test_status_anchor_pointer_and_keyboard_agree() {
+            var bar = makeBar({});
+            var wifi = bar.statusItemFor("wifi");
+            verify(wifi !== null);
+            mouseClick(wifi, wifi.width / 2, wifi.height / 2);
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "wifi");
+            var popup = findChild(bar, "wifiMenu").popup;
+            var pointerX = popup.x;
+            var pointerY = popup.y;
+            bar.closeStatusMenu(true);
+            waitForRendering(stage);
+
+            var keyboardIndex = -1;
+            for (var i = 0; i < bar.statusRowEntries.length; ++i) {
+                var item = bar.statusItemAt(i);
+                if (item && item.itemId === "wifi") {
+                    keyboardIndex = i;
+                    break;
+                }
+            }
+            verify(keyboardIndex >= 0, "the keyboard can select Wi-Fi");
+            bar.keyboardFocused = true;
+            bar.keyboardStatusIndex = keyboardIndex;
+            bar.activateKeyboardStatus();
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "wifi");
+            fuzzyCompare(popup.x, pointerX, 0.001,
+                         "pointer and keyboard share the x anchor");
+            fuzzyCompare(popup.y, pointerY, 0.001,
+                         "pointer and keyboard share the y anchor");
+            bar.closeStatusMenu(true);
+            bar.endKeyboardNavigation();
+        }
+
+        // A status row relayout (here the clock grows a date) must move the
+        // open popup with its owning item instead of leaving it at the old x.
+        function test_status_anchor_survives_status_row_relayout() {
+            var bar = makeBar({ showDate: false });
+            bar.openStatusMenu("wifi");
+            waitForRendering(stage);
+            var popup = findChild(bar, "wifiMenu").popup;
+            var before = expectedStatusPopupPosition(bar, "wifi", popup);
+            fuzzyCompare(popup.x, before.x, 0.001,
+                         "the first layout anchors the popup");
+
+            bar.showDate = true;
+            waitForRendering(stage);
+            var after = expectedStatusPopupPosition(bar, "wifi", popup);
+            verify(after.anchorPoint.x !== before.anchorPoint.x,
+                   "the status row actually moved");
+            fuzzyCompare(popup.x, after.x, 0.001,
+                         "the popup follows the relaid-out status row");
+            fuzzyCompare(bar.dropdownX, after.x, 0.001,
+                         "the committed target follows the relaid-out row");
+            bar.closeStatusMenu(true);
+        }
+
+        // An output size change must re-run the clamp while the popup is open.
+        function test_status_anchor_survives_output_resize() {
+            var bar = makeBar({ width: 360, outputWidth: 360,
+                                outputHeight: 640,
+                                statusItems: statusItems(true) });
             bar.openStatusMenu("battery");
             waitForRendering(stage);
-            var host = findChild(bar, "batteryMenu");
-            var popup = host.popup;
-            verify(popup.width <= bar.width);
-            compare(popup.x, bar.width - popup.width,
-                    "the right-edge popup clamps to the bar");
+            var popup = findChild(bar, "batteryMenu").popup;
+            fuzzyCompare(popup.x + popup.width, 360, 0.001,
+                         "the narrow output clamps the popup");
+
+            bar.width = 800;
+            bar.outputWidth = 800;
+            waitForRendering(stage);
+            var expected = expectedStatusPopupPosition(bar, "battery", popup);
+            fuzzyCompare(popup.x, expected.x, 0.001,
+                         "the popup re-clamps to the resized output");
+            fuzzyCompare(bar.dropdownX, expected.x, 0.001,
+                         "the committed target re-clamps to the resized output");
             bar.closeStatusMenu(true);
         }
 

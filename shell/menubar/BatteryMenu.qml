@@ -15,6 +15,8 @@ Item {
     // level, charging, onBattery, chargeState, profilesAvailable, profiles...}).
     property var model: ({})
     property Item anchorItem: null
+    // The owning output's bounds in this host's parent coordinates (T350).
+    property var availableRect: null
     property alias popup: popup
     property alias open: popup.open
     // T-21.2c: the menu bar pushes the compositor's Popup role state here.
@@ -124,6 +126,7 @@ Item {
         id: popup
         objectName: "batteryPopup"
         anchorItem: root.anchorItem
+        availableRect: root.availableRect
         preferredWidth: 280
         accessibleRole: Accessible.PopupMenu
         accessibleName: qsTr("Battery")
@@ -138,10 +141,6 @@ Item {
         onOpened: {
             root.profileHighlightIndex = -1;
             root.refreshRequested();
-            if (root.parent && root.width > 0)
-                popup.x = Math.min(popup.x,
-                                   root.parent.width - popup.width
-                                   - Theme.controls.menuBar.paddingH);
         }
         onClosed: {
             root.profileHighlightIndex = -1;

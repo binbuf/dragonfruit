@@ -44,19 +44,54 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(
             set(expected_failures),
             {
-                "test_status_anchor_wifi",
-                "test_status_anchor_volume",
-                "test_status_anchor_battery",
-                "test_status_anchor_bluetooth",
-                "test_status_anchor_right_edge_clamp",
                 "test_chooser_arrow_is_inside_the_committed_crop",
                 "test_chooser_material_region_excludes_the_arrow_gaps",
             },
         )
         for case in expected_failures.values():
-            self.assertIn(case.owner, {"T350", "T351"})
+            self.assertIn(case.owner, {"T351"})
             self.assertTrue(case.setup)
             self.assertTrue(case.symptom)
+
+    def test_status_anchor_rows_cover_one_and_a_half_and_two_x(self) -> None:
+        cases = fixtures.load_manifest(MANIFEST)
+        status_rows = [case for case in cases
+                       if case.test.startswith("test_status_anchor_")]
+        self.assertTrue(status_rows)
+        for case in status_rows:
+            self.assertEqual(case.expected, "pass")
+            self.assertEqual(case.scales, (1.0, 1.5, 2.0))
+
+    def test_default_scale_is_one_x(self) -> None:
+        cases = fixtures.load_manifest(MANIFEST)
+        by_test = {case.test: case for case in cases}
+        self.assertEqual(
+            by_test["test_attached_menu_has_square_top_corners_on_a_patterned_underlay"].scales,
+            (1.0,),
+        )
+
+    def test_invalid_scale_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "manifest.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "cases": [
+                            {
+                                "test": "test_one",
+                                "expected": "pass",
+                                "owner": "T349",
+                                "setup": "one",
+                                "symptom": "one",
+                                "scales": [0],
+                            },
+                        ],
+                    }
+                )
+            )
+            with self.assertRaises(ValueError):
+                fixtures.load_manifest(path)
 
     def test_duplicate_case_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

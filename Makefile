@@ -296,10 +296,10 @@ verify-fast: gate-checks
 
 # T349: the deterministic chrome fixture gate. It runs the popup/menu Qt
 # suites, the shell-protocol and presentation-timing Rust tests, the material
-# geometry checks, and the fixture manifest. The four status-anchor reproducers
-# and the Dock chooser footprint reproducers are expected to fail until T350
-# and T351 flip their manifest rows; the manifest is the gate. No native seat
-# or GPU is required, so this target runs in either evidence case.
+# geometry checks, and the fixture manifest. Status-anchor rows are green
+# since T350; the Dock chooser footprint reproducers are expected to fail
+# until T351 flips its manifest rows. No native seat or GPU is required, so
+# this target runs in either evidence case.
 CHROME_QT_RE := ^(tst_design_system|tst_menubar|tst_dock|tst_chromescale|tst_chromebufferpool|tst_chromestats|tst_gpucapabilities|tst_dmabufcommit|tst_chromeframeproducer|tst_chromepointer|tst_chromepointerui|tst_materialpolicy|tst_notifications|tst_controlcenter|tst_osd|tst_chooserui|tst_windowmenu)$$
 verify-chrome-stability: build
 	$(MAKE) glass-presets-check
@@ -310,10 +310,13 @@ verify-chrome-stability: build
 	$(MAKE) notification-materials-check
 	$(MAKE) first-party-chrome-check
 	$(CTEST) --test-dir $(BUILD_DIR) -R '$(CHROME_QT_RE)' --output-on-failure
+	# Serialize the protocol/timing suites: their headless compositors share
+	# host sockets and the default parallel run intermittently trips the known
+	# `dock_follows_output_hotplug` dispatch flake (T349).
 	$(CARGO) test -p dragonfruit-compositor \
 	    --test shell_protocol_conformance \
 	    --test animation_clock \
-	    --test latency_trace
+	    --test latency_trace -- --test-threads=1
 	python3 tests/chrome-stability/test_fixture_manifest.py
 	python3 tests/chrome-stability/run_fixtures.py
 

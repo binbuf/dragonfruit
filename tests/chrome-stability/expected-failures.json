@@ -2,42 +2,103 @@
   "schema": 1,
   "suite": "tst_chromestability",
   "starting_revision": "152a39fd",
-  "description": "T349 chrome stability fixtures. Rows expected to fail are pre-fix reproducers; the owning task flips its row to pass when the fix lands.",
+  "description": "T349 chrome stability fixtures. Rows expected to fail are pre-fix reproducers; the owning task flips its row to pass when the fix lands. `scales` runs a row at each listed device scale; the default is 1x.",
   "cases": [
     {
       "test": "test_status_anchor_wifi",
-      "expected": "fail",
+      "expected": "pass",
       "owner": "T350",
-      "setup": "MenuBar width 800, default status row, Wi-Fi model; open Wi-Fi from its status item",
-      "symptom": "popup.x and dropdownX are 0 instead of the clamped anchor x (500)"
+      "setup": "MenuBar width 800, output 800x640, default status row, Wi-Fi model; open Wi-Fi from its status item",
+      "symptom": "popup and committed target must land at the status item's clamped anchor at 1x/1.5x/2x",
+      "scales": [1, 1.5, 2]
     },
     {
       "test": "test_status_anchor_volume",
-      "expected": "fail",
+      "expected": "pass",
       "owner": "T350",
-      "setup": "MenuBar width 800, default status row, audio model; open Volume from its status item",
-      "symptom": "popup.x and dropdownX are 0 instead of the clamped anchor x (520)"
+      "setup": "MenuBar width 800, output 800x640, default status row, audio model; open Volume from its status item",
+      "symptom": "popup and committed target must land at the status item's clamped anchor at 1x/1.5x/2x",
+      "scales": [1, 1.5, 2]
     },
     {
       "test": "test_status_anchor_battery",
-      "expected": "fail",
+      "expected": "pass",
       "owner": "T350",
-      "setup": "MenuBar width 800, default status row, battery model; open Battery from its status item",
-      "symptom": "popup.x and dropdownX are 0 instead of the clamped anchor x (520)"
+      "setup": "MenuBar width 800, output 800x640, default status row, battery model; open Battery from its status item",
+      "symptom": "popup and committed target must land at the status item's clamped anchor at 1x/1.5x/2x",
+      "scales": [1, 1.5, 2]
     },
     {
       "test": "test_status_anchor_bluetooth",
-      "expected": "fail",
+      "expected": "pass",
       "owner": "T350",
-      "setup": "MenuBar width 800, Bluetooth status item available, Bluetooth model; open Bluetooth from its status item",
-      "symptom": "popup.x and dropdownX are 0 instead of the clamped anchor x (500)"
+      "setup": "MenuBar width 800, output 800x640, Bluetooth status item available, Bluetooth model; open Bluetooth from its status item",
+      "symptom": "popup and committed target must land at the status item's clamped anchor at 1x/1.5x/2x",
+      "scales": [1, 1.5, 2]
     },
     {
       "test": "test_status_anchor_right_edge_clamp",
-      "expected": "fail",
+      "expected": "pass",
       "owner": "T350",
-      "setup": "MenuBar width 360, all four status items available; open Battery near the right edge",
-      "symptom": "popup.x is 0 instead of the right-edge clamp (80)"
+      "setup": "MenuBar width 360, output 360x640, all four status items available; open Battery near the right edge",
+      "symptom": "the popup right edge clamps to the output width at 1x/1.5x/2x",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_status_anchor_left_edge_clamp",
+      "expected": "pass",
+      "owner": "T350",
+      "setup": "MenuBar width 200, output 200x640, all four status items available; open Battery",
+      "symptom": "an output narrower than the popup clamps it to the left edge and caps its width",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_status_anchor_fractional_edge",
+      "expected": "pass",
+      "owner": "T350",
+      "setup": "MenuBar width 360.5, output 361x640; open Battery",
+      "symptom": "a fractional bar edge still yields an output-local origin and a right edge inside the output",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_status_anchor_on_a_non_primary_output_origin",
+      "expected": "pass",
+      "owner": "T350",
+      "setup": "MenuBar placed at x=1280 on a 1280x720 secondary output; open Wi-Fi",
+      "symptom": "the popup and committed target stay output-local instead of inheriting the scene origin",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_status_anchor_pointer_and_keyboard_agree",
+      "expected": "pass",
+      "owner": "T350",
+      "setup": "MenuBar width 800, output 800x640; open Wi-Fi by pointer then by keyboard activation",
+      "symptom": "both opening paths share the same anchor x/y",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_status_anchor_survives_status_row_relayout",
+      "expected": "pass",
+      "owner": "T350",
+      "setup": "MenuBar width 800, output 800x640; open Wi-Fi then show the clock date",
+      "symptom": "the open popup follows the relaid-out status row",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_status_anchor_survives_output_resize",
+      "expected": "pass",
+      "owner": "T350",
+      "setup": "MenuBar width 360/output 360, then width 800/output 800 while Battery is open",
+      "symptom": "the popup and committed target re-clamp to the new output bounds",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_status_anchor_clock",
+      "expected": "pass",
+      "owner": "T350",
+      "setup": "MenuBar width 800, output 800x640, clock status item; click the clock",
+      "symptom": "the clock panel stays on its status item through the shared output bounds at 1x/1.5x/2x",
+      "scales": [1, 1.5, 2]
     },
     {
       "test": "test_chooser_arrow_is_inside_the_committed_crop",
@@ -52,13 +113,6 @@
       "owner": "T351",
       "setup": "Bottom Dock 1280x160 with a two-window entry; open the real Dock window chooser",
       "symptom": "the material descriptor covers the full popup rectangle, including the empty bands beside the arrow"
-    },
-    {
-      "test": "test_status_anchor_clock",
-      "expected": "pass",
-      "owner": "T349",
-      "setup": "MenuBar width 800, clock status item; click the clock",
-      "symptom": "guards the working DateTimePanel box while T350 fixes the four status hosts"
     },
     {
       "test": "test_attached_menu_has_square_top_corners_on_a_patterned_underlay",

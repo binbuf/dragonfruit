@@ -19,6 +19,10 @@ Item {
     // knownNetworks, activeSsid, activeAddress, readOnly, ...}).
     property var model: ({})
     property Item anchorItem: null
+    // The owning output's bounds in this host's parent coordinates, supplied
+    // by the bar. The shared `Popup` clamps against this rectangle so a status
+    // menu stays on the output that owns the menu bar.
+    property var availableRect: null
     property alias popup: popup
     property alias open: popup.open
     // T-21.2c: the menu bar pushes the compositor's Popup role state here.
@@ -255,6 +259,7 @@ Item {
         id: popup
         objectName: "wifiPopup"
         anchorItem: root.anchorItem
+        availableRect: root.availableRect
         preferredWidth: 300
         accessibleRole: Accessible.PopupMenu
         accessibleName: qsTr("Wi-Fi")
@@ -272,10 +277,6 @@ Item {
             root.detailsSsid = "";
             root.highlightIndex = -1;
             root.refreshRequested();
-            if (root.parent && root.width > 0)
-                popup.x = Math.min(popup.x,
-                                   root.parent.width - popup.width
-                                   - Theme.controls.menuBar.paddingH);
         }
         onClosed: {
             root.cancelPassword();

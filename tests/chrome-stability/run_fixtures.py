@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -40,6 +41,8 @@ STATUS = {
     "BFAIL": "bfail",
 }
 EXPECTED = {"pass", "fail"}
+# Qt Quick Test selects a function by its TestCase name and function name.
+TEST_CASE_NAME = "ChromeStability"
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,9 @@ class ManifestCase:
     owner: str
     setup: str
     symptom: str
+    # Device scales the fixture must pass/fail at. `scales: [1, 1.5, 2]`
+    # runs the one QML function three times; the default is 1x.
+    scales: tuple[float, ...] = (1.0,)
 
 
 @dataclass(frozen=True)
@@ -90,8 +96,25 @@ def load_manifest(path: Path) -> list[ManifestCase]:
             raise ValueError(f"{path}: {test} must record its setup")
         if not symptom:
             raise ValueError(f"{path}: {test} must record its symptom")
+        raw_scales = raw.get("scales", [1])
+        if not isinstance(raw_scales, list) or not raw_scales:
+            raise ValueError(f"{path}: {test} scales must be a non-empty list")
+        scales: list[float] = []
+        for value in raw_scales:
+            if (isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    or value <= 0):
+                raise ValueError(
+                    f"{path}: {test} scale {value!r} must be a positive number"
+                )
+            scales.append(float(value))
+        if len(set(scales)) != len(scales):
+            raise ValueError(f"{path}: {test} has duplicate scales")
         seen.add(test)
-        cases.append(ManifestCase(test, expected, owner, setup, symptom))
+        cases.append(
+            ManifestCase(test, expected, owner, setup, symptom, tuple(scales))
+        )
     return cases
 
 
@@ -139,7 +162,12 @@ def evaluate(
 
 
 def run_suite(
-    binary: Path, build_dir: Path, source_dir: Path, capture_dir: Path | None
+    binary: Path,
+    build_dir: Path,
+    source_dir: Path,
+    capture_dir: Path | None,
+    scale: float = 1.0,
+    functions: Iterable[str] | None = None,
 ) -> tuple[int, str]:
     if not binary.is_file():
         return 127, f"{binary}: fixture binary is missing; run `make build`"
@@ -151,10 +179,17 @@ def run_suite(
             "QML2_IMPORT_PATH": str(build_dir / "qml"),
         }
     )
+    if scale != 1.0:
+        # Qt's high-DPI scaling changes the physical backing store and the
+        # device pixel ratio; the QML layout stays logical, which is exactly
+        # the invariant the status-anchor rows assert.
+        env["QT_SCALE_FACTOR"] = f"{scale:g}"
     if capture_dir is not None:
         capture_dir.mkdir(parents=True, exist_ok=True)
         env["DF_CHROME_STABILITY_CAPTURE_DIR"] = str(capture_dir)
     command = [str(binary), "-input", "tst_chromestability.qml"]
+    if functions is not None:
+        command.extend(functions)
     completed = subprocess.run(
         command,
         cwd=source_dir,
@@ -172,19 +207,20 @@ def write_report(
     cases: Iterable[ManifestCase],
     results: dict[str, str],
     problems: list[Problem],
-    raw: str,
+    raw_by_scale: dict[float, str],
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "T349 chrome stability fixtures",
         "evidence class: Qt Quick Test, offscreen QPA + software scene graph",
         "",
-        "case\texpected\tobserved\towner",
+        "case\texpected\tobserved\towner\tscales",
     ]
     for case in cases:
+        scales = ",".join(f"{scale:g}x" for scale in case.scales)
         lines.append(
             f"{case.test}\t{case.expected}\t{results.get(case.test, 'missing')}\t"
-            f"{case.owner}"
+            f"{case.owner}\t{scales}"
         )
     lines.append("")
     if problems:
@@ -193,7 +229,8 @@ def write_report(
             lines.append(f"problem: {problem}")
     else:
         lines.append("verdict: PASS")
-    lines.extend(["", "## raw fixture output", raw.rstrip()])
+    for scale, raw in raw_by_scale.items():
+        lines.extend(["", f"## raw fixture output ({scale:g}x)", raw.rstrip()])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -235,20 +272,60 @@ def main(argv: list[str] | None = None) -> int:
 
     binary = args.build_dir / "shell" / "tests" / "tst_chromestability"
     capture_dir = None if args.no_capture else args.capture_dir
-    _status, raw = run_suite(binary, args.build_dir, args.source_dir, capture_dir)
-    results = parse_results(raw)
+    scales = sorted({scale for case in cases for scale in case.scales})
+    results_by_scale: dict[float, dict[str, str]] = {}
+    raw_by_scale: dict[float, str] = {}
+    for scale in scales:
+        # 1x is the full suite so an unlisted fixture is still detected. The
+        # higher-scale runs select only the rows that declare that scale.
+        functions = (
+            None
+            if scale == 1.0
+            else [f"{TEST_CASE_NAME}::{case.test}" for case in cases
+                  if scale in case.scales]
+        )
+        if functions is not None and not functions:
+            continue
+        _status, raw = run_suite(
+            binary,
+            args.build_dir,
+            args.source_dir,
+            capture_dir if scale == 1.0 else None,
+            scale=scale,
+            functions=functions,
+        )
+        results_by_scale[scale] = parse_results(raw)
+        raw_by_scale[scale] = raw
+
+    results: dict[str, str] = {}
+    for case in cases:
+        observed = [results_by_scale.get(scale, {}).get(case.test)
+                    for scale in case.scales]
+        if any(value is None for value in observed):
+            results[case.test] = "missing"
+        elif "fail" in observed:
+            results[case.test] = "fail"
+        elif "skip" in observed:
+            results[case.test] = "skip"
+        else:
+            results[case.test] = "pass"
+    # A fixture that ran at 1x but has no manifest row must fail the gate.
+    for test, status in results_by_scale.get(1.0, {}).items():
+        results.setdefault(test, status)
+
     problems = evaluate(cases, results)
     # Qt Quick Test exits with the number of failed functions. A normal run has
     # one failure per expected-failure row, so the status is not a pass signal;
     # the parsed result set and the manifest are. A crash before the suite
     # finishes leaves missing rows, which evaluate() already reports.
 
-    write_report(args.report, cases, results, problems, raw)
+    write_report(args.report, cases, results, problems, raw_by_scale)
     print(f"chrome-stability: report {args.report}")
     for case in cases:
+        scales = ",".join(f"{scale:g}x" for scale in case.scales)
         print(
             f"  {results.get(case.test, 'missing'):8} {case.test:58} "
-            f"expected {case.expected:4} owner {case.owner}"
+            f"expected {case.expected:4} owner {case.owner:5} scales {scales}"
         )
     if problems:
         print("chrome-stability: FAIL", file=sys.stderr)
