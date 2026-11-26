@@ -3869,6 +3869,13 @@ QRect ShellProtocol::primaryOutputGeometry() const
     return QRect(info.x, info.y, info.geometryWidth, info.geometryHeight);
 }
 
+QString ShellProtocol::primaryOutputName() const
+{
+    if (m_outputs.isEmpty())
+        return QString();
+    return m_outputInfo.value(m_outputs.first()).name;
+}
+
 void ShellProtocol::setAppAccelerators(const QString &appId, const QString &accelerators)
 {
     // T-14.2b: mirror the menu-broker's focus-scoped accelerator table. The

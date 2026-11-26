@@ -790,17 +790,33 @@ impl NestedData {
                     newer_scene_age_us: to_us(newer_scene_age),
                     damage: pending.damage,
                 });
+            crate::trace::log(
+                "frame-superseded",
+                &format!(
+                    "frame={} output={} by_epoch={} newer_age_us={} damage={}",
+                    pending.frame,
+                    pending.output.name(),
+                    state.scene_epoch(),
+                    newer_scene_age.as_micros(),
+                    u8::from(pending.damage)
+                ),
+            );
         }
         match done.result {
             Ok(()) => {
                 if pending.damage {
                     state.note_presentation(&pending.output.name(), done.presented_at);
+                    let chrome = state
+                        .stats
+                        .frame_chrome(pending.frame)
+                        .unwrap_or_else(|| "none".to_owned());
                     crate::trace::log(
                         "present",
                         &format!(
-                            "frame={} output={} nested",
+                            "frame={} output={} backend=nested clock=host clock_us={} chrome={chrome}",
                             pending.frame,
-                            pending.output.name()
+                            pending.output.name(),
+                            done.presented_at.as_micros()
                         ),
                     );
                     if let Some(mut feedback) = pending.feedback {
@@ -835,6 +851,14 @@ impl NestedData {
                     state.stats.record_frame_stage(
                         crate::state::FrameStage::Callback,
                         callback_start.elapsed(),
+                    );
+                    crate::trace::log(
+                        "frame-no-damage",
+                        &format!(
+                            "frame={} output={} backend=nested",
+                            pending.frame,
+                            pending.output.name()
+                        ),
                     );
                     crate::trace::log("wake-clients", "nested");
                 }
@@ -1075,6 +1099,13 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     renderer, state, &output, scale,
                 ));
 
+                // T353: snapshot the chrome content this frame composites.
+                let chrome_snapshot = crate::render::chrome_content_snapshot(state, &output);
+                state.stats.record_frame_chrome(frame, chrome_snapshot);
+                if let Some(chrome) = state.stats.frame_chrome(frame) {
+                    crate::trace::log("frame-chrome", &format!("frame={frame} chrome={chrome}"));
+                }
+
                 // One scene pass per bounded group. The stage timing is the
                 // whole frame's scene work, not one sample per group: the
                 // advisor's per-frame totals must not be inflated by counting
@@ -1256,6 +1287,12 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 custom_elements.extend(crate::render::chrome_render_elements(
                     renderer, state, &output, scale,
                 ));
+                // T353: snapshot the chrome content this frame composites.
+                let chrome_snapshot = crate::render::chrome_content_snapshot(state, &output);
+                state.stats.record_frame_chrome(frame, chrome_snapshot);
+                if let Some(chrome) = state.stats.frame_chrome(frame) {
+                    crate::trace::log("frame-chrome", &format!("frame={frame} chrome={chrome}"));
+                }
                 // Backdrop under the chrome (T-04.2): appended after the
                 // chrome surfaces so it composites below them and in front of
                 // the windows it stands in for.

@@ -1612,11 +1612,17 @@ fn frame_finish(
                 state.note_presentation(&output_name, presented_at);
                 // Actual vblank presentation, not the queue call. The shell's
                 // `wl_surface.frame` callback is sent after `queue_frame`, so
-                // this trace is the honest presentation endpoint.
+                // this trace is the honest presentation endpoint. The `chrome`
+                // list is the content snapshot taken when this frame was built
+                // (T353), not the newest commit at vblank time.
+                let chrome = state
+                    .stats
+                    .frame_chrome(queued_frame)
+                    .unwrap_or_else(|| "none".to_owned());
                 crate::trace::log(
                     "present",
                     &format!(
-                        "frame={queued_frame} output={output_name} drm clock={} mono_us={}",
+                        "frame={queued_frame} output={output_name} backend=drm clock={} clock_us={} chrome={chrome}",
                         if hardware_timestamp {
                             "hardware"
                         } else {
@@ -1854,6 +1860,15 @@ fn render_surface(
         _,
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     >(&mut renderer, state, &surface.output, scale));
+
+    // T353: snapshot the chrome content this frame will composite. The
+    // vblank `present` line reads it back by frame id, so a commit that lands
+    // while the frame is queued is not credited to this presentation.
+    let chrome_snapshot = crate::render::chrome_content_snapshot(state, &surface.output);
+    state.stats.record_frame_chrome(frame, chrome_snapshot);
+    if let Some(chrome) = state.stats.frame_chrome(frame) {
+        crate::trace::log("frame-chrome", &format!("frame={frame} chrome={chrome}"));
+    }
 
     // The material path (P2): render the scene into an offscreen texture and
     // compose the chrome above the per-panel blur when any role's effective
@@ -2495,6 +2510,10 @@ fn render_surface(
                 // on its frame callback is still answered, otherwise a
                 // commit-driven repaint can deadlock against an idle output.
                 state.stats.frames_skipped_no_damage += 1;
+                crate::trace::log(
+                    "frame-no-damage",
+                    &format!("frame={frame} output={output_name} backend=drm"),
+                );
                 if state.has_pending_frame_callbacks() {
                     let now = state.clock.now();
                     let callback_start = Instant::now();

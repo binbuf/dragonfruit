@@ -296,6 +296,14 @@ void ChromeStats::recordDmabufCompletionWait(qint64 waitUs, bool timeout)
         ++m_dmabufCompletionTimeouts;
     if (waitUs >= 0)
         m_dmabufCompletionUs.append(waitUs);
+    // T353: label the fence/sync phase in the interaction trace when one is
+    // active. The aggregate counters above remain the report's source.
+    const quint64 id = activeTraceId();
+    if (id != 0)
+        traceEvent(id, QStringLiteral("sync"),
+                   QStringLiteral("phase=fence wait_us=%1 timeout=%2")
+                       .arg(waitUs)
+                       .arg(timeout ? 1 : 0));
 }
 
 void ChromeStats::recordSceneResize(const QString &surface, const QSize &from,
@@ -433,6 +441,39 @@ void ChromeStats::recordPopoverOpen(const QString &kind, qint64 openUs)
         stats.popoverOpenUs.append(openUs);
 }
 
+void ChromeStats::recordInteraction(const QString &kind, const QString &outcome,
+                                    qint64 requestToCommitUs,
+                                    qint64 requestToCallbackUs)
+{
+    if (!m_enabled)
+        return;
+    ++m_interactions;
+    if (outcome == QLatin1String("presented"))
+        ++m_presented;
+    else if (outcome == QLatin1String("late-presented"))
+        ++m_latePresented;
+    else if (outcome == QLatin1String("callback"))
+        ++m_callbackOnly;
+    else if (outcome == QLatin1String("discarded"))
+        ++m_discarded;
+    else if (outcome == QLatin1String("superseded"))
+        ++m_superseded;
+    else
+        ++m_missed;
+    if (requestToCommitUs >= 0)
+        m_requestToCommitUs.append(requestToCommitUs);
+    if (requestToCallbackUs >= 0)
+        m_requestToCallbackUs.append(requestToCallbackUs);
+    if (kind.isEmpty())
+        return;
+    SurfaceStats &stats = m_surfaces[kind];
+    ++stats.interactions;
+    if (requestToCommitUs >= 0)
+        stats.requestToCommitUs.append(requestToCommitUs);
+    if (requestToCallbackUs >= 0)
+        stats.requestToCallbackUs.append(requestToCallbackUs);
+}
+
 quint64 ChromeStats::activeTraceId() const
 {
     return m_traceStack.isEmpty() ? 0 : m_traceStack.constLast();
@@ -446,10 +487,11 @@ quint64 ChromeStats::beginTrace(const QString &kind, const QString &detail)
     m_traceStartNs.insert(id, m_traceClock.nsecsElapsed());
     m_traceStack.append(id);
     QString line = QStringLiteral(
-        "chrome trace id=%1 stage=begin kind=%2 t_ms=%3")
+        "chrome trace id=%1 stage=begin kind=%2 t_ms=%3 mono_us=%4")
         .arg(id)
         .arg(kind)
-        .arg(QDateTime::currentMSecsSinceEpoch());
+        .arg(QDateTime::currentMSecsSinceEpoch())
+        .arg(m_traceClock.nsecsElapsed() / 1000);
     if (!detail.isEmpty())
         line += QStringLiteral(" detail=%1").arg(detail);
     qInfo().noquote() << line;
@@ -466,11 +508,12 @@ void ChromeStats::traceEvent(quint64 id, const QString &stage,
                                                           : it.value();
     const qint64 elapsedUs = (m_traceClock.nsecsElapsed() - startNs) / 1000;
     QString line = QStringLiteral(
-        "chrome trace id=%1 stage=%2 dt_us=%3 t_ms=%4")
+        "chrome trace id=%1 stage=%2 dt_us=%3 t_ms=%4 mono_us=%5")
         .arg(id)
         .arg(stage)
         .arg(elapsedUs)
-        .arg(QDateTime::currentMSecsSinceEpoch());
+        .arg(QDateTime::currentMSecsSinceEpoch())
+        .arg(m_traceClock.nsecsElapsed() / 1000);
     if (!detail.isEmpty())
         line += QStringLiteral(" detail=%1").arg(detail);
     qInfo().noquote() << line;
@@ -487,10 +530,11 @@ qint64 ChromeStats::endTrace(quint64 id, const QString &detail)
     m_traceStartNs.erase(it);
     m_traceStack.removeAll(id);
     QString line = QStringLiteral(
-        "chrome trace id=%1 stage=end dt_us=%2 t_ms=%3")
+        "chrome trace id=%1 stage=end dt_us=%2 t_ms=%3 mono_us=%4")
         .arg(id)
         .arg(elapsedUs)
-        .arg(QDateTime::currentMSecsSinceEpoch());
+        .arg(QDateTime::currentMSecsSinceEpoch())
+        .arg(m_traceClock.nsecsElapsed() / 1000);
     if (!detail.isEmpty())
         line += QStringLiteral(" detail=%1").arg(detail);
     qInfo().noquote() << line;
@@ -590,6 +634,23 @@ QStringList ChromeStats::summaryLines(const QString &label) const
                  .arg(m_dmabufCompletionTimeouts)
                  .arg(timingText("dmabuf_completion_us", m_dmabufCompletionUs));
 
+    // T353: interaction outcomes. `callback_only` is a pacing callback that
+    // no native present ever carried; it is never part of request-to-present.
+    lines << QStringLiteral(
+                 "chrome presentation (%1): interactions=%2 presented=%3 "
+                 "late_presented=%4 callback_only=%5 discarded=%6 "
+                 "superseded=%7 missed=%8 %9 %10")
+                 .arg(label)
+                 .arg(m_interactions)
+                 .arg(m_presented)
+                 .arg(m_latePresented)
+                 .arg(m_callbackOnly)
+                 .arg(m_discarded)
+                 .arg(m_superseded)
+                 .arg(m_missed)
+                 .arg(timingText("request_to_commit_us", m_requestToCommitUs))
+                 .arg(timingText("request_to_callback_us", m_requestToCallbackUs));
+
     QStringList names = m_surfaces.keys();
     names.sort();
     for (const QString &name : names) {
@@ -664,12 +725,16 @@ void ChromeStats::emitStats(const QString &label)
     m_dmabufCompletionUs.clear();
     m_commitFlushUs.clear();
     m_popoverOpenUs.clear();
+    m_requestToCommitUs.clear();
+    m_requestToCallbackUs.clear();
     for (auto it = m_surfaces.begin(); it != m_surfaces.end(); ++it) {
         it.value().commitUs.clear();
         it.value().frameCallbackUs.clear();
         it.value().dmabufHoldUs.clear();
         it.value().dmabufSharedHoldUs.clear();
         it.value().popoverOpenUs.clear();
+        it.value().requestToCommitUs.clear();
+        it.value().requestToCallbackUs.clear();
     }
 }
 

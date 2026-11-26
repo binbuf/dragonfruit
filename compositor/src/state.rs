@@ -1113,6 +1113,11 @@ pub struct RenderStats {
     /// Per-frame CPU/GPU correlation (T238 follow-up): joins the stage timings
     /// above with the asynchronous GPU timer results by frame id.
     timeline: FrameTimeline,
+    /// Chrome content snapshotted for each in-flight frame (T353): the
+    /// `(surface, generation)` pairs the frame composited. Kept until the
+    /// backend's presentation endpoint reads it, so a present names the exact
+    /// accepted content instead of the newest commit at vblank time.
+    frame_chrome: VecDeque<(u64, Vec<(String, u64)>)>,
     /// Emit the full per-frame trace from [`DfState::dump_stats`]
     /// (`DRAGONFRUIT_FRAME_TRACE`).
     verbose: bool,
@@ -1135,6 +1140,43 @@ impl RenderStats {
     /// CPU stage and GPU query in this frame, so the two can be joined.
     pub fn begin_frame(&mut self) -> u64 {
         self.timeline.begin()
+    }
+
+    /// The frame id most recently started. Backends use it for pacing and
+    /// callback trace lines that are emitted outside a stage boundary.
+    pub fn current_frame(&self) -> u64 {
+        self.timeline.current
+    }
+
+    /// Record the chrome content this frame composites (T353). A present
+    /// endpoint reads it back by frame id so a frame that started before a
+    /// newer chrome commit cannot claim that newer generation.
+    pub fn record_frame_chrome(&mut self, frame: u64, chrome: Vec<(String, u64)>) {
+        // Keep the window bounded: presentations trail the frame by at most a
+        // couple of vblanks, and a rejected frame may never present at all.
+        const CAPACITY: usize = 64;
+        if self.frame_chrome.len() == CAPACITY {
+            self.frame_chrome.pop_front();
+        }
+        self.frame_chrome.retain(|(id, _)| *id != frame);
+        self.frame_chrome.push_back((frame, chrome));
+    }
+
+    /// The chrome content snapshot for `frame`, formatted for the present
+    /// trace. `None` when the frame never reached a render build (a rejected
+    /// or no-damage frame).
+    pub fn frame_chrome(&self, frame: u64) -> Option<String> {
+        let (_, chrome) = self.frame_chrome.iter().find(|(id, _)| *id == frame)?;
+        if chrome.is_empty() {
+            return Some("none".to_owned());
+        }
+        Some(
+            chrome
+                .iter()
+                .map(|(surface, generation)| format!("{surface}:{generation}"))
+                .collect::<Vec<_>>()
+                .join(","),
+        )
     }
 
     /// Record one frame-path stage (T238). Called by the backend at the
@@ -7441,21 +7483,16 @@ impl CompositorHandler for DfState {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
-        self.commit_chrome_panel(surface);
+        // T353: latch the surface commit generation before the buffer is
+        // consumed. The returned pair is the accepted content identity the
+        // presentation trace names.
+        let chrome_commit = self.commit_chrome_panel(surface);
 
         // Chrome transport counters (T-21.1a): classify the attached buffer
         // before Smithay consumes the attachment. The shell's current path
         // attaches a fresh wl_shm buffer on every chrome commit; dmabuf is the
         // T-21.1d path and stays zero until it lands.
-        if self.is_above_window_chrome_surface(surface) {
-            // T238: the shell's commit trace and this receive timestamp line
-            // up by epoch ms; the next `DFTRACE present` for the output is the
-            // actual presentation endpoint.
-            let namespace = self
-                .shell
-                .namespace_for_surface(surface)
-                .unwrap_or("unknown");
-            crate::trace::log("chrome-commit", &format!("surface={namespace}"));
+        if let Some((namespace, generation)) = chrome_commit {
             let import = with_states(surface, |states| {
                 let mut guard = states.cached_state.get::<SurfaceAttributes>();
                 let attrs = guard.current();
@@ -7478,6 +7515,18 @@ impl CompositorHandler for DfState {
                     _ => None,
                 }
             });
+            let (buffer, bytes) = match import {
+                Some(None) => ("dmabuf", 0),
+                Some(Some(bytes)) => ("shm", bytes),
+                None => ("none", 0),
+            };
+            // T353: the shell's commit trace and this receive line are joined
+            // by surface/generation; the `present` line that names this
+            // generation is the native content-presentation endpoint.
+            crate::trace::log(
+                "chrome-commit",
+                &format!("surface={namespace} gen={generation} buffer={buffer} bytes={bytes}"),
+            );
             if let Some(import) = import {
                 self.stats.record_chrome_import(import);
             }

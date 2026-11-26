@@ -120,6 +120,16 @@ public:
     // input-to-visible; the trace carries the raw timestamps for that.
     void recordPopoverOpen(const QString &kind, qint64 openUs);
 
+    // T353: one completed chrome interaction. `outcome` is the shell's
+    // provisional label (`presented`, `callback`, `discarded`, `superseded`,
+    // `missed`); the parser upgrades `callback` to a native presentation only
+    // when the compositor's `present` line names the accepted generation.
+    // `requestToCommitUs` is request → accepted content commit, and
+    // `requestToCallbackUs` is request → pacing callback (-1 when none).
+    void recordInteraction(const QString &kind, const QString &outcome,
+                           qint64 requestToCommitUs,
+                           qint64 requestToCallbackUs);
+
     // A `wl_surface.frame` callback was delivered for `surface`.
     void recordFrameCallback(const QString &surface, qint64 callbackUs);
     // A render driven by the bounded safety tick because no frame callback
@@ -197,11 +207,16 @@ private:
         quint64 dmabufImportFailures = 0;
         quint64 ringExhausted = 0;
         quint64 popoverOpens = 0;
+        // T353: per-kind interaction count and request→commit / request→
+        // callback distributions.
+        quint64 interactions = 0;
         QVector<qint64> commitUs;
         QVector<qint64> frameCallbackUs;
         QVector<qint64> dmabufHoldUs;
         QVector<qint64> dmabufSharedHoldUs;
         QVector<qint64> popoverOpenUs;
+        QVector<qint64> requestToCommitUs;
+        QVector<qint64> requestToCallbackUs;
     };
 
     ChromeStats();
@@ -242,8 +257,18 @@ private:
     quint64 m_dmabufImportFailures = 0;
     quint64 m_ringExhausted = 0;
     quint64 m_popoverOpens = 0;
-    QVector<qint64> m_commitUs;
-    QVector<qint64> m_frameCallbackUs;
+    // T353: chrome interaction outcomes and request-to-commit/callback
+    // distributions. Counts are cumulative; the timing rings are windowed.
+    quint64 m_interactions = 0;
+    quint64 m_presented = 0;
+    quint64 m_latePresented = 0;
+    quint64 m_callbackOnly = 0;
+    quint64 m_discarded = 0;
+    quint64 m_superseded = 0;
+    quint64 m_missed = 0;
+    QVector<qint64> m_requestToCommitUs;
+    QVector<qint64> m_requestToCallbackUs;
+    QVector<qint64> m_commitUs;    QVector<qint64> m_frameCallbackUs;
     QVector<qint64> m_fboCreateUs;
     QVector<qint64> m_dmabufImportUs;
     QVector<qint64> m_dmabufRoundtripUs;

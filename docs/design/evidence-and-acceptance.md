@@ -226,6 +226,28 @@ retargeting, logical-close input release, and reduced motion at the same
 scales. This is agent evidence on the software scene graph, not a native
 presentation claim ([ADR 0360](adr/0360-chrome-stability-fixture-gate.md)).
 
+The presentation trace is the T353 correlation contract
+([ADR 0364](adr/0364-chrome-presentation-trace.md)). The compositor assigns
+each chrome surface a commit generation, snapshots the chrome content when a
+frame is built, and names the accepted `(surface, generation)` in the `present`
+line. A `wl_surface.frame` callback stays a pacing event: it is emitted with
+`frame-callback ... presented=0|1` and never satisfies request-to-present by
+itself. `chrome-commit` carries the buffer provenance, `frame-chrome` the
+built content, `frame-no-damage` a no-damage pass, and `frame-superseded` a
+replaced scene. Headless presents name `chrome=none`.
+
+The T238 driver joins the shell interaction id, target, generation, output and
+accepted `commit-done` rows to that trace. It reports request-to-commit,
+commit-to-present and request-to-present separately, with counts and p50/p95/
+p99, and classifies `presented`, `late_presented`, `callback_without_content`,
+`discarded`, `superseded` and `missed`. Only `presented` and `late_presented`
+enter the native metric; `callback_without_content` is excluded. The join is
+deterministic for repeated dmabuf serials across views, dropped commits,
+multiple outputs and late arrivals. `make t353-chrome-presentation` runs the
+real Dock chooser and Menu Bar dropdown in nested sessions and records the
+host-swap endpoint; native DRM scanout remains the T363 row with
+`make t238-native-acceptance`.
+
 Keep the evidence classes separate: the Qt fixture reports the declared
 geometry and QML silhouette, `make t349-gpu-smoke` reads back the producer FBO
 for ring reuse and premultiplied alpha, `make t349-chrome-baselines` records

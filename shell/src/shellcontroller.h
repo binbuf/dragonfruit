@@ -707,7 +707,7 @@ private:
     // ownership, for the synchronous and asynchronous commit paths alike.
     void noteChromeSceneCommitted(ChromeFrameProducer *producer,
                                   const QList<ChromeSceneTarget> &targets,
-                                  bool committed);
+                                  bool committed, quint64 serial = 0);
     // The independently sized popup views (T238 popup-target work). The
     // release slots return the warm allocation after the interaction session
     // ends; `shared` keeps the previous one-scene path.
@@ -1701,6 +1701,18 @@ private:
     quint64 m_dockPopoverTraceId = 0;
     quint64 m_pendingDockPopoverTraceId = 0;
     bool m_dockPopoverTraceCommitted = false;
+    // T353: the same interaction trace for one Menu Bar dropdown opening. The
+    // shell ends it at the pacing callback; the parser upgrades it to a
+    // native presentation only when the compositor's `present` line names the
+    // accepted menubar/menubar-popup generation.
+    bool m_menuBarMenuWasOpen = false;
+    quint64 m_menuBarMenuTraceId = 0;
+    quint64 m_pendingMenuBarMenuTraceId = 0;
+    bool m_menuBarMenuTraceCommitted = false;
+    // Monotonic shell-side accepted-content sequence, shared by the Dock and
+    // Menu Bar traces. It identifies one committed target even when a scene
+    // commits the same dmabuf serial to two views (T353).
+    quint64 m_chromeCommitSeq = 0;
     // Scene-graph frame gates (FR-14): the Dock and menu-bar windows commit
     // from `afterRendering`, and the gate suppresses the re-entrant frame the
     // `grabWindow()` readback itself produces.

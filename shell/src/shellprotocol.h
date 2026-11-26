@@ -801,6 +801,9 @@ public:
     // so it translates the surface-local tile by the output's origin and edge.
     // Invalid until the first output is announced.
     QRect primaryOutputGeometry() const;
+    // T353: the primary output's connector name, for the chrome interaction
+    // trace. Empty before the output projection arrives.
+    QString primaryOutputName() const;
 
     // The effective chrome material reported by the compositor (P1):
     // `df_output.material_state`. `blurActive` is true only when the sampled

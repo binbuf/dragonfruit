@@ -2919,6 +2919,92 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         timer->start();
     }
 
+    // T353 A/B seam: repeat the Menu Bar dropdown open/close path a fixed
+    // number of times so the presentation trace has real Dock-and-Menu-Bar
+    // work to correlate. The fixed system menu (index 0) always exists, so
+    // the workload does not depend on a focused app publishing menus. This is
+    // a measurement fixture, never a normal-session behavior.
+    if (qEnvironmentVariableIsSet("DF_MENUBAR_MENU_AB")) {
+        int target = qEnvironmentVariableIntValue("DF_MENUBAR_MENU_AB");
+        if (target <= 0)
+            target = 100;
+        int intervalMs =
+            qEnvironmentVariableIntValue("DF_MENUBAR_MENU_AB_INTERVAL_MS");
+        if (intervalMs <= 0)
+            intervalMs = 350;
+        auto *timer = new QTimer(this);
+        timer->setInterval(intervalMs);
+        auto state = std::make_shared<int>(0); // 0=waiting, 1=open, 2=closed
+        auto opened = std::make_shared<int>(0);
+        const auto menuOpen = [this]() {
+            return m_item && m_item->property("openMenuIndex").toInt() >= 0;
+        };
+        const auto startOpen = [this]() {
+            m_pendingMenuBarMenuTraceId = ChromeStats::instance().beginTrace(
+                QStringLiteral("menubar-menu"),
+                QStringLiteral("fixture-request target=%1 output=%2")
+                    .arg(popupTargetMode() == PopupTargetMode::Independent
+                             ? QStringLiteral("menubar-popup")
+                             : QStringLiteral("menubar"))
+                    .arg(m_protocol ? m_protocol->primaryOutputName()
+                                    : QString()));
+            QMetaObject::invokeMethod(m_item, "openMenu", Q_ARG(QVariant, 0));
+        };
+        connect(timer, &QTimer::timeout, this,
+                [this, timer, target, state, opened, menuOpen, startOpen]() {
+            if (!m_item)
+                return;
+            if (*state == 0) {
+                if (menuOpen()) {
+                    QMetaObject::invokeMethod(m_item, "closeMenus",
+                                              Q_ARG(QVariant, true));
+                    *state = 2;
+                    return;
+                }
+                startOpen();
+                if (!menuOpen()) {
+                    if (m_pendingMenuBarMenuTraceId != 0) {
+                        ChromeStats::instance().endTrace(
+                            m_pendingMenuBarMenuTraceId,
+                            QStringLiteral("not-ready"));
+                        m_pendingMenuBarMenuTraceId = 0;
+                    }
+                    return;
+                }
+                *state = 1;
+                ++*opened;
+                qInfo() << "shell: Menu Bar menu A/B open" << *opened << "/"
+                        << target;
+                return;
+            }
+            if (*state == 1) {
+                QMetaObject::invokeMethod(m_item, "closeMenus",
+                                          Q_ARG(QVariant, true));
+                *state = 2;
+                return;
+            }
+            if (*opened >= target) {
+                timer->stop();
+                qInfo() << "shell: Menu Bar menu A/B complete count=" << *opened;
+                timer->deleteLater();
+                return;
+            }
+            startOpen();
+            if (!menuOpen()) {
+                if (m_pendingMenuBarMenuTraceId != 0) {
+                    ChromeStats::instance().endTrace(
+                        m_pendingMenuBarMenuTraceId, QStringLiteral("not-ready"));
+                    m_pendingMenuBarMenuTraceId = 0;
+                }
+                return;
+            }
+            *state = 1;
+            ++*opened;
+            qInfo() << "shell: Menu Bar menu A/B open" << *opened << "/" << target;
+        });
+        timer->start();
+    }
+
     // Capture/demo seam (T-14.7p): open the hover chooser once the Dock is up,
     // without a synthetic pointer dwell. `DF_DOCK_HOVER_FIXTURE=retarget` also
     // places the magnification pointer between two grouped entries and
@@ -7617,6 +7703,35 @@ void ShellController::onMenuBarPopupOpened()
     m_menuOpen = true;
     m_protocol->dismissPopupInput();
     schedulePopupGeometry();
+
+    // T353: one interaction trace per Menu Bar dropdown. The callback is a
+    // pacing event; the compositor's `present` line is the native endpoint.
+    if (m_menuBarMenuTraceId != 0) {
+        ChromeStats::instance().endTrace(m_menuBarMenuTraceId,
+                                         QStringLiteral("superseded"));
+        ChromeStats::instance().recordInteraction(
+            QStringLiteral("menubar"), QStringLiteral("superseded"), -1, -1);
+    }
+    m_menuBarMenuTraceId = m_pendingMenuBarMenuTraceId;
+    m_pendingMenuBarMenuTraceId = 0;
+    if (m_menuBarMenuTraceId == 0) {
+        m_menuBarMenuTraceId = ChromeStats::instance().beginTrace(
+            QStringLiteral("menubar-menu"),
+            QStringLiteral("target=%1 output=%2")
+                .arg(popupTargetMode() == PopupTargetMode::Independent
+                         ? QStringLiteral("menubar-popup")
+                         : QStringLiteral("menubar"))
+                .arg(m_protocol ? m_protocol->primaryOutputName() : QString()));
+    }
+    ChromeStats::instance().traceEvent(
+        m_menuBarMenuTraceId, QStringLiteral("request"),
+        QStringLiteral("target=%1 output=%2 generation=%3")
+            .arg(popupTargetMode() == PopupTargetMode::Independent
+                     ? QStringLiteral("menubar-popup")
+                     : QStringLiteral("menubar"))
+            .arg(m_protocol ? m_protocol->primaryOutputName() : QString())
+            .arg(m_menuBarPopupGeneration));
+    m_menuBarMenuTraceCommitted = false;
 }
 
 void ShellController::onMenuBarPopupClosed()
@@ -7625,6 +7740,14 @@ void ShellController::onMenuBarPopupClosed()
     m_menuOpen = false;
     m_popupGeometryPending = false;
     m_protocol->dismissPopupInput();
+    if (m_menuBarMenuTraceId != 0) {
+        const qint64 elapsed = ChromeStats::instance().endTrace(
+            m_menuBarMenuTraceId, QStringLiteral("closed-before-callback"));
+        ChromeStats::instance().recordInteraction(
+            QStringLiteral("menubar"), QStringLiteral("discarded"), -1, elapsed);
+        m_menuBarMenuTraceId = 0;
+        m_menuBarMenuTraceCommitted = false;
+    }
     // T352: keep the surface mapped only for the visual tail the QML motion
     // token actually uses. A reduced-motion (or otherwise zero-duration) exit
     // unmaps immediately instead of leaving a stale frosted surface for a
@@ -11574,28 +11697,48 @@ void ShellController::onDockPopoverChanged()
     if (!open && m_dockPopoverWasOpen)
         m_protocol->dismissDockPopupInput();
     if (open && !m_dockPopoverWasOpen) {
-        if (m_dockPopoverTraceId != 0)
+        if (m_dockPopoverTraceId != 0) {
             ChromeStats::instance().endTrace(m_dockPopoverTraceId,
                                              QStringLiteral("superseded"));
+            ChromeStats::instance().recordInteraction(
+                QStringLiteral("dock"), QStringLiteral("superseded"), -1, -1);
+        }
         m_dockPopoverTraceId = m_pendingDockPopoverTraceId;
         m_pendingDockPopoverTraceId = 0;
         if (m_dockPopoverTraceId == 0) {
             m_dockPopoverTraceId = ChromeStats::instance().beginTrace(
                 QStringLiteral("dock-popover"),
-                QStringLiteral("stable=%1")
-                    .arg(dockStablePopoverEnabled() ? 1 : 0));
+                QStringLiteral("stable=%1 target=%2 output=%3")
+                    .arg(dockStablePopoverEnabled() ? 1 : 0)
+                    .arg(popupTargetMode() == PopupTargetMode::Independent
+                             ? QStringLiteral("dock-popup")
+                             : QStringLiteral("dock"))
+                    .arg(m_protocol ? m_protocol->primaryOutputName()
+                                    : QString()));
         }
+        ChromeStats::instance().traceEvent(
+            m_dockPopoverTraceId, QStringLiteral("request"),
+            QStringLiteral("target=%1 output=%2 generation=%3")
+                .arg(popupTargetMode() == PopupTargetMode::Independent
+                         ? QStringLiteral("dock-popup")
+                         : QStringLiteral("dock"))
+                .arg(m_protocol ? m_protocol->primaryOutputName() : QString())
+                .arg(m_dockPopupGeneration));
         m_dockPopoverTraceCommitted = false;
     } else if (!open && m_dockPopoverWasOpen && m_dockPopoverTraceId != 0) {
         // The open was not paced to a frame callback (or the popover closed
         // before one arrived). Record the request-to-close interval rather
-        // than leaking the trace entry.
+        // than leaking the trace entry. A close before the callback is a
+        // discarded interaction, not a presentation.
         const qint64 elapsed = ChromeStats::instance().endTrace(
-            m_dockPopoverTraceId, QStringLiteral("closed-before-present"));
+            m_dockPopoverTraceId, QStringLiteral("closed-before-callback"));
+        ChromeStats::instance().recordInteraction(
+            QStringLiteral("dock"), QStringLiteral("discarded"), -1, elapsed);
         if (elapsed >= 0)
             ChromeStats::instance().recordPopoverOpen(QStringLiteral("dock"),
                                                       elapsed);
         m_dockPopoverTraceId = 0;
+        m_dockPopoverTraceCommitted = false;
     }
     m_dockPopoverWasOpen = open;
     // The popover fade/scale is QML-driven; the scene-graph hook commits
@@ -12106,21 +12249,48 @@ void ShellController::onChromeFramePresented(const QString &surface, uint32_t ti
 {
     Q_UNUSED(time);
     // With independent popup targets the popup has its own commit, so the
-    // request-to-visible endpoint is that surface's callback, not the strip's.
-    const QString traceSurface = popupTargetMode() == PopupTargetMode::Independent
-        ? QStringLiteral("dock-popup")
-        : QStringLiteral("dock");
-    if (surface == traceSurface && m_dockPopoverTraceId != 0
+    // callback endpoint is that surface's; with a shared scene it is the
+    // strip's.
+    const bool independent = popupTargetMode() == PopupTargetMode::Independent;
+    const QString dockTraceSurface =
+        independent ? QStringLiteral("dock-popup") : QStringLiteral("dock");
+    const QString menuTraceSurface =
+        independent ? QStringLiteral("menubar-popup") : QStringLiteral("menubar");
+    if (surface == dockTraceSurface && m_dockPopoverTraceId != 0
         && m_dockPopoverTraceCommitted) {
+        // T353: this is a pacing callback, not a presentation. The parser
+        // upgrades the interaction only when the compositor's `present` line
+        // names the accepted generation.
         ChromeStats::instance().traceEvent(m_dockPopoverTraceId,
-                                           QStringLiteral("frame-presented"));
+                                           QStringLiteral("frame-presented"),
+                                           QStringLiteral("target=%1 output=%2")
+                                               .arg(dockTraceSurface)
+                                               .arg(m_protocol
+                                                        ? m_protocol->primaryOutputName()
+                                                        : QString()));
         const qint64 elapsed = ChromeStats::instance().endTrace(
-            m_dockPopoverTraceId, QStringLiteral("presented"));
+            m_dockPopoverTraceId, QStringLiteral("callback"));
+        ChromeStats::instance().recordInteraction(
+            QStringLiteral("dock"), QStringLiteral("callback"), -1, elapsed);
         if (elapsed >= 0)
             ChromeStats::instance().recordPopoverOpen(QStringLiteral("dock"),
                                                       elapsed);
         m_dockPopoverTraceId = 0;
         m_dockPopoverTraceCommitted = false;
+    }
+    if (surface == menuTraceSurface && m_menuBarMenuTraceId != 0
+        && m_menuBarMenuTraceCommitted) {
+        ChromeStats::instance().traceEvent(
+            m_menuBarMenuTraceId, QStringLiteral("frame-presented"),
+            QStringLiteral("target=%1 output=%2")
+                .arg(menuTraceSurface)
+                .arg(m_protocol ? m_protocol->primaryOutputName() : QString()));
+        const qint64 elapsed = ChromeStats::instance().endTrace(
+            m_menuBarMenuTraceId, QStringLiteral("callback"));
+        ChromeStats::instance().recordInteraction(
+            QStringLiteral("menubar"), QStringLiteral("callback"), -1, elapsed);
+        m_menuBarMenuTraceId = 0;
+        m_menuBarMenuTraceCommitted = false;
     }
     const QString paceLabel = chromePaceLabel(surface);
     // T-10 section 8.1: a presented Dock frame is the display opportunity that
@@ -12389,11 +12559,13 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
 
     ChromeFrameProducer *producer = m_producers.value(window);
     auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer);
-    const bool traceDock = window == m_dockWindow && m_dockPopoverTraceId != 0;
-    const auto trace = [this, traceDock](const QString &stage,
-                                         const QString &detail = QString()) {
-        if (traceDock)
-            ChromeStats::instance().traceEvent(m_dockPopoverTraceId, stage, detail);
+    const quint64 interactionId = window == m_dockWindow
+        ? m_dockPopoverTraceId
+        : (window == m_window ? m_menuBarMenuTraceId : 0);
+    const auto trace = [interactionId](const QString &stage,
+                                       const QString &detail = QString()) {
+        if (interactionId != 0)
+            ChromeStats::instance().traceEvent(interactionId, stage, detail);
     };
 
     QList<int> deferredTargets;
@@ -12536,7 +12708,6 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
     noteChromeSceneCommitted(producer, targets, anyCommitted);
     return anyCommitted && deferredTargets.isEmpty();
 }
-
 bool ShellController::commitReadyChromeScene(
     GpuChromeFrameProducer *gpu, int view,
     QList<ChromeSceneTarget> targets, bool *deferred)
@@ -12554,12 +12725,13 @@ bool ShellController::commitReadyChromeScene(
     }
 
     ChromeFrameProducer *producer = gpu;
-    const bool traceDock = gpu == m_producers.value(m_dockWindow)
-        && m_dockPopoverTraceId != 0;
-    const auto trace = [this, traceDock](const QString &stage,
-                                         const QString &detail = QString()) {
-        if (traceDock)
-            ChromeStats::instance().traceEvent(m_dockPopoverTraceId, stage, detail);
+    const quint64 interactionId = gpu == m_producers.value(m_dockWindow)
+        ? m_dockPopoverTraceId
+        : (gpu == m_producers.value(m_window) ? m_menuBarMenuTraceId : 0);
+    const auto trace = [interactionId](const QString &stage,
+                                       const QString &detail = QString()) {
+        if (interactionId != 0)
+            ChromeStats::instance().traceEvent(interactionId, stage, detail);
     };
 
     ChromeDmabufFrame frame;
@@ -12666,7 +12838,7 @@ bool ShellController::commitReadyChromeScene(
         deferChromeProducer(producer);
     }
 
-    noteChromeSceneCommitted(producer, targets, anyCommitted);
+    noteChromeSceneCommitted(producer, targets, anyCommitted, frame.serial);
     if (deferred)
         *deferred = !deferredTargets.isEmpty();
     return anyCommitted && deferredTargets.isEmpty();
@@ -12742,42 +12914,87 @@ void ShellController::discardChromeView(GpuChromeFrameProducer *gpu, int view)
 
 void ShellController::noteChromeSceneCommitted(
     ChromeFrameProducer *producer, const QList<ChromeSceneTarget> &targets,
-    bool committed)
+    bool committed, quint64 serial)
 {
-    if (producer != m_producers.value(m_dockWindow) || m_dockPopoverTraceId == 0)
-        return;
-    bool popup = false;
-    for (const ChromeSceneTarget &target : targets) {
-        if (target.label == QLatin1String("dock-popup")) {
-            popup = true;
-            break;
-        }
+    quint64 traceId = 0;
+    QString expectedTarget;
+    bool *committedFlag = nullptr;
+    QString kind;
+    if (producer == m_producers.value(m_dockWindow)) {
+        traceId = m_dockPopoverTraceId;
+        expectedTarget = popupTargetMode() == PopupTargetMode::Independent
+            ? QStringLiteral("dock-popup")
+            : QStringLiteral("dock");
+        committedFlag = &m_dockPopoverTraceCommitted;
+        kind = QStringLiteral("dock");
+    } else if (producer == m_producers.value(m_window)) {
+        traceId = m_menuBarMenuTraceId;
+        expectedTarget = popupTargetMode() == PopupTargetMode::Independent
+            ? QStringLiteral("menubar-popup")
+            : QStringLiteral("menubar");
+        committedFlag = &m_menuBarMenuTraceCommitted;
+        kind = QStringLiteral("menubar");
     }
-    const bool popupCommitted = committed && popup;
+    if (traceId == 0)
+        return;
+
+    bool accepted = false;
+    for (const ChromeSceneTarget &target : targets) {
+        const bool carriesPopup = committed && target.label == expectedTarget;
+        if (carriesPopup)
+            accepted = true;
+        ++m_chromeCommitSeq;
+        // One event per target: a shared scene commits the same dmabuf serial
+        // to more than one view, and the parser must not double-count it.
+        ChromeStats::instance().traceEvent(
+            traceId, QStringLiteral("commit-done"),
+            QStringLiteral("target=%1 kind=%2 ok=%3 accepted=%4 serial=%5 "
+                           "gen=%6")
+                .arg(target.label)
+                .arg(kind)
+                .arg(committed ? 1 : 0)
+                .arg(carriesPopup ? 1 : 0)
+                .arg(serial)
+                .arg(m_chromeCommitSeq));
+    }
+    // Backward-compatible aggregate row for the existing T238 report keys.
     ChromeStats::instance().traceEvent(
-        m_dockPopoverTraceId, QStringLiteral("commit-done"),
-        QStringLiteral("ok=%1 targets=%2 popup=%3")
+        traceId, QStringLiteral("commit-done"),
+        QStringLiteral("ok=%1 targets=%2 popup=%3 serial=%4")
             .arg(committed ? 1 : 0)
             .arg(targets.size())
-            .arg(popupCommitted ? 1 : 0));
-    // Only a frame that actually carried the popover target is the
-    // request-to-visible endpoint. A reveal/settle frame before the popover
-    // rect updates must not end the trace.
-    m_dockPopoverTraceCommitted = popupCommitted;
+            .arg(accepted ? 1 : 0)
+            .arg(serial));
+    // Only a frame that actually carried the popup target is the accepted
+    // content commit. A reveal/settle frame before the popover rect updates
+    // must not end the trace; a later strip-only commit must not clear an
+    // accepted popup commit either.
+    *committedFlag = *committedFlag || accepted;
 }
 
 QImage ShellController::renderChromeFrame(QQuickWindow *window, int view)
 {
     ChromeFrameProducer *producer = m_producers.value(window);
+    const quint64 traceId = ChromeStats::instance().activeTraceId();
+    if (traceId != 0)
+        ChromeStats::instance().traceEvent(
+            traceId, QStringLiteral("render-begin"),
+            QStringLiteral("phase=layout+polish+draw view=%1").arg(view));
+    QImage image;
     if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(producer)) {
         ChromeStats::instance().recordRender(window ? window->objectName() : QString());
-        return gpu->renderFrame(view);
-    }
-    if (producer) {
+        image = gpu->renderFrame(view);
+    } else if (producer) {
         ChromeStats::instance().recordRender(window ? window->objectName() : QString());
-        return producer->renderFrame();
+        image = producer->renderFrame();
+    } else {
+        image = window ? window->grabWindow() : QImage();
     }
-    return window ? window->grabWindow() : QImage();
+    if (traceId != 0)
+        ChromeStats::instance().traceEvent(
+            traceId, QStringLiteral("render-done"),
+            QStringLiteral("phase=layout+polish+draw view=%1").arg(view));
+    return image;
 }
 
 void ShellController::sendChromePointer(QQuickWindow *window, QEvent::Type type,

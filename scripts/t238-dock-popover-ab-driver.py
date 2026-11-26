@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Drive and summarise the T238 Dock-popover render-target comparison.
+"""Drive and summarise the T238 chrome interaction comparison.
 
-The shell runs with ``DF_DOCK_POPOVER_AB=<cycles>`` and opens/closes the real
-window-chooser popover on a fixed cadence. Each opening carries one
-``chrome trace id=...`` correlation id; the stage lines and the
-``chrome stage stats`` dump are parsed here. The driver also spawns two X11
-windows so the Dock has a grouped entry for the chooser.
+The shell runs with ``DF_DOCK_POPOVER_AB=<cycles>`` (Dock chooser) or
+``DF_MENUBAR_MENU_AB=<cycles>`` (Menu Bar dropdown) and opens/closes the real
+surface on a fixed cadence. Each opening carries one ``chrome trace id=...``
+correlation id; the stage lines and the ``chrome presentation`` dump are parsed
+here. The driver also spawns two X11 windows so the Dock has a grouped entry
+for the chooser.
 
 Usage:
-  t238-dock-popover-ab-driver.py run --synth S --socket S --shell-pid P ...
+  t238-dock-popover-ab-driver.py run --socket S --shell-pid P ...
   t238-dock-popover-ab-driver.py compare A.json B.json
 
 The comparison is a diagnostic, not a production switch. It keeps the
@@ -66,45 +67,55 @@ def parse_traces(text):
     traces = {}
     begin_re = re.compile(
         r"chrome trace id=(\d+) stage=begin kind=(\S+) t_ms=(\d+)"
-        r"(?: detail=(.*))?$"
+        r"(?: mono_us=(\d+))?(?: detail=(.*))?$"
     )
     event_re = re.compile(
         r"chrome trace id=(\d+) stage=(\S+) dt_us=(-?\d+) t_ms=(\d+)"
-        r"(?: detail=(.*))?$"
+        r"(?: mono_us=(\d+))?(?: detail=(.*))?$"
     )
     for line in text.splitlines():
         if "chrome trace " not in line:
             continue
         begin = begin_re.search(line)
         if begin:
-            trace_id, kind, t_ms, detail = begin.groups()
+            trace_id, kind, t_ms, mono_us, detail = begin.groups()
             traces[trace_id] = {
                 "id": int(trace_id),
                 "kind": kind,
                 "begin_t_ms": int(t_ms),
+                "begin_mono_us": int(mono_us) if mono_us else None,
                 "begin_detail": detail or "",
                 "stages": {},
                 "stage_t_ms": {},
                 "details": {},
+                "stage_events": {},
+                "stage_t_ms_events": {},
                 "end_us": None,
                 "end_t_ms": None,
+                "end_mono_us": None,
+                "end_detail": "",
             }
             continue
         event = event_re.search(line)
         if not event:
             continue
-        trace_id, stage, dt_us, _t_ms, detail = event.groups()
+        trace_id, stage, dt_us, _t_ms, _mono_us, detail = event.groups()
         trace = traces.get(trace_id)
         if trace is None:
             continue
         if stage == "end":
             trace["end_us"] = int(dt_us)
             trace["end_t_ms"] = int(_t_ms)
+            trace["end_mono_us"] = int(_mono_us) if _mono_us else None
             trace["end_detail"] = detail or ""
         else:
             trace["stages"][stage] = int(dt_us)
             trace["stage_t_ms"][stage] = int(_t_ms)
             trace["details"][stage] = detail or ""
+            # T353: a stage can repeat (one `commit-done` per target). Keep the
+            # ordered list so the join can attribute each target separately.
+            trace["stage_events"].setdefault(stage, []).append(detail or "")
+            trace["stage_t_ms_events"].setdefault(stage, []).append(int(_t_ms))
     return traces
 
 
@@ -118,12 +129,14 @@ def stage_delta(trace, first, second):
 def parse_frame_elements(text):
     """Per-frame element-type counts from the compositor trace."""
     events = []
-    pattern = re.compile(r"DFTRACE frame-elements (.*) t=(\d+)$")
+    pattern = re.compile(
+        r"DFTRACE frame-elements (.*?) t=(\d+)(?: mono_us=(\d+))?$"
+    )
     for line in text.splitlines():
         match = pattern.search(line)
         if not match:
             continue
-        detail, _t_ms = match.groups()
+        detail, _t_ms, _mono_us = match.groups()
         events.append(numeric_fields(detail))
     return events
 
@@ -183,35 +196,413 @@ def summarise_frame_elements(events):
     }
 
 
+def parse_chrome_list(value):
+    """Parse a `chrome=surface:gen,...` trace field."""
+    if not value or value == "none":
+        return []
+    entries = []
+    for item in value.split(","):
+        name, _, generation = item.partition(":")
+        if name and generation.isdigit():
+            entries.append((name, int(generation)))
+    return entries
+
+
 def parse_dftrace(text):
     events = []
-    pattern = re.compile(r"DFTRACE (\S+) (.*) t=(\d+)$")
+    pattern = re.compile(
+        r"DFTRACE (\S+) (.*?) t=(\d+)(?: mono_us=(\d+))?$"
+    )
     for line in text.splitlines():
         match = pattern.search(line)
         if not match:
             continue
-        event, detail, t_ms = match.groups()
+        event, detail, t_ms, mono_us = match.groups()
         events.append(
             {
                 "event": event,
                 "detail": detail,
                 "t_ms": int(t_ms),
+                "mono_us": int(mono_us) if mono_us else None,
                 "surface": field(detail, "surface"),
                 "output": field(detail, "output"),
                 "frame": int(field(detail, "frame") or 0),
+                "generation": int(field(detail, "gen") or 0),
+                "serial": int(field(detail, "serial") or 0),
+                "backend": field(detail, "backend") or "",
+                "clock": field(detail, "clock") or "",
+                "presented": field(detail, "presented"),
+                "buffer": field(detail, "buffer") or "",
+                "chrome": parse_chrome_list(field(detail, "chrome")),
             }
         )
-    events.sort(key=lambda event: event["t_ms"])
+    events.sort(key=lambda event: (event["t_ms"], event["mono_us"] or 0))
     return events
+
+
+def compositor_index(compositor_events):
+    """Index the compositor's T353 trace events for deterministic joins."""
+    commits = {}
+    callbacks = {}
+    presents = []
+    for event in compositor_events:
+        if event["event"] == "chrome-commit" and event["surface"]:
+            commits.setdefault(event["surface"], []).append(event)
+        elif event["event"] == "frame-callback" and event["surface"]:
+            callbacks.setdefault(event["surface"], []).append(event)
+        elif event["event"] == "present":
+            presents.append(event)
+    return commits, callbacks, presents
+
+
+def native_present(event):
+    """A present that can satisfy the native metric.
+
+    Headless presents no pixels; a callback/no-damage pass has no present
+    line at all. A DRM `estimate` timestamp is still a real scanout, labelled
+    with its provenance.
+    """
+    if event.get("backend") == "headless":
+        return False
+    return event.get("clock") in ("hardware", "estimate", "host")
+
+
+def interaction_targets(trace):
+    """Accepted content commits from the shell trace, one row per target."""
+    details = trace.get("stage_events", {}).get("commit-done", [])
+    times = trace.get("stage_t_ms_events", {}).get("commit-done", [])
+    rows = []
+    seen = set()
+    for detail, t_ms in zip(details, times):
+        if field(detail, "accepted") != "1":
+            continue
+        target = field(detail, "target")
+        if not target:
+            # Old aggregate row: derive the popup target from the trace kind.
+            target = ("dock-popup" if trace["kind"] == "dock-popover"
+                      else "menubar-popup")
+        serial = int(field(detail, "serial") or 0)
+        generation = int(field(detail, "gen") or 0)
+        key = (target, serial if serial else generation)
+        if key in seen:
+            # A shared scene commits one serial to several views. Count the
+            # accepted content once, not once per view.
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "target": target,
+                "t_ms": t_ms,
+                "serial": serial,
+                "generation": generation,
+                "kind": field(detail, "kind") or "",
+            }
+        )
+    if rows:
+        return rows
+    # Backward compatibility with a trace written before per-target rows.
+    for detail, t_ms in zip(details, times):
+        if field(detail, "popup") != "1":
+            continue
+        target = ("dock-popup" if trace["kind"] == "dock-popover"
+                  else "menubar-popup")
+        rows.append(
+            {
+                "target": target,
+                "t_ms": t_ms,
+                "serial": 0,
+                "generation": 0,
+                "kind": "",
+            }
+        )
+    return rows
+
+
+def request_output(trace):
+    for detail in trace.get("stage_events", {}).get("request", []):
+        output = field(detail, "output")
+        if output:
+            return output
+    return field(trace.get("begin_detail", ""), "output") or ""
+
+
+def first_commit_after(commits, surface, t_ms):
+    """The first compositor commit for `surface` at/after the shell commit.
+
+    Both processes truncate the shared host clock to milliseconds, so allow a
+    2 ms overlap; the interval is far smaller than the A/B cadence.
+    """
+    for event in commits.get(surface, []):
+        if event["t_ms"] >= t_ms - 2 and event["buffer"] in ("shm", "dmabuf"):
+            return event
+    return None
+
+
+def join_present(commits, presents, surface, commit, output):
+    for event in presents:
+        if not native_present(event):
+            continue
+        if event["t_ms"] < commit["t_ms"] - 2:
+            continue
+        if output and event["output"] and event["output"] != output:
+            continue
+        if (surface, commit["generation"]) in event["chrome"]:
+            return event
+    return None
+
+
+def summarise_presentation(traces, compositor_events):
+    """T353: join accepted chrome content with the exact presented frame.
+
+    The native metric is request → the `present` line that names the accepted
+    surface generation on the intended output. A frame callback is recorded as
+    a pacing event; a callback with no matching present is
+    `callback_without_content` and is excluded from every request-to-present
+    percentile.
+    """
+    commits, callbacks, presents = compositor_index(compositor_events)
+    ordered = sorted(traces.values(), key=lambda trace: (trace["begin_t_ms"], trace["id"]))
+    # The next request for the same target bounds a late arrival/supersede.
+    next_request = {}
+    for index, trace in enumerate(ordered):
+        targets = interaction_targets(trace) or [
+            {"target": "dock-popup" if trace["kind"] == "dock-popover"
+             else "menubar-popup"}
+        ]
+        for row in targets:
+            for later in ordered[index + 1:]:
+                if later["kind"] != trace["kind"]:
+                    continue
+                later_targets = interaction_targets(later)
+                if not later_targets:
+                    later_targets = [{"target": row["target"]}]
+                if any(item["target"] == row["target"] for item in later_targets):
+                    next_request[(trace["id"], row["target"])] = later["begin_t_ms"]
+                    break
+
+    outcomes = {
+        "presented": 0,
+        "late_presented": 0,
+        "callback_without_content": 0,
+        "discarded": 0,
+        "superseded": 0,
+        "missed": 0,
+    }
+    request_to_commit = []
+    commit_to_present = []
+    request_to_present = []
+    request_to_callback = []
+    callback_to_present = []
+    target_rows = {}
+    kind_rows = {}
+    rows = []
+    presented_frames = set()
+
+    for trace in ordered:
+        begin = trace["begin_t_ms"]
+        output = request_output(trace)
+        callback_t = trace.get("end_t_ms") if trace.get("end_detail") in (
+            "callback", "presented") else None
+        targets = interaction_targets(trace)
+        if not targets:
+            # The shell never accepted content (failed/deferred/skipped).
+            outcome = "discarded"
+            outcomes[outcome] += 1
+            rows.append(
+                {
+                    "id": trace["id"],
+                    "kind": trace["kind"],
+                    "target": "",
+                    "outcome": outcome,
+                    "request_t_ms": begin,
+                    "commit_t_ms": None,
+                    "callback_t_ms": callback_t,
+                    "present_t_ms": None,
+                    "frame": 0,
+                    "output": output,
+                    "clock": "",
+                    "generation": 0,
+                    "serial": 0,
+                }
+            )
+            continue
+
+        trace_outcome = "missed"
+        best = None
+        for row in targets:
+            surface = row["target"]
+            commit = first_commit_after(commits, surface, row["t_ms"])
+            if commit is None:
+                outcome = "discarded"
+            else:
+                present = join_present(commits, presents, surface, commit, output)
+                if present is not None:
+                    late_after = next_request.get((trace["id"], surface))
+                    if late_after is not None and present["t_ms"] > late_after:
+                        outcome = "late_presented"
+                    else:
+                        outcome = "presented"
+                else:
+                    # A newer commit for the same surface before the trace
+                    # deadline means the content was superseded, not missed.
+                    later_commit = next(
+                        (
+                            event
+                            for event in commits.get(surface, [])
+                            if event["t_ms"] > commit["t_ms"]
+                            and (callback_t is None or event["t_ms"] <= callback_t + 250)
+                        ),
+                        None,
+                    )
+                    if later_commit is not None:
+                        outcome = "superseded"
+                    elif callback_t is not None:
+                        outcome = "callback_without_content"
+                    else:
+                        outcome = "missed"
+
+            if outcome in ("presented", "late_presented") and commit is not None:
+                present = join_present(commits, presents, surface, commit, output)
+                # Prefer the first presented target for the interaction's
+                # request-to-present sample; repeated serials across views
+                # resolve to one frame.
+                if present is not None and present["frame"] not in presented_frames:
+                    presented_frames.add(present["frame"])
+                    best = {
+                        "target": surface,
+                        "commit": commit,
+                        "shell_commit_t_ms": row["t_ms"],
+                        "present": present,
+                        "outcome": outcome,
+                    }
+            elif best is None:
+                best = {
+                    "target": surface,
+                    "commit": commit,
+                    "shell_commit_t_ms": row["t_ms"],
+                    "present": None,
+                    "outcome": outcome,
+                }
+            target_rows.setdefault(
+                surface,
+                {
+                    "interactions": 0,
+                    "outcomes": {key: 0 for key in outcomes},
+                    "request_to_present_us": [],
+                },
+            )
+            target_rows[surface]["interactions"] += 1
+            target_rows[surface]["outcomes"][outcome] += 1
+            if outcome in ("presented", "late_presented") and commit is not None:
+                present = join_present(commits, presents, surface, commit, output)
+                if present is not None:
+                    target_rows[surface]["request_to_present_us"].append(
+                        (present["t_ms"] - begin) * 1000
+                    )
+            rows.append(
+                {
+                    "id": trace["id"],
+                    "kind": trace["kind"],
+                    "target": surface,
+                    "outcome": outcome,
+                    "request_t_ms": begin,
+                    "commit_t_ms": commit["t_ms"] if commit else None,
+                    "callback_t_ms": callback_t,
+                    "present_t_ms": (
+                        join_present(commits, presents, surface, commit, output)["t_ms"]
+                        if commit is not None
+                        and join_present(commits, presents, surface, commit, output)
+                        is not None
+                        else None
+                    ),
+                    "frame": (
+                        join_present(commits, presents, surface, commit, output)["frame"]
+                        if commit is not None
+                        and join_present(commits, presents, surface, commit, output)
+                        is not None
+                        else 0
+                    ),
+                    "output": output,
+                    "clock": (
+                        join_present(commits, presents, surface, commit, output)["clock"]
+                        if commit is not None
+                        and join_present(commits, presents, surface, commit, output)
+                        is not None
+                        else ""
+                    ),
+                    "generation": commit["generation"] if commit else 0,
+                    "serial": row["serial"],
+                }
+            )
+            if outcome == "presented":
+                trace_outcome = "presented"
+            elif outcome == "late_presented" and trace_outcome == "missed":
+                trace_outcome = "late_presented"
+            elif trace_outcome == "missed":
+                trace_outcome = outcome
+
+        outcomes[trace_outcome] += 1
+        if best is not None and best["commit"] is not None:
+            # Request → the shell's accepted content commit (before the
+            # transport receive). `commit-done` is the content-acceptance
+            # endpoint; the compositor `chrome-commit` is the receive.
+            request_to_commit.append((best["shell_commit_t_ms"] - begin) * 1000)
+        if best is not None and best["present"] is not None:
+            commit_to_present.append(
+                (best["present"]["t_ms"] - best["shell_commit_t_ms"]) * 1000
+            )
+            request_to_present.append((best["present"]["t_ms"] - begin) * 1000)
+        if callback_t is not None:
+            request_to_callback.append((callback_t - begin) * 1000)
+            if best is not None and best["present"] is not None:
+                callback_to_present.append(
+                    (best["present"]["t_ms"] - callback_t) * 1000
+                )
+        kind_rows.setdefault(
+            trace["kind"],
+            {
+                "interactions": 0,
+                "outcomes": {key: 0 for key in outcomes},
+                "request_to_present_us": [],
+            },
+        )
+        kind_rows[trace["kind"]]["interactions"] += 1
+        kind_rows[trace["kind"]]["outcomes"][trace_outcome] += 1
+        if best is not None and best["present"] is not None:
+            kind_rows[trace["kind"]]["request_to_present_us"].append(
+                (best["present"]["t_ms"] - begin) * 1000
+            )
+
+    for data in list(target_rows.values()) + list(kind_rows.values()):
+        data["request_to_present_us"] = timing(data["request_to_present_us"])
+
+    return {
+        "interactions": len(ordered),
+        "outcomes": outcomes,
+        "native_samples": len(request_to_present),
+        "callback_without_content": outcomes["callback_without_content"],
+        "request_to_commit_us": timing(request_to_commit),
+        "commit_to_present_us": timing(commit_to_present),
+        "request_to_present_us": timing(request_to_present),
+        "request_to_callback_us": timing(request_to_callback),
+        "callback_to_present_us": timing(callback_to_present),
+        "targets": target_rows,
+        "kinds": kind_rows,
+        "rows": rows,
+    }
 
 
 def summarise_traces(traces, compositor_events, imports_by_trace):
     ended = [trace for trace in traces.values() if trace.get("end_us") is not None]
     ended.sort(key=lambda trace: trace["id"])
-    # A request that closed before its first frame callback never became
-    # visible; keep it in the individual trace list and count it, but do not
-    # let it contaminate the request-to-visible percentiles.
-    openings = [trace for trace in ended if trace.get("end_detail") == "presented"]
+    # A request that closed before its pacing callback never reached the
+    # shell's endpoint; keep it in the individual trace list and count it, but
+    # do not let it contaminate the request-to-callback percentiles.
+    openings = [
+        trace
+        for trace in ended
+        if trace.get("end_detail") in ("callback", "presented")
+    ]
     closed_early = len(ended) - len(openings)
     # The first ten requests include the cold allocation and the first paint;
     # the rest describe the steady-state path.
@@ -273,7 +664,8 @@ def summarise_traces(traces, compositor_events, imports_by_trace):
                     event
                     for event in compositor_events
                     if event["event"] == "chrome-commit"
-                    and event["surface"] in ("dock", "dock-popup")
+                    and event["surface"]
+                    in ("dock", "dock-popup", "menubar", "menubar-popup")
                     and commit_done_t <= event["t_ms"] <= commit_done_t + 20
                     and (end_t is None or event["t_ms"] <= end_t + 20)
                 ),
@@ -387,6 +779,7 @@ def summarise_traces(traces, compositor_events, imports_by_trace):
             "steady": import_summary(steady),
         },
         "counts": counts,
+        "presentation": summarise_presentation(traces, compositor_events),
         "opening_ids": [trace["id"] for trace in ended],
         "presented_ids": [trace["id"] for trace in openings],
         # Keep the individual traces next to the percentiles: the A/B is a
@@ -450,6 +843,9 @@ def parse_shell(text, compositor_text):
     return {
         "stage": numeric_fields(stage_line),
         "stats": numeric_fields(stats_line),
+        "presentation": numeric_fields(
+            last_line(text, "chrome presentation (SIGUSR1-1):")
+        ),
         "surfaces": surfaces,
         "resize_events": resizes,
         "fbo_events": fbo_events,
@@ -587,10 +983,11 @@ def report_name(report):
 
 
 def write_report(report, out, cycles):
-    openings = len(report["shell"]["traces"]["opening_ids"])
-    if openings < cycles:
+    presentation = report["shell"]["traces"].get("presentation", {})
+    interactions = presentation.get("interactions", 0)
+    if interactions < cycles:
         log(
-            f"only {openings} of {cycles} openings produced a "
+            f"only {interactions} of {cycles} interactions produced a "
             "complete trace; refusing to write a partial A/B"
         )
         return False
@@ -609,18 +1006,20 @@ def run(args):
     if os.path.exists(display_file):
         with open(display_file, encoding="utf-8") as handle:
             display = handle.read().strip()
-    if not display:
+    if not display and args.workload == "dock":
         log("no nested Xwayland DISPLAY hand-off; cannot create a grouped entry")
         return 1
 
-    children = spawn_windows(display, 2)
+    children = spawn_windows(display, 2) if args.workload == "dock" else []
     try:
         if not wait_for_line(
             args.shell_log,
-            "Dock popover A/B complete count=",
+            "Dock popover A/B complete count="
+            if args.workload == "dock"
+            else "Menu Bar menu A/B complete count=",
             args.timeout,
         ):
-            log("the shell did not finish the popover cycle")
+            log("the shell did not finish the interaction cycle")
             return 1
         time.sleep(args.settle)
         for pid in (args.shell_pid, args.compositor_pid):
@@ -1035,6 +1434,60 @@ def compare(left_path, right_path):
             )
         )
     print()
+    print("## Accepted content presentation (T353)")
+    print()
+    print(f"| metric | {left_name} | {right_name} | unit |")
+    print("|---|---:|---:|---|")
+    for key, label in (
+        ("interactions", "interactions"),
+        ("native_samples", "native request→present samples"),
+        ("callback_without_content", "callback without content"),
+    ):
+        print(
+            table_row(
+                label,
+                metric(left, "shell", "traces", "presentation", key),
+                metric(right, "shell", "traces", "presentation", key),
+                "",
+            )
+        )
+    for key in (
+        "presented",
+        "late_presented",
+        "callback_without_content",
+        "discarded",
+        "superseded",
+        "missed",
+    ):
+        print(
+            table_row(
+                f"outcome {key}",
+                metric(left, "shell", "traces", "presentation", "outcomes", key),
+                metric(right, "shell", "traces", "presentation", "outcomes", key),
+                "",
+            )
+        )
+    for key, label in (
+        ("request_to_commit_us", "request → accepted commit"),
+        ("commit_to_present_us", "accepted commit → present"),
+        ("request_to_present_us", "request → present (native)"),
+        ("request_to_callback_us", "request → callback (pacing)"),
+        ("callback_to_present_us", "callback → present"),
+    ):
+        for p in ("p50", "p95", "p99"):
+            print(
+                table_row(
+                    f"{label} {p}",
+                    metric(left, "shell", "traces", "presentation", key, p),
+                    metric(right, "shell", "traces", "presentation", key, p),
+                )
+            )
+    print()
+    print("The native metric is request → the `present` line that names the")
+    print("accepted surface generation on the intended output. A frame callback")
+    print("is a pacing event; `callback without content` is excluded from every")
+    print("request-to-present percentile.")
+    print()
     print(
         "The open interval starts at the shell's popover-open request and ends "
         "at the first frame callback for the committed Dock frame. It is not "
@@ -1066,7 +1519,7 @@ def summary(paths):
         )
         for report in reports
     ]
-    print("# T238 Dock popover summary")
+    print("# T238 chrome interaction summary")
     print()
     print("| metric | " + " | ".join(names) + " |")
     print("|---|" + "---:|" * len(names))
@@ -1086,6 +1539,27 @@ def summary(paths):
         (
             "actual present p95",
             ("shell", "traces", "window", "actual_present_us", "p95"),
+        ),
+        (
+            "native request→present p50",
+            ("shell", "traces", "presentation", "request_to_present_us", "p50"),
+        ),
+        (
+            "native request→present p95",
+            ("shell", "traces", "presentation", "request_to_present_us", "p95"),
+        ),
+        (
+            "accepted commit→present p50",
+            ("shell", "traces", "presentation", "commit_to_present_us", "p50"),
+        ),
+        (
+            "callback without content",
+            ("shell", "traces", "presentation", "outcomes",
+             "callback_without_content"),
+        ),
+        (
+            "presented interactions",
+            ("shell", "traces", "presentation", "outcomes", "presented"),
         ),
         (
             "commit→present p50",
@@ -1229,6 +1703,8 @@ def main():
     run_parser.add_argument("--arm", default="")
     run_parser.add_argument("--cycles", type=int, default=100)
     run_parser.add_argument("--commit", default="")
+    run_parser.add_argument("--workload", choices=("dock", "menubar"),
+                            default="dock")
     run_parser.add_argument("--timeout", type=float, default=180.0)
     run_parser.add_argument("--settle", type=float, default=1.0)
 
@@ -1250,6 +1726,8 @@ def main():
     parse_parser.add_argument("--arm", default="")
     parse_parser.add_argument("--cycles", type=int, default=100)
     parse_parser.add_argument("--commit", default="")
+    parse_parser.add_argument("--workload", choices=("dock", "menubar"),
+                              default="dock")
 
     args = parser.parse_args()
     if args.command == "run":

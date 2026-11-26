@@ -29,6 +29,7 @@ pub mod multi_gpu;
 pub mod output_input;
 pub mod pointer_policy;
 pub mod presentation;
+pub mod presentation_trace;
 pub mod refresh;
 pub mod screencast_producer;
 pub mod window_menu;

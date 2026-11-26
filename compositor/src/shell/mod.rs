@@ -116,6 +116,10 @@ struct LayerEntry {
     /// means no new region list was sent; `Some(empty)` is an explicit clear
     /// that commits an empty panel set (T197).
     pending_panel_regions: Option<Vec<layer::PanelRegion>>,
+    /// Monotonic commit generation for this surface (T353). Every
+    /// `wl_surface.commit` advances it, so the compositor can name the exact
+    /// content a frame presented instead of the newest commit at vblank.
+    commit_generation: u64,
 }
 
 /// One material region after placement on an output (T197).
@@ -165,6 +169,9 @@ pub struct ChromeSurface {
     /// The `df_layer_surface` namespace (e.g. `menubar`, `dock`). The
     /// compositor picks the material role from it (T-14.7j).
     pub namespace: String,
+    /// The surface's commit generation at the time this snapshot was taken
+    /// (T353). The presentation trace names `namespace:generation`.
+    pub commit_generation: u64,
     /// Keyboard-interaction policy (`df_layer_surface.set_keyboard_interaction`).
     pub keyboard: KeyboardInteraction,
 }
@@ -585,7 +592,7 @@ impl DfState {
             .find(|entry| entry.resource == *resource)
     }
 
-    pub(crate) fn commit_chrome_panel(&mut self, surface: &WlSurface) {
+    pub(crate) fn commit_chrome_panel(&mut self, surface: &WlSurface) -> Option<(String, u64)> {
         if let Some(entry) = self
             .shell
             .layers
@@ -604,7 +611,13 @@ impl DfState {
                 entry.state.panel_rect = Some(rect);
                 entry.state.panel_regions = None;
             }
+            // T353: every commit advances the surface's generation. The
+            // compositor trace and the presentation snapshot use it to name
+            // the exact content a frame composited.
+            entry.commit_generation = entry.commit_generation.saturating_add(1);
+            return Some((entry.state.namespace.clone(), entry.commit_generation));
         }
+        None
     }
 
     /// Output geometry for a chrome surface's target output.
@@ -764,6 +777,7 @@ impl DfState {
                     render_offset,
                     layer: entry.state.layer,
                     namespace: entry.state.namespace.clone(),
+                    commit_generation: entry.commit_generation,
                     keyboard: entry.state.keyboard,
                 }
             })
@@ -2377,6 +2391,7 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                     client: client.id(),
                     pending_panel_rect: None,
                     pending_panel_regions: None,
+                    commit_generation: 0,
                     state: LayerSurfaceState {
                         layer: layer_value,
                         namespace,

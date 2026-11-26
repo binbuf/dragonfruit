@@ -1038,6 +1038,11 @@ impl CompositorProcess {
         Self::start_impl(socket_name, tokens, synthetic_path, None, true)
     }
 
+    /// Start with the frame trace enabled and no synthetic harness (T353).
+    fn start_with_trace(socket_name: &str, tokens: &[String]) -> Self {
+        Self::start_impl(socket_name, tokens, None, None, true)
+    }
+
     fn start_impl(
         socket_name: &str,
         tokens: &[String],
@@ -10253,6 +10258,108 @@ fn dpms_request_acks_state_and_names_the_headless_fallback() {
     );
 
     manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T353: a `wl_surface.frame` callback is a pacing event, not a content
+/// presentation. The compositor trace must label a headless callback
+/// `presented=0`, and the `present` line must not name the chrome generation.
+/// The Python T238 parser therefore cannot satisfy the native metric from a
+/// callback alone.
+#[test]
+fn chrome_frame_callback_is_pacing_not_presentation() {
+    let token = "7c".repeat(32);
+    let proc = CompositorProcess::start_with_trace(
+        "dragonfruit-conformance-chrome-presentation",
+        std::slice::from_ref(&token),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+    let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let layer = shell.get_layer_surface(
+        &surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &qh,
+        (),
+    );
+    layer.set_anchor(2 | 4 | 8); // bottom | left | right
+    layer.set_size(0, 80);
+    layer.set_exclusive_zone(80);
+    layer.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    surface.commit();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.layer_configures.is_empty(),
+    );
+
+    // Commit real chrome content and request the pacing callback.
+    let (buffer, _file) = shm_buffer(&state, &qh, 200, 150);
+    let _callback = surface.frame(&qh, ());
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, 200, 150);
+    surface.commit();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.frame_callbacks > 0,
+    );
+
+    let stdout = std::fs::read_to_string(&proc.stderr_path).unwrap_or_default();
+    let commit_lines: Vec<&str> = stdout
+        .lines()
+        .filter(|line| line.contains("DFTRACE chrome-commit surface=dock"))
+        .collect();
+    assert!(
+        commit_lines.iter().any(|line| line.contains("buffer=shm")),
+        "the chrome commit must carry its buffer provenance: {commit_lines:?}"
+    );
+    let callback_line = stdout
+        .lines()
+        .find(|line| line.contains("DFTRACE frame-callback surface=dock"))
+        .unwrap_or_else(|| panic!("no chrome frame-callback line in trace"));
+    assert!(
+        callback_line.contains("presented=0"),
+        "a headless callback presents no pixels: {callback_line}"
+    );
+    let present_lines: Vec<&str> = stdout
+        .lines()
+        .filter(|line| line.contains("DFTRACE present "))
+        .collect();
+    assert!(
+        present_lines
+            .iter()
+            .any(|line| line.contains("backend=headless") && line.contains("chrome=none")),
+        "the headless present must not claim chrome content: {present_lines:?}"
+    );
+    assert!(
+        !present_lines
+            .iter()
+            .any(|line| line.contains("chrome=dock:")),
+        "no present may name the chrome generation on headless: {present_lines:?}"
+    );
+
     let _ = conn.flush();
     proc.shutdown();
 }

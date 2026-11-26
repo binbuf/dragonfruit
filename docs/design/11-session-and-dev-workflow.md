@@ -169,8 +169,10 @@ two diagnostic env vars:
 DRAGONFRUIT_FRAME_TRACE=1 DF_SETTINGS_TRACE=1 make demo
 ```
 
-Both sides then emit wall-clock `DFTRACE <event> ... t=<epoch-ms>` lines that
-correlate across the process boundary:
+Both sides then emit wall-clock `DFTRACE <event> ... t=<epoch-ms>
+mono_us=<process-monotonic-us>` lines that correlate across the process
+boundary. Epoch time aligns the two processes; `mono_us` orders one process's
+events deterministically ([ADR 0364](adr/0364-chrome-presentation-trace.md)):
 
 - `selectPane <id>` / `paneLoaded <id>` — the app's `SettingsShell` enters and
   finishes the switch (QML work).

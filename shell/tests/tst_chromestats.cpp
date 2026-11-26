@@ -66,9 +66,11 @@ void TestChromeStats::summaryCarriesTransportCounters()
                               2, 2.0, true);
     stats.recordCommitFlush(25);
     stats.recordPopoverOpen(QStringLiteral("dock"), 12000);
+    stats.recordInteraction(QStringLiteral("dock"), QStringLiteral("callback"),
+                            5000, 12000);
 
     const QStringList lines = stats.summaryLines(QStringLiteral("SIGUSR1-1"));
-    QCOMPARE(lines.size(), 3);
+    QCOMPARE(lines.size(), 4);
 
     const QString global = lines.at(0);
     QVERIFY(global.startsWith(QStringLiteral("chrome stats (SIGUSR1-1):")));
@@ -115,7 +117,18 @@ void TestChromeStats::summaryCarriesTransportCounters()
     QCOMPARE(field(stage, QStringLiteral("popover_open_us_p50")),
              QStringLiteral("12000"));
 
-    const QString surface = lines.at(2);
+    const QString presentation = lines.at(2);
+    QVERIFY(presentation.startsWith(QStringLiteral("chrome presentation (SIGUSR1-1):")));
+    QCOMPARE(field(presentation, QStringLiteral("interactions")), QStringLiteral("1"));
+    QCOMPARE(field(presentation, QStringLiteral("callback_only")),
+             QStringLiteral("1"));
+    QCOMPARE(field(presentation, QStringLiteral("presented")), QStringLiteral("0"));
+    QCOMPARE(field(presentation, QStringLiteral("request_to_commit_us_p50")),
+             QStringLiteral("5000"));
+    QCOMPARE(field(presentation, QStringLiteral("request_to_callback_us_p50")),
+             QStringLiteral("12000"));
+
+    const QString surface = lines.at(3);
     QVERIFY(surface.startsWith(QStringLiteral("chrome surface (SIGUSR1-1):")));
     QCOMPARE(field(surface, QStringLiteral("surface")), QStringLiteral("dock"));
     QCOMPARE(field(surface, QStringLiteral("path")), QStringLiteral("dmabuf"));

@@ -115,6 +115,32 @@ where
     elements
 }
 
+/// Snapshot the chrome content a frame is about to composite on `output`
+/// (T353): the `(namespace, commit generation)` pairs of every visible
+/// above-window surface, in stack order.
+///
+/// The backend records this against the frame id at build time. A present
+/// endpoint then names exactly the content that frame carried, so a chrome
+/// commit that arrives while the frame is in flight cannot be credited to it.
+pub fn chrome_content_snapshot(state: &DfState, output: &Output) -> Vec<(String, u64)> {
+    let Some(geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    state
+        .visible_chrome_surfaces(output.name().as_str(), geometry)
+        .into_iter()
+        .filter(|chrome| crate::shell::layer::above_windows(chrome.layer))
+        // A surface with no committed buffer draws nothing. It still receives
+        // callbacks, but it is not content and must not appear in the present
+        // snapshot (T353).
+        .filter(|chrome| {
+            with_renderer_surface_state(&chrome.surface, |surface| surface.buffer().is_some())
+                .unwrap_or(false)
+        })
+        .map(|chrome| (chrome.namespace, chrome.commit_generation))
+        .collect()
+}
+
 /// Build render elements for the shell's chrome surfaces (menu bar, Dock,
 /// overlays) on `output`, topmost first (T-09).
 ///
@@ -1169,7 +1195,13 @@ pub fn take_presentation_feedback(
 /// path's throttle is for occluded/background windows); a chrome surface that
 /// is visible on the output is the shell's pacing source. The callback count
 /// feeds the T-21.1a `chrome_frame_callbacks` counter.
-fn send_chrome_frame_callbacks(state: &DfState, output: &Output, time: Duration) -> u64 {
+fn send_chrome_frame_callbacks(
+    state: &DfState,
+    output: &Output,
+    time: Duration,
+    frame: u64,
+    presented: bool,
+) -> u64 {
     let Some(geometry) = state.space.output_geometry(output) else {
         return 0;
     };
@@ -1190,6 +1222,18 @@ fn send_chrome_frame_callbacks(state: &DfState, output: &Output, time: Duration)
         if pending == 0 {
             continue;
         }
+        // T353: a frame callback is a pacing event. Label it with the frame
+        // id and whether it followed a real presented frame; the parser must
+        // not treat it as the content-presentation endpoint.
+        crate::trace::log(
+            "frame-callback",
+            &format!(
+                "surface={} frame={frame} output={} presented={}",
+                chrome.namespace,
+                output.name(),
+                u8::from(presented)
+            ),
+        );
         send_frames_surface_tree(&chrome.surface, output, time, None, |_, _| {
             Some(output.clone())
         });
@@ -1224,12 +1268,23 @@ pub fn post_repaint_headless(state: &mut DfState, output: &Output, time: Duratio
     // One frame-callback batch per live window: the idle budget's direct
     // "client wakeups" counter (T-03.1a).
     state.stats.client_wakeups += wakeups;
-    // Chrome surfaces are paced by the same presented frame (T-21.1c).
-    state.stats.chrome_frame_callbacks += send_chrome_frame_callbacks(state, output, time);
+    // Chrome surfaces are paced by the same presented frame (T-21.1c). The
+    // headless rail presents no pixels, so the callbacks are labelled
+    // `presented=0`; a headless callback cannot satisfy the native metric.
+    let frame = state.stats.current_frame();
+    state.stats.chrome_frame_callbacks +=
+        send_chrome_frame_callbacks(state, output, time, frame, false);
     // This is a presented frame (headless's stand-in for the photon): credit
     // any pending input with its input-to-photon round trip (T-03.1b).
     state.stats.latency.note_present(Instant::now());
-    crate::trace::log("present", "headless");
+    crate::trace::log(
+        "present",
+        &format!(
+            "frame={frame} output={} backend=headless clock=headless clock_us={} chrome=none",
+            output.name(),
+            time.as_micros()
+        ),
+    );
 }
 
 /// Send frame callbacks for the live windows of `output` without presenting a
@@ -1265,7 +1320,14 @@ pub fn send_frame_callbacks(
     state.stats.client_wakeups += wakeups;
     // A no-damage frame still answers chrome callbacks, otherwise the shell
     // would wait for a presentation that the idle compositor never produces.
-    state.stats.chrome_frame_callbacks += send_chrome_frame_callbacks(state, output, time);
+    // These callbacks are pacing events, not content presentations.
+    let frame = state.stats.current_frame();
+    state.stats.chrome_frame_callbacks +=
+        send_chrome_frame_callbacks(state, output, time, frame, false);
+    crate::trace::log(
+        "frame-no-damage",
+        &format!("frame={frame} output={}", output.name()),
+    );
 }
 
 /// Whether the compositor may advertise a fractional preferred scale to
@@ -1347,7 +1409,9 @@ pub fn post_repaint(
     state.stats.client_wakeups += wakeups;
     // Chrome surfaces are paced by this presented frame (T-21.1c). No 1 s
     // throttle: a visible chrome surface is the shell's animation clock.
-    state.stats.chrome_frame_callbacks += send_chrome_frame_callbacks(state, output, time);
+    let frame = state.stats.current_frame();
+    state.stats.chrome_frame_callbacks +=
+        send_chrome_frame_callbacks(state, output, time, frame, true);
     // This frame was presented (nested `submit`): credit any pending input
     // with its input-to-photon round trip (T-03.1b).
     state.stats.latency.note_present(Instant::now());
