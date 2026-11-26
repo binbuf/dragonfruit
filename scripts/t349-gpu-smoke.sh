@@ -116,8 +116,8 @@ t21_stop_compositor
     echo "## Verdict"
     if [ "$RING_STATUS" -eq 0 ] && [ "$FALLBACK_STATUS" -eq 0 ]; then
         echo "PASS: three slots painted, two older slots reused with partial damage,"
-        echo "full-frame and outside-damage pixels match, and premultiplied alpha"
-        echo "survives at 1x/1.5x/2x."
+        echo "full-frame and outside-damage pixels match, the exported format carries"
+        echo "premultiplied alpha, and transparent pixels survive at 1x/1.5x/2x."
     else
         echo "FAIL: ring=$RING_STATUS fallback=$FALLBACK_STATUS"
     fi

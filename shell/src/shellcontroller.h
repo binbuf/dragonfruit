@@ -733,6 +733,14 @@ private:
         const QRect &sourceRect, quintptr lockSurfaceId, QString *reason);
     // Mark the producer slot dirty for a retry after a deferred commit.
     void deferChromeProducer(ChromeFrameProducer *producer);
+    // T357: bounded local recovery after a capability or output change. Clears
+    // per-target failures, retries a rail disabled by a hard failure, and
+    // invalidates the Dock baseline so the first recovered frame is a full
+    // redraw. `rerender` is false when the caller already schedules one.
+    void recoverChromeDmabufTargets(const QString &reason, bool rerender = true);
+    // Re-apply the protocol's current feedback table to every GPU producer and
+    // then run the bounded recovery. Output changes use this hook.
+    void refreshChromeDmabufCapabilities(bool rerender = true);
     // True while a GPU producer still holds an uncommitted frame for either
     // view. A render requested now would be deferred, so the pacer must not
     // spin on it; the completion handler schedules the next frame instead.
@@ -1414,10 +1422,15 @@ private:
     // reason and never go black.
     bool m_chromeDmabufEnabled = false;
     QSet<QString> m_chromeDmabufDisabled;
+    // T357: bounded retry budget for capability/output changes. A one-off
+    // failure is recoverable; a persistent one cannot loop forever.
+    ChromeDmabufRecovery m_chromeDmabufRecovery;
     // Capture-only isolation (`DRAGONFRUIT_CHROME_GPU_SURFACES`): when set,
     // only the named surface labels use dmabuf. Empty means every surface is
-    // eligible, which is the shipping default. A shared scene is all-or-
-    // nothing so a popover never mixes a dmabuf bar with a shm sub-rect.
+    // eligible, which is the shipping default. The explicit selection keeps
+    // the all-or-nothing scene path (a capture never mixes a selected dmabuf
+    // target with an unselected shm sub-rect); a per-target import failure is
+    // isolated below that, so a failed popup does not stop its strip.
     QSet<QString> m_chromeDmabufAllowed;
     // T-21.1c: producer lookup and per-producer pacing state.
     QHash<QQuickWindow *, ChromeFrameProducer *> m_producers;

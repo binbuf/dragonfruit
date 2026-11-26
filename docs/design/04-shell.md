@@ -66,6 +66,20 @@ cannot use DMA-BUF, the shell can commit through the pooled shared-memory
 path. A hard failure can disable the affected surface or the GPU rail,
 depending on where it occurs.
 
+An exported frame must be one of the supported premultiplied-alpha formats
+(`AB24`/`AR24`), not merely an exact pair in the compositor's feedback table.
+An opaque `XB24`/`XR24` export is rejected as `opaque-format` and takes the
+shm fallback, because a chrome scene clears to transparent and an opaque
+buffer would paint its corners and glass edges black. Failure handling is
+per target: a failed popup import/format/geometry commit is skipped while the
+strip or companion target of the same export keeps committing. Only a lost
+connection, device, context or exporter disables the rail. A capability or
+output change is a bounded recovery point (three consecutive attempts, reset
+by a successful commit) that clears per-target import failures, retries a
+disabled rail and forces a full redraw on the first recovered frame. Serial
+release and the full-redraw invariant on slot reuse are unchanged. See
+[ADR 0369](adr/0369-dmabuf-alpha-and-target-failure-isolation.md).
+
 On the software path, the producer renders into a ping-pong image pair.
 Each surface reuses a three-buffer shared-memory pool and copies the changed
 portion needed by the chosen buffer. Both transports can skip unchanged

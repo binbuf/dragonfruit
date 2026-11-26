@@ -240,13 +240,21 @@ Rectangle {
     }
 
     const bool premultipliedOk = premultipliedAlphaOk(blueImage, dpr);
+    // T357: the actual exported format must be one of the supported
+    // premultiplied alpha formats. An opaque X* export would pass a naive
+    // import check but turn the transparent corner black.
+    const bool alphaFormatOk =
+        GpuChromeCapabilities::supportsPremultipliedAlpha(red.format)
+        && GpuChromeCapabilities::supportsPremultipliedAlpha(green.format)
+        && GpuChromeCapabilities::supportsPremultipliedAlpha(blue.format);
     const QString absoluteOut = QFileInfo(outPath).absoluteFilePath();
     QDir().mkpath(QFileInfo(outPath).absolutePath());
     const bool saved = !blueImage.isNull() && blueImage.save(outPath);
     line(QStringLiteral(
              "ring_check dpr=%1 slots=%2,%3,%4 distinct_slots=%5 "
              "painted_distinct=%6 reused=%7 full_frame_ok=%8 "
-             "outside_damage_ok=%9 premultiplied_ok=%10 saved=%11 capture=%12")
+             "outside_damage_ok=%9 premultiplied_ok=%10 alpha_format_ok=%11 "
+             "saved=%12 capture=%13")
              .arg(dpr, 0, 'g', 4)
              .arg(red.slot)
              .arg(green.slot)
@@ -257,6 +265,7 @@ Rectangle {
              .arg(fullFrameOk ? 1 : 0)
              .arg(outsideDamageOk ? 1 : 0)
              .arg(premultipliedOk ? 1 : 0)
+             .arg(alphaFormatOk ? 1 : 0)
              .arg(saved ? 1 : 0)
              .arg(absoluteOut));
 
@@ -266,7 +275,7 @@ Rectangle {
 
     const bool pass = distinctSlots && paintedDistinct
         && reusedFrames.size() == 2 && fullFrameOk && outsideDamageOk
-        && premultipliedOk && saved;
+        && premultipliedOk && alphaFormatOk && saved;
     line(QStringLiteral("verdict=%1")
              .arg(pass ? QStringLiteral("pass") : QStringLiteral("fail")));
     delete object;

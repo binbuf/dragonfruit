@@ -1396,6 +1396,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         if (m_notificationCenterOpen)
             hideNotificationCenter(QStringLiteral("output"));
         hideWidgetGallery();
+        // T357: an output change is a bounded recovery point. A target that
+        // failed against the old output may be importable on the new one. The
+        // next natural frame picks it up; do not render during teardown.
+        refreshChromeDmabufCapabilities(false);
     });
     connect(m_dockTrackingTimer, &QChronoTimer::timeout, this, &ShellController::scheduleDockRender);
     connect(m_dockItem, SIGNAL(pointerTrackingActiveChanged()),
@@ -12915,11 +12919,13 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
         // The target already shows these pixels and its protocol geometry did
         // not change: nothing was sent, so this surface does not hold the
         // producer slot.
+        m_chromeDmabufRecovery.noteSuccess();
         noteSurfacePath(label, QStringLiteral("dmabuf"));
         ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
         return result;
     }
     if (result == ShellProtocol::DmabufCommitResult::Committed) {
+        m_chromeDmabufRecovery.noteSuccess();
         noteSurfacePath(label, QStringLiteral("dmabuf"));
         ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
         ChromeStats::instance().setTransportPath(QStringLiteral("render-control+dmabuf"));
@@ -12936,6 +12942,8 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
 
     const QString why = reason && !reason->isEmpty() ? *reason
                                                      : QStringLiteral("import-failed");
+    const ChromeDmabuf::FailureClass failure =
+        ChromeDmabuf::classifyFailure(why);
     if (result == ShellProtocol::DmabufCommitResult::Deferred) {
         ChromeStats::instance().recordDmabufDeferred(label);
         noteSurfacePath(label, QStringLiteral("shm"), why);
@@ -12946,24 +12954,91 @@ ShellProtocol::DmabufCommitResult ShellController::commitChromeDmabufTarget(
     noteSurfacePath(label, QStringLiteral("shm"), why);
     ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
     // A surface that vanished while its frame was completing is a stale scene,
-    // not a transport failure: an asynchronous commit can outlive a close. Do
-    // not disable the label for the session.
-    if (why == QLatin1String("unknown-surface")
-        || why == QLatin1String("unknown-lock-surface")
-        || why == QLatin1String("no-surface")
-        || why == QLatin1String("no-buffer-state")) {
+    // not a transport failure: an asynchronous commit can outlive a close.
+    if (failure == ChromeDmabuf::FailureClass::Stale)
         return result;
-    }
-    // A surface that cannot express this commit (no viewporter, no format,
-    // import failure) stays on shm for the session; the rest of the chrome
-    // keeps using dmabuf. A missing linux-dmabuf binding is producer-wide.
-    if (why == QLatin1String("no-dmabuf")) {
+    // A transient failure is retried on the release/import path; it must not
+    // disable the target or the rail.
+    if (failure == ChromeDmabuf::FailureClass::Transient)
+        return result;
+    // A genuine connection/device/context/exporter loss affects every target.
+    // A target-local import/format/geometry failure disables only that label,
+    // so a failed popup no longer takes its strip down with it.
+    if (failure == ChromeDmabuf::FailureClass::Transport) {
         m_chromeDmabufEnabled = false;
         ChromeStats::instance().setTransportPath(QStringLiteral("render-control+shm"));
+        qWarning().noquote() << QStringLiteral(
+            "chrome dmabuf: transport disabled label=%1 reason=%2 class=%3")
+            .arg(label, why, ChromeDmabuf::failureClassName(failure));
     } else {
+        const bool inserted = !m_chromeDmabufDisabled.contains(label);
         m_chromeDmabufDisabled.insert(label);
+        if (inserted) {
+            qWarning().noquote() << QStringLiteral(
+                "chrome dmabuf: target disabled label=%1 reason=%2 class=%3")
+                .arg(label, why, ChromeDmabuf::failureClassName(failure));
+        }
     }
     return result;
+}
+
+void ShellController::recoverChromeDmabufTargets(const QString &reason,
+                                                 bool rerender)
+{
+    if (m_gpuChromeState != GpuChromeState::Active)
+        return;
+    if (m_chromeDmabufDisabled.isEmpty() && m_chromeDmabufEnabled)
+        return;
+    bool anyGpuActive = false;
+    for (auto it = m_producers.constBegin(); it != m_producers.constEnd(); ++it) {
+        if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(it.value())) {
+            if (gpu->gpuActive()) {
+                anyGpuActive = true;
+                break;
+            }
+        }
+    }
+    // A lost GL context/device is terminal: the producer cannot render again
+    // without a new context, so a recovery attempt would only misreport the
+    // transport. The bounded retry applies to target/import/export failures.
+    if (!anyGpuActive)
+        return;
+    if (!m_chromeDmabufRecovery.recover())
+        return;
+
+    m_chromeDmabufDisabled.clear();
+    if (m_protocol)
+        m_protocol->resetDmabufTargetFailures();
+    const bool railWasDisabled = !m_chromeDmabufEnabled;
+    m_chromeDmabufEnabled = true;
+    ChromeStats::instance().setGpuPath(QStringLiteral("dmabuf"));
+    ChromeStats::instance().setTransportPath(QStringLiteral("render-control+dmabuf"));
+    // A recovered target has no committed baseline at the compositor. Retire
+    // the Dock's partial-damage comparison so its first recovered frame is a
+    // full redraw; every other surface already reports full damage.
+    invalidateDockDamage();
+    qWarning().noquote() << QStringLiteral(
+        "chrome dmabuf: local recovery reason=%1 attempt=%2/%3 rail=%4")
+        .arg(reason)
+        .arg(m_chromeDmabufRecovery.attempts())
+        .arg(m_chromeDmabufRecovery.maxAttempts())
+        .arg(railWasDisabled ? QStringLiteral("re-enabled")
+                             : QStringLiteral("targets-cleared"));
+    if (rerender)
+        rerenderChrome();
+}
+
+void ShellController::refreshChromeDmabufCapabilities(bool rerender)
+{
+    if (!m_protocol)
+        return;
+    const QVector<GpuChromeCapabilities::FormatModifier> formats =
+        m_protocol->gpuCapabilities().formats;
+    for (auto it = m_producers.begin(); it != m_producers.end(); ++it) {
+        if (auto *gpu = qobject_cast<GpuChromeFrameProducer *>(it.value()))
+            gpu->setDmabufFormats(formats);
+    }
+    recoverChromeDmabufTargets(QStringLiteral("capability"), rerender);
 }
 
 bool ShellController::commitChromeScene(QQuickWindow *window,
@@ -12990,23 +13065,46 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
     QList<int> deferredTargets;
     bool anyCommitted = false;
 
-    // A shared scene has one path: if any of its surfaces cannot use dmabuf,
-    // the whole scene renders through T185 shm. That is the only way to avoid
-    // reading back a frame that the compositor is already sampling through a
-    // committed dmabuf (which can block on the GPU fence).
-    const auto sceneEligible = [this](const QList<ChromeSceneTarget> &list) {
-        for (const ChromeSceneTarget &target : list) {
-            if (m_chromeDmabufDisabled.contains(target.label)
-                || (!m_chromeDmabufAllowed.isEmpty()
-                    && !m_chromeDmabufAllowed.contains(target.label))) {
-                return false;
+    // The capture-only surface selection stays all-or-nothing: mixing a
+    // selected dmabuf target with an unselected shm target in one scene is
+    // exactly what that diagnostic knob exists to avoid.
+    bool selectionAllowsScene = true;
+    if (!m_chromeDmabufAllowed.isEmpty()) {
+        for (const ChromeSceneTarget &target : targets) {
+            if (!m_chromeDmabufAllowed.contains(target.label)) {
+                selectionAllowsScene = false;
+                break;
             }
         }
-        return true;
-    };
+    }
+    // A per-target import/format failure is isolated (T357). The remaining
+    // targets of the same export still commit; only when every target has
+    // failed does the scene take the completed-frame shm fallback. The failed
+    // target keeps its last committed pixels until a bounded recovery.
+    QList<ChromeSceneTarget> dmabufTargets;
+    QSet<QString> dmabufLabels;
+    if (selectionAllowsScene) {
+        for (const ChromeSceneTarget &target : targets) {
+            if (m_chromeDmabufDisabled.contains(target.label))
+                continue;
+            dmabufTargets.append(target);
+            dmabufLabels.insert(target.label);
+        }
+    }
     auto paceIt = m_chromePaces.find(producer);
     const bool useGpu = gpu && gpu->gpuActive() && m_chromeDmabufEnabled
-        && sceneEligible(targets) && paceIt != m_chromePaces.end();
+        && !dmabufTargets.isEmpty() && paceIt != m_chromePaces.end();
+
+    if (useGpu) {
+        for (const ChromeSceneTarget &target : targets) {
+            if (dmabufLabels.contains(target.label))
+                continue;
+            noteSurfacePath(target.label, QStringLiteral("shm"),
+                            m_chromeDmabufDisabled.contains(target.label)
+                                ? QStringLiteral("target-disabled")
+                                : QStringLiteral("not-selected"));
+        }
+    }
 
     if (useGpu) {
         // Phase 2: commit every frame the producer already completed, oldest
@@ -13036,11 +13134,11 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
             paceIt.value().pendingScenes.remove(view);
         }
 
-        if (m_chromeDmabufEnabled && sceneEligible(targets)) {
+        if (m_chromeDmabufEnabled && !dmabufTargets.isEmpty()) {
             // Phase 1: render and submit without waiting for the fence. The
             // completion handler commits the frame, so input keeps flowing
             // while the GPU finishes.
-            ChromeStats::instance().recordRender(targets.first().label);
+            ChromeStats::instance().recordRender(dmabufTargets.first().label);
             trace(QStringLiteral("export-begin"),
                   QStringLiteral("ring_live=%1 ring_alloc=%2 view=%3")
                       .arg(gpu->dmabufRingLiveCount(view))
@@ -13048,7 +13146,7 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
                       .arg(view));
             QString exportReason;
             if (gpu->submitFrame(view, damage, &exportReason)) {
-                paceIt.value().pendingScenes[view].append(targets);
+                paceIt.value().pendingScenes[view].append(dmabufTargets);
                 trace(QStringLiteral("export-done"),
                       QStringLiteral("ok=1 reason=none view=%1").arg(view));
                 if (deferred)
@@ -13065,20 +13163,24 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
                                                   : exportReason)
                       .arg(view));
             // The producer could not submit. A transient ring/fence failure
-            // keeps the rail enabled and retries; a hard export/format failure
-            // abandons it for the session so the next frame takes the shm
-            // path. Never read back a slot the compositor may still hold.
-            const bool transient = exportReason == QLatin1String("ring-exhausted")
-                || exportReason == QLatin1String("sync-timeout")
-                || exportReason == QLatin1String("completion-pending")
-                || exportReason == QLatin1String("completion-ready");
-            if (!transient) {
+            // keeps the rail enabled and retries; an export/format or
+            // transport failure disables the rail until a bounded capability
+            // or output change retries it. Never read back a slot the
+            // compositor may still hold.
+            const ChromeDmabuf::FailureClass failure =
+                ChromeDmabuf::classifyFailure(exportReason);
+            if (failure != ChromeDmabuf::FailureClass::Transient
+                && failure != ChromeDmabuf::FailureClass::Stale) {
                 m_chromeDmabufEnabled = false;
                 ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
                 ChromeStats::instance().setTransportPath(
                     QStringLiteral("render-control+shm"));
+                qWarning().noquote() << QStringLiteral(
+                    "chrome dmabuf: export disabled reason=%1 class=%2")
+                    .arg(exportReason,
+                         ChromeDmabuf::failureClassName(failure));
             }
-            for (const ChromeSceneTarget &target : targets) {
+            for (const ChromeSceneTarget &target : dmabufTargets) {
                 ChromeStats::instance().recordDmabufFallback(target.label,
                                                              exportReason);
                 noteSurfacePath(target.label, QStringLiteral("shm"), exportReason);
@@ -13090,7 +13192,7 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
         // through and render this scene through shm once.
     }
 
-    if (!useGpu || !m_chromeDmabufEnabled || !sceneEligible(targets)) {
+    if (!useGpu || !m_chromeDmabufEnabled || dmabufTargets.isEmpty()) {
         QString reason;
         if (!gpu || !gpu->gpuActive())
             reason = m_gpuChromeRequested && !m_gpuChromeReason.isEmpty()
@@ -13169,16 +13271,21 @@ bool ShellController::commitReadyChromeScene(
     QString exportReason;
     if (!gpu->takeCompletedFrame(view, &frame, &exportReason)) {
         // The completed slot could not be exported. A missing/not-ready frame
-        // is a transient race with the completion handler; a hard export or
-        // format failure abandons the rail for the session.
-        const bool transient = exportReason == QLatin1String("not-ready")
-            || exportReason == QLatin1String("completion-pending")
-            || exportReason == QLatin1String("sync-timeout");
-        if (!transient) {
+        // is a transient race with the completion handler; an export/format or
+        // transport failure disables the rail until a bounded capability or
+        // output change retries it.
+        const ChromeDmabuf::FailureClass failure =
+            ChromeDmabuf::classifyFailure(exportReason);
+        if (failure != ChromeDmabuf::FailureClass::Transient
+            && failure != ChromeDmabuf::FailureClass::Stale) {
             m_chromeDmabufEnabled = false;
             ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
             ChromeStats::instance().setTransportPath(
                 QStringLiteral("render-control+shm"));
+            qWarning().noquote() << QStringLiteral(
+                "chrome dmabuf: export disabled reason=%1 class=%2")
+                .arg(exportReason,
+                     ChromeDmabuf::failureClassName(failure));
         }
         for (const ChromeSceneTarget &target : targets) {
             ChromeStats::instance().recordDmabufFallback(target.label,
@@ -13199,6 +13306,14 @@ bool ShellController::commitReadyChromeScene(
             && !m_chromeDmabufAllowed.contains(target.label)) {
             noteSurfacePath(target.label, QStringLiteral("shm"),
                             QStringLiteral("not-selected"));
+            continue;
+        }
+        // A target disabled by a previous commit (or by a sibling's failure)
+        // is skipped, not committed through shm: reading the exported FBO back
+        // while another target still samples it would block on the GPU fence.
+        if (m_chromeDmabufDisabled.contains(target.label)) {
+            noteSurfacePath(target.label, QStringLiteral("shm"),
+                            QStringLiteral("target-disabled"));
             continue;
         }
         QString reason;
@@ -13249,6 +13364,17 @@ bool ShellController::commitReadyChromeScene(
                       .arg(target.label,
                            reason.isEmpty() ? QStringLiteral("none") : reason));
         }
+    }
+
+    // T357 evidence: a target-local failure must not stop the healthy siblings
+    // of the same export. The trace names both sides so a nested run can
+    // observe the strip commit while its popup is disabled.
+    if (successCount > 0 && (anyHardFailure || !deferredTargets.isEmpty())) {
+        trace(QStringLiteral("target-sibling-commit"),
+              QStringLiteral("committed=%1 deferred=%2 failed=%3")
+                  .arg(successCount)
+                  .arg(deferredTargets.size())
+                  .arg(anyHardFailure ? 1 : 0));
     }
 
     bool anyCommitted = successCount > 0 || skippedCount > 0;
@@ -13339,14 +13465,19 @@ void ShellController::onChromeGpuFrameFailed(GpuChromeFrameProducer *gpu, int vi
 
     // A timed-out completion never reaches the compositor. The producer kept
     // the last completed frame, so the bounded retry can render again instead
-    // of committing a partial buffer.
-    const bool transient = reason == QLatin1String("sync-timeout")
-        || reason == QLatin1String("ring-exhausted");
-    if (!transient) {
+    // of committing a partial buffer. A transport/export failure disables the
+    // rail; a stale scene does not.
+    const ChromeDmabuf::FailureClass failure =
+        ChromeDmabuf::classifyFailure(reason);
+    if (failure != ChromeDmabuf::FailureClass::Transient
+        && failure != ChromeDmabuf::FailureClass::Stale) {
         m_chromeDmabufEnabled = false;
         ChromeStats::instance().setGpuPath(QStringLiteral("shm"));
         ChromeStats::instance().setTransportPath(
             QStringLiteral("render-control+shm"));
+        qWarning().noquote() << QStringLiteral(
+            "chrome dmabuf: submit failed reason=%1 class=%2")
+            .arg(reason, ChromeDmabuf::failureClassName(failure));
     }
     for (const ChromeSceneTarget &target : targets) {
         ChromeStats::instance().recordDmabufFallback(target.label, reason);
@@ -13484,8 +13615,10 @@ void ShellController::onChromeScaleChanged(qreal scale)
     if (m_menuBarPopupClosing)
         finishMenuBarPopupExit();
     // A new scale retires the ring and remaps the viewport: the strip has no
-    // partial-damage baseline at the new size.
+    // partial-damage baseline at the new size. It is also a bounded recovery
+    // point for a target or rail disabled by an earlier import/export failure.
     invalidateDockDamage();
+    refreshChromeDmabufCapabilities(false);
     updateNotificationCenterGeometry();
     updateControlCenterGeometry();
     rerenderChrome();

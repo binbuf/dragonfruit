@@ -94,6 +94,19 @@ FormatSelection selectFormat(const QVector<FormatModifier> &formats,
     return selection;
 }
 
+bool isAlphaFormat(uint32_t format)
+{
+    return format == Abgr8888 || format == Argb8888;
+}
+
+bool supportsPremultipliedAlpha(uint32_t format)
+{
+    // The `A*` DRM formats are premultiplied under the Wayland buffer
+    // convention. An unknown fourcc is not a format the chrome transport can
+    // interpret, so it is not accepted even if a driver advertises it.
+    return isAlphaFormat(format);
+}
+
 QString formatName(uint32_t format)
 {
     switch (format) {

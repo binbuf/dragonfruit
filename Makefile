@@ -301,7 +301,7 @@ verify-fast: gate-checks
 # since T350; the Dock chooser footprint reproducers are expected to fail
 # until T351 flips its manifest rows. No native seat or GPU is required, so
 # this target runs in either evidence case.
-CHROME_QT_RE := ^(tst_design_system|tst_menubar|tst_dock|tst_chromescale|tst_chromebufferpool|tst_chromestats|tst_gpucapabilities|tst_dmabufcommit|tst_chromeframeproducer|tst_chromepointer|tst_chromepointerui|tst_materialpolicy|tst_notifications|tst_controlcenter|tst_osd|tst_chooserui|tst_windowmenu|tst_popupvisualtransaction)$$
+CHROME_QT_RE := ^(tst_design_system|tst_menubar|tst_dock|tst_chromescale|tst_chromebufferpool|tst_chromestats|tst_gpucapabilities|tst_dmabufcommit|tst_dmabuffailure|tst_chromeframeproducer|tst_chromepointer|tst_chromepointerui|tst_materialpolicy|tst_notifications|tst_controlcenter|tst_osd|tst_chooserui|tst_windowmenu|tst_popupvisualtransaction)$$
 verify-chrome-stability: build
 	$(MAKE) glass-presets-check
 	$(MAKE) glass-shader-test

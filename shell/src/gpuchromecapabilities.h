@@ -81,6 +81,17 @@ EglCapabilities parseEglExtensions(const QByteArray &clientExtensions,
 FormatSelection selectFormat(const QVector<FormatModifier> &formats,
                              const QVector<uint32_t> &preferred = {Abgr8888, Argb8888});
 
+// True for the two 32-bit formats that carry an alpha channel. The opaque
+// `X*` variants are advertised by some drivers for the same FBO, but a chrome
+// scene is translucent by design: attaching one would turn every clear pixel
+// and every glass edge black. T357 rejects them before a wl_buffer exists.
+bool isAlphaFormat(uint32_t format);
+
+// Wayland's ARGB8888/ABGR8888 buffers are premultiplied by protocol
+// convention. This is the only interpretation the chrome transport supports,
+// so it is also the export/commit whitelist.
+bool supportsPremultipliedAlpha(uint32_t format);
+
 // Human-readable tokens for probe logs.
 QString formatName(uint32_t format);
 QString modifierName(uint64_t modifier);

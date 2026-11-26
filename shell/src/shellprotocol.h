@@ -269,6 +269,12 @@ public:
                                         const QSize &logicalSize,
                                         QString *reason = nullptr);
 
+    // T357: forget per-target import failures so a bounded capability/output
+    // recovery can retry the target from a fresh slot generation. Only failed
+    // slots are dropped; a creating/busy slot is left for its async callback
+    // or compositor release.
+    void resetDmabufTargetFailures();
+
     // Stage the Dock's surface-local plate and input region for its next
     // commit. The empty input region passes clicks through.
     void setDockFrameGeometry(const QRect &panel, const QList<QRect> &inputRects);

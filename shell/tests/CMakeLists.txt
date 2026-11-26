@@ -162,6 +162,26 @@ set_tests_properties(tst_dmabufcommit PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# T357: alpha enforcement and per-target DMA-BUF failure isolation. Injects
+# the producer/protocol failure tokens at the controller's decision boundary;
+# pure, so no Wayland, EGL, or GPU is needed.
+qt_add_executable(tst_dmabuffailure
+    tst_dmabuffailure.cpp
+)
+target_link_libraries(tst_dmabuffailure PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_dmabuffailure
+    COMMAND tst_dmabuffailure
+)
+set_tests_properties(tst_dmabuffailure PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Hidden software scenes must resize with the Dock's overlay headroom.
 qt_add_executable(tst_chromeframeproducer tst_chromeframeproducer.cpp)
 target_link_libraries(tst_chromeframeproducer PRIVATE

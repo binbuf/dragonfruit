@@ -224,7 +224,28 @@ void GpuChromeFrameProducer::setDevicePixelRatio(qreal dpr)
 void GpuChromeFrameProducer::setDmabufFormats(
     const QVector<GpuChromeCapabilities::FormatModifier> &formats)
 {
+    if (m_dmabufFormats == formats)
+        return;
+    const bool hadFormats = !m_dmabufFormats.isEmpty();
     m_dmabufFormats = formats;
+    // A changed feedback table is a capability change: cached exports were
+    // validated against the old table. Retire the current generation so the
+    // next frame re-exports and re-validates. Busy slots keep their old
+    // buffer until the compositor releases it; a retired slot is never a
+    // partial-damage baseline, so the next use is a full redraw.
+    if (!hadFormats || m_views.isEmpty())
+        return;
+    QOpenGLContext *context = m_renderContext ? m_renderContext : m_context;
+    const bool madeCurrent = context && m_surface && context->isValid()
+        && QOpenGLContext::currentContext() != context
+        && context->makeCurrent(m_surface);
+    const QList<int> views = m_views.keys();
+    for (int view : views) {
+        if (m_views[view].ring.retireAll())
+            collectRetiredSlots(view);
+    }
+    if (madeCurrent)
+        context->doneCurrent();
 }
 
 GpuChromeFrameProducer::ViewState &

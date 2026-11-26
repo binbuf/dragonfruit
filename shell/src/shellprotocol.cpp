@@ -2652,6 +2652,24 @@ void ShellProtocol::destroyDmabufSlot(ShellSurfaceBuffer *buffer, int slotIndex,
     buffer->dmabufSlots.erase(it);
 }
 
+void ShellProtocol::resetDmabufTargetFailures()
+{
+    for (auto bufferIt = m_surfaceBuffers.begin();
+         bufferIt != m_surfaceBuffers.end(); ++bufferIt) {
+        ShellSurfaceBuffer *buffer = bufferIt.value();
+        if (!buffer)
+            continue;
+        QList<int> failed;
+        for (auto slotIt = buffer->dmabufSlots.cbegin();
+             slotIt != buffer->dmabufSlots.cend(); ++slotIt) {
+            if (slotIt.value().failed && !slotIt.value().creating)
+                failed.append(slotIt.key());
+        }
+        for (int slot : failed)
+            destroyDmabufSlot(buffer, slot);
+    }
+}
+
 void ShellProtocol::applyDmabufScale(wl_surface *surface, const QSize &logicalSize,
                                      const QRect &sourceRect, const QSize &bufferSize)
 {

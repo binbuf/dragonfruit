@@ -25,14 +25,148 @@ ChromeDmabufCheck validate(
         if (pair.format != frame.format)
             continue;
         formatSeen = true;
-        if (pair.modifier == frame.modifier) {
-            check.valid = true;
+        if (pair.modifier != frame.modifier)
+            continue;
+        // The pair is importable, but an opaque `X*` export cannot represent
+        // the transparent pixels a chrome scene clears to. Reject it here so
+        // the caller takes the shm fallback instead of attaching a buffer
+        // that would paint black behind every rounded corner and glass edge.
+        if (!GpuChromeCapabilities::supportsPremultipliedAlpha(pair.format)) {
+            check.reason = QStringLiteral("opaque-format");
             return check;
         }
+        check.valid = true;
+        return check;
     }
     check.reason = formatSeen ? QStringLiteral("no-modifier")
                               : QStringLiteral("no-format");
     return check;
+}
+
+FailureClass classifyFailure(const QString &reason)
+{
+    // Saturation and timing: the frame is valid, the producer just needs
+    // another turn. These never disable a target or the rail.
+    static const QSet<QString> transient = {
+        QStringLiteral("ring-exhausted"),
+        QStringLiteral("sync-timeout"),
+        QStringLiteral("completion-pending"),
+        QStringLiteral("completion-ready"),
+        QStringLiteral("not-ready"),
+        QStringLiteral("slot-busy"),
+        QStringLiteral("import-pending"),
+        QStringLiteral("deferred"),
+    };
+    // The exported frame cannot be attached as-is. At a producer boundary
+    // this is rail-wide (every view shares the exporter); at a target commit
+    // it is local to the target.
+    static const QSet<QString> format = {
+        QStringLiteral("opaque-format"),
+        QStringLiteral("no-format"),
+        QStringLiteral("no-modifier"),
+        QStringLiteral("bad-export"),
+        QStringLiteral("oversized"),
+        QStringLiteral("bad-texture"),
+        QStringLiteral("egl-image-failed"),
+        QStringLiteral("export-query-failed"),
+        QStringLiteral("multi-plane"),
+        QStringLiteral("export-failed"),
+    };
+    // A target's own import/geometry rejected this commit. The other targets
+    // of the same export remain eligible.
+    static const QSet<QString> target = {
+        QStringLiteral("import-failed"),
+        QStringLiteral("no-viewporter"),
+        QStringLiteral("bad-source"),
+        QStringLiteral("no-slot"),
+        QStringLiteral("dup-failed"),
+        QStringLiteral("no-params"),
+        QStringLiteral("bad-frame"),
+        QStringLiteral("bad-size"),
+    };
+    // The connection/device/context/exporter is gone. No target can recover
+    // by itself; the rail is disabled until a bounded capability/output
+    // change retries it.
+    static const QSet<QString> transport = {
+        QStringLiteral("no-dmabuf"),
+        QStringLiteral("no-egl-context"),
+        QStringLiteral("no-egl-export"),
+        QStringLiteral("no-gl-context"),
+        QStringLiteral("no-offscreen-surface"),
+        QStringLiteral("no-current-context"),
+        QStringLiteral("no-render-context"),
+        QStringLiteral("render-control-init-failed"),
+        QStringLiteral("fbo-create-failed"),
+        QStringLiteral("software-renderer"),
+        QStringLiteral("render-failed"),
+        QStringLiteral("ring-phase"),
+        QStringLiteral("ring-serial"),
+        QStringLiteral("context-lost"),
+        QStringLiteral("device-lost"),
+        QStringLiteral("connection-lost"),
+    };
+    // The surface closed or was replaced while its asynchronous frame was
+    // still completing. This is a stale scene, not a transport failure.
+    static const QSet<QString> stale = {
+        QStringLiteral("unknown-surface"),
+        QStringLiteral("unknown-lock-surface"),
+        QStringLiteral("no-surface"),
+        QStringLiteral("no-buffer-state"),
+    };
+
+    if (reason.isEmpty())
+        return FailureClass::None;
+    if (transient.contains(reason))
+        return FailureClass::Transient;
+    if (stale.contains(reason))
+        return FailureClass::Stale;
+    if (transport.contains(reason))
+        return FailureClass::Transport;
+    if (format.contains(reason))
+        return FailureClass::Format;
+    if (target.contains(reason))
+        return FailureClass::Target;
+    // An unlisted reason is treated as target-local: it disables one surface
+    // rather than the whole rail. A producer boundary widens that to the rail
+    // because a shared exporter failure affects every view.
+    return FailureClass::Target;
+}
+
+bool isTransientFailure(const QString &reason)
+{
+    return classifyFailure(reason) == FailureClass::Transient;
+}
+
+QString failureClassName(FailureClass failure)
+{
+    switch (failure) {
+    case FailureClass::None:
+        return QStringLiteral("none");
+    case FailureClass::Transient:
+        return QStringLiteral("transient");
+    case FailureClass::Format:
+        return QStringLiteral("format");
+    case FailureClass::Target:
+        return QStringLiteral("target");
+    case FailureClass::Transport:
+        return QStringLiteral("transport");
+    case FailureClass::Stale:
+        return QStringLiteral("stale");
+    }
+    return QStringLiteral("target");
+}
+
+TargetPlan planTargets(const QVector<QString> &labels,
+                       const QSet<QString> &disabled)
+{
+    TargetPlan plan;
+    for (const QString &label : labels) {
+        if (disabled.contains(label))
+            plan.skip.append(label);
+        else
+            plan.commit.append(label);
+    }
+    return plan;
 }
 
 uint32_t modifierHigh(uint64_t modifier)
@@ -67,6 +201,19 @@ QRect targetDamage(const ChromeFrameDamage &damage, const QRect &sourceRect)
 }
 
 } // namespace ChromeDmabuf
+
+ChromeDmabufRecovery::ChromeDmabufRecovery(int maxAttempts)
+    : m_maxAttempts(qMax(1, maxAttempts))
+{
+}
+
+bool ChromeDmabufRecovery::recover()
+{
+    if (!canRecover())
+        return false;
+    ++m_attempts;
+    return true;
+}
 
 void ChromeDmabufReleaseTracker::acquire(quint64 serial)
 {

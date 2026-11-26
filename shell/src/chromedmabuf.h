@@ -9,6 +9,7 @@
 
 #include <QHash>
 #include <QRect>
+#include <QSet>
 #include <QSize>
 #include <QString>
 #include <QVector>
@@ -95,10 +96,57 @@ namespace ChromeDmabuf {
 // Validate an exported frame against the advertised format/modifier table.
 // The compositor's `dmabuf_imported` accepts only an exact `(format, modifier)`
 // pair from the feedback table, so an implicit or unlisted modifier is a
-// fallback, not something to paper over.
+// fallback, not something to paper over. The exact pair must also carry alpha
+// (see `supportsPremultipliedAlpha`): an opaque export of a translucent chrome
+// scene is rejected with `opaque-format` before a wl_buffer is created.
 ChromeDmabufCheck validate(
     const ChromeDmabufFrame &frame,
     const QVector<GpuChromeCapabilities::FormatModifier> &advertised);
+
+// How one failure token should be handled (T357). The same token can mean
+// different things depending on where it is observed, so callers apply the
+// class in their own context:
+//  - `Transient`: retry on the bounded completion/release path.
+//  - `Format`: the exported frame/format cannot be attached (or this target
+//    cannot express the commit); a producer treats it as rail-wide, a target
+//    commit treats it as local to that target.
+//  - `Target`: this target's import/geometry failed; the rest of the scene
+//    keeps its transport.
+//  - `Transport`: the connection, device, context, or exporter is gone; the
+//    whole rail is disabled.
+//  - `Stale`: the surface vanished while an asynchronous frame was completing;
+//    not a transport failure.
+enum class FailureClass {
+    None,
+    Transient,
+    Format,
+    Target,
+    Transport,
+    Stale,
+};
+
+FailureClass classifyFailure(const QString &reason);
+bool isTransientFailure(const QString &reason);
+// Short token for traces/logs.
+QString failureClassName(FailureClass failure);
+
+// The targets one completed export should still commit (T357). A shared scene
+// can have one failing target while its strip/companion is healthy; the
+// healthy target keeps committing DMA-BUF and the failed one is skipped until
+// a bounded recovery. `commit` is empty when no target can use DMA-BUF, which
+// is the completed-frame fallback: the caller reads the FBO back once and
+// commits the whole scene through shared memory.
+struct TargetPlan {
+    QVector<QString> commit;
+    QVector<QString> skip;
+
+    bool useDmabuf() const { return !commit.isEmpty(); }
+    bool healthySibling() const { return !commit.isEmpty() && !skip.isEmpty(); }
+    bool fallbackToCompletedFrame() const { return commit.isEmpty(); }
+};
+
+TargetPlan planTargets(const QVector<QString> &labels,
+                       const QSet<QString> &disabled);
 
 // `zwp_linux_buffer_params_v1.add` takes the 64-bit modifier as two uint32s.
 uint32_t modifierHigh(uint64_t modifier);
@@ -120,6 +168,29 @@ ChromeFrameDamage frameDamage(const QRect &logicalRegion, qreal scale,
 QRect targetDamage(const ChromeFrameDamage &damage, const QRect &sourceRect);
 
 } // namespace ChromeDmabuf
+
+// Bounded local recovery for capability or output changes (T357). Each change
+// may clear the failed-target set once. The budget resets after a successful
+// DMA-BUF commit, so a one-off failure does not consume the session's whole
+// recovery allowance, while a persistent failure cannot cause an unbounded
+// retry loop.
+class ChromeDmabufRecovery
+{
+public:
+    explicit ChromeDmabufRecovery(int maxAttempts = 3);
+
+    bool canRecover() const { return m_attempts < m_maxAttempts; }
+    // Consume one attempt. False when the bounded budget is exhausted.
+    bool recover();
+    void noteSuccess() { m_attempts = 0; }
+    int attempts() const { return m_attempts; }
+    int maxAttempts() const { return m_maxAttempts; }
+    void reset() { m_attempts = 0; }
+
+private:
+    int m_maxAttempts;
+    int m_attempts = 0;
+};
 
 // The reuse state of one dmabuf-backed surface buffer. Kept as the small
 // single-buffer state machine used by the export smoke test; the production
