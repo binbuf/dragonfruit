@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """T-17.1c Flatpak browser single-flow client (runs *inside* the sandbox).
 
 `scripts/t17-flatpak-browser-driver.py` starts this file with

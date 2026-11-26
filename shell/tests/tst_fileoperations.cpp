@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Filesystem move tests (T312): same-filesystem rename, cross-filesystem
 // copy-to-sibling + rename, mid-copy rollback, metadata preservation, name
 // collisions, and permission-denied cleanup. No Wayland, QML, or compositor.

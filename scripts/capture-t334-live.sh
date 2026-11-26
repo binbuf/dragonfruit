@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # T334 live visual check: the Files Open With picker in the nested session and
 # the global menu while Files is focused. The broker's ResolveFocused reply is
 # recorded beside the stills so the Files menu, accelerators, and the live

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Themed system cursors (T-03 cursor rail).
 //!
 //! The DRM backend owns the pointer image: clients either set a cursor

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The streaming worker and its event stream ([09-files.md]).
 //!
 //! `DirectoryModel::begin` calls [`begin`] here. A named worker thread opens

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The runtime half of the XDnD bridge: a dedicated X11 connection, the atom
 //! table, and the bridge window that acts as the X11 **target** (T328a) and
 //! the X11 **source** (T328b).

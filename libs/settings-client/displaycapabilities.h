@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Displays capability table (T227, extended T273).
 //
 // The Displays pane must never advertise a control the compositor does not

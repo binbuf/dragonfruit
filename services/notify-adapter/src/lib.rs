@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Notifications and Focus adapter: the Focus/DND policy and the active
 //! banner / recorded history state of the notification service (T-15.7a).
 //!

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # T334: Files Open With and menu publication stills — the picker with the
 # installed handlers and its default selection, a chosen non-default handler,
 # the Set as Default result, and the File menu rendered from the same published

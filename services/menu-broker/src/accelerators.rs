@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Focus-scoped application accelerators (T-14.2b).
 //!
 //! The global menu is not just a picture: the rows carry shortcuts, and those

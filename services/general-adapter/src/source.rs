@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The General transport seam and its fixture (T226).
 //!
 //! A [`GeneralSource`] is the only thing that talks to `timedatectl`,

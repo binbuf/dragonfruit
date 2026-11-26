@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shell settings-client tests (T-08.2a): the typed value store, the
 // `Changed` de-duplication, and the live `DbusSettingsClient` against a fake
 // `org.dragonfruit.Settings1` service on the private session bus that

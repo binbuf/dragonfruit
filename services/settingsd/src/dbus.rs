@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The session-bus surface: `org.dragonfruit.Settings1` (T-08.1a).
 //!
 //! One interface, one object path. Methods are typed against the schema:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Drive the T-14.6a strange-app zoo and write the identity/decoration/menu
 matrix.
 

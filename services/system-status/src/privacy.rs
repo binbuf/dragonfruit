@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Privacy and Security half of the bridge host (T-15.13b).
 //!
 //! The host stack is reached by the `dragonfruit-privacy-adapter` over the

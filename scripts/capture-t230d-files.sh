@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # T230d: Files window chrome, status bar, toolbar-hidden mode and Get Info
 # inspector stills. Headless offscreen/software, 900×600 pt at 1×.
 #

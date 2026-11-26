@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Popup presentation transactions (T354).
 //!
 //! A popup used to be a set of independent layer requests: placement,

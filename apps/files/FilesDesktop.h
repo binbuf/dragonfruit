@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Files-owned desktop process (T-19.3).
 //
 // `dragonfruit-files --desktop` is a separate process from the browser: it

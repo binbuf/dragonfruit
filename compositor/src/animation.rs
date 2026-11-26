@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The shared compositor animation clock (T-02.1a).
 //!
 //! Every compositor-side lifecycle transition (window appear/minimize/zoom/

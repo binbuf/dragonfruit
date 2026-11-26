@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Spaces: the compositor's workspace model (T-05).
 //!
 //! Workspace organization is an **internal compositor primitive**

@@ -296,12 +296,12 @@ desktop works without it.
 
 | macOS capability | Candidate | License | Integration | Decision |
 |---|---|---|---|---|
-| File manager | Files (first-party) | GPL-3.0-only | — | Build |
-| Launcher | Applications drawer (first-party) | GPL-3.0-only | — | Build |
+| File manager | Files (first-party) | GPL-3.0-or-later | — | Build |
+| Launcher | Applications drawer (first-party) | GPL-3.0-or-later | — | Build |
 | Search index | Tracker/Tracker Miners | GPL-2.0+ | Separate process | Optional backend |
 | Search index | Baloo | LGPL-2.1+ | Separate process | Optional backend |
 | Search index | Recoll | GPL-2.0+ | Separate process | Optional backend |
-| Search index | built-in filename index | GPL-3.0-only | — | Default |
+| Search index | built-in filename index | GPL-3.0-or-later | — | Default |
 | Quick Look | Preview (first-party) + Evince/Okular/mpv | GPL/LGPL | Separate process | Build UI, delegate renderers |
 | Backup | restic | BSD-2-Clause | CLI/JSON | Preferred backend |
 | Backup | Pika Backup | GPL-3.0+ | Separate app | Optional |
@@ -383,15 +383,15 @@ and the same rows are mirrored in `NOTICE`.
 
 ## 5. Linking and distribution policy
 
-1. **GPL-3.0-only first party.** Original compositor, shell, services,
-   protocols, design system, and apps are GPL-3.0-only.
+1. **GPL-3.0-or-later first-party code.** Original compositor, shell, services,
+   protocols, design system, and apps are GPL-3.0-or-later.
 2. **Separate processes.** GPL services (PackageKit, Tracker, firewalld, Orca,
    etc.) are separate executables communicating over D-Bus/CLI/portal. Their
    code is not copied into the first-party tree.
 3. **Dynamic linking.** LGPL libraries (Qt, NetworkManager client, colord,
    etc.) may be dynamically linked with the LGPL notices and the ability to
    replace the library.
-4. **GPL-3.0-only compatible dependencies only.** Do not link AGPL,
+4. **GPL-3.0 compatible dependencies only.** Do not link AGPL,
    GPL-2.0-only, or other GPL-3.0-incompatible code into a Dragonfruit binary.
 5. **Optional dependencies.** The core desktop does not require a GPL service.
    Packaging marks optional dependencies as `Recommends`/`Suggests` (or the

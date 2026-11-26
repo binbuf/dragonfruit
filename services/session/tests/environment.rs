@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-12.1b acceptance: the session environment reaches children, and the two
 //! unit seams (`--print-env`, `--wait-socket`) behave.
 //!

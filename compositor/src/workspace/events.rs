@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Workspace event broadcasts (T-05 FR-8).
 //!
 //! The compositor is the sole owner of workspace state; the shell, Dock,

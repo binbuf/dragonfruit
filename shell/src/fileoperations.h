@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The shell's one asynchronous filesystem owner (T-14.7k).
 //
 // Directory listings and folder moves run on bounded worker pools here and

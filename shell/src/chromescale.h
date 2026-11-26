@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Pure chrome scale geometry (T-21.1b).
 //
 // The chrome surface's *logical* size is the contract with the compositor:

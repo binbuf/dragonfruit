@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! XDnD (X11 drag-and-drop) protocol codec and the pure translation model
 //! for the X11/Wayland bridge (T-14.5).
 //!

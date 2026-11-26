@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # T-02 FR-8: no `wlr-screencopy`-style arbitrary-grab capture protocols
 # are implemented or advertised, ever. Capture is portal-only

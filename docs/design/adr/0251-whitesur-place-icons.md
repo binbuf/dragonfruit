@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | accepted (2026-11-09); amended 2026-11-25 by [0366](0366-relicense-to-gpl-3.0-only.md) — the first-party tree is now GPL-3.0-only, so this asset's copyleft terms match the project while remaining a separable data asset |
+| **Status** | accepted (2026-11-09); amended 2026-11-25 by [0366](0366-relicense-to-gpl-3.0-or-later.md) — the first-party tree is now GPL-3.0-or-later; this asset remains GPL-3.0-only and compatible as separable runtime data |
 | **Scope** | Files folder icons, desktop and sidebar places, Trash, the Files app icon, and the Applications launcher |
 | **Related** | [interface-naming-and-licensing.md](../interface-naming-and-licensing.md), [licensing.md](../licensing.md), [10-design-system.md](../10-design-system.md), [ADR 0166](0166-first-party-app-icons.md), [ADR 0185](0185-tabler-line-icons.md) |
 

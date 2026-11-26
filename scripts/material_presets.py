@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The glass material-preset vocabulary and its resolution policy (T195).
 
 ``design-system/tokens/tokens.json`` carries the data; this module is the

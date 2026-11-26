@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Screenshot save/copy tests (T-13.3b): the writer saves a PNG into the
 // capture directory and puts the image (and the saved file's URI) on the
 // clipboard. Needs a QGuiApplication for the clipboard, but no Wayland,

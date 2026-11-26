@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Token-driven backdrop blur pass for chrome surfaces (T-04.2).
 //!
 //! The compositor draws the material *under* a translucent chrome surface (the

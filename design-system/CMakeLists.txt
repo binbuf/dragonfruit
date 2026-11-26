@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Dragonfruit design system — the single place where the desktop's visual
 # identity lives (T-08). Tokens are generated from design-system/tokens/
 # tokens.json into Theme.qml (QML singleton) and compositor/src/

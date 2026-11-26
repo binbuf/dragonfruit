@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Qt platform-plugin (QPA) lookup for the shell (T342).
 //
 // The shell normally asks Qt for the Wayland QPA so its GPU chrome rail can

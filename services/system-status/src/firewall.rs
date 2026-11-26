@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The firewall half of the bridge host (T225).
 //!
 //! The firewall adapter owns detection (firewalld/ufw/nftables) and the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-02 acceptance: the protocol advertise list matches the ticket
 //! exactly — no missing, no extras — and no capture protocol is ever
 //! advertised (FR-7/FR-8).

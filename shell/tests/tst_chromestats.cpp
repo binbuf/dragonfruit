@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T-21.4b chrome transport counters. Pure: no Wayland, QML, or compositor.
 #include <QtTest>
 

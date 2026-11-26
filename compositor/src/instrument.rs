@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Performance instruments for the T-03 real-session budgets (T-03.1b).
 //!
 //! Two instruments share the render-stats line, appended **after** the

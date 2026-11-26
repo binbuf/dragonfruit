@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The platform seam: one trait a directory backend implements ([09-files.md]).
 //!
 //! `files-core` never calls `readdir`/GIO directly in the model. A backend

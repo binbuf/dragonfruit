@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The trash slice of the `dragonfruit-files-core` C ABI the shell links
 // (T-10.6a). Mirrors the `#[repr(C)]` definitions in
 // `services/files-core/src/ffi.rs`; keep the two in lockstep. The Dock reads

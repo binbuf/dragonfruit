@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Notification chrome test runner (T-11.1a): `QUICK_TEST_MAIN_WITH_SETUP`
 // finds the QML TestCase in this directory and exposes the optional capture
 // directory (`DF_NOTIFICATIONS_CAPTURE_DIR`) as `TestEnvironment.captureDir`

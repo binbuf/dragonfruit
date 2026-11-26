@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // System-status model tests (T-07.5a): the bridge host's JSON views decode to
 // the Wi-Fi and volume menu models, and each menu gesture raises the one
 // request signal the shell forwards to the host. No QML, Wayland, or D-Bus.

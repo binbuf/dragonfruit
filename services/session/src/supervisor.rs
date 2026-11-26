@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The session supervisor: staged launch and in-place restart (T-12.1a).
 //!
 //! [`Supervisor`] owns the child processes of a [`SessionPlan`]. Call

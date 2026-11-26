@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The shipped original default wallpaper and its resolution order (ADR 0094).
 //!
-//! `assets/graphics/wallpapers/Default.jpg` is the project's own GPL-3.0-only
+//! `assets/graphics/wallpapers/Default.jpg` is the project's own GPL-3.0-or-later
 //! asset and
 //! the out-of-box, first-run, and cold-cache/offline background. It is
 //! installed to `$prefix/share/dragonfruit/wallpapers/Default.jpg` at package

@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Refresh desktop/icon caches after removal. User settings are intentionally
 # kept; the package never owned them.

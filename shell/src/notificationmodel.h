@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shell-side notification model (T-11.1a).
 //
 // The shell renders banners and the notification-center history from the

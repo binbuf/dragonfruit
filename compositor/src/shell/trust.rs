@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Launch-token trust model for the private shell protocols (T-07).
 //!
 //! Chrome surfaces, window/workspace control, and output management are a

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 #![allow(dead_code)] // The binary and the test library use different halves of this surface.
 
 //! The pointer/trackpad settings model and its libinput application (T320).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The accumulated directory listing ([09-files.md]).
 //!
 //! [`DirectoryModel`] owns the nodes a listing has delivered so far. Batches

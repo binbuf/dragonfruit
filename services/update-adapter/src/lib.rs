@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The General, About, and Updates adapter (T-15.10a).
 //!
 //! General, About, and Updates do not wrap an external desktop daemon the way

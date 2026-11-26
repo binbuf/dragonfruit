@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-10.2b acceptance: operations apply optimistically (visible before any
 //! confirmation), then reconcile — confirm keeps the painted result, revert
 //! snaps it back — while the sort spec and the selection survive. The `*_via`

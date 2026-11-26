@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Pure Dock running-app projection (T-10, sections 4.1/7/22): groups the
 // compositor's toplevel list into the per-app entries the Dock renders, with
 // each app's window list and the separate minimized-window entries. No

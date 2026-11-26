@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Runtime GPU-chrome capability probe (T-21.1d).
 //
 // One probe binds `zwp_linux_dmabuf_v1` on an existing Wayland connection,

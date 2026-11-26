@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Detect the host Wayland compositor going away.
 //!
 //! A nested compositor is a client of the host. When the host exits or its

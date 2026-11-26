@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """T203 Quick Settings material fixture, capture scorer and acceptance check.
 
 The Quick Settings is three distinct materials, not one panel with a second

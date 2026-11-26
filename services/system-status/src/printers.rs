@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Printers and Scanners half of the bridge host (T-15.12b).
 //!
 //! The host stack is reached by the `dragonfruit-printer-adapter`; the shell

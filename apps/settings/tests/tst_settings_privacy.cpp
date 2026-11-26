@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Privacy & Security pane test runner (T-15.13b): `QUICK_TEST_MAIN` finds the
 // QML TestCase in this directory.
 #include <QtQuickTest>

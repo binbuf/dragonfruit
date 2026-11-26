@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Per-output frame requests and earliest-deadline scheduling (T-21.2b, T188b).
 //!
 //! [`crate::presentation`] answers "when is this output next due?"; this module

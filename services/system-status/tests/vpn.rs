@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Bridge tests for the Network advanced (VPN) half of the host (T-15.15b):
 //! the view the Settings pane and Quick Settings tile decode, and the two
 //! explicit writes. The adapter is driven by `MockVpn`, so the connect /

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Thin, mockable adapters over the host system services (T-07.1a).
 //!
 //! The menu bar's Wi-Fi, volume, and battery items read from host daemons

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's storage seam (T-15.2b).
 //
 // The Storage pane never touches D-Bus: it binds the `Settings` singleton, and

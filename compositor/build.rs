@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Link helper for developer environments where the native DRM stack
 //! (libgbm, libseat, libinput, libudev, libxkbcommon) only provides
 //! runtime libraries (.so.<n>) without linker-name symlinks — e.g. a

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // System Settings — entry point stub (T-16 builds the real app).
 #include <QDateTime>
 #include <QDBusConnection>

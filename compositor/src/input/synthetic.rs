@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Synthetic input harness for the headless and nested backends (T-03).
 //!
 //! The headless backend has no seat devices, so protocol-level tests that

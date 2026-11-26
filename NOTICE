@@ -1,7 +1,7 @@
 # Third-Party Notices
 
 Dragonfruit itself is licensed under the GNU General Public License,
-version 3 only (GPL-3.0-only; see [LICENSE.md](LICENSE.md)). It builds on
+version 3 or later (GPL-3.0-or-later; see [LICENSE.md](LICENSE.md)). It builds on
 third-party software whose licenses are reproduced or referenced below.
 Nothing in the Dragonfruit license alters the terms of these components.
 
@@ -25,8 +25,8 @@ Nothing in the Dragonfruit license alters the terms of these components.
 | [Phosphor](https://github.com/phosphor-icons/core) 2.0.8 (`assets/icons/phosphor/`, the `regular` and `fill` glyphs, compiled into the design-system module) | MIT |
 | [Capitaine cursors](https://github.com/keeferrourke/capitaine-cursors) commit `06c8843` (`assets/cursors/capitaine-cursors/`, the desktop cursor theme, installed to `share/icons/capitaine-cursors`) | LGPL-3.0-or-later; see [`assets/cursors/capitaine-cursors/COPYING`](assets/cursors/capitaine-cursors/COPYING) and [`LICENSES/LGPL-3.0-or-later.txt`](LICENSES/LGPL-3.0-or-later.txt) |
 | [WhiteSur icon theme](https://github.com/vinceliuice/WhiteSur-icon-theme) `2026-09-10` (commit `73d8040da51a9ed74e47c7366e7e9ff437601a5c`; `assets/icons/whitesur/`, the colored place/app artwork, compiled into the design-system module; the Files app icon copy installs to `share/icons/hicolor/scalable/apps`) | GPL-3.0-only; see [`assets/icons/whitesur/COPYING`](assets/icons/whitesur/COPYING) and [`LICENSES/GPL-3.0-only.txt`](LICENSES/GPL-3.0-only.txt) |
-| Dragonfruit and Tux OS-menu marks (`assets/icons/brand/`, compiled into the design-system module) | GPL-3.0-only (original project assets) |
-| Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | GPL-3.0-only (original project asset) |
+| Dragonfruit and Tux OS-menu marks (`assets/icons/brand/`, compiled into the design-system module) | GPL-3.0-or-later (original project assets) |
+| Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | GPL-3.0-or-later (original project asset) |
 
 The default wallpaper is the only image bundled in a package. Featured
 pictures are fetched from Wikimedia Commons at runtime under their own

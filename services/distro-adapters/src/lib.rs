@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Cross-distro administration adapter contract (T221).
 //!
 //! Dragonfruit targets Fedora, Ubuntu, Debian, and Arch. Those distributions

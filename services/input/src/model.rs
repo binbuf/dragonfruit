@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The input snapshot the pane renders, decoded from one raw read.
 //!
 //! The model owns the classification a consumer should not repeat: it groups

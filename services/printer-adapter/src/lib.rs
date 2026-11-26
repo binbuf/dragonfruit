@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Printers and Scanners adapter (T-15.12a).
 //!
 //! Printers and Scanners do not wrap a single desktop daemon the way Bluetooth

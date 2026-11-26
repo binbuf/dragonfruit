@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Interactive resize math: edge handling, client constraints, and output
 //! clamping (T-04 FR-10).
 //!

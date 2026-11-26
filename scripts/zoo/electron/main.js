@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Minimal Electron client for the T-14.6a strange-app zoo. Electron apps are
 // the common "portable" identity case: the Wayland `app_id` (or X11

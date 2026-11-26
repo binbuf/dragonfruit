@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live ScreenCast producer (T335a).
 //!
 //! The portal backend must hand a sandboxed application a *live* PipeWire

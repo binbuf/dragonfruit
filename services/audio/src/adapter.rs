@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The audio adapter: one read path plus the default-sink volume/mute write.
 
 use dragonfruit_system_adapters::{

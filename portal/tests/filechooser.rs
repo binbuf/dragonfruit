@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-13.2a acceptance: the FileChooser portal round-trips open/save requests
 //! with a test client, using files-core for normalization and listing.
 //!

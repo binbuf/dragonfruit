@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The transport seam: the raw NetworkManager read and its mock.
 //!
 //! A [`NetworkManagerSource`] is the only thing that talks to the daemon. The

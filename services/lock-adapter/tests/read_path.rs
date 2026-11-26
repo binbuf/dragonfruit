@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-15.8a acceptance: the adapter reports Lock Screen policy state and events
 //! against a mock, and an absent host stack is a normal hidden state. No
 //! compositor and no Wayland connection are involved.

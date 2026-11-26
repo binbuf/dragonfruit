@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The UDisks2 storage and removable-media adapter: drives, volumes, mount
 //! state, and explicit mount/unmount/eject (T-15.2a).
 //!

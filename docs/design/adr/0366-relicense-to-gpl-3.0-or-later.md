@@ -1,4 +1,4 @@
-# 0366 — Relicense the first-party tree to GPL-3.0-only
+# 0366 — Relicense the first-party tree to GPL-3.0-or-later
 
 Status: accepted (2026-11-25)
 
@@ -14,41 +14,43 @@ modified version.
 The surrounding stack already fits copyleft terms. Qt is used under the
 (L)GPL, and the WhiteSur place artwork is GPL-3.0-only. The Rust dependency
 graph is permissive (MIT, Apache-2.0, BSD, ISC, Zlib, Unlicense), so it remains
-compatible with a GPL-3.0-only first-party tree. Earlier releases were
+compatible with a GPL-3.0-or-later first-party tree. Earlier releases were
 published under MIT; that grant cannot be withdrawn for those releases, and
 this ADR does not attempt to do so.
 
 ## Decision
 
-- **License every first-party component under GPL-3.0-only**, repo-wide:
+- **License every first-party component under GPL-3.0-or-later**, repo-wide:
   compositor, portal, services, tools, `df-ipc`, Dragonfruit protocol XMLs,
   design system, shell, apps, scripts, and build files. The normative policy
   is [licensing.md](../licensing.md).
-- **Use the SPDX identifier `GPL-3.0-only`.** Every source file carries an
-  `SPDX-License-Identifier: GPL-3.0-only` header, and every crate/package
+- **Use the SPDX identifier `GPL-3.0-or-later`.** Every source file carries an
+  `SPDX-License-Identifier: GPL-3.0-or-later` header, and every crate/package
   directory carries a `LICENSE` file pointing at
-  `LICENSES/GPL-3.0-only.txt`.
+  `LICENSES/GPL-3.0-or-later.txt`. The "or later" option lets a downstream
+  recipient distribute the combined work under a later GPL version if one is
+  published; the project itself supplies it under GPLv3.
 - **Keep third-party components under their own licenses.** Vendored assets
   (Inter OFL, Tabler/Phosphor MIT, WhiteSur GPL-3.0-only, Capitaine cursors
   LGPL-3.0-or-later) and system/optional services keep their existing terms
   and notices in [NOTICE](../../NOTICE) and the asset manifest.
-- **Require GPL-3.0-only compatibility.** AGPL, GPL-2.0-only, and other
+- **Require GPL-3.0 compatibility.** AGPL, GPL-2.0-only, and other
   GPL-3.0-incompatible code must not be linked into a Dragonfruit binary.
   Optional services stay separate processes or dynamically linked libraries;
   their code is never copied into the first-party tree.
-- **Accept contributions inbound = outbound under GPL-3.0-only.** Prior
+- **Accept contributions inbound = outbound under GPL-3.0-or-later.** Prior
   contributions were accepted under MIT, which permits sublicensing; future
-  contributions are accepted under GPL-3.0-only. Legal review remains a
+  contributions are accepted under GPL-3.0-or-later. Legal review remains a
   blocker for the first public release.
 - **Meet distribution obligations.** Every binary distribution ships the
   GPL-3.0 text and the corresponding source for the distributed version.
-  Packaging metadata uses `GPL-3.0-only` (the Fedora spec `License:` field and
-  the release assets).
+  Packaging metadata uses `GPL-3.0-or-later` (the Fedora spec `License:` field
+  and the release assets).
 
 ## Consequences
 
 - Forks and downstream distributions must publish their modified source under
-  GPL-3.0-only. Code cannot be taken into a proprietary product.
+  GPL-3.0-or-later. Code cannot be taken into a proprietary product.
 - Projects that need permissive embedding can no longer reuse first-party
   Dragonfruit code; the documented third-party interfaces remain available
   under GPL-3.0 terms.
@@ -56,18 +58,19 @@ this ADR does not attempt to do so.
   are required. Adding an AGPL or GPL-2.0-only dependency is now a review
   blocker because it cannot be distributed as part of the combined work.
 - The private protocol XMLs and `df-ipc` contracts remain open for third-party
-  implementation, now under GPL-3.0-only.
+  implementation, now under GPL-3.0-or-later.
 - Documentation, badges, package metadata, and per-package license stubs point
-  at GPL-3.0-only; the MIT text stays in `LICENSES/MIT.txt` for the vendored
+  at GPL-3.0-or-later; the MIT text stays in `LICENSES/MIT.txt` for the vendored
   Tabler and Phosphor sets.
 
 ## Verification
 
-- `git grep "SPDX-License-Identifier: MIT"` returns nothing outside third-party
-  license texts.
+- No tracked source file carries an `SPDX-License-Identifier: GPL-3.0-only`
+  header; the vendored WhiteSur asset keeps its own `GPL-3.0-only` notice
+  without an SPDX project header.
 - The `protocol_xmls_match_lockstep_version` test in `protocols/df-ipc`
-  asserts the GPL-3.0-only marker on every Dragonfruit protocol XML.
+  asserts the GPL-3.0-or-later marker on every Dragonfruit protocol XML.
 - `make check-assets` validates the first-party asset rows and their
-  `LICENSES/GPL-3.0-only.txt` license text.
+  `LICENSES/GPL-3.0-or-later.txt` license text.
 - `make verify-fast` covers the build and test suites affected by the header
   change.

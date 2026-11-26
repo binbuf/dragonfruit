@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The media-key step policy (T321).
 //
 // The compositor routes the XF86 volume/mute/brightness keys as ordinary

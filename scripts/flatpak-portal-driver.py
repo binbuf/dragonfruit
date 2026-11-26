@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """T-13.7 Flatpak portal walkthrough driver.
 
 Three roles, selected by the first argument (the same file runs on the host and

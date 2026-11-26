@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The window menu's presentation row model (T329).
 //!
 //! The compositor owns the menu's geometry, hit-testing, and command routing

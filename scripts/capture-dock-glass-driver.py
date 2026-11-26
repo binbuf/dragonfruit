@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Capture the T-14.7j Dock reference visual language.
 
 Driven by ``scripts/capture-dock-glass.sh`` (run that, not this). Requires a

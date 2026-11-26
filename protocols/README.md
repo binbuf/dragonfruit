@@ -30,7 +30,7 @@ policy is in [docs/design/ipc-versioning.md](../docs/design/ipc-versioning.md).
 
 ## Rules
 
-- **GPL-3.0-only** for every Dragonfruit protocol XML, matching the rest of
+- **GPL-3.0-or-later** for every Dragonfruit protocol XML, matching the rest of
   the repository. Third parties (including other compositors and toolkits) may
   implement them under the GPL-3.0 terms (docs/design/licensing.md). Vendored
   upstream XMLs under `wayland-protocols/` keep their own licenses.

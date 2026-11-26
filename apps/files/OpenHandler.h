@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Opening a file with the user's default application.
 //
 // The browser process can ask the platform, but the Files-owned desktop is an

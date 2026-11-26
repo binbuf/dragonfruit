@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Drive the live nested session and capture the T-20.2 Glass stills.
 
 Machine half of the T-20.2 live visual check: on the running nested session it

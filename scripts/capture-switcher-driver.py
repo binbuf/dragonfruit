@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Drive the live nested T-06 app switcher with synthetic input and capture stills.
 
 This is the machine half of the T-06.2a capture (docs/design/tracks/06-loop-v4-

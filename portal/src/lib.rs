@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `xdg-desktop-portal-dragonfruit`: the Dragonfruit `xdg-desktop-portal`
 //! backend (T-13.1a).
 //!

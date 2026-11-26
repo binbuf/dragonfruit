@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! How the display-manager seam reads and writes its state files (T344).
 //!
 //! GDM's AccountsService file, SDDM's state file, and the autologin drop-ins

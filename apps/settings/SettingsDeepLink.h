@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T232: the Settings app's small session-bus deep-link endpoint. The shell
 // owns the menu-bar extras and raises `settings://pane/<id>` links; when the
 // app is already running this object receives the link and the QML shell

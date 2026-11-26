@@ -8,31 +8,31 @@ distributed publicly until the rules below are reviewed and signed off.
 ## Decision
 
 Dragonfruit is licensed under the **GNU General Public License, version 3
-only** (**GPL-3.0-only**), repo-wide. One license covers every
+or later** (**GPL-3.0-or-later**), repo-wide. One license covers every
 first-party component, so there are no cross-component linking
-restrictions to track beyond GPL-3.0-only compatibility.
+restrictions to track beyond GPL-3.0 compatibility.
 
 | Component | License |
 |---|---|
-| `compositor/` (Rust + Smithay) | GPL-3.0-only |
-| `services/` (settingsd, menu-broker, app-index, session) | GPL-3.0-only |
-| `portal/` (xdg-desktop-portal-dragonfruit) | GPL-3.0-only |
-| `tools/` (dev tooling) | GPL-3.0-only |
-| `protocols/df-ipc/` (shared IPC crate) | GPL-3.0-only |
-| `protocols/*.xml` (private Wayland protocols) | GPL-3.0-only |
-| `design-system/` (QML module `Dragonfruit`) | GPL-3.0-only |
-| `shell/` (menu bar, Dock, Quick Settings, notifications, screenshot) | GPL-3.0-only |
-| `apps/` (Settings, Files) | GPL-3.0-only |
+| `compositor/` (Rust + Smithay) | GPL-3.0-or-later |
+| `services/` (settingsd, menu-broker, app-index, session) | GPL-3.0-or-later |
+| `portal/` (xdg-desktop-portal-dragonfruit) | GPL-3.0-or-later |
+| `tools/` (dev tooling) | GPL-3.0-or-later |
+| `protocols/df-ipc/` (shared IPC crate) | GPL-3.0-or-later |
+| `protocols/*.xml` (private Wayland protocols) | GPL-3.0-or-later |
+| `design-system/` (QML module `Dragonfruit`) | GPL-3.0-or-later |
+| `shell/` (menu bar, Dock, Quick Settings, notifications, screenshot) | GPL-3.0-or-later |
+| `apps/` (Settings, Files) | GPL-3.0-or-later |
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
 | `assets/icons/tabler/` (line-glyph set and pinned filled marks) | MIT |
 | `assets/icons/phosphor/` (filled Settings-tile glyphs) | MIT |
-| `assets/icons/brand/` (Dragonfruit and Tux OS-menu marks) | GPL-3.0-only (original project assets) |
+| `assets/icons/brand/` (Dragonfruit and Tux OS-menu marks) | GPL-3.0-or-later (original project assets) |
 | `assets/icons/whitesur/` (colored place/app artwork and the Files app icon) | GPL-3.0-only |
 | `assets/cursors/capitaine-cursors/` (system cursor theme) | LGPL-3.0-or-later |
-| `assets/graphics/wallpapers/` (`Default.jpg`, `Lagoon.jpg`, `Midnight.jpg`; shipped built-in wallpapers) | GPL-3.0-only (original project assets) |
+| `assets/graphics/wallpapers/` (`Default.jpg`, `Lagoon.jpg`, `Midnight.jpg`; shipped built-in wallpapers) | GPL-3.0-or-later (original project assets) |
 
-Rationale: GPL-3.0-only keeps the desktop and every improvement to it free
-software. Anyone who distributes a modified Dragonfruit — a fork, a
+Rationale: GPL-3.0-or-later keeps the desktop and every improvement to it
+free software. Anyone who distributes a modified Dragonfruit — a fork, a
 downstream distro build, or an appliance — must publish the corresponding
 source under the same terms, so upstream fixes and features cannot be taken
 proprietary. The copyleft also matches the environment the desktop already
@@ -42,14 +42,15 @@ license text must accompany every distribution. Name/logo credit is handled
 separately; see "Trademarks".
 
 Every binary distribution must ship the GPL-3.0 text and make the
-corresponding source available under GPL-3.0-only. The packaging and release
-assets include [LICENSES/GPL-3.0-only.txt](../../LICENSES/GPL-3.0-only.txt);
-releases are built from the tagged public repository.
+corresponding source available under GPL-3.0-or-later. The packaging and
+release assets include
+[LICENSES/GPL-3.0-or-later.txt](../../LICENSES/GPL-3.0-or-later.txt); releases
+are built from the tagged public repository.
 
 ## Linking rules
 
-Because all first-party code is GPL-3.0-only, dependencies and linked
-components must be GPL-3.0-only compatible. Two rules matter:
+Because all first-party code is GPL-3.0-or-later, dependencies and linked
+components must be GPL-3.0 compatible. Two rules matter:
 
 - **`df-ipc` must stay dependency-free of everything but the standard
   library**, so that any process can embed the contracts.
@@ -69,7 +70,7 @@ components must be GPL-3.0-only compatible. Two rules matter:
   The exact set is pinned in `Cargo.lock`; see [NOTICE](../../NOTICE).
 - **Qt is (L)GPL-licensed or commercial.** We use the open (L)GPL Qt
   under its terms, linked dynamically from the system/distro packages.
-  GPL-3.0-only first-party code linking LGPL-3.0 Qt is compatible, and no
+  GPL-3.0-or-later first-party code linking LGPL-3.0 Qt is compatible, and no
   Dragonfruit component may obligate a Qt commercial license.
 - **System libraries** (libdrm, libinput, libseat, xkbcommon, wayland,
   systemd, NetworkManager, PipeWire, …) keep their own licenses; see
@@ -232,18 +233,19 @@ bytes and never the bundled asset, and
 
 ## Trademarks
 
-The GPL-3.0-only license grants copyright permissions only; it does not grant
-rights to the Dragonfruit name or logo. Projects that want to use the
+The GPL-3.0-or-later license grants copyright permissions only; it does not
+grant rights to the Dragonfruit name or logo. Projects that want to use the
 name or branding should ask first.
 
 ## Mechanical enforcement
 
-- Every source file carries an `SPDX-License-Identifier: GPL-3.0-only` header.
+- Every source file carries an `SPDX-License-Identifier: GPL-3.0-or-later`
+  header.
 - Every crate/package directory carries a `LICENSE` file.
 - Full license text lives in [../../LICENSES/](../../LICENSES/).
 - The `protocol_xmls_match_lockstep_version` test in
   `protocols/df-ipc` fails the build if a protocol XML loses its
-  GPL-3.0-only SPDX marker.
+  GPL-3.0-or-later SPDX marker.
 - `make check-tabler` runs `gen-tabler-glyphs.py --check` (the registry must
   match the SVG directory), `gen-app-icons.py --check` (the first-party app
   artwork must match the pinned filled glyphs), and
@@ -253,11 +255,12 @@ name or branding should ask first.
   tile/app-mark set.
 - `make check-assets` validates the WhiteSur provenance row, its license text,
   and the copied Files app icon.
-- New files: carry the GPL-3.0-only SPDX header. Adding a GPL-3.0-incompatible
-  dependency or changing a component's license is a review blocker.
+- New files: carry the GPL-3.0-or-later SPDX header. Adding a
+  GPL-3.0-incompatible dependency or changing a component's license is a
+  review blocker.
 
 ## Contribution terms
 
-Contributions are accepted under the GPL-3.0-only license (inbound =
+Contributions are accepted under the GPL-3.0-or-later license (inbound =
 outbound). By submitting a patch you license it to the project under
-GPL-3.0-only; do not submit code you cannot license that way.
+GPL-3.0-or-later; do not submit code you cannot license that way.

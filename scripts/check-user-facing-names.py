@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """User-facing naming gate (T220).
 
 The human naming map lives in ``docs/design/interface-naming-and-licensing.md``.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Drive the T-21.1a chrome transport baseline on a nested session.
 
 Machine half of ``scripts/t21-chrome-baseline.sh``. It talks to the

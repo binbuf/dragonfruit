@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Files app's read-only view of the desktop settings (T206).
 //
 // Files is a separate process from the shell, so the shell's ThemeBinding

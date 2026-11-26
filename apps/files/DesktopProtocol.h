@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Minimal private-protocol client for the Files-owned desktop (T-19.3).
 //
 // The desktop process is not a normal toolkit window: it is the second trusted

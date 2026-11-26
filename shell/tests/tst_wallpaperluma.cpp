@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T338: the menu-bar luma decode runs off the GUI thread from a scaled
 // thumbnail, and the wallpaper provider's property read is asynchronous,
 // bounded, and coalesced. The provider half uses a slow mock on a private

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Popup visual transaction and lifetime owner (T354).
 //
 // One popup is more than a sequence of independent geometry, material and

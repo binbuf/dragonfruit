@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Transactional file install for the Dragonfruit native session (T343).
 
 `scripts/native-session.sh` stages the complete session tree under a temporary

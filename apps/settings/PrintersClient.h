@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's Printers and Scanners seam (T-15.12b).
 //
 // The Printers & Scanners pane never touches D-Bus: it binds the `Settings`

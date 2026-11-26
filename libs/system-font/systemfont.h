@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The desktop's system font (Inter, SIL OFL 1.1).
 //
 // One installation per process: register the bundled faces and make their

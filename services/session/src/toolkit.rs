@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Third-party toolkit integration applied at session start.
 //!
 //! Wayland leaves client-side decorations to the client. Our own apps and

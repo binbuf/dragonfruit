@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Bridge tests for the Users and Groups half of the host (T-15.11b): the view
 //! the Settings pane and Quick Settings tile decode, plus the eight explicit
 //! writes applied once through the adapter.

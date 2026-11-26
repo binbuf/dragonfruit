@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The bridge host: the T-07 system adapters as one session-bus service for
 //! the shell menu bar (T-07.5a).
 //!

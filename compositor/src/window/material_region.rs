@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The pure panel-region geometry for the material pass (T-21.3).
 //!
 //! The GPU material pass samples the scene under the chrome panels. Rendering

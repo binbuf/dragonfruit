@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The pure global-menu model (T-14.2a).
 //!
 //! A global menu does not exist on the wire; an application has to export a

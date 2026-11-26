@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-11.1a acceptance: drive `org.freedesktop.Notifications` and the
 //! shell-facing `org.dragonfruit.Notifications1` over a real session bus.
 //!

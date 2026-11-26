@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Pointer-constraint grabs (T-03 FR-5).
 //!
 //! `zwp_pointer_constraints_v1` is advertised in the T-02 protocol surface,

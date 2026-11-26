@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Settings live-apply plumbing tests (T-09.1b).
 //
 // The acceptance path, headless: a representative design-system control is

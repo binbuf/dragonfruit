@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Overview live-surface grid layout (T-05.1a).
 //!
 //! This is the documented Overview layout algorithm

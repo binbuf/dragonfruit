@@ -113,8 +113,8 @@
       "include": ["*.svg", "README.md"],
       "source": "original project artwork",
       "version": "1",
-      "license": "GPL-3.0-only",
-      "license_file": "LICENSES/GPL-3.0-only.txt",
+      "license": "GPL-3.0-or-later",
+      "license_file": "LICENSES/GPL-3.0-or-later.txt",
       "notice": "NOTICE",
       "install": "compiled into the design-system QML module as qrc resources",
       "notes": "The Dragonfruit brand mark and the alternate Tux menu glyph. Both are mirrored as tintable QML shapes (DragonfruitLogo/TuxLogo) so the menu bar can apply its foreground, wallpaper contrast shadow, and hover/open plate."
@@ -143,8 +143,8 @@
       "include": [],
       "source": "original Dragonfruit project asset",
       "version": "shipped default (T-18)",
-      "license": "GPL-3.0-only",
-      "license_file": "LICENSES/GPL-3.0-only.txt",
+      "license": "GPL-3.0-or-later",
+      "license_file": "LICENSES/GPL-3.0-or-later.txt",
       "notice": "NOTICE",
       "install": "share/dragonfruit/wallpapers/Default.jpg",
       "notes": "The out-of-box wallpaper and the first tile in the Built-in row."
@@ -158,8 +158,8 @@
       "include": [],
       "source": "original Dragonfruit project asset",
       "version": "shipped built-in alternative (T-18)",
-      "license": "GPL-3.0-only",
-      "license_file": "LICENSES/GPL-3.0-only.txt",
+      "license": "GPL-3.0-or-later",
+      "license_file": "LICENSES/GPL-3.0-or-later.txt",
       "notice": "NOTICE",
       "install": "share/dragonfruit/wallpapers/Lagoon.jpg",
       "notes": "A bundled Built-in tile; never fetched and never packaged from a third party."
@@ -173,8 +173,8 @@
       "include": [],
       "source": "original Dragonfruit project asset",
       "version": "shipped built-in alternative (T-18)",
-      "license": "GPL-3.0-only",
-      "license_file": "LICENSES/GPL-3.0-only.txt",
+      "license": "GPL-3.0-or-later",
+      "license_file": "LICENSES/GPL-3.0-or-later.txt",
       "notice": "NOTICE",
       "install": "share/dragonfruit/wallpapers/Midnight.jpg",
       "notes": "A bundled Built-in tile; never fetched and never packaged from a third party."

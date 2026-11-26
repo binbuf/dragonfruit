@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T322 acceptance: pointer constraints are unprivileged and bounded.
 //!
 //! `zwp_pointer_constraints_v1` is the protocol games, emulators, remote

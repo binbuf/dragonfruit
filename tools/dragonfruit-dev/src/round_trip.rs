@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The real-session display-manager round trip (T-12.6b).
 //!
 //! `dragonfruit dev --real --round-trip` closes the host session, logs into

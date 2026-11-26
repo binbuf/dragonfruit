@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Multi-GPU import/fallback classification (T-03.4).
 //!
 //! The DRM backend renders on the primary GPU and can drive several cards at

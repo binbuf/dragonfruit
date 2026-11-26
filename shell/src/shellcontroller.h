@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shell process controller (T-09): owns the QML menu bar, renders it into
 // the compositor's chrome surface, and maps compositor broadcasts onto the
 // bar's data properties. System-service status items come from the T-07

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-16.8b: the restart-policy matrix.
 //!
 //! [ADR 0064](../../docs/design/adr/0064-session-manager-plan-and-restart-policy.md)

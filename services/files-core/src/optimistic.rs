@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Optimistic semantics and state preservation (T-10.2b, [09-files.md]).
 //!
 //! The design's hard rule is **no I/O on the UI thread, and optimistic

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Terminal fallback and `Terminal=true` launching (T340). The resolver prefers
 // `$TERMINAL`, then `xdg-terminal-exec`, then `x-terminal-emulator`, then a
 // common terminal list; a terminal entry with no emulator returns no command

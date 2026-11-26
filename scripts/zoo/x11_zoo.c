@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-only
+/* SPDX-License-Identifier: GPL-3.0-or-later
  *
  * A minimal raw X11 client for the T-14.6a strange-app zoo. It is the
  * stand-in for X11 apps that cannot be installed in the zoo environment

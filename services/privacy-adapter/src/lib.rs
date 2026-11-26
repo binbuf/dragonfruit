@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Privacy and Security adapter (T-15.13a).
 //!
 //! Privacy and Security does not wrap one daemon per row the way Bluetooth or

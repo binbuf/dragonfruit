@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shell-side client for the T-07.5a bridge host
 // (`org.dragonfruit.SystemStatus1`, services/system-status).
 //

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The provider's typed model: the six categories, the cached item with its
 //! attribution, the catalogue, and the service status.
 //!

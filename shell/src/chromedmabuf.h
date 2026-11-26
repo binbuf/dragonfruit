@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Pure dmabuf frame validation and single-buffer commit state (T-21.1d).
 //
 // This is the dependency-free half of the GPU chrome transport: it validates

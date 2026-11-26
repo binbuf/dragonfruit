@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-15.14a acceptance: the Accessibility adapter reports state and events
 //! against a mock, and an absent AT-SPI accessibility bus is a normal hidden
 //! state. No `at-spi2`, bus, or assistive technology is involved.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! A configurable adapter for tests, with a simulated daemon lifecycle.
 
 use crate::state::{AdapterId, AdapterState};

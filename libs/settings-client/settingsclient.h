@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shared client for the T-08 settings daemon
 // (`org.dragonfruit.Settings1`, services/settingsd).
 //

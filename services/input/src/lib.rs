@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The libinput keyboard, mouse, and trackpad adapter (T-15.4a).
 //!
 //! The Settings Keyboard/Mouse/Trackpad pane and the Quick Settings tile do

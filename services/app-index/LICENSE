@@ -1,7 +1,7 @@
-SPDX-License-Identifier: GPL-3.0-only
+SPDX-License-Identifier: GPL-3.0-or-later
 
 Copyright (c) 2026 Dragonfruit contributors
 
-Licensed under the GNU General Public License, version 3 only
-(GPL-3.0-only). Full text: LICENSES/GPL-3.0-only.txt at the repository
+Licensed under the GNU General Public License, version 3 or later
+(GPL-3.0-or-later). Full text: LICENSES/GPL-3.0-or-later.txt at the repository
 root. See docs/design/licensing.md for the licensing policy.

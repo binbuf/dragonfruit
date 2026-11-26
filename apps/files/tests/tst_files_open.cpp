@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Opening a file through the real platform seam: the MIME default is resolved
 // from the desktop database, a stale/missing default falls back to an
 // installed handler, and the handler receives the file path.

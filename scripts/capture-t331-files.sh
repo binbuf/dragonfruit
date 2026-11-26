@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # T331: Files undo stills — the Edit menu naming the next undo step, and the
 # listing after Cmd+Z put the name back. Headless offscreen/software, 900x600
 # pt at 1x.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! App-switcher live-preview layout (T-06.2a).
 //!
 //! The Cmd-Tab switcher shows the **real** window surfaces of the running

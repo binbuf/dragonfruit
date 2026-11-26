@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Screenshot portal's pure model (T-13.3a).
 //!
 //! The backend serves the standard

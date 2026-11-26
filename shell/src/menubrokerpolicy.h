@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The fixed application menu's live state (T-14.2a).
 //
 // The menu-broker owns global-menu resolution and the fixed application menu

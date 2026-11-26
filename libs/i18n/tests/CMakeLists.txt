@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Localization tests: the `.ts` parser, locale resolution, catalog search, the
 # application install path, the default-`QLocale` number/date formatting, and
 # a real QML `qsTr()` lookup through an installed catalog.

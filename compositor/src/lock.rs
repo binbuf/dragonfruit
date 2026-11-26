@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Fail-secure session locking (T-12.3a).
 //!
 //! The compositor advertises `ext-session-lock-v1` (Smithay's

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-settingsd` — the T-08.1a desktop-settings daemon.
 //!
 //! Serves `org.dragonfruit.Settings1` on the user session bus: the named,

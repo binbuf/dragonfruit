@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Input routing (T-02) and the compositor input engine (T-03).
 //!
 //! Both the nested (winit) and DRM (libinput) backends feed their events

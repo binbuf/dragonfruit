@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live transport: UDisks2 over its D-Bus API.
 //!
 //! UDisks2 is reached over the **system bus** as `org.freedesktop.UDisks2`

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The menu-bar Focus/DND status item (T-11.2b).
 //
 // The notification service owns the policy (T-11.2a); the shell reads its

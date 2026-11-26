@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's one privileged-action authorizer (T224).
 //
 // Settings never collects an administrator password. A privileged action calls

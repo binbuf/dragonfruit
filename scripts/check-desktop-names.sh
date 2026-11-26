@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Desktop-name gate (T-01, FR-3) and user-facing naming gate (T220): fails
 # when any source or build file hardcodes another desktop name, and when a

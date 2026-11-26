@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-09 acceptance / T-07.6b re-assert: the menu bar contributes zero
 //! wakeups to the idle desktop budget (FR-6).
 //!

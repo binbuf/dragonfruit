@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The suspend/resume cycle (T-12.5a).
 //!
 //! The idle chain reaches [`IdleStage::Suspend`](crate::idle::IdleStage::Suspend)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # T278 Wallpaper/Screen Saver/Notifications/Focus/Lock Screen headless visual
 # check.

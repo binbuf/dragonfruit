@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Reusable texture bookkeeping for the material pass (T-21.3).
 //!
 //! The scene texture and every panel's Kawase chain are allocated once and

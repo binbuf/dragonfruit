@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """T207 nested and fallback acceptance for the Glass replacement.
 
 The acceptance is a matrix, not one screenshot:

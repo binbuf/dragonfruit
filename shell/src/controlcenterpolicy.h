@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Quick Settings tile -> owner mapping (T-11.3b).
 //
 // The panel is a pure view: its Focus and dark-mode toggles raise booleans and

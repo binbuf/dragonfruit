@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's keyboard/mouse/trackpad inventory seam (T-15.4b).
 //
 // The read-only libinput adapter (T-15.4a) never reaches the pane directly:

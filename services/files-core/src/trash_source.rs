@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Trash source the Dock and Files share (T-10.6a, [09-files.md]).
 //!
 //! [09-files.md] makes `trash://` the one Trash source: the Dock badge, Files'

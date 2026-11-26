@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The NASA Image and Video Library source (ADR 0240).
 //!
 //! NASA is the additive Space provider. Its search endpoint is keyless; the

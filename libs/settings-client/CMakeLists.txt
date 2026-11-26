@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The shared C++ client for `org.dragonfruit.Settings1` (T-08/T-09.1b).
 #
 # One implementation, two kinds of consumer: the shell's Dock/Theme/

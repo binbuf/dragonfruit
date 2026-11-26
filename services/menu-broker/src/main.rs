@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-menu-broker` — the T-14.2a global-menu broker.
 //!
 //! Serves `org.dragonfruit.MenuBroker1` (native menu-model publication, the

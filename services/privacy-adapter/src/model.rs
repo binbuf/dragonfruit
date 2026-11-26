@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Privacy and Security snapshot the pane renders, decoded from one raw
 //! portal read.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-16.6b — the reduced-motion sweep.
 //!
 //! The acceptance is "every animation has a passing reduced-motion variant".

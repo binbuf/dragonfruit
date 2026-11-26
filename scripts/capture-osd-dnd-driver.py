@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Capture the T-11.4b OSD and DND stills from the live nested session.
 
 The shell runs with `DF_STATUS_FIXTURE=1 DF_NOTIFY_FIXTURE=1

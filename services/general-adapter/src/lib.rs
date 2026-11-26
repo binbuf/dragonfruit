@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The General Settings host adapter (T226).
 //!
 //! The General group is a collection of host-owned sub-panes, not one daemon:

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Notifications widget stack (T234): the catalogue is the measured
 // 19 categories, the default is the live Calendar card, and add/remove/resize
 // plus the provider-data seam are pure model behaviour.

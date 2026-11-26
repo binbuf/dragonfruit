@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # CI (T-01, FR-3): fmt/clippy, unit tests, QML lint, headless compositor
 # smoke + teardown soak, and the desktop-name grep gate — on every PR and

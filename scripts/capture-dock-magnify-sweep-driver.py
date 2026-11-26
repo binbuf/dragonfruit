@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Capture the T-14.7y Dock magnification slow-sweep strip.
 
 Driven by ``scripts/capture-dock-magnify-sweep.sh`` (run that, not this).

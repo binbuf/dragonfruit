@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Online Accounts half of the account adapter (T228).
 //!
 //! Online Accounts is **optional**. When `org.gnome.OnlineAccounts` is

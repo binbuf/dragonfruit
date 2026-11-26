@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Foundation milestone end-to-end test (T-01…T-07).
 //!
 //! The per-ticket conformance suites each exercise one subsystem in

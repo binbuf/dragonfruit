@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T320 acceptance: pointer/trackpad settings reach the device seam.
 //!
 //! libinput needs a free logind seat, which this host does not have (the host

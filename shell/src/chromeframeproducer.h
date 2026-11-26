@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // One chrome frame producer per shell surface (T-21.1c).
 //
 // On the confirmed software scene graph this owns a QQuickRenderControl and a

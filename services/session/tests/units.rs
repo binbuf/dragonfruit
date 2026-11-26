@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-12.1b acceptance: the shipped systemd user units parse and agree with the
 //! `SessionPlan` contract (stages, restart policy, session environment).
 //!

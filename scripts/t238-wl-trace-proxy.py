@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Minimal Wayland protocol proxy used only for the T238 wake-only-swap audit.
 
 It forwards bytes (and SCM_RIGHTS file descriptors) between one listening

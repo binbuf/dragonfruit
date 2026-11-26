@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 qt_add_library(dragonfruit-shell-apps-drawer STATIC)
 qt_add_qml_module(dragonfruit-shell-apps-drawer
     URI Dragonfruit.AppsDrawer

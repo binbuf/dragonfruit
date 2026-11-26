@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Screenshot selection bridge tests (T-13.3a): the pure request lifecycle (the
 // mode, the selection hand-off, cancellation) and the live `ScreenshotBridge`
 // against a fake `org.dragonfruit.Portal1` presenter surface on the private

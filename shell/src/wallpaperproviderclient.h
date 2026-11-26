@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T338: the wallpaper provider's resolved source properties, read
 // asynchronously and coalesced. The shell must never block startup or a
 // wallpaper change on a hung `wallpaperd`; a missing or slow provider keeps

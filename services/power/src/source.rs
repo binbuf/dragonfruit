@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The transport seam: the raw UPower / power-profiles-daemon read and its
 //! mock.
 //!

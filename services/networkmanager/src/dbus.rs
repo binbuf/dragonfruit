@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live transport: NetworkManager over its D-Bus API.
 //!
 //! NetworkManager is reached over the **system bus**, never through `libnm`

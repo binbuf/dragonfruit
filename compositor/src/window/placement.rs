@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Window placement: centered cascade and transient dialogs (T-04).
 //!
 //! New windows open near the center of the active Space with a per-output

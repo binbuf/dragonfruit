@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-lock-auth` — the PAM authentication seam for the session lock
 //! (T-12.3b).
 //!

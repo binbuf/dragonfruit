@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live host-stack source: the host identity read and the distribution
 //! update provider seam.
 //!

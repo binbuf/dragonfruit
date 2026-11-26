@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # T-08 FR-1/FR-2 gate: design-system QML components must express color,
 # spacing, and animation values through tokens, never as literals. The

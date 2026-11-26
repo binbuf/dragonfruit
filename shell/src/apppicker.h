@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Add Application picker's pure list model (T-14.7e, ADR 0090).
 //
 // The Dock never scans `.desktop` directories itself (T-14.7 retired the

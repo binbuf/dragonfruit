@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Undo for the Files operations (T331, [09-files.md]).
 //!
 //! Undo is a user-visible promise: the last rename, new folder, move, copy, or

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Per-output refresh model (T-21.2a, T187a).
 //!
 //! The compositor needs each output's real mode period before it can schedule

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Qt platform-plugin (QPA) lookup (T342). The shell checks for the Wayland
 // plugin before creating QGuiApplication and falls back to the offscreen QPA
 // when it is absent. These tests use temporary directories; no plugin is

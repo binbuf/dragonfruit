@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-notifications` — the T-11.1a notification service.
 //!
 //! Serves `org.freedesktop.Notifications` (apps) and

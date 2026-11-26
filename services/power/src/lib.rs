@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The battery and power-profiles adapter: battery presence, level, charging
 //! state, health, and the performance/balanced/power-saver selection
 //! (T-07.4, T-15.6a).

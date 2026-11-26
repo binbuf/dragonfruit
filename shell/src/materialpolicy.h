@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The shell's one application policy for the compositor's role-keyed material
 // state (T-21.2c). The compositor owns tier selection and the persistent
 // floor; this class is the only place the shell turns that state into the

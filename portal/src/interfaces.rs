@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The concrete portal interfaces this backend serves (T-13.1b).
 //!
 //! Two standard interfaces land here, both at

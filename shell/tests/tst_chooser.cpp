@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // FileChooser picker tests (T-13.2b): the pure request model (listing through
 // files-core, selection, navigation, the SaveFile name, overwrite
 // confirmation, SaveFiles) and the live `ChooserBridge` against a fake

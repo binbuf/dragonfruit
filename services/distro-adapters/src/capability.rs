@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The capability vocabulary, the three-state adapter status, and the typed
 //! error every distro backend returns.
 //!

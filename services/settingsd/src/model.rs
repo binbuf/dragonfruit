@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The in-memory desktop-settings store (T-08.1a).
 //!
 //! [`Settings`] holds the current value of every key in [`crate::schema::KEYS`]

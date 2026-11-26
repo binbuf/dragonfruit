@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // GENERATED FILE — DO NOT EDIT. Edit assets/icons/tabler/ and run scripts/gen-tabler-glyphs.py.
 // Tabler Icons 3.50.0 (v3.50.0, 6904efd245391ad396df17654738f52f6da8c40e), MIT.
 pragma Singleton

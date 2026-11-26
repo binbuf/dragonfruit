@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's Notifications and Focus seam (T-15.7b).
 //
 // Notifications and Focus panes never touch D-Bus: they bind the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The shell's half of the ScreenCast presenter seam (T-13.4a).
 //
 // `ScreenCastBridge` watches the portal backend's diagnostic

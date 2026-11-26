@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Pure GPU-chrome capability and format selection (T-21.1d probe).
 //
 // This is the dependency-free half of the GPU transport probe: it parses the

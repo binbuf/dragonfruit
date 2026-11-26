@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's Network pane seam (T225).
 //
 // The Network pane and its Firewall sheet never touch D-Bus. The live client

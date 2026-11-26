@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T315 acceptance: the compositor's idle timer applies the `idle.*` policy
 //! with a fake clock.
 //!

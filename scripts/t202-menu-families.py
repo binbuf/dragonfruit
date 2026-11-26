@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """T202 menu-family fixture and acceptance check.
 
 The menu families share the generated glass presets: the attached menu-bar

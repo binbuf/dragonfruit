@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Notification-model tests (T-11.1a): the service's `Banners()`/`History()`
 // JSON decodes to the shell's banner and history views. T204 adds the
 // Notifications state: stable keys, active/history separation, keyboard

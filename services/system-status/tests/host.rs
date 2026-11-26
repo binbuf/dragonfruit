@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! End-to-end bridge tests over the mock adapters (T-07.5a): the two menu
 //! models decode to the actions the shell exposes, and each action applies
 //! through the adapter exactly once.

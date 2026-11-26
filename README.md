@@ -2,7 +2,7 @@
 
 A modern beautiful Linux desktop powered by **Rust, Smithay, and Qt Quick**, inspired by macOS.
 
-[![CI](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml/badge.svg)](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md) [![Status: Early development](https://img.shields.io/badge/Status-Early%20development-orange.svg)](docs/design/STATUS.md)
+[![CI](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml/badge.svg)](https://github.com/binbuf/dragonfruit/actions/workflows/ci.yml) [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3%2B-blue.svg)](LICENSE.md) [![Status: Early development](https://img.shields.io/badge/Status-Early%20development-orange.svg)](docs/design/STATUS.md)
 
 <p align="center">
   <img src="docs/images/desktop.jpg" alt="Dragonfruit desktop screenshot" width="100%">
@@ -89,6 +89,6 @@ If there's a high quality open source, license permissible asset or project avai
 
 ## License
 
-Dragonfruit is [GPL-3.0-only licensed](LICENSE.md). Third-party components and assets retain their own licenses; see [NOTICE](NOTICE) and `LICENSES/`.
+Dragonfruit is [GPL-3.0-or-later licensed](LICENSE.md). Third-party components and assets retain their own licenses; see [NOTICE](NOTICE) and `LICENSES/`.
 
 Dragonfruit is an independent open-source project, not affiliated with or endorsed by Apple Inc. macOS is a trademark of Apple Inc.

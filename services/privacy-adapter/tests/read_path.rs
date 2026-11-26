@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-15.13a acceptance: the Privacy and Security adapter reports state and
 //! events against a mock, and an absent portal PermissionStore is a normal
 //! hidden state. No `xdg-desktop-portal`, bus, or hardware is involved.

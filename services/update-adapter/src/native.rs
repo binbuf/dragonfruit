@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The native/PackageKit update provider (T226).
 //!
 //! T-15.10a shipped the [`UpdateProvider`] seam and the host identity read;

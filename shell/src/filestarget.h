@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The path a Dock "Show in Files" reveals (T-10.6c).
 //
 // Pure and Wayland-free so `tst_dockcore` can unit-test it. The Dock hands

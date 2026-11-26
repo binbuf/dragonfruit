@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The in-memory mock backend used by the contract tests and CI.
 //!
 //! One [`MockBackend`] holds every capability's status and data behind a

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The C ABI of `dragonfruit-files-core` (T-10.4b, ADR 0049), mirrored by
 // `services/files-core/src/ffi.rs`. This header is the *only* place the Qt app
 // touches the Rust library: `FilesDirectoryModel` is a thin

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The DBusMenu/AppMenu global-menu bridge (T-14.4).
 //!
 //! Third-party applications export a global menu over two de-facto protocols:

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The portal backend's pure model (T-13.1a).
 //!
 //! This module has no D-Bus dependency: the backend identity, the set of

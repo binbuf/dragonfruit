@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live transport: libinput through the control tool it ships.
 //!
 //! The device handles belong to the compositor and the native libinput headers

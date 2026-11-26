@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 qt_add_library(dragonfruit-shell-switcher STATIC)
 qt_add_qml_module(dragonfruit-shell-switcher
     URI Dragonfruit.Switcher

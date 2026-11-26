@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The `org.dragonfruit.Settings1` key schema (T-08.1a).
 //!
 //! Every desktop-settings key this daemon owns is declared exactly once in

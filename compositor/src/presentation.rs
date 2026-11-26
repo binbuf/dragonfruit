@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Per-output presentation clock (T-21.2b, T188a).
 //!
 //! [`crate::refresh`] answers "how long is one frame on this output?"; this

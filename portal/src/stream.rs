@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The ScreenCast stream transport and its stills fallback (T-13.4b).
 //!
 //! [`crate::screencast`] stops at the *source handle*. This module is the one

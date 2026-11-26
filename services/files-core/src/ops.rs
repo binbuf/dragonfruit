@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The operations engine: rename, new folder, move, copy, delete
 //! (T-10.2a, [09-files.md]).
 //!

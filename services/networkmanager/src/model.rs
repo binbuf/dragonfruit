@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Wi-Fi snapshot the menu bar renders, decoded from one raw read.
 //!
 //! The model owns the NetworkManager enum mapping and the aggregation a

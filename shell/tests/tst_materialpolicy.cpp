@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T-21.2c: the shell's one application policy for the compositor's
 // role-keyed material state. Pure: no Wayland, QML, or compositor.
 #include <QtTest>

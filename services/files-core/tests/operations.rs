@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-10.2a acceptance: the operation matrix — rename, new folder, copy, move,
 //! and delete — runs against a real temp tree, and every failure is reported
 //! as a typed [`OperationError`]. Headless: no display, no GIO, no daemon.

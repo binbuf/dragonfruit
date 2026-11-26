@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-03.3 acceptance: the hardware input validation *decision* is explicit and
 //! testable without hardware.
 //!

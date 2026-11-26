@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `xdg-desktop-portal-dragonfruit` — the T-13.1a portal backend service.
 //!
 //! Serves the standard backend name

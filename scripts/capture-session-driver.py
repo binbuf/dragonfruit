@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Capture the T-12 session stills from the live nested session.
 
 The compositor runs with the synthetic-input harness bound (`T12_SYNTH`). The

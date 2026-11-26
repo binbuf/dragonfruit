@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Build the portable release assets from one staged install tree.
 #
@@ -362,7 +362,7 @@ builddate = $(date +%s)
 packager = Dragonfruit Developers <dragonfruit@users.noreply.github.com>
 size = ${size}
 arch = ${ARCH}
-license = GPL-3.0-only
+license = GPL-3.0-or-later
 depend = glibc
 depend = gcc-libs
 depend = qt6-base

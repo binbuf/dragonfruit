@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 import QtQuick
 
 // The Settings app's published native menu model (T-09.6a).

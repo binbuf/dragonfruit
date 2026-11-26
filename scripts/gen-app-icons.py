@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Assemble the first-party app icon SVGs from pinned artwork.
 
 The two first-party applications use two different, deliberately recorded

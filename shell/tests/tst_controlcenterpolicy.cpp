@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T-11.3b / T-15.5b: the pure Quick Settings tile -> owner mapping. The Focus
 // and dark-mode toggle spellings, and the Overview / hot corners trigger
 // summary the shell projects from settingsd values. No bus, Wayland, or QML.

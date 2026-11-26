@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Printers and Scanners snapshot the pane renders, decoded from one raw
 //! read.
 //!

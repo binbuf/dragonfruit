@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The battery history sampler (T273).
 //!
 //! UPower reports the *current* charge and health, not a charge history, so

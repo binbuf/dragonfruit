@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """String-extraction gate and catalog generator (T-16.7).
 
 The shell, the first-party apps, and the shared design-system components

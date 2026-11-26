@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-only
+/* SPDX-License-Identifier: GPL-3.0-or-later
  *
  * A minimal SDL2 client for the T-14.6a strange-app zoo. Real SDL2 game
  * windows are a common Linux identity case (Wayland `app_id` from

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-12.5b / T-16.8a: the session kill matrix.
 //!
 //! The lock screen's fail-secure invariant is "every plausible crash during

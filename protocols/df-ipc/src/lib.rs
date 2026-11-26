@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Shared IPC contracts for the Dragonfruit lockstep set.
 //!
 //! Every process in the desktop — compositor, shell, services, apps —
@@ -299,8 +299,8 @@ mod tests {
             let text = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
             assert!(
-                text.contains("SPDX-License-Identifier: GPL-3.0-only"),
-                "{}: protocol XMLs must be GPL-3.0-only so the combined work stays free (docs/design/licensing.md)",
+                text.contains("SPDX-License-Identifier: GPL-3.0-or-later"),
+                "{}: protocol XMLs must be GPL-3.0-or-later so the combined work stays free (docs/design/licensing.md)",
                 path.display()
             );
             assert!(

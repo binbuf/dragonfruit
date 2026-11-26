@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-12.5a acceptance: one suspend/resume cycle recovers outputs, input, and
 //! clients without a restart.
 //!

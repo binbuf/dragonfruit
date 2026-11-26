@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's General/About/Updates seam (T-15.10b).
 //
 // The General pane never touches D-Bus: it binds the `Settings` singleton, and

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Desktop input mapping (T-19.3): the compositor's raw `wl_pointer`/`wl_keyboard`
 // values become Qt modifiers/keys before `FilesDesktop` injects them into the
 // offscreen desktop scene. The mapping is pure, so it is exercised here without

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Localization (T-16.7). One library owns locale resolution, the runtime
 # `.ts` catalog parser, the application-install helper, and the default
 # `QLocale` setup, so the shell, Settings, and Files cannot disagree about the

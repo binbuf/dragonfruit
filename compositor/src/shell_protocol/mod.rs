@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Private shell protocols (T-07): generated server bindings.
 //!
 //! The XMLs live in `protocols/` and ship as a lockstep set with the

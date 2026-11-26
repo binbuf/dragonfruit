@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live ScreenCast host tool.
 //!
 //! The compositor's producer (`compositor/src/screencast_producer.rs`) spawns

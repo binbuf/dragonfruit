@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Drive the live nested navigation loop and capture each step (T-17.1b).
 
 This is the machine half of the T-17.1b verification unit

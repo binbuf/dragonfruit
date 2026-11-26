@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-07.3 acceptance: the adapter reads a mocked PipeWire/WirePlumber and
 //! renders the default sink + per-sink list, and an absent daemon hides the
 //! item. No PipeWire and no daemon are involved.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Settings privileged-action authorizer tests (T224).
 //
 // A fake polkit authority on the private session bus records the

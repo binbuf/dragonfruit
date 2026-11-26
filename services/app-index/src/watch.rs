@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `.desktop` directory watching (T-14.1b).
 //!
 //! The index only stays live if an install/uninstall/update reaches it. The

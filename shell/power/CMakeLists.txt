@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The session power confirmation dialog: a pure QML view the shell controller
 # renders into its own centered `power-dialog` overlay surface. The controller
 # owns the logind call; this scene only asks, counts down, and reports the

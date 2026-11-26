@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Notifications and Focus snapshot the pane and tile render, decoded
 //! from one raw read.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Fedora/Ubuntu/Debian/Arch stub backends.
 //!
 //! T221 lands the contract, the matrix, and these stubs. Every trait method

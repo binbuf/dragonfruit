@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Measure a macOS System Settings reference screenshot deterministically.
 
 The art-direction captures under ``docs/reference/macos/`` are local-only and

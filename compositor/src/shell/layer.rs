@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Chrome-surface geometry: anchors, margins, and reserved zones (T-07 FR-1).
 //!
 //! A `df_layer_surface` is placed by anchor edges on its output, exactly

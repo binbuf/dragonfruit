@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Shared, toolkit-facing libraries used by more than one first-party process
 # (shell and apps): the settingsd client (ADR 0036), the system font
 # (Inter, installed process-wide by every first-party entry point), the

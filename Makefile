@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Dragonfruit top-level task runner (T-01, FR-2): one command builds the
 # full desktop, one command runs all tests. Drives the Cargo workspace

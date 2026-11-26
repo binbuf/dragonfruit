@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The compositor magnifier (T-16.6b).
 //!
 //! Screen magnification is compositor-owned because it transforms the whole

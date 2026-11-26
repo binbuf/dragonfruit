@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-15.15a acceptance: the VPN adapter reads a mocked NetworkManager, renders
 //! state + connection list, reacts to events, and hides an absent daemon. No
 //! bus and no daemon are involved.

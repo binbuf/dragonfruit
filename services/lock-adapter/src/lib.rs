@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Lock Screen policy adapter (T-15.8a).
 //!
 //! Lock Screen policy is **session- and compositor-native**. There is no

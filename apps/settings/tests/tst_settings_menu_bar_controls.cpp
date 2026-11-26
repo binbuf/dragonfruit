@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Menu Bar Controls sub-pane test runner (T227; the in-place sub-pane is
 // T293b): `QUICK_TEST_MAIN` finds the QML TestCase in this directory. Run
 // headless with the offscreen platform, the software scene graph, and

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Verify the system-font contract: the bundled faces register, the app
 // default and its variants resolve to Inter (never a silent fallback), and
 // installation is idempotent. Headless: offscreen platform.

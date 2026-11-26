@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Client for `org.dragonfruit.AppIndex1` (T-14.1a).
 //
 // The shell queries app-index for application identity and themed icons; it

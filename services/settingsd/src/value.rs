@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The value model behind `org.dragonfruit.Settings1` (T-08.1a).
 //!
 //! A setting is one of five shapes, matching the value kinds a desktop

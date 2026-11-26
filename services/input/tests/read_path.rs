@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-15.4a acceptance: the adapter reads a mocked libinput and reports the
 //! keyboard/mouse/trackpad inventory and its per-device state, a device change
 //! is observable, and an absent host stack is a normal hidden state. No

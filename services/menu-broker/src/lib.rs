@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-menu-broker`: the global-menu broker (T-14.2a).
 //!
 //! A global menu is not a Wayland capability — an application has to export a

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Menu-bar auto-hide, per-output reveal and measured motion (T201/T233).
 //!
 //! `menu.autoHide` has three values and the compositor is the single owner of

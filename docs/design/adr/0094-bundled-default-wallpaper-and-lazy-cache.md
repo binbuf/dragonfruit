@@ -3,8 +3,8 @@
 ## Status
 
 accepted — amends [0055](0055-online-wallpaper-content-provider.md). Amended
-2026-11-25 by [0366](0366-relicense-to-gpl-3.0-only.md): the built-in
-wallpapers are now GPL-3.0-only, not MIT.
+2026-11-25 by [0366](0366-relicense-to-gpl-3.0-or-later.md): the built-in
+wallpapers are now GPL-3.0-or-later, not MIT.
 
 ## Context
 

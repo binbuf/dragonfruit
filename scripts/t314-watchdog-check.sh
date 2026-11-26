@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # T314 scripted watchdog check.
 #
 # Runs the shell watchdog test binary in probe mode as a transient user

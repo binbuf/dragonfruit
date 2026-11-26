@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Elevation-token-driven window shadows (T-04.1a).
 //!
 //! The compositor draws a soft drop shadow behind every decorated window from

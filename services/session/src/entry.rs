@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The display-manager session entry (T-12.2).
 //!
 //! A Wayland display manager lists sessions by scanning
@@ -144,7 +144,7 @@ pub fn install_into(prefix: &Path) -> io::Result<Vec<PathBuf>> {
     }
 
     // The shipped built-in wallpapers (T-18.1a): installed to the stable share
-    // path the provider resolves. Original project assets, GPL-3.0-only
+    // path the provider resolves. Original project assets, GPL-3.0-or-later
     // (ADR 0094, ADR 0366); never fetched/third-party images.
     let wallpaper_dir = prefix.join(WALLPAPER_DIR);
     std::fs::create_dir_all(&wallpaper_dir)?;

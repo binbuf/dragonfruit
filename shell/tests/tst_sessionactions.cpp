@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Session action tests (T313): Log Out calls logind's
 // `Manager.TerminateSession(s)` with the shell's session id, the menu action
 // and the Super+Shift+Q action resolve to the same `log-out` id, and the

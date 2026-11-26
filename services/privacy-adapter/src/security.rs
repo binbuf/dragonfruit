@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Security half of the Privacy and Security adapter (T228).
 //!
 //! Security is a **host-stack projection**, not a second policy engine:

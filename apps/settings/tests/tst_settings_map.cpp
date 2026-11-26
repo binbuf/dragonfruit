@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Settings map/catalog test runner (T222): `QUICK_TEST_MAIN` finds the QML
 // TestCase in this directory. Headless offscreen + software scene graph; the
 // deterministic settings fixture keeps the test off the host bus.

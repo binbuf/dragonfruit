@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! DRM first bring-up outcome (T-03.2).
 //!
 //! The DRM/KMS backend is the one path that needs real hardware: a logind

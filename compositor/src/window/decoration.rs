@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Server-side-decoration titlebar element (T-01.1).
 //!
 //! This is the compositor's SSD titlebar: pure geometry and drawing state,

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Lock input tests (T-12.3c): the pure evdev -> lock-key mapping the shell
 // feeds its password buffer from. No Wayland, QML, or compositor.
 #include <QtTest>

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! A deterministic in-memory [`DirectorySource`] for headless tests.
 //!
 //! `files-core` is unit- and property-tested with fake adapters and no display

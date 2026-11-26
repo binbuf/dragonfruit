@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-pam-helper` — the small process boundary for lock-screen PAM
 //! authentication (T-12.3b).
 //!

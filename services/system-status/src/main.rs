@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-system-status` — the T-07.5a bridge host.
 //!
 //! Hosts the NetworkManager and audio adapters and serves their snapshots and

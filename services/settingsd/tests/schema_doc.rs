@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-08.3 acceptance: the in-repo key schema for humans.
 //!
 //! `docs/design/settings-keys.md` is the human-facing table the Settings app and

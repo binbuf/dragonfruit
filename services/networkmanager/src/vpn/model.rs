@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The VPN snapshot the pane and tile render, decoded from one raw read.
 //!
 //! The model owns the NetworkManager enum mapping and the join a consumer

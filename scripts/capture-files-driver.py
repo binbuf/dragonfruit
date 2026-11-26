@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Capture one Files still from the live nested demo (T-10.7).
 
 Raises the nested Dragonfruit window over the KWin host, nudges the frame loop

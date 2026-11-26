@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live transport: AccountsService over its D-Bus API, plus the
 //! distribution group-provider seam.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Dock launch-failure notification (T-11.1b).
 //
 // T-10 rendered a transient "failed" badge on the Dock tile. T-11.1b replaces

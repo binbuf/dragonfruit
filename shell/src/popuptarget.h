@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Content-sized popup render targets (T238 popup-target work).
 //
 // A chrome scene used to carry its popup as a sub-rect of the strip's scene, so

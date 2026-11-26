@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """GPU regression tests for the compositor's actual Glass shader.
 
 Run with python3 tests/glass/test_glass_shader.py. Uses a private surfaceless

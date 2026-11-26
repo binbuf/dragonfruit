@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-notifications`: the notification service (T-11.1a).
 //!
 //! The service owns the notification queue and its history

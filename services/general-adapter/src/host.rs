@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The live General host read/write source (T226).
 //!
 //! Every command and file the General group needs lives here, behind the

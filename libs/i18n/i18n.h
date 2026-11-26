@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Localization for the first-party stack (T-16.7).
 //
 // The shell and the first-party apps externalize every user-visible string

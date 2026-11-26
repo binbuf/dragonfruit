@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T208 development-only shell-protocol driver.
 //
 // Authenticates to the live compositor as the shell (using the reissued

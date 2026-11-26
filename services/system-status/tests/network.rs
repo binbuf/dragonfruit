@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T225 bridge-host acceptance: the combined Network view carries the
 //! NetworkManager services/known networks and the firewall sub-view, and the
 //! two adapters degrade independently.

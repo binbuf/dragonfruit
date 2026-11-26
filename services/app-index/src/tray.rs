@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! StatusNotifier/AppIndicator tray support (T-14.3).
 //!
 //! The de-facto Linux tray standard is StatusNotifierItem (SNI) plus the

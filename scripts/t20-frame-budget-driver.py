@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Drive the T-20.4 frame-budget trace on a running nested session.
 
 Machine half of the T-20.4 frame-budget capture: it talks to the compositor's

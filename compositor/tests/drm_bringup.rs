@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-03.2 acceptance: the DRM first bring-up *decision* is explicit and
 //! testable without hardware.
 //!

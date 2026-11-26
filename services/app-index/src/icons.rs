@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Themed icon lookup (T-14.1a).
 //!
 //! An application's `.desktop` `Icon` value is a *name* in the XDG icon theme

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Capture the T-21.2c forced-tier stills.
 
 Driven by ``scripts/capture-t21-material-tiers.sh`` (run that, not this).

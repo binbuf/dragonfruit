@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! GPU-sampled backdrop blur for chrome panels (T-20.1).
 //!
 //! ADR [0182](../../docs/design/adr/0182-glass-material-pass.md)

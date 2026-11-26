@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # T342: check the native Qt 6 Wayland platform plugin before a source build
 # arms a native login or CI relies on the shell's GPU chrome rail.

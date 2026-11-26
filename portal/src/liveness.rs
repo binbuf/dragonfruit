@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Bounded waits for the interactive portals (T311).
 //!
 //! The portal is the caller's only path: a presenter that never answers must

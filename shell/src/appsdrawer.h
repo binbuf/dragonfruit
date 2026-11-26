@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Applications drawer's pure list model (T-19.2).
 //
 // The drawer is the shell's launch surface: every launchable app the app-index

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-wallpaperd` — the T-18.1a wallpaper content provider.
 //!
 //! Serves `org.dragonfruit.Wallpaper1` on the user session bus. On start it

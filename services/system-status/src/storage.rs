@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The Storage half of the bridge host (T-15.2b).
 //!
 //! UDisks2 is reached by the `dragonfruit-storage` adapter; the shell and the

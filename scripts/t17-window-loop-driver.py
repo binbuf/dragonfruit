@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Drive the live nested Dragonfruit window loop and capture each step (T-17.1a).
 
 This is the machine half of the T-17.1a verification unit

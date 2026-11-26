@@ -137,7 +137,7 @@ complete desktop. It handles the low-level territory — Wayland, input,
 DRM/KMS/GBM, EGL, libseat, Xwayland — while leaving desktop policy to us.
 COSMIC and Niri demonstrate that Smithay can underpin a complete contemporary
 Linux desktop. It is MIT-licensed, which is compatible with our
-GPL-3.0-only code.
+GPL-3.0-or-later code.
 
 The credible alternative is wlroots (composable C modules for KMS/DRM,
 libinput, Wayland, X11/headless backends, Xwayland, rendering), which would be
@@ -174,7 +174,7 @@ recurring fight against another desktop's design language.
 
 Smithay's permissive license is compatible with ours, and we license our code
 and original assets — compositor, services, private protocol XMLs, design
-system, shell, and apps — under GPL-3.0-only, so the desktop and every
+system, shell, and apps — under GPL-3.0-or-later, so the desktop and every
 improvement to it stay free software. Bundled third-party assets keep their
 own licenses (Inter under OFL, Tabler/Phosphor under MIT, Capitaine cursors
 under LGPL); see [NOTICE](../../NOTICE) and [licensing.md](licensing.md). The

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Session power confirmation dialog view test runner: `QUICK_TEST_MAIN`
 // finds the QML TestCase in this directory. Run headless with the offscreen
 // platform and the software scene graph (see CMakeLists.txt).

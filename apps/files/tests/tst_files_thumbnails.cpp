@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Files thumbnail provider: a local image decodes to a bounded preview and
 // lands in the freedesktop cache; non-local and non-image inputs are rejected.
 #include <QDir>

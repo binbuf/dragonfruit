@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Capture the two About surfaces at 1×. Fractional/integer scale behavior is
 # exercised by the QML tests; Qt's offscreen grabImage clips at high DPI.
 set -euo pipefail

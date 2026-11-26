@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T282: every Settings adapter client against one fake system-status host.
 //
 // The fake distinguishes `State` (the cached view) from `Refresh` (a real

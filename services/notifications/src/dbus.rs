@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The session-bus surface (T-11.1a).
 //!
 //! The service owns one well-known name, `org.freedesktop.Notifications`, and

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The `a(ss)` row shape the portal's `Pending*` methods return (T311).
 //
 // The fakes in `tst_screenshot`, `tst_screencast`, and `tst_chooser` answer

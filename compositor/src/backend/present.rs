@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Off-loop presentation for the nested backend.
 //!
 //! `eglSwapBuffers` on a winit/Wayland surface waits for the host compositor's

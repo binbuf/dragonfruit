@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Generate Qt/C++ bindings for the private shell protocols (T-07) from the
 # same XMLs the Rust compositor and conformance client use. The shell (T-08)

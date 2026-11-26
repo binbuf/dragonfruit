@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // polkit agent tests (T-13.6): the helper conversation against fake helper
 // scripts, the D-Bus agent against a fake authority on the private session bus
 // that `dbus-run-session` provides, and — when the host actually runs polkit —

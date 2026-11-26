@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 #![allow(dead_code)] // The pure API is also exercised by the lib unit tests.
 //! Per-output DPMS state (T316).
 //!

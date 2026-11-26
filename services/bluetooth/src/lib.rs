@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The BlueZ Bluetooth adapter: controller and device state, discovery,
 //! pairing, and connection (T-15.1a).
 //!

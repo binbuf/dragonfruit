@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Bridge tests for the General sub-panes host (T226): each sub-view carries
 //! its own state, the writes apply once through the adapter, and a missing
 //! owner disables only its own pane.

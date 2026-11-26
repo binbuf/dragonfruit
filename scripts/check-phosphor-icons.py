@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Fail the build when a QML source names a Phosphor glyph that is not vendored.
 
 `PhosphorIcon` resolves a glyph name to a vendored SVG; a typo would otherwise

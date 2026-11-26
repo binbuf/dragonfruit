@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The shell's half of the Screenshot presenter seam (T-13.3a).
 //
 // `ScreenshotBridge` watches the portal backend's diagnostic

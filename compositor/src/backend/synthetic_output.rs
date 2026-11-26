@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Synthetic output harness for the headless backend (T-09 FR-1).
 //!
 //! The headless backend creates exactly one static output, so output

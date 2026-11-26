@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-14.1a acceptance: drive `org.dragonfruit.AppIndex1` over a real session
 //! bus against a fixture `.desktop` and icon-theme corpus.
 //!

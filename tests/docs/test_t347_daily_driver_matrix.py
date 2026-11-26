@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """T347 regression tests for the daily-driver matrix report.
 
 The matrix is a hardware task, so these tests pin the contract the runner must

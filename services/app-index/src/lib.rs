@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `dragonfruit-app-index`: the application identity service (T-14.1a).
 //!
 //! app-index is the single owner of application identity

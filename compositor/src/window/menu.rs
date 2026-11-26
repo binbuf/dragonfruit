@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The SSD titlebar's window menu (T-01.4).
 //!
 //! A right-click or Control-click on the titlebar opens a small menu over

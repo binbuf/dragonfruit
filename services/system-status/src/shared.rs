@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! One host-stack source shared by the adapters that project different
 //! surfaces of it (T228).
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The storage snapshot the pane and status slot render, decoded from one raw
 //! read.
 //!

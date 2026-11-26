@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The Settings app's General sub-panes seam (T226).
 //
 // Date & Time, Language & Region, Login Items, Sharing, Backup, Storage usage,

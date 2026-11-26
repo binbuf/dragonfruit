@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! `files-core` — the headless browsing model and streaming directory
 //! listing (T-10.1a).
 //!

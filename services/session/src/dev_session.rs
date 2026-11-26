@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The real-session dev-harness state file (T-12.6b).
 //!
 //! The display-manager round trip (`dragonfruit dev --real --round-trip`) must

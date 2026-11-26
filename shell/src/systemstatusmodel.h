@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shell-side system-status model (T-07.5a).
 //
 // The menu bar's Wi-Fi and volume menus render from the bridge host's JSON

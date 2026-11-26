@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Event subscription, restart re-subscribe, and absence (T-07.1b).
 //!
 //! An adapter is never asked about its daemon; the daemon pushes. Every

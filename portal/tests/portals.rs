@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! T-13.1b acceptance: the Settings and GlobalShortcuts portals answer a
 //! real D-Bus client.
 //!

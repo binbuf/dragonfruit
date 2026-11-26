@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The compositor wallpaper view of the settings schema (T-09.3, extended by
 // T-18.1b). Pure: it maps the `org.dragonfruit.Settings1` wallpaper keys and
 // the provider's resolved defaults onto what the shell forwards over

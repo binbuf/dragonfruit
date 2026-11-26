@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The launch-time Xwayland `DISPLAY` hand-off (T309).
 //
 // Xwayland starts after the session entry has exported the startup

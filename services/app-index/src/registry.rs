@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The launch registry and app recency (T-14.1b).
 //!
 //! The compositor owns windows; the shell sees they appear and disappear and

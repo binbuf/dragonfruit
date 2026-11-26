@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Storage-pane test runner (T-15.2b): `QUICK_TEST_MAIN` finds the QML TestCase
 // in this directory. Run headless with the offscreen platform, the software
 // scene graph, `DF_SETTINGS_FIXTURE`, and `DF_STORAGE_FIXTURE` (see

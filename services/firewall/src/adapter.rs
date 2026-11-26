@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The firewall adapter: one read path plus the explicit writes over the
 //! shared three-state contract.
 

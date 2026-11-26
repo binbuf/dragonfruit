@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! One suspend/resume cycle (T-12.5a).
 //!
 //! A suspend is a logind `PrepareForSleep` round trip: the compositor

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // T208 development-only native KMS readback.
 //
 // Duplicates the running compositor's DRM fd with pidfd_getfd, finds the

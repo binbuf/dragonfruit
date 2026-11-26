@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The transport seam: the raw Lock Screen policy read and its mock.
 //!
 //! A [`LockPolicySource`] is the only thing that talks to the host stack.

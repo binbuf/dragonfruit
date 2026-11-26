@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Chrome presentation correlation (T353).
 //!
 //! The compositor's frame trace separates three things that used to be
