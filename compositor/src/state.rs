@@ -3207,6 +3207,9 @@ impl DfState {
     /// (T-16.2).
     pub fn on_output_removed(&mut self, output: &Output) {
         let removed = output.name();
+        // T354: a retained popup snapshot on the detached output is released
+        // before the output leaves the scene.
+        self.release_popup_transactions_on_output(&removed);
         self.refresh_schedule.remove(&removed);
         self.presentation_clocks.remove(&removed);
         self.output_vrr.remove(&removed);

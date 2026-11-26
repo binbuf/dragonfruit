@@ -1043,6 +1043,15 @@ impl CompositorProcess {
         Self::start_impl(socket_name, tokens, None, None, true)
     }
 
+    /// Start with the frame trace and the synthetic-output harness (T354).
+    fn start_with_output_trace(
+        socket_name: &str,
+        tokens: &[String],
+        synthetic_output_path: &Path,
+    ) -> Self {
+        Self::start_impl(socket_name, tokens, None, Some(synthetic_output_path), true)
+    }
+
     fn start_impl(
         socket_name: &str,
         tokens: &[String],
@@ -1115,6 +1124,27 @@ impl CompositorProcess {
             .expect("token file readable")
             .trim()
             .to_string()
+    }
+
+    /// The compositor's stderr log so far (DFTRACE and warnings).
+    fn stderr_log(&self) -> String {
+        std::fs::read_to_string(&self.stderr_path).unwrap_or_default()
+    }
+
+    /// Wait for a trace substring to appear on stderr.
+    #[track_caller]
+    fn wait_for_trace(&self, needle: &str, timeout: Duration) -> String {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let log = self.stderr_log();
+            if log.contains(needle) {
+                return log;
+            }
+            if Instant::now() >= deadline {
+                panic!("trace {needle:?} did not appear; log:\n{log}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     fn read_desktop_token(&self) -> String {
@@ -10361,5 +10391,461 @@ fn chrome_frame_callback_is_pacing_not_presentation() {
     );
 
     let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T354: the popup presentation transaction fences stale/superseded frames and
+/// transport switches, releases input at the closing edge, retains the accepted
+/// snapshot for the declared lifetime, and releases it on completion.
+#[test]
+fn popup_transaction_fences_frames_and_retains_the_exit() {
+    let token = "f1".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-popup-txn-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic_trace(
+        "dragonfruit-conformance-popup-txn",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "menubar-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(200, 300);
+    popup.set_margin(28, 0, 0, 40);
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let (buffer, _file) = shm_buffer(&state, &qh, 200, 300);
+
+    // Open generation 1 on the shm transport.
+    popup.set_popup_transaction(
+        1,
+        1,
+        df_layer_surface::PopupPhase::Open,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "popup-transaction surface=menubar-popup gen=1 serial=1 phase=open",
+        Duration::from_secs(5),
+    );
+
+    // A stale generation is rejected, and its content does not replace the
+    // accepted snapshot.
+    popup.set_popup_transaction(
+        0,
+        2,
+        df_layer_surface::PopupPhase::Open,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "gen=0 serial=2 phase=open declared=shm actual=shm switch=0 input=1 accepted=0 reason=stale",
+        Duration::from_secs(5),
+    );
+
+    // A content retarget with a new material card and a declared dmabuf
+    // transport that actually commits shm is the documented fallback, not a
+    // stale frame. The transport switch is recorded and accepted by serial.
+    popup.set_size(240, 320);
+    popup.set_panel_region(
+        "card".to_string(),
+        "".to_string(),
+        0,
+        0,
+        200,
+        300,
+        0,
+        0,
+        0,
+        0,
+        0,
+    );
+    popup.set_popup_transaction(
+        2,
+        3,
+        df_layer_surface::PopupPhase::Retarget,
+        df_layer_surface::PopupTransport::Dmabuf,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "popup-transaction surface=menubar-popup gen=2 serial=3 phase=retarget \
+         declared=dmabuf actual=shm switch=1 input=1 accepted=1 reason=none",
+        Duration::from_secs(5),
+    );
+    let log = proc.wait_for_trace("gen=2 serial=3 phase=retarget", Duration::from_secs(5));
+    let retarget = log
+        .lines()
+        .find(|line| line.contains("gen=2 serial=3 phase=retarget"))
+        .unwrap_or_default();
+    assert!(
+        retarget.contains("regions=1") && retarget.contains("geometry=40,28,240,320"),
+        "the transaction joins geometry and material coverage: {retarget}"
+    );
+
+    // An older serial on the same generation is stale; an equal serial is
+    // stale too. A newer serial is the accepted content change.
+    popup.set_popup_transaction(
+        2,
+        2,
+        df_layer_surface::PopupPhase::Retarget,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "gen=2 serial=2 phase=retarget declared=shm actual=shm switch=0 input=1 \
+         accepted=0 reason=stale",
+        Duration::from_secs(5),
+    );
+    popup.set_popup_transaction(
+        2,
+        4,
+        df_layer_surface::PopupPhase::Retarget,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "gen=2 serial=4 phase=retarget declared=shm actual=shm switch=0 input=1 \
+         accepted=1 reason=none",
+        Duration::from_secs(5),
+    );
+
+    // The pointer enters the open popup.
+    let _ = queue.roundtrip(&mut state);
+    state.pointer_enters = 0;
+    state.pointer_leaves = 0;
+    input.send("motion-abs 0.109375 0.1388889");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+
+    // Closing releases input immediately but keeps the retained snapshot.
+    popup.set_popup_transaction(
+        3,
+        5,
+        df_layer_surface::PopupPhase::Closing,
+        df_layer_surface::PopupTransport::Shm,
+        0,
+        300,
+    );
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "gen=3 serial=5 phase=closing declared=shm actual=none switch=0 input=0 \
+         accepted=1 reason=none",
+        Duration::from_secs(5),
+    );
+
+    // A retarget after the closing edge is superseded: the retained snapshot
+    // is frozen and a late geometry/content edge must not move it.
+    popup.set_popup_transaction(
+        3,
+        6,
+        df_layer_surface::PopupPhase::Retarget,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "gen=3 serial=6 phase=retarget declared=shm actual=shm switch=0 input=0 \
+         accepted=0 reason=superseded",
+        Duration::from_secs(5),
+    );
+
+    // A closing popup still paints, but the pointer must pass through it. The
+    // surface's own input region is unchanged; the transaction policy is what
+    // releases the hit area.
+    state.pointer_enters = 0;
+    state.pointer_leaves = 0;
+    input.send("motion-abs 0.0078125 0.8333333");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_leaves > 0,
+    );
+    state.pointer_enters = 0;
+    input.send("motion-abs 0.109375 0.1388889");
+    std::thread::sleep(Duration::from_millis(120));
+    let _ = queue.roundtrip(&mut state);
+    assert_eq!(
+        state.pointer_enters, 0,
+        "a closing popup must not accept pointer input"
+    );
+
+    // Completion ends client submission; the snapshot stays valid for the
+    // declared lifetime and is then released by the maintenance path.
+    popup.set_popup_transaction(
+        3,
+        5,
+        df_layer_surface::PopupPhase::Complete,
+        df_layer_surface::PopupTransport::Shm,
+        0,
+        0,
+    );
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace("gen=3 serial=5 phase=complete", Duration::from_secs(5));
+    std::thread::sleep(Duration::from_millis(360));
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "popup-snapshot surface=menubar-popup gen=3 serial=5 released=1 reason=expired",
+        Duration::from_secs(5),
+    );
+
+    drop(buffer);
+    drop(popup);
+    drop(popup_surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T354: a detached output and a disconnected client both release the retained
+/// popup snapshot; neither path leaves an imported buffer behind.
+#[test]
+fn popup_transaction_releases_on_output_unplug_and_disconnect() {
+    let token = "f2".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let output_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-popup-output-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_output_trace(
+        "dragonfruit-conformance-popup-output",
+        std::slice::from_ref(&token),
+        &output_path,
+    );
+    let outputs = SyntheticOutput::connect(&output_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "menubar-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(200, 300);
+    popup.set_margin(28, 0, 0, 40);
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let _ = conn.flush();
+    let (buffer, _file) = shm_buffer(&state, &qh, 200, 300);
+
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.wl_output_globals.len() == 2,
+    );
+    let _ = queue.roundtrip(&mut state);
+
+    popup.set_popup_transaction(
+        1,
+        1,
+        df_layer_surface::PopupPhase::Open,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "popup-transaction surface=menubar-popup gen=1 serial=1 phase=open",
+        Duration::from_secs(5),
+    );
+
+    // An all-output overlay is conservatively released when any output is
+    // detached; it may have been shown on that display.
+    outputs.send("remove HDMI-A-1");
+    proc.wait_for_trace(
+        "popup-snapshot surface=menubar-popup gen=1 serial=1 released=1 reason=output",
+        Duration::from_secs(5),
+    );
+
+    // Reopen and then drop the client: the disconnect path releases too.
+    popup.set_popup_transaction(
+        2,
+        2,
+        df_layer_surface::PopupPhase::Open,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "popup-transaction surface=menubar-popup gen=2 serial=2 phase=open",
+        Duration::from_secs(5),
+    );
+    // Drop every client-side handle (the event queue holds a connection
+    // reference too) so the socket really closes and the compositor's
+    // client-disconnect path releases the retained snapshot.
+    drop(buffer);
+    drop(popup);
+    drop(popup_surface);
+    drop(shell);
+    drop(core);
+    drop(queue);
+    drop(conn);
+    proc.wait_for_trace(
+        "popup-snapshot surface=menubar-popup gen=2 serial=2 released=1 reason=disconnect",
+        Duration::from_secs(5),
+    );
+    proc.shutdown();
+}
+
+/// T354: a client that never sends `set_popup_transaction` keeps the legacy
+/// geometry/material/input contract. The compositor treats it as an open,
+/// non-retained popup and the committed pixels are unchanged.
+#[test]
+fn legacy_popup_without_a_transaction_still_commits() {
+    let token = "f3".repeat(32);
+    let proc = CompositorProcess::start_with_trace(
+        "dragonfruit-conformance-popup-legacy",
+        std::slice::from_ref(&token),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "menubar-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(200, 300);
+    popup.set_margin(28, 0, 0, 40);
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let (buffer, _file) = shm_buffer(&state, &qh, 200, 300);
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+
+    let log = proc.wait_for_trace(
+        "chrome-commit surface=menubar-popup",
+        Duration::from_secs(5),
+    );
+    assert!(
+        log.lines()
+            .any(|line| line.contains("chrome-commit surface=menubar-popup")
+                && line.contains("buffer=shm")),
+        "the legacy popup still commits its shm buffer: {log}"
+    );
+    assert!(
+        !log.contains("popup-transaction surface=menubar-popup"),
+        "a legacy client must not enter a popup transaction: {log}"
+    );
+
+    drop(buffer);
+    drop(popup);
+    drop(popup_surface);
+    drop(shell);
+    drop(core);
+    drop(queue);
+    drop(conn);
     proc.shutdown();
 }

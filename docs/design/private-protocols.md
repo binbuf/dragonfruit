@@ -125,6 +125,24 @@ the visible-chrome list, so it contributes no reserved zone, input hit area, or
 material panel; a revealed bar keeps its normal reservation and input strip,
 and an open menu or menu-bar focus keeps it revealed. Other namespaces ignore
 the request (the Dock has its own auto-hide).
+
+### Popup presentation transaction (v5, T354)
+
+`df_layer_surface.set_popup_transaction(generation, content_serial, phase,
+transport, input_active, retain_ms)` is the popup's one presentation
+transaction. It is commit-latched with the pixels it describes and joins the
+accepted content to the layer's owning output, anchor/crop/paint geometry and
+committed material regions. `phase` is `open`, `retarget`, `closing`,
+`complete` or `cancel`; `transport` is a declaration (`none`, `shm`, `dmabuf`)
+that the compositor compares with the committed buffer. A lower generation or
+content serial is stale, a retarget after closing/completion is superseded, and
+a declared/actual transport mismatch is accepted only as the documented shm
+fallback. `closing` always releases input; `retain_ms` (clamped to 5 s) bounds
+the retained visual. `complete` keeps the snapshot until that deadline;
+`cancel`, output removal, surface destruction and client disconnect release it.
+A client that never sends the request keeps the v4 behavior: the surface input
+region is the only input policy and nothing is retained. See
+[ADR 0365](adr/0365-popup-visual-transaction.md).
 - Region identity is `(namespace, layer, surface object, region key)`, so a
   stable key keeps its element id and cached filtered texture across unrelated
   scene damage and tint-only changes. Removed regions and surfaces drop their

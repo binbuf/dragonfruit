@@ -655,6 +655,15 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    // T354: release any retained popup snapshot before the producers and the
+    // protocol go away. The compositor also releases on disconnect; this is
+    // the clean-exit half of the same contract.
+    const qint64 now = monotonicMs();
+    m_menuBarPopupTransaction.cancel(
+        static_cast<quint32>(m_menuBarPopupGeneration), QStringLiteral("exit"),
+        now);
+    m_dockPopupTransaction.cancel(
+        static_cast<quint32>(m_dockPopupGeneration), QStringLiteral("exit"), now);
     // Jobs only queue results back here; finish before destroying the receiver.
     m_menuWorker.waitForDone();
     m_trayInventoryWorker.waitForDone();
@@ -1348,6 +1357,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // T204: a detached output closes the per-output Center instead of leaving
     // a stale panel anchored to a display that no longer exists.
     connect(m_protocol, &ShellProtocol::outputRemoved, this, [this]() {
+        // T354: a detached output retires the popup transaction and its
+        // retained snapshot instead of leaving a visual anchored to a dead
+        // display.
+        cancelPopupTransactions(QStringLiteral("output"));
         if (m_notificationCenterOpen)
             hideNotificationCenter(QStringLiteral("output"));
         hideWidgetGallery();
@@ -7699,6 +7712,7 @@ void ShellController::onClockTick()
 void ShellController::onMenuBarPopupOpened()
 {
     ++m_menuBarPopupGeneration;
+    openMenuBarPopupTransaction();
     m_menuBarPopupExitTimer->stop();
     m_menuOpen = true;
     m_protocol->dismissPopupInput();
@@ -7739,6 +7753,16 @@ void ShellController::onMenuBarPopupClosed()
     ++m_menuBarPopupGeneration;
     m_menuOpen = false;
     m_popupGeometryPending = false;
+    // T352: keep the surface mapped only for the visual tail the QML motion
+    // token actually uses. A reduced-motion (or otherwise zero-duration) exit
+    // unmaps immediately instead of leaving a stale frosted surface for a
+    // fixed interval. One frame of slack covers the animation's final tick.
+    const int exitDuration =
+        m_item ? qMax(0, m_item->property("popupExitDuration").toInt()) : 0;
+    // T354: the closing transaction releases input immediately and starts the
+    // bounded retained-snapshot lifetime. It is latched by the input-only
+    // commit below, before any exit frame.
+    dismissMenuBarPopupTransaction(exitDuration);
     m_protocol->dismissPopupInput();
     if (m_menuBarMenuTraceId != 0) {
         const qint64 elapsed = ChromeStats::instance().endTrace(
@@ -7748,12 +7772,6 @@ void ShellController::onMenuBarPopupClosed()
         m_menuBarMenuTraceId = 0;
         m_menuBarMenuTraceCommitted = false;
     }
-    // T352: keep the surface mapped only for the visual tail the QML motion
-    // token actually uses. A reduced-motion (or otherwise zero-duration) exit
-    // unmaps immediately instead of leaving a stale frosted surface for a
-    // fixed interval. One frame of slack covers the animation's final tick.
-    const int exitDuration =
-        m_item ? qMax(0, m_item->property("popupExitDuration").toInt()) : 0;
     if (exitDuration <= 0) {
         finishMenuBarPopupExit();
         return;
@@ -7768,8 +7786,10 @@ void ShellController::finishMenuBarPopupExit()
     ++m_menuBarPopupGeneration;
     m_popupWidth = 0;
     m_popupHeight = 0;
-    if (m_protocol)
+    if (m_protocol) {
+        completeMenuBarPopupTransaction();
         m_protocol->hidePopup();
+    }
     scheduleRender();
     if (m_menuRefreshDeferred) {
         m_menuRefreshDeferred = false;
@@ -8081,6 +8101,234 @@ void ShellController::schedulePopupGeometry()
     });
 }
 
+static ShellProtocol::PopupTransport wirePopupTransport(
+    PopupVisualTransaction::Transport transport)
+{
+    switch (transport) {
+    case PopupVisualTransaction::Transport::SharedMemory:
+        return ShellProtocol::PopupTransport::SharedMemory;
+    case PopupVisualTransaction::Transport::Dmabuf:
+        return ShellProtocol::PopupTransport::Dmabuf;
+    case PopupVisualTransaction::Transport::None:
+        break;
+    }
+    return ShellProtocol::PopupTransport::None;
+}
+
+ShellProtocol::PopupTransactionState ShellController::popupTransactionState(
+    const PopupVisualTransaction &transaction, ShellProtocol::PopupPhase phase,
+    quint32 retainMs) const
+{
+    ShellProtocol::PopupTransactionState state;
+    state.generation = transaction.generation();
+    state.contentSerial = transaction.contentSerial();
+    state.phase = phase;
+    state.transport = wirePopupTransport(transaction.transport());
+    state.inputActive = phase == ShellProtocol::PopupPhase::Open
+        || phase == ShellProtocol::PopupPhase::Retarget;
+    state.retainMs = retainMs;
+    return state;
+}
+
+void ShellController::openMenuBarPopupTransaction()
+{
+    if (!m_protocol)
+        return;
+    m_menuBarPopupContentSerial = 0;
+    m_menuBarPopupTransaction.open(
+        static_cast<quint32>(m_menuBarPopupGeneration),
+        m_protocol->primaryOutputName(), monotonicMs());
+}
+
+void ShellController::dismissMenuBarPopupTransaction(int exitDurationMs)
+{
+    if (!m_protocol || !m_menuBarPopupTransaction.active())
+        return;
+    const qint64 retainMs = qMax<qint64>(
+        PopupVisualTransaction::kSnapshotLifetimeMs, exitDurationMs + 250);
+    m_menuBarPopupTransaction.dismiss(
+        static_cast<quint32>(m_menuBarPopupGeneration), retainMs, monotonicMs());
+    m_protocol->setPopupTransaction(popupTransactionState(
+        m_menuBarPopupTransaction, ShellProtocol::PopupPhase::Closing,
+        static_cast<quint32>(PopupVisualTransaction::clampRetainMs(retainMs))));
+    armPopupSnapshotRelease();
+}
+
+void ShellController::completeMenuBarPopupTransaction()
+{
+    if (!m_protocol || !m_menuBarPopupTransaction.active())
+        return;
+    const qint64 now = monotonicMs();
+    m_menuBarPopupTransaction.complete(
+        static_cast<quint32>(m_menuBarPopupGeneration), now);
+    const qint64 remaining = qMax<qint64>(
+        0, m_menuBarPopupTransaction.retainedUntilMs() - now);
+    m_protocol->setPopupTransaction(popupTransactionState(
+        m_menuBarPopupTransaction, ShellProtocol::PopupPhase::Complete,
+        static_cast<quint32>(PopupVisualTransaction::clampRetainMs(remaining))));
+    armPopupSnapshotRelease();
+}
+
+void ShellController::openDockPopupTransaction()
+{
+    if (!m_protocol)
+        return;
+    m_dockPopupContentSerial = 0;
+    m_dockPopupTransaction.open(static_cast<quint32>(m_dockPopupGeneration),
+                                m_protocol->primaryOutputName(), monotonicMs());
+}
+
+void ShellController::dismissDockPopupTransaction()
+{
+    if (!m_protocol || !m_dockPopupTransaction.active())
+        return;
+    m_dockPopupTransaction.dismiss(
+        static_cast<quint32>(m_dockPopupGeneration),
+        PopupVisualTransaction::kSnapshotLifetimeMs, monotonicMs());
+    m_protocol->setDockPopupTransaction(popupTransactionState(
+        m_dockPopupTransaction, ShellProtocol::PopupPhase::Closing,
+        static_cast<quint32>(PopupVisualTransaction::kSnapshotLifetimeMs)));
+    armPopupSnapshotRelease();
+}
+
+void ShellController::completeDockPopupTransaction()
+{
+    if (!m_protocol || !m_dockPopupTransaction.active())
+        return;
+    const qint64 now = monotonicMs();
+    m_dockPopupTransaction.complete(static_cast<quint32>(m_dockPopupGeneration),
+                                    now);
+    const qint64 remaining = qMax<qint64>(
+        0, m_dockPopupTransaction.retainedUntilMs() - now);
+    m_protocol->setDockPopupTransaction(popupTransactionState(
+        m_dockPopupTransaction, ShellProtocol::PopupPhase::Complete,
+        static_cast<quint32>(PopupVisualTransaction::clampRetainMs(remaining))));
+    armPopupSnapshotRelease();
+}
+
+void ShellController::cancelPopupTransactions(const QString &reason)
+{
+    const qint64 now = monotonicMs();
+    if (m_protocol && m_menuBarPopupTransaction.active()) {
+        m_menuBarPopupTransaction.cancel(
+            static_cast<quint32>(m_menuBarPopupGeneration), reason, now);
+        m_protocol->setPopupTransaction(popupTransactionState(
+            m_menuBarPopupTransaction, ShellProtocol::PopupPhase::Cancel, 0));
+        m_protocol->hidePopup();
+    }
+    if (m_protocol && m_dockPopupTransaction.active()) {
+        m_dockPopupTransaction.cancel(
+            static_cast<quint32>(m_dockPopupGeneration), reason, now);
+        m_protocol->setDockPopupTransaction(popupTransactionState(
+            m_dockPopupTransaction, ShellProtocol::PopupPhase::Cancel, 0));
+        m_protocol->hideDockPopup();
+    }
+    m_popupWidth = 0;
+    m_popupHeight = 0;
+    m_menuOpen = false;
+    armPopupSnapshotRelease();
+}
+
+void ShellController::armPopupSnapshotRelease()
+{
+    if (!m_popupSnapshotTimer) {
+        m_popupSnapshotTimer = new QTimer(this);
+        m_popupSnapshotTimer->setSingleShot(true);
+        connect(m_popupSnapshotTimer, &QTimer::timeout, this,
+                &ShellController::releaseExpiredPopupSnapshots);
+    }
+    const qint64 now = monotonicMs();
+    qint64 next = 0;
+    for (const PopupVisualTransaction *transaction :
+         {&m_menuBarPopupTransaction, &m_dockPopupTransaction}) {
+        if (!transaction->hasRetainedSnapshot())
+            continue;
+        const qint64 until = transaction->retainedUntilMs();
+        if (until <= 0)
+            continue;
+        const qint64 delay = qMax<qint64>(0, until - now) + 16;
+        next = next == 0 ? delay : qMin(next, delay);
+    }
+    if (next == 0) {
+        m_popupSnapshotTimer->stop();
+        return;
+    }
+    m_popupSnapshotTimer->start(static_cast<int>(qMin<qint64>(next, 60000)));
+}
+
+void ShellController::releaseExpiredPopupSnapshots()
+{
+    const qint64 now = monotonicMs();
+    m_menuBarPopupTransaction.releaseExpired(now);
+    m_dockPopupTransaction.releaseExpired(now);
+    armPopupSnapshotRelease();
+}
+
+bool ShellController::stagePopupTransaction(const ChromeSceneTarget &target,
+                                            ShellProtocol::PopupTransport transport)
+{
+    if (!m_protocol || target.popupOwner == ChromeSceneTarget::PopupOwner::None
+        || target.popupGeneration == 0) {
+        return true;
+    }
+    PopupVisualTransaction &transaction =
+        target.popupOwner == ChromeSceneTarget::PopupOwner::MenuBar
+        ? m_menuBarPopupTransaction
+        : m_dockPopupTransaction;
+    const bool opening = transaction.phase()
+        == PopupVisualTransaction::Phase::Opening;
+    if (!transaction.beginFrame(target.popupGeneration, target.popupContentSerial,
+                                transport == ShellProtocol::PopupTransport::Dmabuf
+                                    ? PopupVisualTransaction::Transport::Dmabuf
+                                    : PopupVisualTransaction::Transport::SharedMemory)) {
+        return false;
+    }
+    quint32 retainMs = 0;
+    if (target.popupClosing) {
+        const qint64 now = monotonicMs();
+        const qint64 remaining = transaction.retainedUntilMs() > now
+            ? transaction.retainedUntilMs() - now
+            : PopupVisualTransaction::kSnapshotLifetimeMs;
+        retainMs = static_cast<quint32>(PopupVisualTransaction::clampRetainMs(remaining));
+    }
+    const ShellProtocol::PopupTransactionState state = popupTransactionState(
+        transaction,
+        target.popupClosing
+            ? ShellProtocol::PopupPhase::Closing
+            : (opening ? ShellProtocol::PopupPhase::Open
+                       : ShellProtocol::PopupPhase::Retarget),
+        retainMs);
+    if (target.popupOwner == ChromeSceneTarget::PopupOwner::MenuBar)
+        return m_protocol->setPopupTransaction(state);
+    return m_protocol->setDockPopupTransaction(state);
+}
+
+void ShellController::storePopupSnapshot(const ChromeSceneTarget &target,
+                                         const QImage &image,
+                                         ShellProtocol::PopupTransport transport)
+{
+    if (target.popupOwner == ChromeSceneTarget::PopupOwner::None)
+        return;
+    PopupVisualTransaction &transaction =
+        target.popupOwner == ChromeSceneTarget::PopupOwner::MenuBar
+        ? m_menuBarPopupTransaction
+        : m_dockPopupTransaction;
+    transaction.storeSnapshot(
+        transport == ShellProtocol::PopupTransport::SharedMemory ? image : QImage(),
+        target.logicalSize, target.sourceRect, monotonicMs());
+    armPopupSnapshotRelease();
+}
+
+quint32 ShellController::nextPopupContentSerial(
+    ChromeSceneTarget::PopupOwner owner)
+{
+    if (owner == ChromeSceneTarget::PopupOwner::MenuBar)
+        return ++m_menuBarPopupContentSerial;
+    if (owner == ChromeSceneTarget::PopupOwner::Dock)
+        return ++m_dockPopupContentSerial;
+    return 0;
+}
+
 void ShellController::applyPopupGeometry()
 {
     if (!m_item || !m_menuOpen)
@@ -8128,6 +8376,15 @@ void ShellController::applyPopupGeometry()
     }
     m_protocol->setPopupInputRects(popupInputRects);
     m_protocol->setPopupInputActive(true);
+    // T354: the same staged state is the accepted transaction's geometry,
+    // material coverage and input policy. It is committed with the next
+    // popup content frame.
+    m_menuBarPopupTransaction.retarget(
+        static_cast<quint32>(m_menuBarPopupGeneration),
+        m_protocol->primaryOutputName(), QRect(x, y, width, height),
+        QRect(x, y, width, height),
+        m_item->property("dropdownSurfaceRegions").toList(), popupInputRects,
+        true, monotonicMs());
 }
 
 void ShellController::onPointerMoved(qreal x, qreal y)
@@ -11694,9 +11951,16 @@ void ShellController::onDockPopoverChanged()
     ++m_dockPopupGeneration;
     const bool open = m_dockItem
         && m_dockItem->property("popoverOpen").toBool();
-    if (!open && m_dockPopoverWasOpen)
+    if (!open && m_dockPopoverWasOpen) {
+        // T354: close the transaction before the input-only commit so the
+        // closing edge is latched with the released input, then complete it
+        // with the unmap that follows.
+        dismissDockPopupTransaction();
         m_protocol->dismissDockPopupInput();
+        completeDockPopupTransaction();
+    }
     if (open && !m_dockPopoverWasOpen) {
+        openDockPopupTransaction();
         if (m_dockPopoverTraceId != 0) {
             ChromeStats::instance().endTrace(m_dockPopoverTraceId,
                                              QStringLiteral("superseded"));
@@ -12693,9 +12957,21 @@ bool ShellController::commitChromeScene(QQuickWindow *window,
             deferChromeProducer(producer);
         } else {
             for (const ChromeSceneTarget &target : targets) {
-                if ((!target.isCurrent || target.isCurrent())
-                    && target.commitShm && target.commitShm(image)) {
+                if (target.isCurrent && !target.isCurrent())
+                    continue;
+                // T354: the transaction is sent immediately before the content
+                // commit it describes. A stale serial/generation is dropped
+                // here instead of overwriting newer pixels.
+                if (!stagePopupTransaction(
+                        target, ShellProtocol::PopupTransport::SharedMemory)) {
+                    trace(QStringLiteral("target-stale"),
+                          QStringLiteral("target=%1").arg(target.label));
+                    continue;
+                }
+                if (target.commitShm && target.commitShm(image)) {
                     anyCommitted = true;
+                    storePopupSnapshot(
+                        target, image, ShellProtocol::PopupTransport::SharedMemory);
                     noteSurfacePath(target.label, QStringLiteral("shm"));
                 }
             }
@@ -12773,12 +13049,23 @@ bool ShellController::commitReadyChromeScene(
         QString reason;
         trace(QStringLiteral("target-commit-begin"),
               QStringLiteral("target=%1").arg(target.label));
+        // T354: send the transaction before the dmabuf commit it describes.
+        // A stale frame is dropped and its ring slot returned by the caller's
+        // usual release path.
+        if (!stagePopupTransaction(
+                target, ShellProtocol::PopupTransport::Dmabuf)) {
+            trace(QStringLiteral("target-stale"),
+                  QStringLiteral("target=%1").arg(target.label));
+            continue;
+        }
         const ShellProtocol::DmabufCommitResult result =
             commitChromeDmabufTarget(gpu, target.label, frame,
                                      target.logicalSize, target.sourceRect,
                                      target.lockSurfaceId, &reason);
         if (result == ShellProtocol::DmabufCommitResult::Committed) {
             ++successCount;
+            storePopupSnapshot(target, QImage(),
+                               ShellProtocol::PopupTransport::Dmabuf);
             trace(QStringLiteral("target-committed"),
                   QStringLiteral("target=%1 size=%2x%3 source=%4,%5,%6x%7")
                       .arg(target.label)
@@ -12821,9 +13108,22 @@ bool ShellController::commitReadyChromeScene(
         gpu->abandonDmabufFrame(view, frame.slot);
         const QImage image = gpu->readbackCurrentFrame(view);
         if (!image.isNull()) {
-            for (const ChromeSceneTarget &target : targets) {
-                if (target.commitShm && target.commitShm(image)) {
+            for (ChromeSceneTarget target : targets) {
+                if (!target.commitShm)
+                    continue;
+                // T354: the fallback is a new content serial on the shm
+                // transport, so a late dmabuf frame cannot overwrite it.
+                if (target.popupOwner != ChromeSceneTarget::PopupOwner::None)
+                    target.popupContentSerial =
+                        nextPopupContentSerial(target.popupOwner);
+                if (!stagePopupTransaction(
+                        target, ShellProtocol::PopupTransport::SharedMemory)) {
+                    continue;
+                }
+                if (target.commitShm(image)) {
                     anyCommitted = true;
+                    storePopupSnapshot(
+                        target, image, ShellProtocol::PopupTransport::SharedMemory);
                     noteSurfacePath(target.label, QStringLiteral("shm"));
                 }
             }
@@ -13341,6 +13641,12 @@ void ShellController::renderDock()
         m_protocol->setDockPopupInputRects(popupInputRects);
         m_protocol->setDockPopupInputActive(popoverInputActive);
         m_protocol->setDockPopupGeometry(top, right, bottom, left, popover);
+        // T354: the same staged state joins the Dock popup transaction.
+        m_dockPopupTransaction.retarget(
+            static_cast<quint32>(m_dockPopupGeneration),
+            m_protocol->primaryOutputName(), popover, popover,
+            m_dockItem->property("activePopoverSurfaceRegions").toList(),
+            popupInputRects, popoverInputActive, monotonicMs());
         if (independentPopup) {
             // The popup view is sized by its content (grow-only for this
             // interaction session) instead of growing the strip scene. The
@@ -13366,7 +13672,9 @@ void ShellController::renderDock()
          [this, pw, ph, popupSource](const QImage &image) {
              return m_protocol->commitDockPopupImage(
                  image, QSize(pw, ph), popupSource);
-         }, 0, popupIsCurrent});
+         }, 0, popupIsCurrent, ChromeSceneTarget::PopupOwner::Dock,
+         static_cast<quint32>(m_dockPopupGeneration),
+         ++m_dockPopupContentSerial, !popoverOpen});
         }
     } else {
         m_protocol->hideDockPopup();
@@ -13429,7 +13737,9 @@ void ShellController::renderDock()
              [this, contentWidth, contentHeight, popupSource](const QImage &image) {
                  return m_protocol->commitDockPopupImage(
                      image, QSize(contentWidth, contentHeight), popupSource);
-             }, 0, popupIsCurrent});
+             }, 0, popupIsCurrent, ChromeSceneTarget::PopupOwner::Dock,
+             static_cast<quint32>(m_dockPopupGeneration),
+             ++m_dockPopupContentSerial, !popoverOpen});
         bool popupDeferred = false;
         commitChromeScene(m_dockWindow, popupTargets, &popupDeferred,
                           GpuChromeFrameProducer::PopupView);
@@ -13497,6 +13807,13 @@ void ShellController::render()
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
+    // T354: a generation change without a geometry request (scale/hotplug)
+    // still retargets the open transaction so its frames are not fenced out.
+    if (popupShown && m_menuOpen
+        && m_menuBarPopupTransaction.generation()
+            != static_cast<quint32>(m_menuBarPopupGeneration)) {
+        applyPopupGeometry();
+    }
     const auto popupIsCurrent = [this, generation = m_menuBarPopupGeneration]() {
         return generation == m_menuBarPopupGeneration;
     };
@@ -13566,7 +13883,9 @@ void ShellController::render()
                         [this, size = popupRect.size(), popupSource](const QImage &image) {
                             return m_protocol->commitPopupImage(
                                 image, size, popupSource);
-                        }, 0, popupIsCurrent});
+                        }, 0, popupIsCurrent, ChromeSceneTarget::PopupOwner::MenuBar,
+                        static_cast<quint32>(m_menuBarPopupGeneration),
+                        ++m_menuBarPopupContentSerial, !m_menuOpen});
     } else if (independentPopup) {
         m_menuBarPopupBudget.update(QSize(), outputSize, false,
                                     monotonicNs() / 1'000'000);
@@ -13613,7 +13932,9 @@ void ShellController::render()
              [this, contentWidth, contentHeight, popupSource](const QImage &image) {
                  return m_protocol->commitPopupImage(
                      image, QSize(contentWidth, contentHeight), popupSource);
-             }, 0, popupIsCurrent});
+             }, 0, popupIsCurrent, ChromeSceneTarget::PopupOwner::MenuBar,
+             static_cast<quint32>(m_menuBarPopupGeneration),
+             ++m_menuBarPopupContentSerial, !m_menuOpen});
         commitChromeScene(m_window, popupTargets, nullptr,
                           GpuChromeFrameProducer::PopupView);
         m_item->setX(0);

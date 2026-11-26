@@ -116,6 +116,12 @@ pub fn chrome_under(
         if !crate::shell::layer::above_windows(chrome.layer) {
             continue;
         }
+        // T354: a popup transaction owns its input policy independently of the
+        // retained visual. A closing popup still paints while it exits, but it
+        // must not intercept the pointer.
+        if !chrome.input_active {
+            continue;
+        }
         let origin = chrome.location + geometry.loc;
         // `under_from_surface_tree` takes the point relative to the surface
         // origin and returns the origin relative to `location`; pass (0,0)

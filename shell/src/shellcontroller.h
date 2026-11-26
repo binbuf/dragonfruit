@@ -47,6 +47,7 @@
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "osdmodel.h"
+#include "popupvisualtransaction.h"
 #include "polkitagent.h"
 #include "popuptarget.h"
 #include "settingsclient.h"
@@ -669,6 +670,12 @@ private:
         quintptr lockSurfaceId = 0;
         // A popup frame can finish after its owner closes or switches.
         std::function<bool()> isCurrent = {};
+        // T354: the popup presentation transaction this target belongs to.
+        enum class PopupOwner { None, MenuBar, Dock };
+        PopupOwner popupOwner = PopupOwner::None;
+        quint32 popupGeneration = 0;
+        quint32 popupContentSerial = 0;
+        bool popupClosing = false;
     };
     bool commitChromeScene(QQuickWindow *window,
                            const QList<ChromeSceneTarget> &targets,
@@ -1094,6 +1101,26 @@ private:
     void settleInitialState();
     // Stage the open dropdown's geometry for its next rendered frame.
     void applyPopupGeometry();
+    // T354: one owner for the popup's accepted visual transaction. The
+    // helpers fence a frame, send the wire transaction before the matching
+    // content commit, and release retained snapshots on close/cancel.
+    void openMenuBarPopupTransaction();
+    void dismissMenuBarPopupTransaction(int exitDurationMs);
+    void completeMenuBarPopupTransaction();
+    void openDockPopupTransaction();
+    void dismissDockPopupTransaction();
+    void completeDockPopupTransaction();
+    void cancelPopupTransactions(const QString &reason);
+    void armPopupSnapshotRelease();
+    void releaseExpiredPopupSnapshots();
+    bool stagePopupTransaction(const ChromeSceneTarget &target,
+                               ShellProtocol::PopupTransport transport);
+    void storePopupSnapshot(const ChromeSceneTarget &target, const QImage &image,
+                            ShellProtocol::PopupTransport transport);
+    quint32 nextPopupContentSerial(ChromeSceneTarget::PopupOwner owner);
+    ShellProtocol::PopupTransactionState popupTransactionState(
+        const PopupVisualTransaction &transaction,
+        ShellProtocol::PopupPhase phase, quint32 retainMs) const;
     // Mark the menu-bar producer dirty. The producer's pacer renders on the
     // next eligible presentation (or the next event-loop turn when no frame
     // callback is in flight), coalescing repeated requests.
@@ -1680,6 +1707,15 @@ private:
     int m_dockItemOffsetX = 0;
     int m_dockItemOffsetY = 0;
     quint64 m_dockPopupGeneration = 0;
+    // T354: one presentation-transaction owner per popup surface. It joins
+    // the accepted content with its generation, output, crop/paint extents,
+    // material regions and input policy, and retains the exit snapshot for the
+    // compositor's bounded lifetime.
+    PopupVisualTransaction m_dockPopupTransaction;
+    PopupVisualTransaction m_menuBarPopupTransaction;
+    quint32 m_dockPopupContentSerial = 0;
+    quint32 m_menuBarPopupContentSerial = 0;
+    QTimer *m_popupSnapshotTimer = nullptr;
     // Content-sized scene margins for the current overlay interaction session
     // (reliability §12). The budget grows as a popover or hover label needs
     // space and is released when the pointer, keyboard focus, and overlay all

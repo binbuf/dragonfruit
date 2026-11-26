@@ -16,6 +16,7 @@
 
 pub mod layer;
 pub mod menubar;
+pub mod popup;
 pub mod trust;
 
 use std::collections::HashMap;
@@ -46,17 +47,19 @@ use crate::workspace::{SpaceId, Wallpaper, WallpaperFit};
 
 use layer::{aggregate_reserved_for, Edge, KeyboardInteraction, LayerSurfaceState};
 use menubar::{menu_bar_visible, AutoHideMode, MenuBarVisibility, MENU_BAR_REVEAL_HEIGHT};
+use popup::{PopupPhase, PopupRequest, PopupTransaction, PopupTransport};
 use trust::{Refusal, TrustModel, TrustedRole};
 
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_shell` is version 4 since the menu-bar `set_auto_hide` request was
-/// added (T201); version 3 added the multi-region `df_layer_surface` requests,
-/// and version 2 added `df_layer_surface.set_panel_rect` (T-14.7b). A Wayland
-/// new_id gets its version from the parent object's version, so the factory
-/// bumps in tandem with its child interface.
-const SHELL_INTERFACE_VERSION: u32 = 4;
+/// `df_shell` is version 5 since the popup presentation transaction was added
+/// (T354); version 4 added the menu-bar `set_auto_hide` request (T201); version
+/// 3 added the multi-region `df_layer_surface` requests, and version 2 added
+/// `df_layer_surface.set_panel_rect` (T-14.7b). A Wayland new_id gets its
+/// version from the parent object's version, so the factory bumps in tandem
+/// with its child interface.
+const SHELL_INTERFACE_VERSION: u32 = 5;
 
 /// `df_toplevel_manager` is version 17 since the T335b live screen-share
 /// messages (`create_screencast`/`destroy_screencast` and the
@@ -120,6 +123,12 @@ struct LayerEntry {
     /// `wl_surface.commit` advances it, so the compositor can name the exact
     /// content a frame presented instead of the newest commit at vblank.
     commit_generation: u64,
+    /// Popup presentation transaction (T354). `None` until the client sends
+    /// its first transaction; legacy clients keep the pre-T354 behavior.
+    popup: PopupTransaction,
+    /// The popup transaction staged by `set_popup_transaction` and latched on
+    /// the next commit with the pixels it describes.
+    pending_popup: Option<PopupRequest>,
 }
 
 /// One material region after placement on an output (T197).
@@ -174,6 +183,13 @@ pub struct ChromeSurface {
     pub commit_generation: u64,
     /// Keyboard-interaction policy (`df_layer_surface.set_keyboard_interaction`).
     pub keyboard: KeyboardInteraction,
+    /// The input policy of the accepted popup transaction (T354). A legacy
+    /// surface is always input-active; a closing transaction releases input
+    /// independently of the retained visual.
+    pub input_active: bool,
+    /// The accepted popup snapshot, for the compositor's retained exit and
+    /// the T355 animation. `None` for legacy clients and non-popup chrome.
+    pub popup: Option<popup::PopupSnapshot>,
 }
 
 /// The compositor's private-shell-protocol state.
@@ -316,6 +332,13 @@ impl ShellProtocolState {
             .sessions
             .remove(client)
             .and_then(|session| session.role);
+        // T354: a disconnected shell must not leave a retained popup snapshot
+        // (or an imported GPU texture) behind.
+        for entry in self.layers.iter_mut() {
+            if entry.client == *client && entry.popup.release("disconnect") {
+                log_popup_release(&entry.state.namespace, entry.popup.take_release());
+            }
+        }
         // Chrome surfaces owned by the client no longer reserve zones.
         self.layers.retain(|entry| entry.client != *client);
         role
@@ -476,6 +499,45 @@ fn surface_has_buffer(surface: &WlSurface) -> bool {
     })
 }
 
+/// The transport of the buffer attached to the next commit (T354).
+///
+/// This mirrors the T353 chrome-import classification: a dmabuf import is
+/// `Dmabuf`, an shm buffer is `Shm`, and a transaction-only commit (no new
+/// buffer) is `None`.
+fn surface_buffer_transport(surface: &WlSurface) -> PopupTransport {
+    use smithay::wayland::compositor::{BufferAssignment, SurfaceAttributes};
+    smithay::wayland::compositor::with_states(surface, |states| {
+        let mut guard = states.cached_state.get::<SurfaceAttributes>();
+        let attrs = guard.current();
+        match attrs.buffer.as_ref() {
+            Some(BufferAssignment::NewBuffer(buffer)) => {
+                if smithay::wayland::dmabuf::get_dmabuf(buffer).is_ok() {
+                    PopupTransport::Dmabuf
+                } else if smithay::wayland::shm::with_buffer_contents(buffer, |_, _, _| ()).is_ok()
+                {
+                    PopupTransport::Shm
+                } else {
+                    PopupTransport::None
+                }
+            }
+            _ => PopupTransport::None,
+        }
+    })
+}
+
+/// Trace a released retained popup snapshot (T354).
+fn log_popup_release(namespace: &str, release: Option<popup::PopupRelease>) {
+    if let Some(release) = release {
+        crate::trace::log(
+            "popup-snapshot",
+            &format!(
+                "surface={namespace} gen={} serial={} released=1 reason={}",
+                release.generation, release.content_serial, release.reason
+            ),
+        );
+    }
+}
+
 // --- DfState integration ---------------------------------------------------
 
 impl DfState {
@@ -547,6 +609,11 @@ impl DfState {
     /// kept as `reserved`/`reserved_zones`, the fallback for an output that
     /// has not been resolved yet.
     pub fn refresh_reserved_zones(&mut self) {
+        // T354: the periodic maintenance path also retires an expired retained
+        // popup snapshot even if the shell stopped submitting frames.
+        if self.expire_popup_transactions() {
+            self.needs_redraw = true;
+        }
         let names: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
         let focus_output = self.shell.chrome_focus_output.clone();
         let mut per_output: HashMap<String, ReservedZones> = HashMap::new();
@@ -593,6 +660,15 @@ impl DfState {
     }
 
     pub(crate) fn commit_chrome_panel(&mut self, surface: &WlSurface) -> Option<(String, u64)> {
+        // T354: resolve the owning output before the mutable layer borrow; the
+        // popup transaction records its output-local committed geometry.
+        let output_name = self
+            .shell
+            .layers
+            .iter()
+            .find(|entry| entry.surface == *surface)
+            .and_then(|entry| entry.state.output.clone());
+        let output_geometry = self.layer_output_geometry(&output_name);
         if let Some(entry) = self
             .shell
             .layers
@@ -611,6 +687,90 @@ impl DfState {
                 entry.state.panel_rect = Some(rect);
                 entry.state.panel_regions = None;
             }
+            // T354: latch the popup transaction with the pixels it describes.
+            // The buffer transport is classified before Smithay consumes the
+            // attachment; a declared/actual mismatch is the documented shm
+            // fallback or a transport switch, fenced by the content serial.
+            let now_ms = crate::trace::now_ms();
+            let actual_transport = surface_buffer_transport(&entry.surface);
+            if let Some(request) = entry.pending_popup.take() {
+                let outcome = entry.popup.apply(request, actual_transport, now_ms);
+                let (accepted, reason) = match outcome {
+                    popup::PopupOutcome::Accepted => (true, "none"),
+                    popup::PopupOutcome::Rejected(reject) => (false, reject.name()),
+                };
+                let mut geometry = Rectangle::default();
+                let mut paint = Rectangle::default();
+                if accepted {
+                    if let Some(output_geometry) = output_geometry {
+                        let placed = entry.state.geometry(output_geometry);
+                        geometry = Rectangle::new(
+                            (
+                                placed.loc.x - output_geometry.loc.x,
+                                placed.loc.y - output_geometry.loc.y,
+                            )
+                                .into(),
+                            placed.size,
+                        );
+                        paint = geometry;
+                    }
+                    let regions = entry
+                        .state
+                        .panel_regions
+                        .as_ref()
+                        .map_or(0, |regions| regions.len());
+                    entry
+                        .popup
+                        .set_committed(entry.state.output.clone(), geometry, paint, regions);
+                }
+                let snapshot = entry.popup.snapshot();
+                let (current_generation, current_serial) = snapshot
+                    .map(|snapshot| (snapshot.generation, snapshot.content_serial))
+                    .unwrap_or((0, 0));
+                // The switch describes this request, not the previously
+                // accepted snapshot; a rejected frame must not borrow its
+                // predecessor's transport state.
+                let transport_switch = accepted
+                    && request.transport != PopupTransport::None
+                    && actual_transport != PopupTransport::None
+                    && request.transport != actual_transport;
+                crate::trace::log(
+                    "popup-transaction",
+                    &format!(
+                        "surface={} gen={} serial={} phase={} declared={} actual={} \
+                         switch={} input={} accepted={} reason={} current_gen={} \
+                         current_serial={} geometry={},{},{},{} regions={} output={}",
+                        entry.state.namespace,
+                        request.generation,
+                        request.content_serial,
+                        request.phase.name(),
+                        request.transport.name(),
+                        actual_transport.name(),
+                        u8::from(transport_switch),
+                        u8::from(entry.popup.input_active()),
+                        u8::from(accepted),
+                        reason,
+                        current_generation,
+                        current_serial,
+                        geometry.loc.x,
+                        geometry.loc.y,
+                        geometry.size.w,
+                        geometry.size.h,
+                        entry
+                            .state
+                            .panel_regions
+                            .as_ref()
+                            .map_or(0, |regions| regions.len()),
+                        entry.state.output.as_deref().unwrap_or("-"),
+                    ),
+                );
+            }
+            // A retained snapshot whose declared lifetime elapsed is released
+            // even if the shell stopped submitting frames.
+            entry.popup.expire(now_ms);
+            // A superseded reopen, a completion and an expiry all leave one
+            // release record for the trace.
+            log_popup_release(&entry.state.namespace, entry.popup.take_release());
             // T353: every commit advances the surface's generation. The
             // compositor trace and the presentation snapshot use it to name
             // the exact content a frame composited.
@@ -618,6 +778,30 @@ impl DfState {
             return Some((entry.state.namespace.clone(), entry.commit_generation));
         }
         None
+    }
+
+    /// Release every retained popup snapshot that belongs to a detached
+    /// output. Called from the output-removal path so a hotplug cannot leave
+    /// an imported buffer or a retained shm frame behind.
+    pub fn release_popup_transactions_on_output(&mut self, output_name: &str) {
+        for entry in self.shell.layers.iter_mut() {
+            if entry.popup.release_for_output(output_name) {
+                log_popup_release(&entry.state.namespace, entry.popup.take_release());
+            }
+        }
+    }
+
+    /// Expire retained popup snapshots on the periodic maintenance path.
+    pub fn expire_popup_transactions(&mut self) -> bool {
+        let now_ms = crate::trace::now_ms();
+        let mut changed = false;
+        for entry in self.shell.layers.iter_mut() {
+            if entry.popup.expire(now_ms) {
+                log_popup_release(&entry.state.namespace, entry.popup.take_release());
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// Output geometry for a chrome surface's target output.
@@ -779,6 +963,8 @@ impl DfState {
                     namespace: entry.state.namespace.clone(),
                     commit_generation: entry.commit_generation,
                     keyboard: entry.state.keyboard,
+                    input_active: entry.popup.input_active(),
+                    popup: entry.popup.snapshot().cloned(),
                 }
             })
             .collect();
@@ -2392,6 +2578,8 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                     pending_panel_rect: None,
                     pending_panel_regions: None,
                     commit_generation: 0,
+                    popup: PopupTransaction::default(),
+                    pending_popup: None,
                     state: LayerSurfaceState {
                         layer: layer_value,
                         namespace,
@@ -2548,6 +2736,32 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                 df_layer_surface::Request::ClearPanelRegions => {
                     entry.pending_panel_regions = Some(Vec::new());
                 }
+                df_layer_surface::Request::SetPopupTransaction {
+                    generation,
+                    content_serial,
+                    phase,
+                    transport,
+                    input_active,
+                    retain_ms,
+                } => {
+                    // T354: stage the transaction; it latches on the next
+                    // commit with the pixels it describes.
+                    entry.pending_popup = Some(PopupRequest {
+                        generation,
+                        content_serial,
+                        phase: PopupPhase::from_wire(
+                            phase.into_result().map(|value| value as u32).unwrap_or(0),
+                        ),
+                        transport: PopupTransport::from_wire(
+                            transport
+                                .into_result()
+                                .map(|value| value as u32)
+                                .unwrap_or(0),
+                        ),
+                        input_active: input_active != 0,
+                        retain_ms,
+                    });
+                }
                 df_layer_surface::Request::SetAutoHide { mode } => {
                     // T201: only the menu bar consumes the auto-hide policy.
                     // A different namespace is ignored rather than silently
@@ -2596,6 +2810,18 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
             .iter()
             .find(|entry| entry.resource == *resource)
             .is_some_and(|entry| focused.as_ref() == Some(&entry.surface));
+        // T354: a destroyed popup surface releases its retained snapshot even
+        // when the client connection itself stays alive.
+        if let Some(entry) = state
+            .shell
+            .layers
+            .iter_mut()
+            .find(|entry| entry.resource == *resource)
+        {
+            if entry.popup.release("destroyed") {
+                log_popup_release(&entry.state.namespace, entry.popup.take_release());
+            }
+        }
         state
             .shell
             .layers

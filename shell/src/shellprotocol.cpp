@@ -506,6 +506,61 @@ void ShellProtocol::setPopupInputActive(bool active)
     m_popupFrame.next.inputActive = active;
 }
 
+static uint32_t popupPhaseWire(ShellProtocol::PopupPhase phase)
+{
+    switch (phase) {
+    case ShellProtocol::PopupPhase::Retarget:
+        return DF_LAYER_SURFACE_POPUP_PHASE_RETARGET;
+    case ShellProtocol::PopupPhase::Closing:
+        return DF_LAYER_SURFACE_POPUP_PHASE_CLOSING;
+    case ShellProtocol::PopupPhase::Complete:
+        return DF_LAYER_SURFACE_POPUP_PHASE_COMPLETE;
+    case ShellProtocol::PopupPhase::Cancel:
+        return DF_LAYER_SURFACE_POPUP_PHASE_CANCEL;
+    case ShellProtocol::PopupPhase::Open:
+        break;
+    }
+    return DF_LAYER_SURFACE_POPUP_PHASE_OPEN;
+}
+
+static uint32_t popupTransportWire(ShellProtocol::PopupTransport transport)
+{
+    switch (transport) {
+    case ShellProtocol::PopupTransport::SharedMemory:
+        return DF_LAYER_SURFACE_POPUP_TRANSPORT_SHM;
+    case ShellProtocol::PopupTransport::Dmabuf:
+        return DF_LAYER_SURFACE_POPUP_TRANSPORT_DMABUF;
+    case ShellProtocol::PopupTransport::None:
+        break;
+    }
+    return DF_LAYER_SURFACE_POPUP_TRANSPORT_NONE;
+}
+
+static bool sendPopupTransaction(df_layer_surface *layer,
+                                 const ShellProtocol::PopupTransactionState &state,
+                                 wl_display *display)
+{
+    if (!layer)
+        return false;
+    // Older compositors keep the pre-T354 geometry/material/input contract.
+    if (df_layer_surface_get_version(layer)
+        < DF_LAYER_SURFACE_SET_POPUP_TRANSACTION_SINCE_VERSION) {
+        return false;
+    }
+    df_layer_surface_set_popup_transaction(
+        layer, state.generation, state.contentSerial, popupPhaseWire(state.phase),
+        popupTransportWire(state.transport), state.inputActive ? 1u : 0u,
+        state.retainMs);
+    if (display)
+        wl_display_flush(display);
+    return true;
+}
+
+bool ShellProtocol::setPopupTransaction(const PopupTransactionState &state)
+{
+    return sendPopupTransaction(m_popupLayer, state, m_display);
+}
+
 void ShellProtocol::dismissPopupInput()
 {
     dismissPopupInput(m_popupSurface, m_popupFrame);
@@ -2800,6 +2855,11 @@ void ShellProtocol::setDockPopupInputActive(bool active)
 void ShellProtocol::dismissDockPopupInput()
 {
     dismissPopupInput(m_dockPopupSurface, m_dockPopupFrame);
+}
+
+bool ShellProtocol::setDockPopupTransaction(const PopupTransactionState &state)
+{
+    return sendPopupTransaction(m_dockPopupLayer, state, m_display);
 }
 
 bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize,

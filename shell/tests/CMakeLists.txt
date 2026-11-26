@@ -248,6 +248,26 @@ set_tests_properties(tst_dockcore PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Popup visual transaction and lifetime owner (T354). Pure; no Wayland, QML, or
+# compositor. Covers stale/superseded frames, closing snapshots, input release,
+# content changes, output removal, both transports and the bounded release.
+qt_add_executable(tst_popupvisualtransaction
+    tst_popupvisualtransaction.cpp
+)
+target_link_libraries(tst_popupvisualtransaction PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_popupvisualtransaction
+    COMMAND tst_popupvisualtransaction
+)
+set_tests_properties(tst_popupvisualtransaction PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Qt platform-plugin lookup (T342): the shell's Wayland-QPA availability check
 # and the offscreen fallback decision. Pure filesystem/environment logic; no
 # plugin is loaded and no display is required.

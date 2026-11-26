@@ -212,6 +212,21 @@ frame can still update the strip. Unmapping clears the previous-buffer
 comparison so reopening the same popup always attaches a buffer. See
 [ADR 0294](adr/0294-shell-popup-frame-lifecycle.md).
 
+**Popup visual transaction (T354).** One `PopupVisualTransaction` per popup
+surface now owns the accepted content and its lifetime. It joins the
+generation, owning output, crop/paint extents, material regions and input
+policy, and fences a late GPU frame or a dmabuf→shm transport switch by a
+monotonic content serial. The shell sends the matching
+`df_layer_surface.set_popup_transaction` immediately before the content
+commit. `closing` releases input at once and freezes the visual; `complete`
+keeps it for the documented 750 ms window; `cancel`, output removal, surface
+destruction and client disconnect release it. The retained shm frame is an
+implicitly shared `QImage`; the compositor owns the imported texture. A client
+that never sends the request keeps the legacy whole-surface input policy and
+no retained snapshot. Compositor animation is T355, the attached menu chain is
+T356, and the remaining popup families are T361. See
+[ADR 0365](adr/0365-popup-visual-transaction.md).
+
 **Menu Bar popup footprints (T352).** The menu-bar popup publishes one settled
 snapshot. `dropdownX/Y/Width/Height` is the card coverage used for placement;
 `dropdownPaintRect` adds the full QML `Shadow` reach; `dropdownCropRect` clamps

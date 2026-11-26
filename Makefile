@@ -301,7 +301,7 @@ verify-fast: gate-checks
 # since T350; the Dock chooser footprint reproducers are expected to fail
 # until T351 flips its manifest rows. No native seat or GPU is required, so
 # this target runs in either evidence case.
-CHROME_QT_RE := ^(tst_design_system|tst_menubar|tst_dock|tst_chromescale|tst_chromebufferpool|tst_chromestats|tst_gpucapabilities|tst_dmabufcommit|tst_chromeframeproducer|tst_chromepointer|tst_chromepointerui|tst_materialpolicy|tst_notifications|tst_controlcenter|tst_osd|tst_chooserui|tst_windowmenu)$$
+CHROME_QT_RE := ^(tst_design_system|tst_menubar|tst_dock|tst_chromescale|tst_chromebufferpool|tst_chromestats|tst_gpucapabilities|tst_dmabufcommit|tst_chromeframeproducer|tst_chromepointer|tst_chromepointerui|tst_materialpolicy|tst_notifications|tst_controlcenter|tst_osd|tst_chooserui|tst_windowmenu|tst_popupvisualtransaction)$$
 verify-chrome-stability: build
 	$(MAKE) glass-presets-check
 	$(MAKE) glass-shader-test
@@ -319,6 +319,7 @@ verify-chrome-stability: build
 	    --test animation_clock \
 	    --test latency_trace -- --test-threads=1
 	$(CARGO) test -p dragonfruit-compositor --lib presentation_trace
+	$(CARGO) test -p dragonfruit-compositor --bin dragonfruit-compositor shell::popup
 	python3 tests/chrome-stability/test_fixture_manifest.py
 	python3 tests/chrome-stability/test_presentation_trace.py
 	python3 tests/chrome-stability/run_fixtures.py

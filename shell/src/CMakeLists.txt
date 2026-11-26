@@ -133,6 +133,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     polkitsession.cpp
     popuptarget.cpp
     popuptarget.h
+    popupvisualtransaction.cpp
+    popupvisualtransaction.h
     qpaplatform.cpp
     qpaplatform.h
     screencastbridge.cpp

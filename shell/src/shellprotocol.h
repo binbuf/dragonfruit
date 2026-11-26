@@ -139,6 +139,23 @@ public:
     void setPopupInputActive(bool active);
     void dismissPopupInput();
 
+    // T354: one commit-latched popup presentation transaction. It joins the
+    // next content commit to `generation`/`contentSerial`, declares the content
+    // transport, owns the input policy, and bounds the retained visual. The
+    // request is a no-op against a pre-v5 compositor, so the existing geometry,
+    // material and input requests remain the legacy path.
+    enum class PopupPhase { Open, Retarget, Closing, Complete, Cancel };
+    enum class PopupTransport { None, SharedMemory, Dmabuf };
+    struct PopupTransactionState {
+        quint32 generation = 0;
+        quint32 contentSerial = 0;
+        PopupPhase phase = PopupPhase::Open;
+        PopupTransport transport = PopupTransport::None;
+        bool inputActive = false;
+        quint32 retainMs = 0;
+    };
+    bool setPopupTransaction(const PopupTransactionState &state);
+
     // Attach `image` to the popup surface and commit. The image must be
     // ARGB32(_Premultiplied). `logicalSize` is the surface contract; the image
     // may be a physical-size buffer mapped by buffer scale/viewport (T-21.1b).
@@ -182,6 +199,9 @@ public:
     void setDockPopupInputRects(const QList<QRect> &rects);
     void setDockPopupInputActive(bool active);
     void dismissDockPopupInput();
+    // T354: the Dock popup's transaction, with the same contract as the
+    // menu-bar popup.
+    bool setDockPopupTransaction(const PopupTransactionState &state);
 
     // Attach `image` to the Dock popup surface and commit.
     bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize(),

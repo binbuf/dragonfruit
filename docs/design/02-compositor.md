@@ -613,8 +613,23 @@ feather fallback (`Minimal`, unsupported DRM, or any backend without a scene
 texture) uses the same token, so the approximation and the GPU path cannot
 drift.
 
-`DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;
-`Reduced` = blur + specular + tint with the generic edge lens dropped and the
+**Popup presentation transaction (T354).** A popup's placement, material,
+input and content are joined by `df_layer_surface.set_popup_transaction`
+(since v5) and latched on the same `wl_surface.commit` as the pixels. The
+compositor keeps one `PopupTransaction` per chrome surface: generation,
+content serial, lifecycle phase, declared/actual transport, owning output,
+output-local geometry, material-region count and the input policy. A lower
+generation or serial is stale; a geometry retarget after closing is superseded;
+a declared dmabuf frame that actually commits shm is the documented fallback,
+still fenced by the serial. `closing` drops input independently of the visual,
+`complete` keeps the retained snapshot until the client's clamped `retain_ms`,
+and `cancel`, output removal, surface destruction or client disconnect release
+it at once. Legacy clients (no request) keep the whole-surface input policy and
+no retained snapshot. The retained record is the input to the T355 compositor
+animation; the remaining popup families are T361. See
+[ADR 0365](adr/0365-popup-visual-transaction.md).
+
+`DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;`Reduced` = blur + specular + tint with the generic edge lens dropped and the
 blur radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the
 flat feather fallback (no glass). The measured flat-band corner lens is not the
 generic edge pass: persistent Dock/Quick Settings roles resolve to `Reduced`
