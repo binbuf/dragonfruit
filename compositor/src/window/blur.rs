@@ -1409,6 +1409,10 @@ pub struct BackdropBlurElement {
     /// Mutually exclusive with `glass`; the sharp path uses this to paint the
     /// depth LUT over the live scene.
     veil: Option<(crate::window::menubar_veil::VeilSpec, GlesTexProgram)>,
+    /// The group alpha for a popup's compositor-owned outer transition
+    /// (T355). It is applied to the material exactly like the accepted
+    /// content, so the backdrop cannot outlive a fading card.
+    alpha: f32,
 }
 
 impl BackdropBlurElement {
@@ -1434,7 +1438,16 @@ impl BackdropBlurElement {
             scale,
             glass: None,
             veil: None,
+            alpha: 1.0,
         }
+    }
+
+    /// Apply the group alpha for a popup's compositor-owned outer transition
+    /// (T355). The material and the accepted content share one alpha, so the
+    /// backdrop is part of the same contribution.
+    pub fn with_alpha(mut self, alpha: f32) -> Self {
+        self.alpha = alpha.clamp(0.0, 1.0);
+        self
     }
 
     /// Draw one full panel rect instead of the integer rounded spans. The
@@ -1534,7 +1547,7 @@ impl Element for BackdropBlurElement {
     }
 
     fn alpha(&self) -> f32 {
-        1.0
+        self.alpha
     }
 
     fn kind(&self) -> Kind {
@@ -1617,7 +1630,7 @@ impl<R: TextureRenderer> RenderElement<R> for BackdropBlurElement {
                 &span_damage,
                 program,
                 uniforms,
-                1.0,
+                self.alpha,
             )?;
         }
         Ok(())

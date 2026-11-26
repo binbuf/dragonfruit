@@ -752,6 +752,132 @@ Item {
             }
         }
 
+        // --- T355: compositor-owned chooser group motion --------------------
+
+        // The accepted chooser texture is one group. On the closing edge the
+        // shell keeps the settled texture at full opacity/scale for one
+        // commit; the compositor applies the outer transition. QML must not
+        // fade it independently, and the paint extent must still cover the
+        // full arrow tip and shadow reach.
+        function test_chooser_compositor_motion_keeps_the_settled_texture_through_the_closing_frame() {
+            var dock = make(dockComponent, {
+                x: 0, y: 420, width: 800, height: 160,
+                compositorPopupMotion: true,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            verify(chooser !== null && chooser.open);
+            var settledPaint = dock.popoverRect;
+            var settledCard = dock.activePopoverCardRect;
+            var settled = grabImage(stage);
+            var bodyX = Math.round(dock.x + settledCard.x + settledCard.w / 2);
+            var bodyY = Math.round(dock.y + settledCard.y + settledCard.h / 2);
+            var bodyColor = settled.pixel(bodyX, bodyY);
+
+            dock.popupClosingFrame = true;
+            chooser.open = false;
+            waitForRendering(stage);
+
+            compare(chooser.opacity, 1.0,
+                    "the compositor owns the group opacity, not QML");
+            compare(chooser.scale, 1.0,
+                    "the compositor owns the group scale, not QML");
+            var closingPaint = dock.popoverRect;
+            compare(closingPaint.x, settledPaint.x,
+                    "the closing frame keeps the accepted paint x");
+            compare(closingPaint.y, settledPaint.y,
+                    "the closing frame keeps the accepted paint y");
+            compare(closingPaint.w, settledPaint.w,
+                    "the closing frame keeps the accepted paint width");
+            compare(closingPaint.h, settledPaint.h,
+                    "the closing frame keeps the accepted paint height");
+            var closing = grabImage(stage);
+            verify(nearColor(closing, bodyX, bodyY, bodyColor, 0.01),
+                   "the settled card texture is unchanged for the closing commit");
+            verify(!dock.popoverInputActive,
+                   "the closing edge releases input independently of the visual");
+            // Full arrow/shadow reach is still part of the accepted group.
+            verify(closingPaint.y + closingPaint.h + 0.01
+                   >= settledCard.y + settledCard.h + dock.popoverArrowTip,
+                   "the closing paint covers the rotated arrow tip");
+            verify(closingPaint.x <= settledCard.x - dock.popoverShadowLeft + 0.01,
+                   "the closing paint covers the left shadow reach");
+            verify(closingPaint.x + closingPaint.w + 0.01
+                   >= settledCard.x + settledCard.w + dock.popoverShadowRight,
+                   "the closing paint covers the right shadow reach");
+            saveShot(stage, "t355-chooser-closing-frame.png");
+            dock.popupClosingFrame = false;
+            dock.closePopovers();
+        }
+
+        function test_chooser_compositor_motion_reduced_motion_is_zero_duration() {
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                compositorPopupMotion: true,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            compare(dock.popoverExitDuration, 0,
+                    "reduced motion uses the zero-duration token");
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            verify(chooser !== null && chooser.open);
+            compare(chooser.opacity, 1.0,
+                    "reduced motion still commits the settled accepted texture");
+            dock.closePopovers();
+            Theme.reducedMotion = false;
+        }
+
+        function test_chooser_compositor_motion_quick_reopen_during_the_closing_frame() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                compositorPopupMotion: true,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            dock.popupClosingFrame = true;
+            chooser.open = false;
+            waitForRendering(stage);
+            verify(!dock.popoverInputActive, "the closing edge released input");
+
+            // Reopen while the compositor-owned tail is still live. The shell
+            // must retarget the same surface, not wait for an unmap.
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            verify(chooser.open, "the chooser reopens during the closing tail");
+            verify(dock.popoverInputActive,
+                   "a reopen restores input on the same accepted surface");
+            verify(dock.popoverRect.w > 0 && dock.popoverRect.h > 0,
+                   "the reopened chooser keeps a valid paint extent");
+            dock.popupClosingFrame = false;
+            dock.closePopovers();
+        }
+
+        function test_chooser_qml_motion_diagnostic_keeps_the_fade() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                compositorPopupMotion: false,
+                entries: [ multiWindow("files", "Files", windowList("w", 2)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            verify(chooser !== null && chooser.open);
+            wait(Theme.motion.popupOpen.duration + 80);
+            compare(chooser.opacity, 1.0, "the QML path opens settled");
+            dock.closePopovers();
+            // The legacy path fades in QML; after the close token the item is
+            // invisible, which is the behaviour the compositor path replaces.
+            wait(Theme.motion.popupClose.duration + 80);
+            verify(chooser.opacity < 0.01,
+                   "the diagnostic QML path still fades to zero");
+        }
+
         // --- Menu silhouettes on a patterned underlay -----------------------
 
         // A checkerboard makes transparent corners observable: a square

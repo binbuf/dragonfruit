@@ -720,6 +720,7 @@ private:
     // ends; `shared` keeps the previous one-scene path.
     void releaseDockPopupTarget();
     void releaseMenuBarPopupTarget();
+    void finishDockPopupExit();
     // T352: complete the menu-bar popup exit. A reduced-motion or otherwise
     // zero-duration exit unmaps immediately; a normal exit runs when its
     // matching visual tail ends instead of a fixed frost tail.
@@ -1731,6 +1732,20 @@ private:
     QSize m_menuBarPopupTargetSize;
     QTimer *m_dockPopupReleaseTimer = nullptr;
     QTimer *m_menuBarPopupReleaseTimer = nullptr;
+    // T355: the compositor owns the Dock chooser's outer transition. The
+    // closing commit latches the accepted texture, then the shell stops
+    // submitting popup frames and keeps the surface mapped until the
+    // compositor's token has elapsed. A zero-duration/reduced-motion exit
+    // completes immediately.
+    QTimer *m_dockPopupExitTimer = nullptr;
+    bool m_dockPopupClosing = false;
+    bool m_dockPopupClosingCommitted = false;
+    bool m_dockPopupCompositorMotionRequested = true;
+    bool m_dockPopupCompositorMotion = true;
+    // The pilot surface is the window chooser; other Dock popovers keep their
+    // QML motion. Retained across the close edge so the closing commit still
+    // opts in.
+    bool m_dockPopupChooser = false;
     // T238: one correlation trace per Dock popover opening, from the
     // `popoverChanged` signal to the first presented frame callback.
     bool m_dockPopoverWasOpen = false;

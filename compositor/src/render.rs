@@ -33,6 +33,7 @@ use wayland_server::Resource;
 use crate::material_preset::{Preset, RenderMode, Rollout};
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
+use crate::shell::popup_motion;
 use crate::window::{
     backdrop_elements_with_corners, is_backdrop_panel, shadow_elements_outside_bounds, BlurSpec,
     CornerRadii, DegradeTier, DockOptics, GlassSpec, MaterialRole, PanelKey, RegionFilter,
@@ -159,7 +160,8 @@ pub fn chrome_render_elements<R, E>(
 where
     R: Renderer + ImportAll,
     R::TextureId: Clone + 'static,
-    E: From<WaylandSurfaceRenderElement<R>>,
+    E: From<WaylandSurfaceRenderElement<R>>
+        + From<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
 {
     let Some(geometry) = state.space.output_geometry(output) else {
         return Vec::new();
@@ -179,14 +181,45 @@ where
         // T233: the menu bar's measured reveal slides the whole surface
         // (including its veil) while input stays on the top strip.
         let location = (chrome.location + chrome.render_offset).to_physical_precise_round(scale);
-        elements.extend(render_elements_from_surface_tree::<R, E>(
-            renderer,
-            &chrome.surface,
-            location,
-            scale,
-            1.0,
-            Kind::Unspecified,
-        ));
+        // T355: the accepted popup contribution is transformed and faded as
+        // one group. The scale is about the committed paint extent's bottom
+        // edge, so the card, arrow, mask, rim and QML shadow stay rigid. The
+        // material panels below use the same frame and alpha
+        // (`chrome_blur_panels`), so content and backdrop cannot fade
+        // independently.
+        if let Some(motion) = chrome.popup_motion {
+            if motion.completed && motion.alpha <= f32::EPSILON {
+                continue;
+            }
+            let origin = popup_motion::bottom_center_physical(chrome.geometry, scale);
+            let group_scale = smithay::utils::Scale::from((motion.scale, motion.scale));
+            let surface_elements: Vec<WaylandSurfaceRenderElement<R>> =
+                render_elements_from_surface_tree::<R, WaylandSurfaceRenderElement<R>>(
+                    renderer,
+                    &chrome.surface,
+                    location,
+                    scale,
+                    motion.alpha,
+                    Kind::Unspecified,
+                );
+            for element in surface_elements {
+                let scaled = RescaleRenderElement::from_element(element, origin, group_scale);
+                elements.push(E::from(RelocateRenderElement::from_element(
+                    scaled,
+                    smithay::utils::Point::<i32, smithay::utils::Physical>::from((0, 0)),
+                    Relocate::Relative,
+                )));
+            }
+        } else {
+            elements.extend(render_elements_from_surface_tree::<R, E>(
+                renderer,
+                &chrome.surface,
+                location,
+                scale,
+                1.0,
+                Kind::Unspecified,
+            ));
+        }
     }
     elements
 }
@@ -316,7 +349,33 @@ pub fn chrome_backdrop_render_elements(
                     let corners = region.corners.unwrap_or_else(|| {
                         CornerRadii::uniform(spec.radius.round().max(0.0) as i32)
                     });
-                    Some((region.rect, spec, corners))
+                    // T355: the feather backdrop is part of the same popup
+                    // group. Scale its rect and rim radii about the paint
+                    // extent's bottom edge and fade it with the one group
+                    // alpha, so the material cannot outlive a shrinking card.
+                    if let Some(motion) = chrome.popup_motion {
+                        let rect = popup_motion::scale_rect_about_bottom(
+                            region.rect,
+                            chrome.geometry,
+                            motion.scale,
+                        );
+                        let radius = |value: i32| {
+                            (f64::from(value.max(0)) * motion.scale).round() as i32
+                        };
+                        let corners = CornerRadii {
+                            top_left: radius(corners.top_left),
+                            top_right: radius(corners.top_right),
+                            bottom_right: radius(corners.bottom_right),
+                            bottom_left: radius(corners.bottom_left),
+                        };
+                        let mut spec = spec;
+                        spec.opacity *= motion.alpha;
+                        spec.radius *= motion.scale as f32;
+                        spec.blur *= motion.scale as f32;
+                        Some((rect, spec, corners))
+                    } else {
+                        Some((region.rect, spec, corners))
+                    }
                 })
         })
         .collect();
@@ -686,15 +745,52 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             } else {
                 PanelKey::for_region(&chrome.namespace, chrome.layer, surface_id, &region.key)
             };
+            // T355: a popup's sampled material is part of the same group as
+            // its accepted content. The visible card rect and its rim radii
+            // scale about the paint extent's bottom edge and the paint alpha
+            // is the group alpha. The *source* stays at the committed card
+            // rect so the filtered texture survives the transition; the
+            // element stretches that stable source over the scaled card.
+            let (panel_rect, panel_corners, group_alpha) =
+                if let Some(motion) = chrome.popup_motion {
+                    let scaled = popup_motion::scale_rect_about_bottom(
+                        region.rect,
+                        chrome.geometry,
+                        motion.scale,
+                    );
+                    let radius = |value: i32| {
+                        (f64::from(value.max(0)) * motion.scale).round() as i32
+                    };
+                    (
+                        scaled,
+                        CornerRadii {
+                            top_left: radius(corners.top_left),
+                            top_right: radius(corners.top_right),
+                            bottom_right: radius(corners.bottom_right),
+                            bottom_left: radius(corners.bottom_left),
+                        },
+                        motion.alpha,
+                    )
+                } else {
+                    (region.rect, corners, 1.0)
+                };
+            if panel_rect.size.w <= 0 || panel_rect.size.h <= 0 {
+                continue;
+            }
+            let source_panel = if preset == Preset::Dock {
+                Some(stable_dock_source(region.rect, output_size))
+            } else if chrome.popup_motion.is_some() {
+                // Keep the filtered source stable across the transition; the
+                // underlay still refreshes through the scene texture cache.
+                Some(region.rect)
+            } else {
+                None
+            };
             panels.push(BlurPanel {
                 key,
-                panel: region.rect,
-                source_panel: if preset == Preset::Dock {
-                    Some(stable_dock_source(region.rect, output_size))
-                } else {
-                    None
-                },
-                corners,
+                panel: panel_rect,
+                source_panel,
+                corners: panel_corners,
                 overscan: region.overscan,
                 spec,
                 glass,
@@ -705,7 +801,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
                     preset,
                     tier: material.tier,
                     mode: resolved.render_mode,
-                    alpha: resolved.alpha,
+                    alpha: resolved.alpha * group_alpha,
                     tint: resolved.tint,
                     edge: resolved.edge,
                     edge_width: resolved.edge_width,

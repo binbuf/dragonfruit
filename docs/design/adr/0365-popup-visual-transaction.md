@@ -51,7 +51,8 @@ compositor.
   (an implicitly shared `QImage`, one frame). The compositor owns the imported
   GPU texture or shm buffer named by the accepted generation and releases it
   with the same lifetime. Compositor animation of the retained snapshot is
-  T355; the attached menu chain is T356; the remaining popup families are T361.
+  [ADR 0367](0367-compositor-popup-group-motion.md) (T355); the attached menu
+  chain is T356; the remaining popup families are T361.
 
 ## Consequences
 

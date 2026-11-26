@@ -15,6 +15,8 @@
 
 use smithay::utils::{Logical, Rectangle};
 
+use super::popup_motion::{PopupMotion, PopupMotionFrame, PopupMotionKind};
+
 /// Upper bound on a client-declared retained snapshot lifetime. A shell may
 /// ask for a longer visual tail, but a bug or a hostile trusted client must
 /// not pin a full-size buffer indefinitely.
@@ -172,12 +174,86 @@ pub struct PopupRelease {
 pub struct PopupTransaction {
     current: Option<PopupSnapshot>,
     last_release: Option<PopupRelease>,
+    /// The compositor-owned outer transition (T355). `None` until the first
+    /// accepted open/close edge; a legacy client never starts one.
+    motion: Option<PopupMotion>,
 }
 
 impl PopupTransaction {
     /// The accepted snapshot, if a transaction is open or retained.
     pub fn snapshot(&self) -> Option<&PopupSnapshot> {
         self.current.as_ref()
+    }
+
+    /// The live outer transition, if any.
+    pub fn motion(&self) -> Option<&PopupMotion> {
+        self.motion.as_ref()
+    }
+
+    /// The compositor-owned visual sample for the renderer, if any.
+    pub fn motion_frame(&self, now_ms: u64) -> Option<PopupMotionFrame> {
+        self.motion.as_ref().map(|motion| motion.frame(now_ms))
+    }
+
+    /// Start (or retarget) the outer transition on the accepted paint extent.
+    ///
+    /// `kind` is the lifecycle edge that just became visible: `Open` for the
+    /// first accepted frame of a generation, `Close` for the closing edge.
+    /// A live motion is retargeted from its current alpha/scale, never
+    /// restarted. Returns whether a motion was started.
+    pub fn start_motion(
+        &mut self,
+        kind: PopupMotionKind,
+        now_ms: u64,
+        reduced_motion: bool,
+    ) -> bool {
+        let Some(snapshot) = self.current.as_ref() else {
+            return false;
+        };
+        let target = if snapshot.paint_extent.size.w > 0 && snapshot.paint_extent.size.h > 0 {
+            snapshot.paint_extent
+        } else {
+            snapshot.geometry
+        };
+        if target.size.w <= 0 || target.size.h <= 0 {
+            return false;
+        }
+        let next = match self.motion.as_ref() {
+            Some(previous) => {
+                let mut retargeted =
+                    PopupMotion::retarget(previous, kind, now_ms, reduced_motion);
+                // A retarget keeps the accepted visual's new geometry when a
+                // reopen lands on a different anchor.
+                retargeted.target = target;
+                retargeted
+            }
+            None => match kind {
+                PopupMotionKind::Open => PopupMotion::open(target, now_ms, reduced_motion),
+                PopupMotionKind::Close => PopupMotion::close(target, now_ms, reduced_motion),
+            },
+        };
+        self.motion = Some(next);
+        true
+    }
+
+    /// Whether the outer transition still needs output-clock frames.
+    pub fn motion_active(&self, now_ms: u64) -> bool {
+        self.motion
+            .as_ref()
+            .is_some_and(|motion| motion.is_live(now_ms))
+    }
+
+    /// Advance the outer transition one output-clock sample.
+    pub fn step_motion(&mut self, now_ms: u64) -> bool {
+        self.motion
+            .as_mut()
+            .is_some_and(|motion| motion.advance(now_ms))
+    }
+
+    /// Drop the outer transition. Called when the retained snapshot is
+    /// released, the surface is destroyed, or the client disconnects.
+    pub fn clear_motion(&mut self) {
+        self.motion = None;
     }
 
     /// Whether this surface has ever entered a transaction. A legacy surface
@@ -244,8 +320,13 @@ impl PopupTransaction {
                 });
             }
             // A reopen supersedes the retained snapshot immediately; the new
-            // generation owns the next visual lifetime.
+            // generation owns the next visual lifetime. The outer transition
+            // is *not* dropped: a reopen during the closing tail must retarget
+            // from the current visible alpha/scale, never snap back to the
+            // settled texture (T355).
+            let previous_motion = self.motion;
             self.release("superseded");
+            self.motion = previous_motion;
         }
         self.current = Some(PopupSnapshot {
             generation: request.generation,
@@ -392,6 +473,7 @@ impl PopupTransaction {
     /// Release the snapshot and remember why. Returns whether anything was
     /// actually released.
     pub fn release(&mut self, reason: &'static str) -> bool {
+        self.motion = None;
         let Some(current) = self.current.take() else {
             return false;
         };
@@ -659,6 +741,65 @@ mod tests {
             30,
         );
         assert_eq!(late, PopupOutcome::Rejected(PopupReject::Stale));
+    }
+
+    #[test]
+    fn a_reopen_during_the_closing_tail_keeps_the_visible_motion() {
+        let mut transaction = PopupTransaction::default();
+        open(&mut transaction, 1, 1, 0);
+        assert!(transaction.start_motion(PopupMotionKind::Close, 100, false));
+        let closing = transaction.motion_frame(150).expect("close motion");
+        assert!(closing.alpha > 0.0 && closing.alpha < 1.0);
+
+        // A new generation supersedes the retained snapshot but must keep the
+        // visible transition so the open retargets from where the close was.
+        let outcome = transaction.apply(
+            request(
+                2,
+                2,
+                PopupPhase::Open,
+                PopupTransport::Shm,
+                true,
+                0,
+            ),
+            PopupTransport::Shm,
+            150,
+        );
+        assert_eq!(outcome, PopupOutcome::Accepted);
+        transaction.set_committed(
+            Some("eDP-1".into()),
+            Rectangle::new(Point::from((10, 20)), Size::from((200, 300))),
+            Rectangle::new(Point::from((10, 20)), Size::from((220, 320))),
+            2,
+        );
+        assert!(transaction.start_motion(PopupMotionKind::Open, 150, false));
+        let reopening = transaction.motion_frame(150).expect("open motion");
+        assert!(
+            (reopening.alpha - closing.alpha).abs() < 1e-6,
+            "the reopen starts at the visible closing alpha"
+        );
+        assert!((reopening.scale - closing.scale).abs() < 1e-6);
+        assert!(
+            transaction.motion_active(150),
+            "the retargeted motion still drives the output clock"
+        );
+    }
+
+    #[test]
+    fn a_completed_motion_keeps_the_snapshot_for_its_declared_lifetime() {
+        let mut transaction = PopupTransaction::default();
+        open(&mut transaction, 1, 1, 0);
+        transaction.apply(
+            request(2, 2, PopupPhase::Closing, PopupTransport::Shm, false, 300),
+            PopupTransport::Shm,
+            100,
+        );
+        assert!(transaction.start_motion(PopupMotionKind::Close, 100, false));
+        // The close token is 100 ms; the snapshot remains valid until the
+        // transaction's retained deadline even after the motion completes.
+        assert!(!transaction.step_motion(100 + 100));
+        assert!(transaction.motion().is_some_and(|motion| motion.completed));
+        assert!(transaction.retained(300));
     }
 
     #[test]

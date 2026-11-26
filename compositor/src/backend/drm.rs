@@ -2162,7 +2162,8 @@ fn render_surface(
                     .with_id(id)
                     .with_commit(commit)
                     .with_texture_region(region.rect)
-                    .with_corners(panel.corners);
+                    .with_corners(panel.corners)
+                    .with_alpha(panel.paint.alpha);
                     // T200: the veil's depth-LUT shader; a refused program
                     // keeps the flat-band glass plate rather than the raw
                     // scene.
@@ -2252,7 +2253,8 @@ fn render_surface(
                 .with_id(id)
                 .with_commit(commit)
                 .with_texture_panel(texture_panel)
-                .with_corners(panel.corners);
+                .with_corners(panel.corners)
+                .with_alpha(panel.paint.alpha);
                 let element = if panel.spec.is_measured() && programs.glass.is_some() {
                     element.with_full_panel_draw()
                 } else {
@@ -2279,6 +2281,7 @@ fn render_surface(
                         .with_texture_region(region.rect)
                         .with_corners(panel.corners)
                         .with_full_panel_draw()
+                        .with_alpha(panel.paint.alpha)
                         .with_glass(panel.glass, bevel_program.clone());
                         custom_elements.push(DrmOutputElements::Blur(bevel));
                     }

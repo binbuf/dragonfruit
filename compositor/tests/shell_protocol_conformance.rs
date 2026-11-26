@@ -10664,6 +10664,181 @@ fn popup_transaction_fences_frames_and_retains_the_exit() {
     proc.shutdown();
 }
 
+/// T355: the Dock chooser's accepted texture completes its outer transition
+/// on the compositor clock. After the closing commit the client sends nothing;
+/// the motion still reaches its end, and a reopen during the tail retargets
+/// from the current visible state.
+#[test]
+fn popup_motion_completes_without_further_client_commits() {
+    let token = "f4".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-popup-motion-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic_trace(
+        "dragonfruit-conformance-popup-motion",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    assert!(
+        shell_version >= 6,
+        "T355 needs the v6 set_popup_motion request, advertised {shell_version}"
+    );
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "dock-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(200, 300);
+    popup.set_margin(28, 0, 0, 40);
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let (buffer, _file) = shm_buffer(&state, &qh, 200, 300);
+
+    // Open the accepted content without a motion opt-in: the settled texture
+    // is the stable input to the close transition below.
+    popup.set_popup_transaction(
+        1,
+        1,
+        df_layer_surface::PopupPhase::Open,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    let _ = queue.roundtrip(&mut state);
+    proc.wait_for_trace(
+        "popup-transaction surface=dock-popup gen=1 serial=1 phase=open",
+        Duration::from_secs(5),
+    );
+
+    // A reopen during a live closing tail retargets from the visible alpha;
+    // it must not snap back to the settled texture. Close and reopen in one
+    // dispatch batch so the close is still live when the open lands.
+    popup.set_popup_motion(1);
+    popup.set_popup_transaction(
+        2,
+        2,
+        df_layer_surface::PopupPhase::Closing,
+        df_layer_surface::PopupTransport::Shm,
+        0,
+        400,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    popup.set_popup_motion(1);
+    popup.set_popup_transaction(
+        3,
+        3,
+        df_layer_surface::PopupPhase::Open,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "popup-motion surface=dock-popup gen=2 kind=close path=compositor",
+        Duration::from_secs(5),
+    );
+    let reopen = proc.wait_for_trace(
+        "popup-motion surface=dock-popup gen=3 kind=open path=compositor",
+        Duration::from_secs(5),
+    );
+    let open_line = reopen
+        .lines()
+        .rev()
+        .find(|line| {
+            line.contains("popup-motion")
+                && line.contains("gen=3")
+                && line.contains("kind=open")
+        })
+        .unwrap_or_default();
+    assert!(
+        !open_line.contains("alpha=0.000"),
+        "a reopen during the tail must start from the current visible alpha: {open_line}"
+    );
+
+    // The accepted texture stays mapped, input releases, and the compositor's
+    // clock alone finishes the exit. No further commit is sent after this one.
+    popup.set_popup_motion(1);
+    popup.set_popup_transaction(
+        4,
+        4,
+        df_layer_surface::PopupPhase::Closing,
+        df_layer_surface::PopupTransport::Dmabuf,
+        0,
+        400,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    // The second transport input: a declared dmabuf frame that actually
+    // commits shm is the documented fallback, and the motion still completes.
+    proc.wait_for_trace(
+        "gen=4 serial=4 phase=closing declared=dmabuf actual=shm switch=1 input=0",
+        Duration::from_secs(5),
+    );
+    proc.wait_for_trace(
+        "popup-motion surface=dock-popup gen=4 kind=close path=compositor",
+        Duration::from_secs(5),
+    );
+    let done = proc.wait_for_trace(
+        "popup-motion surface=dock-popup gen=4 kind=close path=compositor done=1",
+        Duration::from_secs(5),
+    );
+    assert!(
+        done.lines()
+            .any(|line| line.contains("popup-motion")
+                && line.contains("gen=4")
+                && line.contains("kind=close")
+                && line.contains("done=1")
+                && line.contains("alpha=0.000")),
+        "the closing group must reach zero alpha without another client commit: {done}"
+    );
+
+    drop(buffer);
+    drop(popup);
+    drop(popup_surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
 /// T354: a detached output and a disconnected client both release the retained
 /// popup snapshot; neither path leaves an imported buffer behind.
 #[test]

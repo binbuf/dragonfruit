@@ -143,6 +143,19 @@ the retained visual. `complete` keeps the snapshot until that deadline;
 A client that never sends the request keeps the v4 behavior: the surface input
 region is the only input policy and nothing is retained. See
 [ADR 0365](adr/0365-popup-visual-transaction.md).
+
+### Popup group motion (v6, T355)
+
+`df_layer_surface.set_popup_motion(enabled)` opts the next popup content commit
+into the compositor-owned outer transition. The request is commit-latched with
+the pixels and the popup transaction it applies to; `enabled` is 0 or 1. The
+compositor samples one `popupOpen`/`popupClose` token on the owning output's
+clock, applies one scale about the accepted paint extent's bottom edge and one
+group alpha to the accepted content and its material panels, and finishes the
+exit without further client commits. A client that never sends the request
+keeps the shell-owned QML motion. The Dock chooser is the pilot; the attached
+menu chain is T356 and the remaining families are T361. See
+[ADR 0367](adr/0367-compositor-popup-group-motion.md).
 - Region identity is `(namespace, layer, surface object, region key)`, so a
   stable key keeps its element id and cached filtered texture across unrelated
   scene damage and tint-only changes. Removed regions and surfaces drop their

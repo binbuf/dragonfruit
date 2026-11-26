@@ -1763,7 +1763,8 @@ fn build_blur_elements(
             .with_id(id)
             .with_commit(commit)
             .with_texture_region(scene.region.rect)
-            .with_corners(panel.corners);
+            .with_corners(panel.corners)
+            .with_alpha(panel.paint.alpha);
             // T200: a resolved veil uses its own depth-LUT shader. If the
             // driver refused that program, the flat-band glass compose keeps
             // a scheme-appropriate plate instead of exposing the raw scene.
@@ -1839,7 +1840,8 @@ fn build_blur_elements(
         .with_id(id)
         .with_commit(commit)
         .with_texture_panel(texture_panel)
-        .with_corners(panel.corners);
+        .with_corners(panel.corners)
+        .with_alpha(panel.paint.alpha);
         // The measured Dock uses the SDF as an antialiased coverage mask
         // instead of the integer spans, removing the 1x/1.5x stair-step.
         let element = if panel.spec.is_measured() && programs.glass.is_some() {
@@ -1875,6 +1877,7 @@ fn build_blur_elements(
                 .with_texture_region(scene.region.rect)
                 .with_corners(panel.corners)
                 .with_full_panel_draw()
+                .with_alpha(panel.paint.alpha)
                 .with_glass(panel.glass, bevel_program.clone())
             })
         } else {

@@ -1257,6 +1257,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Share the overlay budget with QML so placement fits the expanded target.
     m_dockItem->setProperty("popoverHeadroom", kDockPopoverHeadroom);
     m_dockItem->setProperty("popoverGutter", kDockPopoverGutter);
+    // T355: the chooser binds to the compositor-owned outer transition. The
+    // constructor re-applies the env-selected diagnostic once it has run.
+    m_dockItem->setProperty("compositorPopupMotion", m_dockPopupCompositorMotion);
     connect(m_dockItem, SIGNAL(entryActivated(QVariant)), this,
             SLOT(onDockEntryActivated(QVariant)));
     connect(m_dockItem, SIGNAL(entryTileRect(QString,qreal,qreal,qreal,qreal)), this,
@@ -1331,6 +1334,26 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         static_cast<int>(PopupTargetBudget::kWarmRetentionMs));
     connect(m_dockPopupReleaseTimer, &QTimer::timeout, this,
             &ShellController::releaseDockPopupTarget);
+    // T355: the Dock chooser's outer transition is compositor-owned by
+    // default. `DRAGONFRUIT_POPUP_MOTION=qml` is the local A/B diagnostic
+    // that keeps the pre-T355 QML opacity/scale path.
+    const QByteArray popupMotionMode =
+        qgetenv("DRAGONFRUIT_POPUP_MOTION").trimmed().toLower();
+    m_dockPopupCompositorMotionRequested = !(popupMotionMode == "qml"
+                                             || popupMotionMode == "shell"
+                                             || popupMotionMode == "legacy"
+                                             || popupMotionMode == "0"
+                                             || popupMotionMode == "false"
+                                             || popupMotionMode == "off");
+    m_dockPopupCompositorMotion = m_dockPopupCompositorMotionRequested
+        && m_protocol && m_protocol->popupMotionSupported();
+    if (m_dockItem)
+        m_dockItem->setProperty("compositorPopupMotion",
+                                m_dockPopupCompositorMotion);
+    m_dockPopupExitTimer = new QTimer(this);
+    m_dockPopupExitTimer->setSingleShot(true);
+    connect(m_dockPopupExitTimer, &QTimer::timeout, this,
+            &ShellController::finishDockPopupExit);
     if (auto *gpu =
             qobject_cast<GpuChromeFrameProducer *>(m_producers.value(m_dockWindow)))
         gpu->setViewLabel(GpuChromeFrameProducer::PopupView,
@@ -8208,6 +8231,12 @@ void ShellController::completeDockPopupTransaction()
 
 void ShellController::cancelPopupTransactions(const QString &reason)
 {
+    if (m_dockPopupExitTimer)
+        m_dockPopupExitTimer->stop();
+    m_dockPopupClosing = false;
+    m_dockPopupClosingCommitted = false;
+    if (m_dockItem)
+        m_dockItem->setProperty("popupClosingFrame", false);
     const qint64 now = monotonicMs();
     if (m_protocol && m_menuBarPopupTransaction.active()) {
         m_menuBarPopupTransaction.cancel(
@@ -11953,13 +11982,50 @@ void ShellController::onDockPopoverChanged()
         && m_dockItem->property("popoverOpen").toBool();
     if (!open && m_dockPopoverWasOpen) {
         // T354: close the transaction before the input-only commit so the
-        // closing edge is latched with the released input, then complete it
-        // with the unmap that follows.
+        // closing edge is latched with the released input.
         dismissDockPopupTransaction();
         m_protocol->dismissDockPopupInput();
-        completeDockPopupTransaction();
+        if (m_dockPopupCompositorMotion && m_dockPopupChooser) {
+            // T355: keep the accepted chooser texture mapped for the
+            // compositor's outer transition. One closing content commit
+            // latches the transaction; after that the shell stops submitting
+            // popup frames, so the compositor's clock alone finishes the exit.
+            m_dockPopupClosing = true;
+            m_dockPopupClosingCommitted = false;
+            if (m_dockItem)
+                m_dockItem->setProperty("popupClosingFrame", true);
+            const int exitDuration = m_dockItem
+                ? qMax(0, m_dockItem->property("popoverExitDuration").toInt())
+                : 0;
+            if (exitDuration <= 0) {
+                finishDockPopupExit();
+            } else {
+                if (m_dockPopupExitTimer) {
+                    m_dockPopupExitTimer->setInterval(exitDuration + 16);
+                    m_dockPopupExitTimer->start();
+                }
+                scheduleDockRender();
+            }
+        } else {
+            // Legacy/QML diagnostic path: the QML fade owns the visual and
+            // the transaction completes at the immediate unmap.
+            completeDockPopupTransaction();
+        }
     }
     if (open && !m_dockPopoverWasOpen) {
+        if (m_dockPopupExitTimer)
+            m_dockPopupExitTimer->stop();
+        m_dockPopupClosing = false;
+        m_dockPopupClosingCommitted = false;
+        m_dockPopupCompositorMotion = m_dockPopupCompositorMotionRequested
+            && m_protocol && m_protocol->popupMotionSupported();
+        if (m_dockItem)
+            m_dockItem->setProperty("compositorPopupMotion",
+                                    m_dockPopupCompositorMotion);
+        m_dockPopupChooser = m_dockItem
+            && m_dockItem->property("chooserOpen").toBool();
+        if (m_dockItem)
+            m_dockItem->setProperty("popupClosingFrame", false);
         openDockPopupTransaction();
         if (m_dockPopoverTraceId != 0) {
             ChromeStats::instance().endTrace(m_dockPopoverTraceId,
@@ -13366,6 +13432,25 @@ void ShellController::rerenderChrome()
         repaintLockSurfaces();
 }
 
+void ShellController::finishDockPopupExit()
+{
+    if (!m_dockPopupClosing && !m_dockPopupClosingCommitted)
+        return;
+    m_dockPopupClosing = false;
+    m_dockPopupClosingCommitted = false;
+    if (m_dockPopupExitTimer)
+        m_dockPopupExitTimer->stop();
+    if (m_dockItem)
+        m_dockItem->setProperty("popupClosingFrame", false);
+    if (m_protocol) {
+        // The compositor's transition has finished (or had zero duration):
+        // release the retained record and unmap the accepted surface.
+        completeDockPopupTransaction();
+        m_protocol->hideDockPopup();
+    }
+    scheduleDockRender();
+}
+
 void ShellController::releaseDockPopupTarget()
 {
     if (m_dockPopupBudget.empty())
@@ -13641,6 +13726,11 @@ void ShellController::renderDock()
         m_protocol->setDockPopupInputRects(popupInputRects);
         m_protocol->setDockPopupInputActive(popoverInputActive);
         m_protocol->setDockPopupGeometry(top, right, bottom, left, popover);
+        // T355: only the chooser opts into the compositor-owned group
+        // transition; other Dock popovers keep their QML motion. The request
+        // is one-shot and latched with this content commit.
+        m_protocol->setDockPopupMotion(m_dockPopupCompositorMotion
+                                       && m_dockPopupChooser);
         // T354: the same staged state joins the Dock popup transaction.
         m_dockPopupTransaction.retarget(
             static_cast<quint32>(m_dockPopupGeneration),
@@ -13676,23 +13766,33 @@ void ShellController::renderDock()
          static_cast<quint32>(m_dockPopupGeneration),
          ++m_dockPopupContentSerial, !popoverOpen});
         }
+        if (m_dockPopupClosing && hasPopover) {
+            // The one closing content commit has been staged. From here the
+            // compositor's clock owns the exit; the shell stops submitting
+            // popup frames and only keeps the surface mapped.
+            m_dockPopupClosingCommitted = true;
+            if (m_dockItem)
+                m_dockItem->setProperty("popupClosingFrame", false);
+        }
     } else {
-        m_protocol->hideDockPopup();
-        if (independentPopup) {
-            m_dockPopupBudget.update(QSize(), outputSize, interactionActive,
-                                     monotonicNs() / 1'000'000);
-            if (m_dockPopupReleaseTimer) {
-                if (interactionActive)
-                    m_dockPopupReleaseTimer->stop();
-                else if (!m_dockPopupBudget.empty()
-                         && !m_dockPopupReleaseTimer->isActive())
-                    m_dockPopupReleaseTimer->start();
+        if (!m_dockPopupClosing) {
+            m_protocol->hideDockPopup();
+            if (independentPopup) {
+                m_dockPopupBudget.update(QSize(), outputSize, interactionActive,
+                                         monotonicNs() / 1'000'000);
+                if (m_dockPopupReleaseTimer) {
+                    if (interactionActive)
+                        m_dockPopupReleaseTimer->stop();
+                    else if (!m_dockPopupBudget.empty()
+                             && !m_dockPopupReleaseTimer->isActive())
+                        m_dockPopupReleaseTimer->start();
+                }
+            } else {
+                if (!m_dockPopupTargetSize.isEmpty() && gpuProducer)
+                    discardChromeView(gpuProducer, GpuChromeFrameProducer::PopupView);
+                m_dockPopupBudget.reset();
+                m_dockPopupTargetSize = QSize();
             }
-        } else {
-            if (!m_dockPopupTargetSize.isEmpty() && gpuProducer)
-                discardChromeView(gpuProducer, GpuChromeFrameProducer::PopupView);
-            m_dockPopupBudget.reset();
-            m_dockPopupTargetSize = QSize();
         }
     }
 

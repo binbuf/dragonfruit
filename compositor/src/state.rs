@@ -1970,6 +1970,10 @@ pub struct DfState {
     /// Monotonic serial of the last rendered frame (T-04.2/T-04.3), both
     /// passes' frame key.
     pub render_serial: u64,
+    /// The one output-clock sample for the current render frame (T355).
+    /// Content, mask, backdrop, rim and shadow all resolve against it so they
+    /// cannot sample different points of the same transition.
+    pub frame_clock_ms: Option<u64>,
     /// Material degrade-tier selection (T-04.4a): observes rendered-frame
     /// durations against a frame budget and picks the [`DegradeTier`] that the
     /// backdrop and shadow passes render at. Selectable (pinned) for tests and
@@ -2224,6 +2228,7 @@ impl DfState {
             material_pass: BackdropPass::new(),
             scene_pass: SceneTransformPass::new(),
             render_serial: 0,
+            frame_clock_ms: None,
             degrade: DegradeController::new(),
             material_path: MaterialPath::default(),
             material_blur_supported: false,
@@ -3036,6 +3041,10 @@ impl DfState {
         let mut names = BTreeSet::new();
         // T233: a menu-bar reveal/hide only moves the output it belongs to.
         for name in self.shell.menu_bar.animating_outputs(self.now_msec()) {
+            names.insert(name);
+        }
+        // T355: a popup's outer transition belongs to its owning output.
+        for name in self.shell.popup_motion_outputs(self.now_msec()) {
             names.insert(name);
         }
         for (window, _) in self.windows.active_motions() {
@@ -5105,6 +5114,7 @@ impl DfState {
         self.overview.is_discrete()
             || self.animation_clock.is_active()
             || self.shell.menu_bar.is_animating(self.now_msec())
+            || self.shell.popup_motion_active(self.now_msec())
     }
 
     /// Start a clock-driven animation and arm the frame clock.
@@ -5451,6 +5461,9 @@ impl DfState {
     /// double-transform).
     pub fn begin_render_frame(&mut self) {
         self.render_serial = self.render_serial.wrapping_add(1);
+        // T355: one clock sample for this frame's popup contributions. Both
+        // the chrome content and the material panels resolve against it.
+        self.frame_clock_ms = Some(self.now_msec());
         self.material_pass.begin_frame(self.render_serial);
         self.scene_pass.begin_frame(self.render_serial);
     }

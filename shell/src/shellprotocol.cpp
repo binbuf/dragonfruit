@@ -556,9 +556,34 @@ static bool sendPopupTransaction(df_layer_surface *layer,
     return true;
 }
 
+static bool sendPopupMotion(df_layer_surface *layer, bool enabled,
+                            wl_display *display)
+{
+    if (!layer)
+        return false;
+    if (df_layer_surface_get_version(layer)
+        < DF_LAYER_SURFACE_SET_POPUP_MOTION_SINCE_VERSION) {
+        return false;
+    }
+    df_layer_surface_set_popup_motion(layer, enabled ? 1u : 0u);
+    if (display)
+        wl_display_flush(display);
+    return true;
+}
+
 bool ShellProtocol::setPopupTransaction(const PopupTransactionState &state)
 {
     return sendPopupTransaction(m_popupLayer, state, m_display);
+}
+
+bool ShellProtocol::setPopupMotion(bool enabled)
+{
+    return sendPopupMotion(m_popupLayer, enabled, m_display);
+}
+
+bool ShellProtocol::popupMotionSupported() const
+{
+    return m_shellVersion >= 6;
 }
 
 void ShellProtocol::dismissPopupInput()
@@ -2860,6 +2885,11 @@ void ShellProtocol::dismissDockPopupInput()
 bool ShellProtocol::setDockPopupTransaction(const PopupTransactionState &state)
 {
     return sendPopupTransaction(m_dockPopupLayer, state, m_display);
+}
+
+bool ShellProtocol::setDockPopupMotion(bool enabled)
+{
+    return sendPopupMotion(m_dockPopupLayer, enabled, m_display);
 }
 
 bool ShellProtocol::commitDockPopupImage(const QImage &image, const QSize &logicalSize,

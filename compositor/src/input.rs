@@ -1424,6 +1424,10 @@ fn poll_animations(state: &mut DfState) {
         Vec::new()
     };
     state.step_animations(now);
+    // T355: popup outer transitions share the same clock and one output
+    // sample; a completed close draws nothing and a completed open is the
+    // settled visual.
+    state.shell.step_popup_motions(now);
     // T233: the menu-bar reveal/hide delay and slide share this clock. A
     // settled transition still owes the frame that was requested before the
     // step, so the final-output capture above already contains it.

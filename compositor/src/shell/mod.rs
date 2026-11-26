@@ -17,6 +17,7 @@
 pub mod layer;
 pub mod menubar;
 pub mod popup;
+pub mod popup_motion;
 pub mod trust;
 
 use std::collections::HashMap;
@@ -53,13 +54,14 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_shell` is version 5 since the popup presentation transaction was added
-/// (T354); version 4 added the menu-bar `set_auto_hide` request (T201); version
-/// 3 added the multi-region `df_layer_surface` requests, and version 2 added
+/// `df_shell` is version 6 since compositor-owned popup group motion was added
+/// (T355); version 5 added the popup presentation transaction (T354); version
+/// 4 added the menu-bar `set_auto_hide` request (T201); version 3 added the
+/// multi-region `df_layer_surface` requests, and version 2 added
 /// `df_layer_surface.set_panel_rect` (T-14.7b). A Wayland new_id gets its
 /// version from the parent object's version, so the factory bumps in tandem
 /// with its child interface.
-const SHELL_INTERFACE_VERSION: u32 = 5;
+const SHELL_INTERFACE_VERSION: u32 = 6;
 
 /// `df_toplevel_manager` is version 17 since the T335b live screen-share
 /// messages (`create_screencast`/`destroy_screencast` and the
@@ -129,6 +131,9 @@ struct LayerEntry {
     /// The popup transaction staged by `set_popup_transaction` and latched on
     /// the next commit with the pixels it describes.
     pending_popup: Option<PopupRequest>,
+    /// T355: whether the next popup commit opted into the compositor-owned
+    /// outer transition (`set_popup_motion`, v6). One-shot per commit.
+    pending_popup_motion: Option<bool>,
 }
 
 /// One material region after placement on an output (T197).
@@ -190,6 +195,9 @@ pub struct ChromeSurface {
     /// The accepted popup snapshot, for the compositor's retained exit and
     /// the T355 animation. `None` for legacy clients and non-popup chrome.
     pub popup: Option<popup::PopupSnapshot>,
+    /// The compositor-owned outer transition sample for this frame (T355).
+    /// `None` for a legacy client, a non-popup surface, or a settled popup.
+    pub popup_motion: Option<popup_motion::PopupMotionFrame>,
 }
 
 /// The compositor's private-shell-protocol state.
@@ -246,6 +254,86 @@ impl ShellProtocolState {
             .iter()
             .find(|entry| entry.surface == *surface)
             .map(|entry| entry.state.namespace.as_str())
+    }
+
+    /// Whether any popup's compositor-owned outer transition still needs
+    /// output-clock frames (T355).
+    pub fn popup_motion_active(&self, now_ms: u64) -> bool {
+        self.layers
+            .iter()
+            .any(|entry| entry.popup.motion_active(now_ms))
+    }
+
+    /// The outputs whose popup transitions are live (T355). The animation
+    /// clock requests exactly these outputs, so an idle output keeps zero
+    /// damage while another display animates a chooser.
+    pub fn popup_motion_outputs(&self, now_ms: u64) -> Vec<String> {
+        let mut names = Vec::new();
+        for entry in self.layers.iter() {
+            if !entry.popup.motion_active(now_ms) {
+                continue;
+            }
+            // An all-output overlay has no explicit owning output; the
+            // compositor shows it on the output chrome last focused on
+            // (T-10 section 18). Keep the clock on that output rather than
+            // waking every display.
+            let output = entry
+                .popup
+                .snapshot()
+                .and_then(|snapshot| snapshot.output.clone())
+                .or_else(|| self.chrome_focus_output.clone());
+            if let Some(output) = output {
+                if !names.contains(&output) {
+                    names.push(output);
+                }
+            }
+        }
+        names
+    }
+
+    /// Advance every popup outer transition one output-clock sample (T355).
+    /// Returns whether any motion is still live.
+    pub fn step_popup_motions(&mut self, now_ms: u64) -> bool {
+        let mut live = false;
+        for entry in self.layers.iter_mut() {
+            // `motion_active` already reports false once the tween's end time
+            // has passed, so completion is the transition from the stored
+            // `completed` flag, not a second time comparison.
+            let was_completed = entry
+                .popup
+                .motion()
+                .map_or(true, |motion| motion.completed);
+            let still_live = entry.popup.step_motion(now_ms);
+            let now_completed = entry
+                .popup
+                .motion()
+                .is_some_and(|motion| motion.completed);
+            if !was_completed && now_completed {
+                if let Some(frame) = entry.popup.motion_frame(now_ms) {
+                    crate::trace::log(
+                        "popup-motion",
+                        &format!(
+                            "surface={} gen={} kind={} path=compositor done=1 alpha={:.3} \
+                             scale={:.3} damage={},{},{},{}",
+                            entry.state.namespace,
+                            entry
+                                .popup
+                                .snapshot()
+                                .map_or(0, |snapshot| snapshot.generation),
+                            frame.kind.name(),
+                            frame.alpha,
+                            frame.scale,
+                            frame.damage.loc.x,
+                            frame.damage.loc.y,
+                            frame.damage.size.w,
+                            frame.damage.size.h,
+                        ),
+                    );
+                }
+            }
+            live |= still_live;
+        }
+        live
     }
 
     /// The live chrome layer surfaces.
@@ -669,6 +757,10 @@ impl DfState {
             .find(|entry| entry.surface == *surface)
             .and_then(|entry| entry.state.output.clone());
         let output_geometry = self.layer_output_geometry(&output_name);
+        let reduced_motion = self.animation_clock.reduced_motion();
+        // The popup transaction uses the trace clock (u128); the shared
+        // animation clock and its tweens use the session's u64 milliseconds.
+        let motion_now_ms = self.now_msec();
         if let Some(entry) = self
             .shell
             .layers
@@ -693,6 +785,9 @@ impl DfState {
             // fallback or a transport switch, fenced by the content serial.
             let now_ms = crate::trace::now_ms();
             let actual_transport = surface_buffer_transport(&entry.surface);
+            // T355: the one-shot opt-in travels with this commit, like the
+            // popup transaction itself.
+            let popup_motion_requested = entry.pending_popup_motion.take().unwrap_or(false);
             if let Some(request) = entry.pending_popup.take() {
                 let outcome = entry.popup.apply(request, actual_transport, now_ms);
                 let (accepted, reason) = match outcome {
@@ -722,6 +817,61 @@ impl DfState {
                     entry
                         .popup
                         .set_committed(entry.state.output.clone(), geometry, paint, regions);
+                }
+                // T355: the accepted content starts (or retargets) the one
+                // compositor-owned outer transition on the owning output's
+                // clock. The persistent Dock plate is a separate surface and
+                // is never part of this motion.
+                if accepted
+                    && popup_motion_requested
+                    && popup_motion::namespace_piloted(&entry.state.namespace)
+                    && popup_motion::compositor_motion_enabled()
+                {
+                    let motion_kind = match request.phase {
+                        PopupPhase::Open => Some(popup_motion::PopupMotionKind::Open),
+                        PopupPhase::Closing => Some(popup_motion::PopupMotionKind::Close),
+                        PopupPhase::Retarget
+                            if entry.popup.motion_active(motion_now_ms) =>
+                        {
+                            Some(popup_motion::PopupMotionKind::Open)
+                        }
+                        _ => None,
+                    };
+                    if let Some(kind) = motion_kind {
+                        if entry.popup.start_motion(kind, motion_now_ms, reduced_motion) {
+                            if let Some(frame) = entry.popup.motion_frame(motion_now_ms) {
+                                crate::trace::log(
+                                    "popup-motion",
+                                    &format!(
+                                        "surface={} gen={} kind={} path=compositor token_ms={} \
+                                         reduced={} alpha={:.3} scale={:.3} \
+                                         rect={},{},{},{} damage={},{},{},{}",
+                                        entry.state.namespace,
+                                        request.generation,
+                                        kind.name(),
+                                        if reduced_motion {
+                                            0
+                                        } else {
+                                            kind.token().duration_ms
+                                        },
+                                        u8::from(reduced_motion),
+                                        frame.alpha,
+                                        frame.scale,
+                                        frame.rect.loc.x,
+                                        frame.rect.loc.y,
+                                        frame.rect.size.w,
+                                        frame.rect.size.h,
+                                        frame.damage.loc.x,
+                                        frame.damage.loc.y,
+                                        frame.damage.size.w,
+                                        frame.damage.size.h,
+                                    ),
+                                );
+                            }
+                        }
+                    } else if request.phase == PopupPhase::Cancel {
+                        entry.popup.clear_motion();
+                    }
                 }
                 let snapshot = entry.popup.snapshot();
                 let (current_generation, current_serial) = snapshot
@@ -826,6 +976,11 @@ impl DfState {
         output_name: &str,
         output_geometry: Rectangle<i32, Logical>,
     ) -> Vec<ChromeSurface> {
+        // One clock sample for every popup contribution on this output: the
+        // content, mask, backdrop, rim and shadow are sampled together (T355).
+        // `begin_render_frame` pins the sample for the whole frame; outside a
+        // render frame (input hit-testing) the live clock is the fallback.
+        let now_ms = self.frame_clock_ms.unwrap_or_else(|| self.now_msec());
         let mut surfaces: Vec<ChromeSurface> = self
             .shell
             .layers
@@ -965,6 +1120,7 @@ impl DfState {
                     keyboard: entry.state.keyboard,
                     input_active: entry.popup.input_active(),
                     popup: entry.popup.snapshot().cloned(),
+                    popup_motion: entry.popup.motion_frame(now_ms),
                 }
             })
             .collect();
@@ -2580,6 +2736,7 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                     commit_generation: 0,
                     popup: PopupTransaction::default(),
                     pending_popup: None,
+                    pending_popup_motion: None,
                     state: LayerSurfaceState {
                         layer: layer_value,
                         namespace,
@@ -2761,6 +2918,13 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                         input_active: input_active != 0,
                         retain_ms,
                     });
+                }
+                df_layer_surface::Request::SetPopupMotion { enabled } => {
+                    // T355: stage the one-shot motion opt-in for the next
+                    // commit. It is latched with the pixels and the popup
+                    // transaction, so a retarget cannot animate a frame the
+                    // client did not ask for.
+                    entry.pending_popup_motion = Some(enabled != 0);
                 }
                 df_layer_surface::Request::SetAutoHide { mode } => {
                     // T201: only the menu bar consumes the auto-hide policy.

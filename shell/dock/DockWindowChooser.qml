@@ -39,6 +39,11 @@ FocusScope {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    // T355: the compositor owns the outer transition. The accepted chooser
+    // texture stays at full opacity/scale; `closingFrame` keeps it visible for
+    // the one closing commit before the shell stops submitting popup frames.
+    property bool compositorPopupMotion: false
+    property bool closingFrame: false
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
     // The visible-row cap; a longer window list scrolls through the rest. The
@@ -374,10 +379,11 @@ FocusScope {
     // must not stay enabled in the same scene that receives input for the one
     // replacing it.
     enabled: root.open
-    visible: opacity > 0
-    scale: root.open ? 1.0 : 0.97
+    visible: root.compositorPopupMotion ? (root.open || root.closingFrame)
+                                        : opacity > 0
+    scale: root.compositorPopupMotion ? 1.0 : (root.open ? 1.0 : 0.97)
     transformOrigin: Item.Bottom
-    opacity: root.open ? 1.0 : 0.0
+    opacity: root.compositorPopupMotion ? 1.0 : (root.open ? 1.0 : 0.0)
     z: 2000
 
     Behavior on opacity {

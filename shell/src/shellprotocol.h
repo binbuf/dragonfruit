@@ -155,6 +155,14 @@ public:
         quint32 retainMs = 0;
     };
     bool setPopupTransaction(const PopupTransactionState &state);
+    // T355: opt the next popup commit into the compositor-owned group
+    // transition. Returns false on a pre-v6 compositor, which keeps the QML
+    // opacity/scale path.
+    bool setPopupMotion(bool enabled);
+    // Whether the bound compositor advertises the v6 popup motion request.
+    // The shell must keep the QML path on an older compositor rather than
+    // freezing the accepted texture for a tail the compositor cannot animate.
+    bool popupMotionSupported() const;
 
     // Attach `image` to the popup surface and commit. The image must be
     // ARGB32(_Premultiplied). `logicalSize` is the surface contract; the image
@@ -202,6 +210,7 @@ public:
     // T354: the Dock popup's transaction, with the same contract as the
     // menu-bar popup.
     bool setDockPopupTransaction(const PopupTransactionState &state);
+    bool setDockPopupMotion(bool enabled);
 
     // Attach `image` to the Dock popup surface and commit.
     bool commitDockPopupImage(const QImage &image, const QSize &logicalSize = QSize(),

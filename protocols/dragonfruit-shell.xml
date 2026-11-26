@@ -19,7 +19,7 @@
 -->
 <protocol name="dragonfruit_shell">
 
-  <interface name="df_shell" version="5">
+  <interface name="df_shell" version="6">
     <description summary="chrome-surface factory for trusted session clients">
       Creates `df_layer_surface`s. Binding this global requires a successful
       `df_core.authenticate` (T-07 trust model).
@@ -59,7 +59,7 @@
     </enum>
   </interface>
 
-  <interface name="df_layer_surface" version="5">
+  <interface name="df_layer_surface" version="6">
     <description summary="an anchored, layered chrome surface">
       Requests may be sent before the first commit; the compositor sends a
       `configure` with the resolved size and serial, which the client must
@@ -224,6 +224,18 @@
       <arg name="transport" type="uint" enum="popup_transport"/>
       <arg name="input_active" type="uint"/>
       <arg name="retain_ms" type="uint"/>
+    </request>
+
+    <request name="set_popup_motion" since="6">
+      <description summary="opt the next popup commit into compositor-owned group motion">
+        Marks the next commit's popup contribution for the compositor's
+        outer transition. The compositor samples one output-clock frame for
+        the accepted content, mask, backdrop, rim and shadow, and applies one
+        transform and one group alpha to the whole contribution. The request
+        is commit-latched with the pixels it describes; a client that never
+        sends it keeps the shell-owned QML motion. `enabled` is 0 or 1.
+      </description>
+      <arg name="enabled" type="uint"/>
     </request>
 
     <enum name="auto_hide_mode">

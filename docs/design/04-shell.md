@@ -227,6 +227,19 @@ no retained snapshot. Compositor animation is T355, the attached menu chain is
 T356, and the remaining popup families are T361. See
 [ADR 0365](adr/0365-popup-visual-transaction.md).
 
+**Compositor-owned chooser motion (T355).** The Dock chooser sends the v6
+`df_layer_surface.set_popup_motion(1)` immediately before its open and closing
+content commits; other Dock popovers and a pre-v6 compositor keep the QML
+opacity/scale path. On a close the shell commits one settled accepted texture
+with `popupClosingFrame`, releases input immediately, and then stops submitting
+popup frames. The compositor's `popupOpen`/`popupClose` token finishes the
+outer transition on the owning output's clock, and the shell unmaps after the
+token (immediately under reduced motion). The QML chooser does not fade or
+scale in that mode, so the accepted texture is one visual group; the persistent
+Dock plate is a separate surface and is not part of the popup or its motion.
+`DRAGONFRUIT_POPUP_MOTION=qml` selects the old QML path as a local A/B
+diagnostic. See [ADR 0367](adr/0367-compositor-popup-group-motion.md).
+
 **Menu Bar popup footprints (T352).** The menu-bar popup publishes one settled
 snapshot. `dropdownX/Y/Width/Height` is the card coverage used for placement;
 `dropdownPaintRect` adds the full QML `Shadow` reach; `dropdownCropRect` clamps

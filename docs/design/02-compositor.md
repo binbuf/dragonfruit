@@ -629,6 +629,25 @@ no retained snapshot. The retained record is the input to the T355 compositor
 animation; the remaining popup families are T361. See
 [ADR 0365](adr/0365-popup-visual-transaction.md).
 
+**Compositor-owned popup group motion (T355 pilot).** The Dock chooser opts its
+next commit into the compositor's outer transition with the v6
+`df_layer_surface.set_popup_motion(1)` request. `PopupMotion` on the popup
+transaction samples one `popupOpen`/`popupClose` token on the shared output
+clock, scales the accepted paint extent about its bottom-centre and applies one
+group alpha to the accepted content and its material panels. `begin_render_frame`
+pins one `frame_clock_ms` for the content and material, so the card, arrow,
+mask, rim, shadow and backdrop cannot sample different points of the same
+transition. The motion frame carries the union of the previous and current
+visual extents; the renderer's element geometry/alpha damage covers both
+footprints. A live motion joins `animations_active` and
+`animation_output_names`, so the clock finishes a close even after the shell
+stops submitting popup frames; the shell keeps the surface mapped for the
+closing commit and unmaps after the token (zero duration under reduced motion).
+The persistent Dock plate is a separate surface and never joins the motion.
+The attached menu chain is T356 and the remaining families are T361; the exact
+single-texture group composite for the sampled backdrop is the native rollout
+item. See [ADR 0367](adr/0367-compositor-popup-group-motion.md).
+
 `DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;`Reduced` = blur + specular + tint with the generic edge lens dropped and the
 blur radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the
 flat feather fallback (no glass). The measured flat-band corner lens is not the

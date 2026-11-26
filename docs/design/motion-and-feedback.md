@@ -344,6 +344,10 @@ The reduced-motion path is tested for every animation, not just the big ones.
 ## 12. Performance and scheduling
 
 - All animations use the per-output presentation clock (T-21.2).
+- The Dock chooser's outer open/close is the T355 pilot: the compositor owns
+  the accepted texture's transform and group alpha on the output clock, and QML
+  owns only layout, content, selection and accessibility
+  ([ADR 0367](adr/0367-compositor-popup-group-motion.md)).
 - No animation runs on a private 16 ms timer.
 - A settled surface produces zero wakeups.
 - The compositor and shell each do at most one frame of work per presented

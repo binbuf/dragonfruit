@@ -149,6 +149,34 @@
       "scales": [1]
     },
     {
+      "test": "test_chooser_compositor_motion_keeps_the_settled_texture_through_the_closing_frame",
+      "expected": "pass",
+      "owner": "T355",
+      "setup": "Bottom Dock 800x160 over a plain stage, compositorPopupMotion on; open the real chooser, then mark the closing frame",
+      "symptom": "the closing commit keeps the settled accepted texture at full QML opacity/scale, covers the full arrow/shadow reach, and releases input"
+    },
+    {
+      "test": "test_chooser_compositor_motion_reduced_motion_is_zero_duration",
+      "expected": "pass",
+      "owner": "T355",
+      "setup": "Bottom Dock 1280x160, compositorPopupMotion on, Theme.reducedMotion on",
+      "symptom": "the compositor path uses the zero-duration exit token and still commits the settled texture"
+    },
+    {
+      "test": "test_chooser_compositor_motion_quick_reopen_during_the_closing_frame",
+      "expected": "pass",
+      "owner": "T355",
+      "setup": "Bottom Dock 1280x160, compositorPopupMotion on; open, enter the closing frame, then reopen",
+      "symptom": "a reopen during the compositor-owned tail restores input and a valid paint extent on the same accepted surface"
+    },
+    {
+      "test": "test_chooser_qml_motion_diagnostic_keeps_the_fade",
+      "expected": "pass",
+      "owner": "T355",
+      "setup": "Bottom Dock 1280x160 with compositorPopupMotion off (the local A/B diagnostic)",
+      "symptom": "the QML opacity/scale path remains available and still fades to zero"
+    },
+    {
       "test": "test_dock_plate_geometry_survives_a_popup_interaction",
       "expected": "pass",
       "owner": "T351",

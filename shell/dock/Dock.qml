@@ -1578,6 +1578,15 @@ Rectangle {
     readonly property bool popoverOpen:
         menuOpen || chooserOpen || stackOpen || appPickerOpen || overflowOpen
         || trashEmptyOpen
+    // T355: the compositor owns the Dock chooser's outer transition on the
+    // owning output's clock. The shell commits one settled accepted texture
+    // and then stops submitting popup frames; `popupClosingFrame` keeps the
+    // surface mapped for that one closing commit. A legacy compositor (or the
+    // `DRAGONFRUIT_POPUP_MOTION=qml` diagnostic) keeps the QML opacity/scale
+    // path instead. The two owners are mutually exclusive.
+    property bool compositorPopupMotion: false
+    property bool popupClosingFrame: false
+    readonly property int popoverExitDuration: Theme.motion.popupClose.duration
     // A tooltip never shares the stage with a context menu/chooser/stack.
     // Closing the last popover must return active focus to the Dock when the
     // compositor handed it the keyboard: every popover takes focus while open,
@@ -4992,6 +5001,8 @@ Rectangle {
         materialBlurActive: dock.popupMaterialBlurActive
         materialTier: dock.popupMaterialTier
         materialFallback: dock.popupMaterialFallback
+        compositorPopupMotion: dock.compositorPopupMotion
+        closingFrame: dock.popupClosingFrame
         x: {
             if (!dock.chooserAnchor)
                 return 0;
