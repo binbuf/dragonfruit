@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Generate the QML Phosphor glyph registry from the vendored SVGs (T-19.1a).
 
 The vendored Phosphor files under ``assets/icons/phosphor/`` are the single
@@ -125,7 +125,7 @@ def _js_string(value: str) -> str:
 
 def gen_qml(glyphs: dict[str, dict[str, str]]) -> str:
     lines = [
-        "// SPDX-License-Identifier: MIT",
+        "// SPDX-License-Identifier: GPL-3.0-only",
         f"// {HEADER}",
         "pragma Singleton",
         "import QtQuick",

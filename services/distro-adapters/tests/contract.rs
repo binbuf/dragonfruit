@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The T221 adapter contract tests: the matrix, the four stub backends, the
 //! mock backend, distro detection, the dependency sets, and the live probe.
 

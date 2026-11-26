@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Budget-pressure material degrade tiers (T-04.4a).
 //!
 //! The material track's named risk is the frame budget on an iGPU, so the

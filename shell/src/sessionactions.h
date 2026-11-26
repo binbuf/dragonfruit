@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The shell's one session-ending path (T313).
 //
 // Log Out is a session action, not an application action: the shell asks

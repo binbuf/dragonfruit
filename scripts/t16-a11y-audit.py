@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # T-16.6a — live AT-SPI dump and keyboard-only walkthrough (one first-party
 # app). Driven by `scripts/t16-a11y-audit.sh` against a nested `make demo`

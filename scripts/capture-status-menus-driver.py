@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Drive the live nested menu bar and capture the T-07.5a status menus.
 
 Machine half of the T-07.5a capture: on the running nested session it clicks

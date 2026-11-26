@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T349 regression tests for the chrome stability fixture gate.
 
 The gate is deliberately small: it must fail closed on an unexpected pass

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Chrome pointer injection view tests (T-16.12): `QUICK_TEST_MAIN_WITH_SETUP`
 // finds the QML TestCase in this directory. The setup adds `ChromeInject`, a
 // QML-callable wrapper over the production `ChromePointer` injection, so the

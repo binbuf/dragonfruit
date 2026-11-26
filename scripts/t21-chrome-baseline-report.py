@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Render the T-21.1a chrome baseline report from a nested demo log.
 
 Called by ``scripts/t21-chrome-baseline.sh``. The demo log carries the shell's

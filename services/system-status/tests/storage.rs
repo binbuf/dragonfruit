@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Bridge tests for the storage half of the host (T-15.2b): the view the
 //! Settings pane and Quick Settings tile decode, plus the three explicit
 //! writes applied once through the adapter.

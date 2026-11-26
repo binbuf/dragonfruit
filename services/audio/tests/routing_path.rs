@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.3a acceptance: the adapter reports the output and input device lists
 //! plus their default routing, switches the routed device, and treats an
 //! absent daemon as a normal state. No PipeWire and no daemon are involved.

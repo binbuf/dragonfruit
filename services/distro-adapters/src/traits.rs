@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The eight administration traits and their typed data.
 //!
 //! Every trait extends [`CapabilityAdapter`], so a pane can ask

@@ -5,6 +5,8 @@
 accepted — T220 records the outcomes of the eight open questions in
 [interface-naming-and-licensing.md](../interface-naming-and-licensing.md) §7.
 The generic naming policy remains [ADR 0220](0220-generic-naming-and-third-party-substitution.md).
+Amended 2026-11-25 by [0366](0366-relicense-to-gpl-3.0-only.md): the optional
+services are separate works, as before; the first-party tree is GPL-3.0-only.
 
 ## Context
 

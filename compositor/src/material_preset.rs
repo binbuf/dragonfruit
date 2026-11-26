@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The glass material-preset vocabulary and resolution policy (T195).
 //!
 //! `design-system/tokens/tokens.json` owns the optical data and

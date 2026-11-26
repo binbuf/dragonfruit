@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The compositor's reusable library surface.
 //!
 //! Most of the compositor lives in the `dragonfruit-compositor` binary. This

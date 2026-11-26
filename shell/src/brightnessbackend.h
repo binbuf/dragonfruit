@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Panel brightness through logind (T319).
 //
 // `/sys/class/backlight/*/brightness` is normally root-owned, so the shell

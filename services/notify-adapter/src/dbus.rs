@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live transport: the notification service over the session bus.
 //!
 //! The notification service (`services/notifications`) owns the standard

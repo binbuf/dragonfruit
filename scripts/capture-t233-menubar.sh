@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T233: menu-bar auto-hide reveal (mid-slide and settled), the concealed
 # resting state, and a measured overflow menu on a narrow display.
 #

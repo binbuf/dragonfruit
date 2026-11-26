@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # T238 decoration validation matrix: deterministic pixel A/B for the shadow
 # and titlebar shaders.

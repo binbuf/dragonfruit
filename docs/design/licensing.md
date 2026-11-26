@@ -7,45 +7,57 @@ distributed publicly until the rules below are reviewed and signed off.
 
 ## Decision
 
-Dragonfruit is licensed under the **MIT License**, repo-wide. One license
-covers every component, so there are no cross-component linking
-restrictions to track.
+Dragonfruit is licensed under the **GNU General Public License, version 3
+only** (**GPL-3.0-only**), repo-wide. One license covers every
+first-party component, so there are no cross-component linking
+restrictions to track beyond GPL-3.0-only compatibility.
 
 | Component | License |
 |---|---|
-| `compositor/` (Rust + Smithay) | MIT |
-| `services/` (settingsd, menu-broker, app-index, session) | MIT |
-| `portal/` (xdg-desktop-portal-dragonfruit) | MIT |
-| `tools/` (dev tooling) | MIT |
-| `protocols/df-ipc/` (shared IPC crate) | MIT |
-| `protocols/*.xml` (private Wayland protocols) | MIT |
-| `design-system/` (QML module `Dragonfruit`) | MIT |
-| `shell/` (menu bar, Dock, Quick Settings, notifications, screenshot) | MIT |
-| `apps/` (Settings, Files) | MIT |
+| `compositor/` (Rust + Smithay) | GPL-3.0-only |
+| `services/` (settingsd, menu-broker, app-index, session) | GPL-3.0-only |
+| `portal/` (xdg-desktop-portal-dragonfruit) | GPL-3.0-only |
+| `tools/` (dev tooling) | GPL-3.0-only |
+| `protocols/df-ipc/` (shared IPC crate) | GPL-3.0-only |
+| `protocols/*.xml` (private Wayland protocols) | GPL-3.0-only |
+| `design-system/` (QML module `Dragonfruit`) | GPL-3.0-only |
+| `shell/` (menu bar, Dock, Quick Settings, notifications, screenshot) | GPL-3.0-only |
+| `apps/` (Settings, Files) | GPL-3.0-only |
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
 | `assets/icons/tabler/` (line-glyph set and pinned filled marks) | MIT |
 | `assets/icons/phosphor/` (filled Settings-tile glyphs) | MIT |
-| `assets/icons/brand/` (Dragonfruit and Tux OS-menu marks) | MIT (original project assets) |
+| `assets/icons/brand/` (Dragonfruit and Tux OS-menu marks) | GPL-3.0-only (original project assets) |
 | `assets/icons/whitesur/` (colored place/app artwork and the Files app icon) | GPL-3.0-only |
 | `assets/cursors/capitaine-cursors/` (system cursor theme) | LGPL-3.0-or-later |
-| `assets/graphics/wallpapers/` (`Default.jpg`, `Lagoon.jpg`, `Midnight.jpg`; shipped built-in wallpapers) | MIT (original project assets) |
+| `assets/graphics/wallpapers/` (`Default.jpg`, `Lagoon.jpg`, `Midnight.jpg`; shipped built-in wallpapers) | GPL-3.0-only (original project assets) |
 
-Rationale: MIT is permissive, maximises third-party adoption and
-interoperability, and keeps Dragonfruit consumable by any project —
-other compositors, toolkits, client libraries, and sandboxed apps alike.
-It retains credit through the copyright notice that every redistribution
-must preserve. Name/logo credit is handled separately; see "Trademarks".
+Rationale: GPL-3.0-only keeps the desktop and every improvement to it free
+software. Anyone who distributes a modified Dragonfruit — a fork, a
+downstream distro build, or an appliance — must publish the corresponding
+source under the same terms, so upstream fixes and features cannot be taken
+proprietary. The copyleft also matches the environment the desktop already
+lives in: Qt is used under the (L)GPL and WhiteSur already ships under
+GPL-3.0-only. Credit is retained through the copyright notices, and the
+license text must accompany every distribution. Name/logo credit is handled
+separately; see "Trademarks".
+
+Every binary distribution must ship the GPL-3.0 text and make the
+corresponding source available under GPL-3.0-only. The packaging and release
+assets include [LICENSES/GPL-3.0-only.txt](../../LICENSES/GPL-3.0-only.txt);
+releases are built from the tagged public repository.
 
 ## Linking rules
 
-Because all first-party code is MIT, there are no license-direction
-constraints between components. Two rules still matter:
+Because all first-party code is GPL-3.0-only, dependencies and linked
+components must be GPL-3.0-only compatible. Two rules matter:
 
 - **`df-ipc` must stay dependency-free of everything but the standard
   library**, so that any process can embed the contracts.
-- **No first-party component may pull in GPL/AGPL code.** A copyleft
-  dependency would relicense the combined work and defeat the permissive
-  choice; adding one is a review blocker. Separable LGPL data assets are
+- **No first-party component may pull in AGPL, GPL-2.0-only, or other
+  GPL-3.0-incompatible code.** Such a dependency could not be distributed as
+  part of the combined work; adding one is a review blocker. Permissive
+  dependencies (MIT, Apache-2.0, BSD, ISC, Zlib, Unlicense) remain compatible
+  and preferred for the dependency graph. Separable LGPL data assets are
   allowed when they are loaded at runtime, not linked into first-party code,
   and their license/source notice ships with the distribution (the Capitaine
   cursor theme below is the current case).
@@ -57,7 +69,7 @@ constraints between components. Two rules still matter:
   The exact set is pinned in `Cargo.lock`; see [NOTICE](../../NOTICE).
 - **Qt is (L)GPL-licensed or commercial.** We use the open (L)GPL Qt
   under its terms, linked dynamically from the system/distro packages.
-  MIT first-party code linking LGPL-3.0 Qt is compatible, and no
+  GPL-3.0-only first-party code linking LGPL-3.0 Qt is compatible, and no
   Dragonfruit component may obligate a Qt commercial license.
 - **System libraries** (libdrm, libinput, libseat, xkbcommon, wayland,
   systemd, NetworkManager, PipeWire, …) keep their own licenses; see
@@ -84,9 +96,9 @@ constraints between components. Two rules still matter:
   **GPL-3.0-only** data asset under `assets/icons/whitesur/`: colored folder,
   home/desktop, Trash, computer/volume, Files, and Applications-launcher SVGs.
   It is loaded by QML as files, never linked into first-party code, and can be
-  replaced independently. This is a deliberate, recorded exception to the
-  permissive-asset default; every binary distribution must ship the GPL-3.0
-  text, the provenance record in
+  replaced independently. Its copyleft terms now match the first-party tree;
+  every binary distribution must ship the GPL-3.0 text, the provenance record
+  in
   [`assets/icons/whitesur/README.md`](../../assets/icons/whitesur/README.md), and
   the corresponding source. See
   [ADR 0251](adr/0251-whitesur-place-icons.md). The artwork is
@@ -149,9 +161,9 @@ follows the same credit package:
 - **License text and notice.** The set ships its own `LICENSE` beside the
   assets, a copy in `LICENSES/`, a row in [NOTICE](../../NOTICE), and a row in the
   component table above. MIT sets need no special distribution obligation
-  beyond preserving the notice; a new copyleft icon set is a review blocker
-  unless it is added as an explicitly recorded separable data asset, as
-  WhiteSur is in ADR 0251.
+  beyond preserving the notice; a new copyleft icon set must be recorded as an
+  explicitly separable data asset, as WhiteSur is in ADR 0251, and every
+  binary distribution must ship the GPL-3.0 text and corresponding source.
 - **One registry per set.** `scripts/gen-tabler-glyphs.py` and
   `scripts/gen-phosphor-glyphs.py` extract the path data into generated QML
   singletons; `--check` fails the build if the committed registry is stale.
@@ -220,18 +232,18 @@ bytes and never the bundled asset, and
 
 ## Trademarks
 
-The MIT license grants copyright permissions only; it does not grant
+The GPL-3.0-only license grants copyright permissions only; it does not grant
 rights to the Dragonfruit name or logo. Projects that want to use the
 name or branding should ask first.
 
 ## Mechanical enforcement
 
-- Every source file carries an `SPDX-License-Identifier: MIT` header.
+- Every source file carries an `SPDX-License-Identifier: GPL-3.0-only` header.
 - Every crate/package directory carries a `LICENSE` file.
 - Full license text lives in [../../LICENSES/](../../LICENSES/).
 - The `protocol_xmls_match_lockstep_version` test in
-  `protocols/df-ipc` fails the build if a protocol XML loses its MIT
-  SPDX marker.
+  `protocols/df-ipc` fails the build if a protocol XML loses its
+  GPL-3.0-only SPDX marker.
 - `make check-tabler` runs `gen-tabler-glyphs.py --check` (the registry must
   match the SVG directory), `gen-app-icons.py --check` (the first-party app
   artwork must match the pinned filled glyphs), and
@@ -241,11 +253,11 @@ name or branding should ask first.
   tile/app-mark set.
 - `make check-assets` validates the WhiteSur provenance row, its license text,
   and the copied Files app icon.
-- New files: carry the MIT SPDX header. Adding a copyleft dependency or
-  changing a component's license is a review blocker.
+- New files: carry the GPL-3.0-only SPDX header. Adding a GPL-3.0-incompatible
+  dependency or changing a component's license is a review blocker.
 
 ## Contribution terms
 
-Contributions are accepted under the MIT License (inbound = outbound).
-By submitting a patch you license it to the project under MIT; do not
-submit code you cannot license that way.
+Contributions are accepted under the GPL-3.0-only license (inbound =
+outbound). By submitting a patch you license it to the project under
+GPL-3.0-only; do not submit code you cannot license that way.

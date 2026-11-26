@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The transport seam and its fixture.
 
 use dragonfruit_distro_adapters::{FirewallBackend, Port};

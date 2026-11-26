@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # T-21.2b VRR, chrome-callback, and mixed-refresh trace (T188c).
 #

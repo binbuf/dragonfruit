@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The thin Qt model facade over `files-core` (T-10.4b/T-10.4c, ADR 0049/0050).
 //
 // `FilesDirectoryModel` is a `QAbstractListModel` that owns no filesystem

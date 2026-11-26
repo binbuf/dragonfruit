@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's Accessibility seam (T-15.14b).
 //
 // The Accessibility pane never touches D-Bus: it binds the `Settings`

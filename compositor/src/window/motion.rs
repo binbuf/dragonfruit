@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore;
 //! T-02.3 zoom/fullscreen; T-02.4a close).
 //!

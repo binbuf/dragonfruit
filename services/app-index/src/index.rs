@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Application identity resolution (T-14.1a).
 //!
 //! app-index is the single owner of application identity

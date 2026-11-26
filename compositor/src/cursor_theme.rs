@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Themed system cursors (T-03 cursor rail).
 //!
 //! The DRM backend owns the pointer image: clients either set a cursor

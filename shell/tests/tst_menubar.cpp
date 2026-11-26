@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Menu-bar test runner (T-09): `QUICK_TEST_MAIN_WITH_SETUP` finds the QML
 // TestCase in this directory and exposes the optional capture directory
 // (`DF_MENUBAR_CAPTURE_DIR`) as `TestEnvironment.captureDir` for T231's

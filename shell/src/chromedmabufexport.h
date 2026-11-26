@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // EGL dmabuf export for the GPU chrome producer (T-21.1d).
 //
 // Wraps the EGLImage-from-GL-texture + `eglExportDMABUFImageMESA` pair behind

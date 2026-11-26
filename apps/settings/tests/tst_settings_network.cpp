@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Network advanced (VPN) pane test runner (T-15.15b): `QUICK_TEST_MAIN` finds
 // the QML TestCase in this directory.
 #include <QtQuickTest>

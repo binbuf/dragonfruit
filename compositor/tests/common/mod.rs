@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Shared compositor integration-test support.
 
 use std::path::{Path, PathBuf};

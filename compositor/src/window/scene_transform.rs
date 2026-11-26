@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The reusable scene-transform pass (T-04.3).
 //!
 //! T-05's Overview live-surface transform and T-06's app switcher both

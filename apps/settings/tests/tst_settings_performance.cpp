@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T268: the System Settings startup / pane-switch performance budget.
 //
 // Loads the real SettingsWindow through the real QML module with the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // App-switcher overlay test runner (T-06.2a): `QUICK_TEST_MAIN` finds the QML
 // TestCase in this directory. Run headless with the offscreen platform and the
 // software scene graph (see CMakeLists.txt).

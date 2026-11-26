@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The sanctioned `std::fs` fallback backend.
 //!
 //! GIO/GVfs is the intended platform plumbing ([09-files.md]): it gives

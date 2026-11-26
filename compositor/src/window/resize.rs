@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Interactive resize math: edge handling, client constraints, and output
 //! clamping (T-04 FR-10).
 //!

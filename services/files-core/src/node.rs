@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The listed-item model ([09-files.md]).
 //!
 //! A [`Node`] is one row in a listing. It keeps the **original name bytes**,

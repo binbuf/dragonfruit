@@ -44,8 +44,8 @@ RPM dependency fields follow its `fedora` column:
   entry and support GDM, SDDM, LightDM, and greetd through the per-DM adapter
   (ADR 0173).
 - GPL/LGPL services remain separate processes or dynamically linked libraries
-  with the notices in `NOTICE` and `docs/design/licensing.md`. No GPL code is copied
-  into the MIT packages.
+  with the notices in `NOTICE` and `docs/design/licensing.md`. No code from
+  those services is copied into the first-party tree or its packages.
 
 Package names are verified against the actual Fedora archive at packaging time
 (T259); the JSON records the expected name and the marker. LocalSend is not

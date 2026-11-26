@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-07.1a acceptance: a consumer renders the right menu-bar slot for each
 //! adapter state, driven only by the mock.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T235: the measured Quick Settings grid, expanded sheets, Edit Controls
 # catalogue, pages, resized controls and explicit absence.
 #

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-10.1a acceptance: a directory streams incrementally into the model in
 //! arrival order, and the model stays consistent. Headless — no display, no
 //! GTK, no daemon.

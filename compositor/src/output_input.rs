@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Output scoping for popups and absolute input (T324).
 //!
 //! The compositor's multi-monitor model is per-output: one `wl_output` per

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Chrome shm buffer-pool state machine (T-21.1c). No Wayland, QML, or
 // compositor: the pool's reuse and busy/release transitions are pure.
 #include <QtTest>

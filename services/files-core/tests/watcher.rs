@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-10.3b acceptance: an external create/delete updates the model within one
 //! frame, folded in incrementally and never by re-listing. The scripted
 //! `MockWatcher` fixture drives the seam headlessly; the `InotifyWatcher` cases

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The provider's typed model: the six categories, the cached item with its
 //! attribution, the catalogue, and the service status.
 //!

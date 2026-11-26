@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The second-VT dev harness (T-12.6c).
 //!
 //! `dragonfruit dev --real [--user dfdev]` starts a real Dragonfruit session on

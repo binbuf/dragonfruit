@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The transport seam: the raw CUPS/SANE read, the explicit writes, and their
 //! mock.
 //!

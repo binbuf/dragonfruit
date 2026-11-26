@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The window state machine (T-04).
 //!
 //! A window is **floating, minimized, zoomed, or fullscreen**, and every

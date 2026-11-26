@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Binary RPM for the GitHub release assets. This is deliberately not the
 # Fedora review/COPR spec: it packages an already-staged tree so the same
@@ -19,7 +19,7 @@ Name:           dragonfruit-desktop
 Version:        %{df_version}
 Release:        %{df_release}%{?dist}
 Summary:        Modern Wayland desktop environment
-License:        MIT
+License:        GPL-3.0-only
 URL:            https://github.com/dragonfruit-desktop/dragonfruit
 BuildArch:      %{_arch}
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Dragonfruit polkit authentication agent (T-13.6).
 //
 // The shell registers this object with the host polkit authority as its

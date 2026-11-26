@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-08.2b theme-binding tests: a settingsd key change (delivered through the
 // same `SettingsClient` the Dock uses) flips the design-system `Theme`
 // singleton, and the gallery variant renders the new scheme. Headless:

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # Settings (T-09.1a): the app shell is a reusable QML module so the app and
 # its headless QML test render the exact same surfaces — mirroring the
 # design-system gallery/module split. The executable only loads the window.

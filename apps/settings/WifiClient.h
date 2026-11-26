@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's Wi-Fi seam (T225).
 //
 // The Wi-Fi pane and the shell's Wi-Fi quick sheet read the same bridge-host

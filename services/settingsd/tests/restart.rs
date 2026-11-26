@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-08.3 acceptance: `settingsd` survives a hard kill and re-syncs.
 //!
 //! Unlike `session_bus.rs` (which serves an in-process object and models a

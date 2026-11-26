@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-17.5a: an absent service degrades the session, it never blocks its start.
 //!
 //! The T-15.16 absence matrix proves every *pane* renders with its provider

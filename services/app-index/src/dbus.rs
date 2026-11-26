@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The session-bus surface (T-14.1a/T-14.1b).
 //!
 //! The service owns one well-known name, `org.dragonfruit.AppIndex1`, and

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Distribution detection and the support-tier vocabulary.
 //!
 //! Detection reads `/etc/os-release` and maps `ID` / `ID_LIKE` onto one of the

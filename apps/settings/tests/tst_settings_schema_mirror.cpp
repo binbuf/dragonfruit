@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T282: the client schema mirror cannot drift from the daemon.
 //
 // `settingsSchemaDefaults()` / `settingsSchemaInfo()` in

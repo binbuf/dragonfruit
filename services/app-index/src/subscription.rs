@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Coalesced change subscriptions (T-14.1c).
 //!
 //! Consumers stop re-querying the index: they [`subscribe`](Subscriptions::subscribe)

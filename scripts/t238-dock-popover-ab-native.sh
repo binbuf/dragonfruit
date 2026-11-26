@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # T238 native DRM follow-up: repeat the Dock popover opening A/B on 4K/144 Hz
 # with Full, Reduced, and Minimal material.

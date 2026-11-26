@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T-14.7x Dock activation / launch capture driver.
 
 Driven by ``scripts/capture-dock-activation.sh`` (run that, not this). Requires

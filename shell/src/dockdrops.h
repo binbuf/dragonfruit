@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Pure external-drop resolution for the Dock (T-10, section 12).
 //
 // External drops arrive from another client (Files, a launcher) as a

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The app-switcher state machine (T-06.1).
 //!
 //! The compositor owns the Cmd-Tab chord (through the global shortcut engine,

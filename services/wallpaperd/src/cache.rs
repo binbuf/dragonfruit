@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The lazy local cache: where fetched thumbnails and their attribution index
 //! live (ADR 0094).
 //!

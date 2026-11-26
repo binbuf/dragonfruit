@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live ScreenCast producer (T335a).
 //!
 //! The portal backend must hand a sandboxed application a *live* PipeWire

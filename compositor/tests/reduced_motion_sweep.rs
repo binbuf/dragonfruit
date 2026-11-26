@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-16.6b — the reduced-motion sweep.
 //!
 //! The acceptance is "every animation has a passing reduced-motion variant".

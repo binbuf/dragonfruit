@@ -8,7 +8,7 @@
       "Recommends": "Most users want it and the feature is first-party or strongly expected; the absence path still exists.",
       "Suggests": "Useful when the host already provides it; no first-party feature depends on it."
     },
-    "gpl_rule": "GPL/LGPL services stay separate processes or dynamically linked libraries with notices. No GPL code is copied into MIT files and no GPL library is statically linked.",
+    "gpl_rule": "GPL/LGPL services stay separate processes or dynamically linked libraries with notices. No code from those services is copied into first-party files, and AGPL/GPL-2.0-only code is never linked into a Dragonfruit binary.",
     "verification": "Package names and licenses are verified against the actual distro package at packaging time (T259). A missing optional service degrades the feature; it never blocks the session."
   },
   "services": [

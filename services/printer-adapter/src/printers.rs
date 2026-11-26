@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live transport: CUPS and SANE through the client tools they ship.
 //!
 //! The **printers** half is CUPS. CUPS ships no stable machine-readable local

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Trash: the freedesktop Trash specification (T-10.3a, [09-files.md]).
 //!
 //! The design's rule is **consume the spec, never re-implement GVfs**. On a

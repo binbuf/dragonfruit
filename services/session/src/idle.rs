@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Idle timers: the dim → blank → lock → suspend chain (T-12.4a).
 //!
 //! The desktop goes idle in stages. Each stage has a delay from the last

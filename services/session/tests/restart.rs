@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.1a acceptance: the supervisor starts services in order and restarts
 //! a killed one per policy.
 //!

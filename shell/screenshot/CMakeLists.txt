@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # The portal pickers and capture UI (T-13). The FileChooser picker
 # (T-13.2b), the screenshot selection overlay (T-13.3a), the ScreenCast
 # source picker (T-13.4a), and the polkit authentication dialog (T-13.6)

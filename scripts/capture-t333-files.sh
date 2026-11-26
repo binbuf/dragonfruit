@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T333: Files tabs and New Window stills — two tabs with independent
 # locations, the second tab active, one tab after closing the second, and the
 # second window surface a New Window shows. Headless offscreen/software,

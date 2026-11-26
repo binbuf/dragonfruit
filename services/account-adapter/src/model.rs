@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Users and Groups snapshot the pane renders, decoded from one raw read.
 //!
 //! The model owns only the projection a consumer should not repeat: it types

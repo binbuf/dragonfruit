@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Print the normalized centre of the first window's SSD titlebar.
 
 Used by the decoration matrix to hover the real titlebar at every output

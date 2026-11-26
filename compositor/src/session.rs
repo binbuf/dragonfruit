@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The shared session runner (T-02).
 //!
 //! One calloop event loop multiplexes Wayland clients, backend input

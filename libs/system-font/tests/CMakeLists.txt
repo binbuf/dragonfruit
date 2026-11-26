@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # System-font tests: the bundled Inter faces register, the application
 # default is the Inter family, weight/italic variants resolve to it instead of
 # a fallback, and repeat installation is a no-op.

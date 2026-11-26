@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The typed General sub-pane data (T226).
 //!
 //! One snapshot carries the five independent host reads behind the General

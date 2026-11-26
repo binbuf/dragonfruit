@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The suspend/resume cycle (T-12.5a).
 //!
 //! The idle chain reaches [`IdleStage::Suspend`](crate::idle::IdleStage::Suspend)

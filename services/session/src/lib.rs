@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! `dragonfruit-session`: the session manager (T-12.1a).
 //!
 //! The desktop is a *session*: a fixed composition of processes with a

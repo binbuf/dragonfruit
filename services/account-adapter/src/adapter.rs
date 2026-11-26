@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Users and Groups adapter: one read path over the shared contract.
 //!
 //! It holds the last snapshot the host stack published and exposes the

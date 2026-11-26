@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Files app's platform location provider, exposed to QML as the `Files`
 // singleton (T-10.4a).
 //

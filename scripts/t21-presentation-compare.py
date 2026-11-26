@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Compare the committed T183 chrome baseline with the v0.1.1 benchmark run.
 
 The T183 baseline (``docs/captures/t21-chrome-baseline.txt``) used the same

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's live settings client, exposed to QML as the `Settings`
 // singleton (T-09.1b).
 //

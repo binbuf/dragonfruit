@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Client for the StatusNotifier/AppIndicator tray surface app-index hosts
 // (T-14.3).
 //

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Shared per-frame render-pass bookkeeping (T-04.3).
 //!
 //! The material track has one invariant: **one effect pass per rendered

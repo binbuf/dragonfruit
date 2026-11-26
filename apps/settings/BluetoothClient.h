@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's Bluetooth seam (T-15.1b).
 //
 // The Bluetooth pane never touches D-Bus: it binds the `Settings` singleton,

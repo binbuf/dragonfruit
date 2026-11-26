@@ -543,7 +543,7 @@ third-party substitutions are listed in
 | Distro differences leak into QML | Adapter trait + per-distro backend; no shell commands in QML |
 | Motion becomes a pile of per-surface durations | One motion token set + one clock; measured tokens only |
 | Accessibility is deferred again | Every task's done-when includes keyboard/AT-SPI/reduced-motion checks |
-| Third-party licensing contaminates MIT code | Separate-process/dynamic-link policy; ADR 0220; packaging review |
+| Third-party licensing contaminates first-party code | Separate-process/dynamic-link policy; ADR 0220; packaging review |
 | Performance regresses with more chrome | Per-surface budgets, T-21 presentation path, degrade tiers |
 | Naming/branding risk | Generic-name map + asset provenance + gate |
 

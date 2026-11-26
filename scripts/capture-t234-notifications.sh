@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T234: the measured Notifications ramp, banner stack, widget stack and
 # the separate widget gallery, in light and dark.
 #

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Temporary frame-trace instrumentation (diagnostic).
 //!
 //! Enable with `DRAGONFRUIT_FRAME_TRACE=1`. Every line carries two clocks:

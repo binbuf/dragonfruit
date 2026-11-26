@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Users and Groups adapter (T-15.11a).
 //!
 //! Users and Groups do not wrap a single desktop daemon the way Bluetooth or

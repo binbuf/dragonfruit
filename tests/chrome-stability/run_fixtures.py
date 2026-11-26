@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T349 chrome stability fixture gate.
 
 Runs the offscreen QML fixture suite and compares each test function with

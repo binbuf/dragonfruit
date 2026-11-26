@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 #![allow(dead_code)] // The pure stage API is exercised by the lib conformance test.
 
 //! The compositor's live inactivity timer (T315).

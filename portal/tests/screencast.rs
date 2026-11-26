@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-13.4a acceptance: the ScreenCast portal creates a session, opens the
 //! source picker on `SelectSources`, returns the chosen source handle from
 //! `Start`, and degrades honestly on cancel/error paths. T335b adds the live

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The session-bus surface: `org.dragonfruit.SystemStatus1`.
 //!
 //! Every subsystem interface lives at one object path — `Wifi`, `Audio`,

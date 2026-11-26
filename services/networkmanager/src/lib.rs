@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The NetworkManager adapter: read Wi-Fi state, the access-point list, and
 //! signal strength (T-07.2a), and join a network with polkit degradation
 //! (T-07.2b).

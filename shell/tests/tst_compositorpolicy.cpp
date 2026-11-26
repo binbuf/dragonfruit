@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-08.2c: the pure mapping from the settingsd motion/input keys onto the
 // compositor policy the shell forwards over the private protocol. No bus,
 // Wayland, or QML.

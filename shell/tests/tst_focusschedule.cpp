@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Focus schedule's pure window logic (T229a): 24-hour parsing, same-day
 // and overnight windows, weekday gating, and the empty-days/all-day cases.
 #include "focusschedule.h"

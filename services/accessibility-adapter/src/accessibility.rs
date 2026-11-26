@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live transport: the AT-SPI accessibility bus over the session bus.
 //!
 //! Assistive technology on Linux speaks **AT-SPI**. The `at-spi2` stack runs

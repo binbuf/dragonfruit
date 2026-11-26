@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! One host-stack source shared by the adapters that project different
 //! surfaces of it (T228).
 //!

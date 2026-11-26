@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-21.1d: pure GPU-chrome capability and format-selection rules.
 #include <QtTest>
 

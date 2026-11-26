@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live transport: BlueZ over its D-Bus API.
 //!
 //! BlueZ is reached over the **system bus** as `org.bluez`

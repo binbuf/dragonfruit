@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Chrome stability fixture runner (T349).
 //
 // `make verify-chrome-stability` invokes this binary through

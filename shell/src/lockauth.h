@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Lock-screen PAM authentication (T-12.3b).
 //
 // The lock UI never verifies a password itself and keeps no credential store:

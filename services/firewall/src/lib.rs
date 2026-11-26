@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The firewall adapter (T225).
 //!
 //! The Network pane and its Firewall sheet never shell out. They read one

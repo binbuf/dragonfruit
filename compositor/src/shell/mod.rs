@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 #![allow(dead_code)] // Forward-looking protocol API consumed by T-09..T-29.
 
 //! Private shell protocol handling (T-07).

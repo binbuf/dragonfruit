@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Capture the T-14.7b Dock magnification sweep and its frame budget.
 
 Driven by ``scripts/capture-dock-magnify.sh`` (run that, not this). Requires a

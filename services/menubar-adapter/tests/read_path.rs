@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.9a acceptance: the adapter reports Menu Bar configuration state and
 //! events against a mock, and an absent host stack is a normal hidden state.
 //! No shell, compositor, or Wayland connection is involved.

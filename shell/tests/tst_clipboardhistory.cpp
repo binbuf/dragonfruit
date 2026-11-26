@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Clipboard-history store tests (T-13.5b): classification, dedup, caps,
 // pinning, secret-hint refusal, clear-on-lock, search, restore, persistence.
 // Pure Qt — no Wayland, D-Bus, or QML.

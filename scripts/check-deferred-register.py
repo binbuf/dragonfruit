@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Deferred-register conformance gate (T346, ADR 0357).
 
 Every accepted P2 deferral is one row in the deferred register in

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Accessibility snapshot the pane renders, decoded from one raw AT-SPI
 //! read.
 //!

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Settings consumer conformance gate (T304, ADR 0316).
 
 A settings key marked ``stored_only: false`` is a promise that the user's

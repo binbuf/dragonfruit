@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Refresh desktop/icon caches only. This script deliberately does not edit
 # user settings, preselect a display-manager session, or remove another

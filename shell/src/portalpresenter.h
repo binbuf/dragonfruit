@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The shell's portal-presenter identity and the `Pending*` decoder (T311).
 //
 // The shell owns `org.dragonfruit.PortalPresenter1` for the lifetime of its

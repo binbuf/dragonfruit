@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Notifications and Focus half of the bridge host (T-15.7b).
 //!
 //! The notification service (`services/notifications`) is reached by the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The portal backend's discoverability data (T-13.1a).
 //!
 //! `xdg-desktop-portal` finds a backend through three installed files; they

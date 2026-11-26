@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The shell's half of the FileChooser presenter seam (T-13.2b).
 //
 // `ChooserBridge` watches the portal backend's diagnostic

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Fail the build when a QML source names a Tabler glyph that is not vendored.
 
 `TablerIcon` resolves a glyph name to a vendored SVG; a typo would otherwise

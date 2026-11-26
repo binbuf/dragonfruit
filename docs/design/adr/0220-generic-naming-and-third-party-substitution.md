@@ -4,7 +4,9 @@
 
 accepted — governs user-facing names, assets, and optional dependencies. T220
 landed the naming gate and asset manifest; the eight open questions are decided
-in [ADR 0229](0229-naming-and-optional-service-decisions.md).
+in [ADR 0229](0229-naming-and-optional-service-decisions.md). Amended
+2026-11-25 by [0366](0366-relicense-to-gpl-3.0-only.md): "first-party code" is
+now GPL-3.0-only; the separate-process and no-copy rules are unchanged.
 
 ## Context
 

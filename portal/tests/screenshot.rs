@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-13.3a acceptance: the Screenshot portal round-trips a capture request for
 //! each selection mode, with a test client acting as the presenter.
 //!

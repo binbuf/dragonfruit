@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-18.1a acceptance (session bus): drive `org.dragonfruit.Wallpaper1` over a
 //! real private `dbus-daemon`, exactly as the service serves it.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-07.3 acceptance: a volume or mute change reflects in the adapter state
 //! within one event. No PipeWire and no daemon are involved.
 

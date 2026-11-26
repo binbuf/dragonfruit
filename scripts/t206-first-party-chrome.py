@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T206 first-party Settings/Files chrome check, capture scorer and report.
 
 The first-party apps draw their own sidebar and toolbar on a transparent

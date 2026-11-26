@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 import QtQuick
 
 // The Files clipboard model (T330): what Copy/Cut marked, and the mode a

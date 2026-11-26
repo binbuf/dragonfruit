@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The provider state machine: lazy warm, eager `Preload`, and the offline
 //! path.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Bounded waits for the interactive portals (T311).
 //!
 //! The portal is the caller's only path: a presenter that never answers must

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The session plan: what the session manager starts, in what order, and how
 //! each process is supervised (T-12.1a).
 //!

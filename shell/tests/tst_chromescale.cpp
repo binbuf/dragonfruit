@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-21.1b: the pure chrome scale mapping.
 #include <QtTest>
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Privacy and Security adapter: one read path over the shared contract.
 //!
 //! It holds the last snapshot the portal PermissionStore published and exposes

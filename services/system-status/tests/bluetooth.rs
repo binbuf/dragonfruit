@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Bridge tests for the Bluetooth half of the host (T-15.1b): the view the
 //! Settings pane and Quick Settings tile decode, plus the four explicit writes
 //! applied once through the adapter.

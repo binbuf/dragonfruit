@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # Chrome pointer injection (T-16.12), shared by the shell chrome and the
 # Files-owned desktop process (T-19.3). The single constructor for every
 # injected offscreen pointer event: the monotonic timestamp is owned here,

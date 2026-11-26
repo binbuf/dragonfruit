@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Bluetooth-pane test runner (T-15.1b): `QUICK_TEST_MAIN` finds the QML
 // TestCase in this directory. Run headless with the offscreen platform, the
 // software scene graph, `DF_SETTINGS_FIXTURE`, and `DF_BLUETOOTH_FIXTURE`

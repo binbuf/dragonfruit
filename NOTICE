@@ -1,9 +1,9 @@
 # Third-Party Notices
 
-Dragonfruit itself is licensed under the MIT License (see
-[LICENSE.md](LICENSE.md)). It builds on third-party software whose
-licenses are reproduced or referenced below. Nothing in the MIT license
-for Dragonfruit alters the terms of these components.
+Dragonfruit itself is licensed under the GNU General Public License,
+version 3 only (GPL-3.0-only; see [LICENSE.md](LICENSE.md)). It builds on
+third-party software whose licenses are reproduced or referenced below.
+Nothing in the Dragonfruit license alters the terms of these components.
 
 ## Direct build dependencies
 
@@ -25,18 +25,19 @@ for Dragonfruit alters the terms of these components.
 | [Phosphor](https://github.com/phosphor-icons/core) 2.0.8 (`assets/icons/phosphor/`, the `regular` and `fill` glyphs, compiled into the design-system module) | MIT |
 | [Capitaine cursors](https://github.com/keeferrourke/capitaine-cursors) commit `06c8843` (`assets/cursors/capitaine-cursors/`, the desktop cursor theme, installed to `share/icons/capitaine-cursors`) | LGPL-3.0-or-later; see [`assets/cursors/capitaine-cursors/COPYING`](assets/cursors/capitaine-cursors/COPYING) and [`LICENSES/LGPL-3.0-or-later.txt`](LICENSES/LGPL-3.0-or-later.txt) |
 | [WhiteSur icon theme](https://github.com/vinceliuice/WhiteSur-icon-theme) `2026-09-10` (commit `73d8040da51a9ed74e47c7366e7e9ff437601a5c`; `assets/icons/whitesur/`, the colored place/app artwork, compiled into the design-system module; the Files app icon copy installs to `share/icons/hicolor/scalable/apps`) | GPL-3.0-only; see [`assets/icons/whitesur/COPYING`](assets/icons/whitesur/COPYING) and [`LICENSES/GPL-3.0-only.txt`](LICENSES/GPL-3.0-only.txt) |
-| Dragonfruit and Tux OS-menu marks (`assets/icons/brand/`, compiled into the design-system module) | MIT (original project assets) |
-| Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | MIT (original project asset) |
+| Dragonfruit and Tux OS-menu marks (`assets/icons/brand/`, compiled into the design-system module) | GPL-3.0-only (original project assets) |
+| Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | GPL-3.0-only (original project asset) |
 
 The default wallpaper is the only image bundled in a package. Featured
 pictures are fetched from Wikimedia Commons at runtime under their own
 licenses and are never shipped — see
-[docs/licensing.md](docs/licensing.md).
+[docs/design/licensing.md](docs/design/licensing.md).
 
-WhiteSur is the one **copyleft** bundled asset set. It is separable runtime
-data: QML loads the SVGs as files, no first-party code links against them, and
-the set can be replaced independently. Any binary distribution must include the
-GPL-3.0 text, the provenance record in
+WhiteSur is a third-party **copyleft** bundled asset set, like the
+first-party tree itself. It is separable runtime data: QML loads the SVGs as
+files, no first-party code links against them, and the set can be replaced
+independently. Any binary distribution must include the GPL-3.0 text, the
+provenance record in
 [`assets/icons/whitesur/README.md`](assets/icons/whitesur/README.md), and the
 corresponding upstream source identified there. The deliberate exception is
 recorded in
@@ -71,7 +72,7 @@ artifacts.
 ## Optional and host services (not bundled)
 
 These services are separate processes (or, for Qt, dynamically linked) and are
-never copied into the MIT codebase. None is a hard dependency: the core desktop
+never copied into first-party code. None is a hard dependency: the core desktop
 installs, starts, and works without them, and every feature has an absence
 path. Packaging marks them `Recommends` or `Suggests`, never `Requires`; the
 marker table is [packaging/optional-services.json](packaging/optional-services.json)
@@ -125,4 +126,4 @@ authoritative license for each crate ships in its own package metadata.
 Qt 6 is used under the open-source LGPL-3.0-or-later license; Dragonfruit
 links Qt dynamically from the system/distro packages and does not
 obligate a Qt commercial license. See
-[docs/licensing.md](docs/licensing.md) for the policy.
+[docs/design/licensing.md](docs/design/licensing.md) for the policy.

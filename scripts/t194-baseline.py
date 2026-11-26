@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Write the T194 baseline manifest and derived surface crops.
 
 The starting Dragonfruit appearance is recorded from the committed v0.1.1

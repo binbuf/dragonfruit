@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T195 acceptance: the generated optical presets resolve consistently.
 //!
 //! The heavy cases live next to the resolver; this integration test pins the

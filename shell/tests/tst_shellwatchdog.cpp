@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Shell watchdog tests (T314): the heartbeat is an event-loop timer on the
 // GUI thread, so a GUI-thread block stops the beats and systemd's
 // `WatchdogSec=30` restarts the shell. The same class owns the stable

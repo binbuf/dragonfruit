@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-02 FR-2 / T-03.1a acceptance: the idle trace and the animation frame
 //! budget.
 //!

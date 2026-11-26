@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Focus / Do Not Disturb policy (T-11.2a).
 //!
 //! The service owns one policy state ([04-shell.md](../../docs/design/04-shell.md),

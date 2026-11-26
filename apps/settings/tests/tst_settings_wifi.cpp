@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Wi-Fi pane test runner (T225): `QUICK_TEST_MAIN` finds the QML TestCase in
 // this directory.
 #include <QtQuickTest>

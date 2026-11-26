@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The hand-written C ABI the Qt model facade links against (T-10.4b/T-10.4c).
 //!
 //! [09-files.md] says `files-core` is embedded by the Files window through a

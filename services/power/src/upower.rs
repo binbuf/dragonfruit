@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live transport: UPower and power-profiles-daemon over D-Bus.
 //!
 //! Both daemons are reached over the **system bus**

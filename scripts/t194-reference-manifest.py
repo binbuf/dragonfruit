@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Pin and verify the T194 reference-evidence manifest.
 
 The full macOS reference checkout is optional.  This script records the small

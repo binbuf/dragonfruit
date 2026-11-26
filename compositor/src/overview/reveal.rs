@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Desktop Reveal layout (T-05.5).
 //!
 //! Desktop Reveal (Ctrl+Down) is not a second transition: it is the same

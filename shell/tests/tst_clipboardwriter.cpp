@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Async clipboard source writer tests (T310): the shell serves a stored
 // clipboard entry from the event loop, never from the Wayland dispatch
 // callback. A pipe that is never drained must time out instead of hanging the

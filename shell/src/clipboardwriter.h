@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Asynchronous clipboard source writer (T310).
 //
 // The shell serves a stored clipboard entry by handing the compositor a pipe

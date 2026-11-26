@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Screenshot save/copy (T-13.3b).
 //
 // The captured image arrives from the compositor's portal-presenter capture

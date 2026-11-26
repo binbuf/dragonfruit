@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Bridge tests for the Printers and Scanners half of the host (T-15.12b): the
 //! view the Settings pane and Quick Settings tile decode, plus the three
 //! explicit queue writes applied once through the adapter.

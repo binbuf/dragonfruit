@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.7a acceptance: drive the live `DbusNotifications` source against the
 //! real notification service over a private session bus.
 //!

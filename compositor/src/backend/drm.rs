@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! DRM/KMS backend (T-02): native sessions, owning the physical display
 //! through a logind/libseat session.
 //!

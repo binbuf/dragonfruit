@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T354: popup visual transaction and lifetime owner.
 //
 // Pure tests for the shell-side owner: accepted content joins a generation and

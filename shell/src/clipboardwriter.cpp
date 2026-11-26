@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif

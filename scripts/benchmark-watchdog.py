@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Watch a benchmark compositor and capture diagnostics if it stops responding.
 
 The nested compositor can stall when the host stops presenting its window: the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Write the T-21.4b native benchmark row matrix as an explicit OPEN artifact.
 
 The nested benchmark (``scripts/t21-presentation-bench.sh``) can measure the

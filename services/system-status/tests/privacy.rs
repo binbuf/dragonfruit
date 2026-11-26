@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Bridge tests for the Privacy and Security half of the host (T-15.13b): the
 //! view the Settings pane and Quick Settings tile decode, plus the two explicit
 //! permission writes applied once through the adapter.

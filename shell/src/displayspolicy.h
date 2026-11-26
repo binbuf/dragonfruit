@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The compositor output view of the settings schema (T-09.5). Pure: it maps
 // the `org.dragonfruit.Settings1` display keys onto what the shell forwards
 // over `df_output.set_scale` / `df_output.set_transform`. No Wayland, no QML,

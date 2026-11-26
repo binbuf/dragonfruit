@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! A deterministic in-memory [`DirectorySource`] for headless tests.
 //!
 //! `files-core` is unit- and property-tested with fake adapters and no display

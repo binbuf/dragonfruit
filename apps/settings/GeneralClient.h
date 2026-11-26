@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's General sub-panes seam (T226).
 //
 // Date & Time, Language & Region, Login Items, Sharing, Backup, Storage usage,

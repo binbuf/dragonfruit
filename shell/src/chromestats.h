@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Opt-in chrome transport counters (T-21.1a, extended by T-21.1c).
 //
 // `DRAGONFRUIT_CHROME_STATS=1` turns on the counters below and a greppable

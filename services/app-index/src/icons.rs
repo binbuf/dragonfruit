@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Themed icon lookup (T-14.1a).
 //!
 //! An application's `.desktop` `Icon` value is a *name* in the XDG icon theme

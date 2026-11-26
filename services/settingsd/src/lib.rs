@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! `dragonfruit-settingsd`: the desktop-settings provider (T-08.1a).
 //!
 //! `settingsd` is the single owner of desktop settings

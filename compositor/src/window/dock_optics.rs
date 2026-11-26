@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The measured Dock optical fit (T198).
 //!
 //! The reference Dock is not a single Gaussian: its checker response keeps a

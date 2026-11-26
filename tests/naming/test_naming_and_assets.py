@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Regression tests for the T220 naming and asset gates.
 
 Run with ``make check-naming`` or directly:

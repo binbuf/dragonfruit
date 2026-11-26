@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T347 reference-hardware daily-driver matrix.
 
 This is the executable half of the T347 hardware gate

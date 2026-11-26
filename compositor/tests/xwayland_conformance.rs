@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-06 acceptance: Xwayland lifecycle and X11 window management.
 //!
 //! Starts the compositor on the headless backend, waits for the `DISPLAY`

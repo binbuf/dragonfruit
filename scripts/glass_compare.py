@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Hardware-independent comparison for Dragonfruit glass captures.
 
 This is the T194 comparison core.  It is deliberately small and dependency

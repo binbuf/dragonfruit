@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T338: the menu bar's wallpaper luma is a contrast input, not a reason to
 // decode a 4K image on the GUI thread. A small top-band thumbnail is decoded
 // on a worker thread and cached by source + mtime + fallback colour.

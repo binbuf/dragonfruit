@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Shared render plumbing (T-02).
 //!
 //! Backends build their element list from the [`Space`] via Smithay's

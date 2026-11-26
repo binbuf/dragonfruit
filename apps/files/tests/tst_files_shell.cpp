@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Files shell test runner (T-10.4a/T-10.4b). Before the QML engine loads, it
 // materializes a small real directory so the view tests can list something
 // through the files-core bridge, and publishes it as

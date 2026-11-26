@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-03.3 — the hardware input validation matrix.
 //!
 //! T-03.3 validates the input stack on **real devices**, but the compositor can

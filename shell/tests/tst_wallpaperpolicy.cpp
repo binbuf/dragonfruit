@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-09.3 / T-18.1b: the pure mapping from the settingsd wallpaper keys and
 // the provider's resolved defaults onto what the shell forwards over
 // `df_workspace.set_wallpaper`. No bus, Wayland, or QML.

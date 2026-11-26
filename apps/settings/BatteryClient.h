@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's Battery seam (T-15.6b).
 //
 // The Battery pane never touches D-Bus: it binds the `Settings` singleton, and

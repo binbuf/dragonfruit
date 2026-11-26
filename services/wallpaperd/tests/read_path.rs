@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-18.1a acceptance (headless): catalogue fetch/cache layout, Featured-default
 //! selection, the offline path, bundled-default resolution/precedence, and
 //! lazy-vs-`Preload` behavior. No bus and no network are involved.

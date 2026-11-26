@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Folder-stack state for the Dock (T-14.7k).
 //
 // The Dock renders any pinned folder as a **stack**: a folder silhouette that

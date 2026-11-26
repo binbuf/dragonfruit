@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The transport seam: the raw host-stack read and its mock.
 //!
 //! A [`SystemSource`] is the only thing that talks to the host stack. That

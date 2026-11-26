@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The shipped original default wallpaper and its resolution order (ADR 0094).
 //!
-//! `assets/graphics/wallpapers/Default.jpg` is the project's own MIT asset and
+//! `assets/graphics/wallpapers/Default.jpg` is the project's own GPL-3.0-only
+//! asset and
 //! the out-of-box, first-run, and cold-cache/offline background. It is
 //! installed to `$prefix/share/dragonfruit/wallpapers/Default.jpg` at package
 //! time and read in place; it is never copied into the provider cache.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Generate the QML Tabler glyph registry from the vendored SVGs.
 
 The vendored Tabler files under ``assets/icons/tabler/`` are the single source
@@ -204,7 +204,7 @@ def gen_qml(glyphs: dict[str, dict[str, tuple[str, str]]]) -> str:
     filled = {name: fill for name, (_, fill) in glyphs["filled"].items()}
 
     lines = [
-        "// SPDX-License-Identifier: MIT",
+        "// SPDX-License-Identifier: GPL-3.0-only",
         f"// {HEADER}",
         "// Tabler Icons 3.50.0 (v3.50.0, 6904efd245391ad396df17654738f52f6da8c40e), MIT.",
         "pragma Singleton",

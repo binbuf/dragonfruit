@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! `.desktop` directory watching (T-14.1b).
 //!
 //! The index only stays live if an install/uninstall/update reaches it. The

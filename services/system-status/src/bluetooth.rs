@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Bluetooth half of the bridge host (T-15.1b).
 //!
 //! BlueZ is reached by the `dragonfruit-bluetooth` adapter; the shell and the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 #include "materialpolicy.h"
 
 bool MaterialPolicy::isPersistent(std::uint32_t role)

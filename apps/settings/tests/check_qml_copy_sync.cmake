@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T290a: the Settings module's QML is compiled into the module's resource (the
 # generated qmldir carries `prefer :/qt/qml/Dragonfruit/Settings/`), but Qt
 # also copies every `QML_FILES` entry into `build/qml/Dragonfruit/Settings/`.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Shell-side client for the T-07.5a bridge host
 // (`org.dragonfruit.SystemStatus1`, services/system-status).
 //

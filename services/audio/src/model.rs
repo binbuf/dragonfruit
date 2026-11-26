@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The audio snapshot the menu bar renders, decoded from one raw read.
 //!
 //! The model owns the aggregation a consumer should not repeat: it marks the

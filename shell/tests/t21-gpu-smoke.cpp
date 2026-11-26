@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-21.1d nested GL smoke rail.
 //
 // Renders one QML scene through GpuChromeFrameProducer, verifies the physical

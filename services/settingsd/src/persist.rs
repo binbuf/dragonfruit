@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! On-disk persistence for the desktop-settings model (T-08.1b).
 //!
 //! `settingsd` is the sole writer of `$XDG_CONFIG_HOME/dragonfruit/settings.json`

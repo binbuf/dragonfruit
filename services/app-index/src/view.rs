@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Flat JSON views of the app index (T-14.1a).
 //!
 //! The shell decodes these; they are intentionally flat and stringly-typed so

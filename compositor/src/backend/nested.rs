@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Wayland nested backend (T-02): runs as a window on an existing
 //! Wayland session — the daily development workflow.
 //!

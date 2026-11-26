@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Keyboard/Mouse/Trackpad half of the bridge host (T-15.4b).
 //!
 //! libinput is reached by the `dragonfruit-input` adapter; the shell and the

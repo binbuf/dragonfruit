@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-08.1a acceptance: drive `org.dragonfruit.Settings1` over a real session
 //! bus.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Panel-brightness tests (T319): the backlight resolver, the 0..1 -> device
 // range mapping, the logind `Session.SetBrightness` request, the sysfs
 // fallback, and the absent no-op. A fake logind session runs on a private bus

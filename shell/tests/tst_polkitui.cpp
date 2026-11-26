@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // polkit authentication dialog view test runner (T-13.6): `QUICK_TEST_MAIN`
 // finds the QML TestCase in this directory. Run headless with the offscreen
 // platform and the software scene graph (see CMakeLists.txt).

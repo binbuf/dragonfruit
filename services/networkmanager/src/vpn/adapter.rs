@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The VPN adapter: one read path plus two explicit writes over the shared
 //! contract.
 

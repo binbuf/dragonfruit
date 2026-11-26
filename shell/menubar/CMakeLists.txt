@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 qt_add_library(dragonfruit-shell-menubar STATIC)
 qt_add_qml_module(dragonfruit-shell-menubar
     URI Dragonfruit.MenuBar

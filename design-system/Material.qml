@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The popup-family material view (T-21.2c). The compositor owns the degrade
 // policy and the shell's `MaterialPolicy` turns its role state into the
 // `materialBlurActive` / `materialTier` / `materialFallback` properties on

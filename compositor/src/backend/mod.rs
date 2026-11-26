@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Backend plumbing shared by all three backends (T-02).
 
 pub mod drm;

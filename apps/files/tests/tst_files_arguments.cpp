@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Files command-line location argument (T-10.6b) and T333's launch forms.
 // The Dock launches Files with `trash://` as a positional argument, which
 // main.cpp maps onto the `DF_FILES_START_URI` seam; the window menu's New

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Bluetooth adapter: one state path and its explicit writes over the
 //! shared contract.
 

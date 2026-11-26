@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Overview and workspace switching: **one** overview state machine
 //! (T-11).
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The polkit authentication-helper conversation (T-13.6).
 //
 // A polkit authentication agent never verifies a password itself. It spawns

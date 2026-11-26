@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-03.2 acceptance: the DRM first bring-up *decision* is explicit and
 //! testable without hardware.
 //!

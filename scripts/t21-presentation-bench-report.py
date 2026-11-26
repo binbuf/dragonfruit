@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Render the T-21.4b presentation benchmark report from the nested run logs.
 
 Called by ``scripts/t21-presentation-bench.sh``. The main log carries the

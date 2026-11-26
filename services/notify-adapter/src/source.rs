@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The transport seam: the raw notification-service read and its mock.
 //!
 //! A [`NotificationsSource`] is the only thing that talks to the host stack.

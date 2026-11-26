@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // GENERATED FILE — DO NOT EDIT. Edit assets/icons/brand/ and run scripts/gen-brand-glyphs.py.
 pragma Singleton
 import QtQuick

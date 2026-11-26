@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Capture the T-14.7w Dock icon squircle-mask stills.
 
 Driven by ``scripts/capture-dock-icon-mask.sh`` (run that, not this).

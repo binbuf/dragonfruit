@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The on-screen-display model (T-11.4a).
 //
 // A volume or brightness change presents a brief, non-interactive overlay on

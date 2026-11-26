@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Dock's Trash state, backed by files-core's freedesktop Trash store
 // (T-10.6a). The design names GVfs `trash://` as the one source of truth shared
 // with Files; GIO/GVfs is not linked on this host, so the shell reads the same

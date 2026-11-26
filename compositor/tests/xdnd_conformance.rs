@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-14.5 acceptance: the XDnD bridge codec against a real Xwayland server.
 //!
 //! Smithay 0.7's XWM has no XDnD translation, so the bridge is this

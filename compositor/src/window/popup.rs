@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Popup placement and constraint handling (T-04 FR-11).
 //!
 //! `xdg_popup` positioners are compositor-interpreted: flip, slide, and

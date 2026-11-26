@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Direct-scanout policy for the material pass (T-21.3).
 //!
 //! The sampled material pass exists to frost chrome. A fullscreen client that

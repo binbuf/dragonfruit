@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The libinput keyboard, mouse, and trackpad adapter (T-15.4a).
 //!
 //! The Settings Keyboard/Mouse/Trackpad pane and the Quick Settings tile do

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-09.5: the pure mapping from the settingsd display keys onto what the
 // shell forwards over `df_output.set_scale` / `df_output.set_transform`
 // (`set_brightness` added in T-11.3a). No bus, Wayland, or QML.

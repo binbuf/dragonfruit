@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T331 acceptance: the bounded undo/redo stack for rename, new folder, move,
 //! copy, and Move to Trash. Every case runs the real operation through
 //! `StdFsOps` / `FreedesktopTrash` against a temp tree, then undoes it and

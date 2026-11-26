@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Notifications state (T204).
 //
 // The notification service owns the queue, the history, expiry, Focus/DND and

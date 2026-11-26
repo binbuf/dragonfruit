@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-07.2b acceptance: a join against a mocked NetworkManager succeeds, and a
 //! polkit denial degrades the adapter to read-only with a recorded note. No bus
 //! and no daemon are involved.

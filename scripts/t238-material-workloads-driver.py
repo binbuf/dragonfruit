@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Drive the T238 material workload benchmark and summarise the results.
 
 The shell script starts one release compositor + shell per (arm, workload)

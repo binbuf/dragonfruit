@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T231: menu-bar extras registry and Date & Time/calendar stills.
 #
 # Headless offscreen/software, 1000x560 stage at 1x. The capture case lives in

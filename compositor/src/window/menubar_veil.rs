@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The menu-bar no-blur veil (T200).
 //!
 //! The reference menu-bar backdrop is **not** a blur. Over black it reads as a

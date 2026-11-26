@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live firewall transport: manager detection and the command wrappers.
 //!
 //! Reads never prompt: they call the manager's own status command as the

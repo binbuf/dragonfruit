@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.5a acceptance: one suspend/resume cycle keeps the session alive.
 //!
 //! The session manager runs a real child process; the idle chain reaches

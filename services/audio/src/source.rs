@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The transport seam: the raw PipeWire/WirePlumber read/write and its mock.
 //!
 //! An [`AudioSource`] is the only thing that talks to the daemon. The live

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // GPU chrome frame producer (T-21.1d).
 //
 // This is the T185 `ChromeFrameProducer` with a GPU render target instead of

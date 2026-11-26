@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The firewall snapshot the Network pane and its sheet render.
 
 use dragonfruit_distro_adapters::{FirewallBackend, Port};

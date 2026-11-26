@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # Capture the real nested system-menu -> About -> More Info journey.
 # Reuses T-21's compositor-owned screenshot runner, not host screencopy.
 set -euo pipefail

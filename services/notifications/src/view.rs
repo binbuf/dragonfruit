@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The shell-facing JSON views (T-11.1a).
 //!
 //! The Qt shell never links the Rust model ([01-architecture.md],

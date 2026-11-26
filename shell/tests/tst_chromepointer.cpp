@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Chrome pointer injection unit tests (T-16.12): the shared helper owns the
 // injected event timestamp, so a bare `QMouseEvent` can never reach a chrome
 // window with `timestamp() == 0` (the value that made `QQuickDragHandler` grab

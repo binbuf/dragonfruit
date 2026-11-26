@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 import QtQuick
 
 // The Mouse pane (T-15.4b): the shared input body in its mouse section. There

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Notifications state tests (T204).
 //
 // The service still owns delivery, expiry, Focus/DND and the banner; this

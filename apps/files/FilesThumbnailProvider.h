@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Files image-thumbnail provider (T-10.4b).
 //
 // QML asks for `image://files-thumbnail/<base64url(file URI)>`; the provider

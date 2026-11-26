@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-13.1b acceptance: the Settings and GlobalShortcuts portals answer a
 //! real D-Bus client.
 //!

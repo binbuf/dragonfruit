@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's Users and Groups seam (T-15.11b).
 //
 // The Users & Groups pane never touches D-Bus: it binds the `Settings`

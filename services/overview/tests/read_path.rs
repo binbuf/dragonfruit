@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.5a acceptance: the adapter reports Overview and hot corners
 //! state and events against a mock, and an absent host stack is a normal
 //! hidden state. No compositor and no Wayland connection are involved.

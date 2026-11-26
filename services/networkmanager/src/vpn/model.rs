@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The VPN snapshot the pane and tile render, decoded from one raw read.
 //!
 //! The model owns the NetworkManager enum mapping and the join a consumer

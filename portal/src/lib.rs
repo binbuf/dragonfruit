@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! `xdg-desktop-portal-dragonfruit`: the Dragonfruit `xdg-desktop-portal`
 //! backend (T-13.1a).
 //!

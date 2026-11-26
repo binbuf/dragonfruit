@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.5b: the settingsd session-policy keys drive lock/idle/suspend.
 //!
 //! The idle/lock/suspend chain is pure and lives in `dragonfruit-session`

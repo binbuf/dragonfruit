@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Sort keys and the natural name collation ([09-files.md]).
 //!
 //! A [`SortSpec`] is one immutable ordering: the primary [`SortKey`], a

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Accessibility adapter (T-15.14a).
 //!
 //! Accessibility does not wrap one daemon per feature: it projects the **host

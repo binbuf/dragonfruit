@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-08.2b: the one writer of the design-system Theme's settings-driven
 // appearance.
 //

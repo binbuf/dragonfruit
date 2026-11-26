@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The ScreenCast portal's pure model (T-13.4a).
 //!
 //! The backend serves the standard

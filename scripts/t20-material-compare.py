@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Tolerance-based comparison for T-20 material captures.
 
 GL blur output is driver-dependent, so the T-20 captures are **not** byte

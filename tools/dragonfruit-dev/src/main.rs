@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! `dragonfruit` — the development command.
 //!
 //! `dragonfruit dev --nested` launches the compositor as a window on the

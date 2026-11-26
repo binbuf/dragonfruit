@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The battery snapshot the menu bar renders, decoded from one raw read.
 //!
 //! The model owns the UPower enum mapping and the aggregation a consumer should

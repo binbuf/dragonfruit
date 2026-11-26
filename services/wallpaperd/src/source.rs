@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The content-source seam: the live Wikimedia client and the CI mock.
 //!
 //! [`ContentSource`] is the provider interface described in the design notes:

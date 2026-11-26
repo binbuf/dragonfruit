@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T198 Dock optics fixtures, model and capture scorer.
 
 The renderer-side fit lives in ``compositor/src/window/dock_optics.rs``. This

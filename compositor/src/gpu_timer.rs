@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Opt-in GPU timer queries for the presentation benchmark (T-21.4b).
 //!
 //! `DRAGONFRUIT_GPU_TIMING=1` brackets the scene pass, each panel's blur

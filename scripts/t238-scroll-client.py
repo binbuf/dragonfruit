@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """A continuously scrolling X11 client for the T238 material workload bench.
 
 The compositor's scene cache must invalidate on every client commit. This

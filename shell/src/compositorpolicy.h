@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The compositor's motion/input policy view of the settings schema (T-08.2c).
 // Pure: it maps the `org.dragonfruit.Settings1` values onto the exact keys the
 // shell forwards over `df_toplevel_manager.set_motion_policy` /

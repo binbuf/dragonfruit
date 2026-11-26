@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The selected set of node ids ([09-files.md]).
 //!
 //! Selection is view state, but it is keyed by the model's stable [`NodeId`],

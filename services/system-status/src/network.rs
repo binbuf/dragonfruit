@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Network pane's combined view (T225).
 //!
 //! The Network pane and the Wi-Fi quick sheet share one NetworkManager model:

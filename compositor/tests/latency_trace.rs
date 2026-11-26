@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-03.1b acceptance: the input-to-photon latency instrument and the
 //! direct-scanout counter template.
 //!

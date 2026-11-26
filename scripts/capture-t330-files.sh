@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T330: Files copy/cut/paste stills, including the conflict sheet. Headless
 # offscreen/software, 900x600 pt at 1x.
 #

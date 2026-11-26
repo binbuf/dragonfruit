@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The portal's live screen-share bridge to the compositor (T335b).
 //!
 //! [`crate::stream::CompositorWatch`] is the seam that turns a chosen source

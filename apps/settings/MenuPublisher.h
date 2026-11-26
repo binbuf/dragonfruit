@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's native global-menu publisher (T230, T-14.2b).
 //
 // The menu-broker is the single owner of the resolved menu. A first-party app

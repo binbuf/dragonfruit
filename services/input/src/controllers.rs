@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Game controllers: the udev inventory and the explicit test read (T229).
 //!
 //! The Settings Game Controllers pane is optional. It reads the kernel's

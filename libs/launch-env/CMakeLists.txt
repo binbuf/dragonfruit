@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # The launch-time display hand-off (T309). The compositor writes the Xwayland
 # `DISPLAY` to `$XDG_RUNTIME_DIR/<socket>.x11-display` after Xwayland is ready;
 # every process that launches a child reads that file at launch time. A

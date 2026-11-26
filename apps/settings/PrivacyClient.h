@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Settings app's Privacy and Security seam (T-15.13b).
 //
 // The Privacy & Security pane never touches D-Bus: it binds the `Settings`

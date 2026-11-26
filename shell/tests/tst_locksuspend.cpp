@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Lock-before-sleep tests (T318): a fake `org.freedesktop.login1` emits
 // `PrepareForSleep` on a private bus. The gate holds one sleep delay
 // inhibitor, requests the lock once, waits for the compositor's confirmation

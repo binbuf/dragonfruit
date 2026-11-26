@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-14.2a acceptance: drive `org.dragonfruit.MenuBroker1` over a real session
 //! bus with a fixture export.
 //!

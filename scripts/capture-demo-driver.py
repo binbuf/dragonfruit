@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Drive the live nested T-01 demo with synthetic input and capture stills.
 
 This is the machine half of the T-01.6b walkthrough

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # The SSD titlebar window menu's readable scene (T329). The compositor owns
 # the menu model and input; this module is a pure QML presentation rendered
 # into the shell's transient `windowmenu` overlay surface.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The GlobalShortcuts portal's pure session model (T-13.1b).
 //!
 //! The backend serves the standard

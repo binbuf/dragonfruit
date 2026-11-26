@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-13.1a acceptance: the portal backend registers on a real (private)
 //! session bus and the `xdg-desktop-portal` frontend's absence is graceful.
 //!

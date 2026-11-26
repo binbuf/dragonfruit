@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.11a acceptance: the Users and Groups adapter reports state and events
 //! against a mock, and an absent host stack is a normal hidden state. No
 //! AccountsService, group provider, or hardware is involved.

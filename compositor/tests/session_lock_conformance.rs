@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.3a/T-12.3c acceptance: `ext-session-lock-v1` protocol conformance and
 //! locked-input capture / kill-resistance.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Accessibility half of the bridge host (T-15.14b).
 //!
 //! The host stack is reached by the `dragonfruit-accessibility-adapter` over

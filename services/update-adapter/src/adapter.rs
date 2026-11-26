@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The General, About, and Updates adapter: one read path over the shared
 //! contract.
 //!

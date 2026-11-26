@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The listing slice of the `dragonfruit-files-core` C ABI the shell links
 // (T-13.2b). Mirrors the `#[repr(C)]` definitions in
 // `services/files-core/src/ffi.rs`; keep the two in lockstep. The file-chooser

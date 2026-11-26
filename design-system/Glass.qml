@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T195: the shell-side resolver for the generated glass material presets.
 //
 // `Theme.glass` is the generated vocabulary; this singleton is the one place

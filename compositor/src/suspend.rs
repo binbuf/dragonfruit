@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! One suspend/resume cycle (T-12.5a).
 //!
 //! A suspend is a logind `PrepareForSleep` round trip: the compositor

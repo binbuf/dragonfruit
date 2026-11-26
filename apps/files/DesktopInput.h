@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Pure input mapping for the Files-owned desktop process (T-19.3).
 //
 // The desktop is a Wayland client of the compositor's private protocol: the

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SPDX-License-Identifier: MIT
+  SPDX-License-Identifier: GPL-3.0-only
 
   Dragonfruit private protocol — core handshake and trust model (T-07).
 

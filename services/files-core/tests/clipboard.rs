@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T330 acceptance: the clipboard model and the paste conflict policies run
 //! against a real temp tree. Headless: no display, no GIO, no daemon.
 

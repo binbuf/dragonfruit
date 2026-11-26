@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Settings portal's pure model and live source (T-13.1b).
 //!
 //! The backend serves the standard read-only

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T199 Dock motion calibration from the controlled reference checkout.
 
 The reference analysis lives outside this repository:

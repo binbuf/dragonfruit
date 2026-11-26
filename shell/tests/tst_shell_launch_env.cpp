@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The shell's launch-time Xwayland DISPLAY hand-off (T309). The compositor
 // writes `$XDG_RUNTIME_DIR/<socket>.x11-display`; `appLaunchEnvironment` must
 // read it at launch time, trim it, and remove an inherited DISPLAY when the

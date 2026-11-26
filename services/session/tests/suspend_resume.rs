@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T318: an external suspend (a lid close or power button) needs no request
 //! from this session. logind emits `PrepareForSleep(true)` anyway, the cycle
 //! confirms sleep, and the wake counts one cycle without unlocking anything.

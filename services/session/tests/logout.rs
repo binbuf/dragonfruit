@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.2 acceptance: logout tears down a service's whole process group, so
 //! no grandchild a wrapper started leaks past the session.
 //!

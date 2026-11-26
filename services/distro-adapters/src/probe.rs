@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Host detection and the live capability probe.
 //!
 //! [`DistroReport`] is the T221 live check: it reads `/etc/os-release`, maps

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-07.2a acceptance: the adapter reads a mocked NetworkManager and renders
 //! state + access-point list, and an absent daemon hides the item. No bus and
 //! no daemon are involved.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The session environment (T-12.1b).
 //!
 //! Every process the session starts inherits the same base environment:

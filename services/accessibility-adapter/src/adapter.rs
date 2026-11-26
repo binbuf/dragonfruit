@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Accessibility adapter: one read path over the shared contract.
 //!
 //! It holds the last status the AT-SPI accessibility bus published and exposes

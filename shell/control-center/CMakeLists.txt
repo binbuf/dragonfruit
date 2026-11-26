@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 qt_add_library(dragonfruit-shell-control-center STATIC)
 # `pragma Singleton` is not auto-detected by this Qt build system.
 set_source_files_properties(ControlCenterRegistry.qml

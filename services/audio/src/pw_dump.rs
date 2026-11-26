@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live transport: WirePlumber/PipeWire through their control CLI.
 //!
 //! There is no stable D-Bus API for sink volume and the native `libpipewire`

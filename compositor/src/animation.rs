@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The shared compositor animation clock (T-02.1a).
 //!
 //! Every compositor-side lifecycle transition (window appear/minimize/zoom/

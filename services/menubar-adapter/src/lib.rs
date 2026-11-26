@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Menu Bar configuration adapter (T-15.9a).
 //!
 //! Menu Bar configuration is **shell-native**. There is no external daemon to

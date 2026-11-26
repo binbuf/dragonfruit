@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-07.1b acceptance: an adapter re-subscribes when its service restarts, and
 //! an absent daemon hides the slot rather than erroring.
 

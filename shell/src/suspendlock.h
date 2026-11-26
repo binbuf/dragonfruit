@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The shell's lock-before-sleep gate (T318).
 //
 // logind emits `PrepareForSleep(true)` before a suspend, whether the request

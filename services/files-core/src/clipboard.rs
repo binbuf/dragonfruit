@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The clipboard and paste model (T330, [09-files.md]).
 //!
 //! Files copy and cut **mark** items; nothing moves until a paste. This

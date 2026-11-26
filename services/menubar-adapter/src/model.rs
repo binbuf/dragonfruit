@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Menu Bar configuration snapshot the pane and tile render, decoded from
 //! one raw read.
 //!

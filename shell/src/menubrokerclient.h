@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Client for `org.dragonfruit.MenuBroker1` (T-14.7).
 //
 // The menu-broker owns the global-menu resolution (T-14.2a): first-party apps

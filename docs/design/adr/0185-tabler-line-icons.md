@@ -2,7 +2,10 @@
 
 ## Status
 
-accepted
+accepted. Amended 2026-11-25 by
+[0366](0366-relicense-to-gpl-3.0-only.md): the first-party tree is now
+GPL-3.0-only, so Tabler's permissive terms are compatible with, not identical
+to, the project license.
 
 ## Context
 

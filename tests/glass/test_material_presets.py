@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T195 acceptance checks for the glass preset schema and resolution policy.
 
 Run with ``make glass-presets-check`` (also part of ``make gates``). The same

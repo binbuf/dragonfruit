@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 import QtQuick
 
 // The shared keyboard map (T267). It is a pure table, not a second key

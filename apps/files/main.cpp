@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Files entry point. The real UI lives in the `Dragonfruit.Files`
 // QML module; this executable loads the window and translates the one
 // meaningful command-line argument (the location the Dock asked to open).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 import QtQuick
 
 // The Files window's tab model (T333). A tab is a browsing context — its

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! DRM first bring-up outcome (T-03.2).
 //!
 //! The DRM/KMS backend is the one path that needs real hardware: a logind

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.4a acceptance: a fake clock drives each idle stage at its configured
 //! delay, and activity restarts the chain.
 //!

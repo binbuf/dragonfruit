@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Capture the T-14.7l Dock launch-origin tile hand-off.
 
 Driven by ``scripts/capture-dock-launch-origin.sh`` (run that, not this).

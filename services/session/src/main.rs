@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! `dragonfruit-session` — the T-12.1a session manager.
 //!
 //! The real entry point is the session planner; the environment, systemd

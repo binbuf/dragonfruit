@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Settings absent-provider matrix test runner (T-09.6b): `QUICK_TEST_MAIN`
 // finds the QML TestCase in this directory. Run headless on the offscreen
 // platform with the software scene graph, under a private `dbus-run-session`

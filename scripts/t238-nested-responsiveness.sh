@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # T238 P0 regression: a nested compositor must keep servicing its synthetic
 # socket when the host minimizes, backgrounds, or fully covers its window.

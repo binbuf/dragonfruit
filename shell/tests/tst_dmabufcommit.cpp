@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-21.1d dmabuf format/commit rules. Pure: no Wayland, EGL, or compositor.
 #include <QtTest>
 

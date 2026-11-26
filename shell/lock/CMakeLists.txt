@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # The first-party lock screen (T-12.3a): a pure QML view the shell controller
 # renders into the compositor's `ext-session-lock-v1` surfaces.
 qt_add_library(dragonfruit-shell-lock STATIC)

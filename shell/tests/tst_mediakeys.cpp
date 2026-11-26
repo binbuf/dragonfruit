@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T321: the pure media-key step policy. The compositor routes the XF86 keys as
 // input actions; this test fixes the 5% steps, the mute toggle, the clamping,
 // and the absent-path no-op without a bus, Wayland, or QML.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Synthetic output harness for the headless backend (T-09 FR-1).
 //!
 //! The headless backend creates exactly one static output, so output

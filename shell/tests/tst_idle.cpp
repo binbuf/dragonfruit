@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T317: the pure settingsd -> compositor idle policy mapping and the
 // stage-to-effect controller. A mock effects sink stands in for the protocol
 // and logind; no bus, Wayland, or QML.

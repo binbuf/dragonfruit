@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Notifications widget stack (T234).
 //
 // Widgets are optional: the model starts with the measured live Calendar card

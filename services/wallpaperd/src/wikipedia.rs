@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Wikimedia Commons query shape and response parser (ADR 0055).
 //!
 //! One query per category, `generator=categorymembers` over namespace 6 with

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-10.5 acceptance: the Files performance budgets are measured headlessly and
 //! recorded as raw numbers ([09-files.md#performance-budgets]).
 //!

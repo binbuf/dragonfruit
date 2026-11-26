@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # T-07.5a/T-07.5b Wi-Fi, volume, and battery status-menu capture.
 #

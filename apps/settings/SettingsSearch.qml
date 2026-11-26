@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 import QtQuick
 
 // The local Settings search index (T223, rebuilt for T265).

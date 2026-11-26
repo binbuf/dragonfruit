@@ -411,8 +411,8 @@ marker table by id instead of duplicating package names or licenses.
 
 Rules:
 
-- Do not bundle GPL services into the MIT codebase. Use separate processes or
-  dynamic linking with the license notices.
+- Do not bundle third-party GPL services into the first-party code. Use
+  separate processes or dynamic linking with the license notices.
 - Record every optional dependency's license in `NOTICE` and the packaging
   metadata.
 - The desktop must boot and be usable with the required set only; every

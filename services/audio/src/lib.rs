@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The PipeWire/WirePlumber audio adapter: the output (sink) and input
 //! (source) device lists, the default sink's volume and mute (T-07.3), and
 //! default output/input routing (T-15.3a).

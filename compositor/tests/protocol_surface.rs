@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-02 acceptance: the protocol advertise list matches the ticket
 //! exactly — no missing, no extras — and no capture protocol is ever
 //! advertised (FR-7/FR-8).

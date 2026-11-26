@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Design-system test runner (T-08): `QUICK_TEST_MAIN` finds the QML TestCase
 // in this directory. Run headless with the offscreen platform and the
 // software scene graph (see CMakeLists.txt).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Lock-auth seam tests (T-12.3b): the shell's side of the helper process
 // boundary. No PAM, Wayland, or QML: a fake helper script returns the
 // success/denied/error exit statuses the real helper uses, and the class must

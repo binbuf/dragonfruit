@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Dock test runner (T-10): `QUICK_TEST_MAIN_WITH_SETUP` finds the QML TestCase
 // in this directory. Run headless with the offscreen platform and the software
 // scene graph (see CMakeLists.txt).

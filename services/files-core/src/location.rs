@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! URI-addressed locations ([09-files.md]).
 //!
 //! A [`Location`] is GFile-shaped: a scheme plus a URI. T-10.1a's fallback

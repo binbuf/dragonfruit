@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Shell clipboard history (T-13.5b).
 //
 // The compositor's `wl_data_device` is the one clipboard owner; the shell is

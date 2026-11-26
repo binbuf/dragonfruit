@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Stable process identity for Dock Force Quit (T236 follow-up).
 //
 // A numeric PID is not a process identity: after a process exits the kernel is

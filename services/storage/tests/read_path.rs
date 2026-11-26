@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.2a acceptance: the adapter reads a mocked UDisks2 and reports drives,
 //! volumes, and mount state; mount/unmount/eject are explicit writes; and an
 //! absent daemon is a normal hidden state. No bus and no daemon are involved.

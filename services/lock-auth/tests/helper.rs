@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Headless acceptance tests for the lock-auth helper (T-12.3b).
 //!
 //! The task's test plan is "helper success/failure paths against a PAM test

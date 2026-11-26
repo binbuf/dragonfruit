@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T304 regression tests for the settings-consumer gate.
 
 The gate itself must fail closed: a new live key without a table entry, a

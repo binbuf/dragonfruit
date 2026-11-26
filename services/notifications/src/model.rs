@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The notification model (T-11.1a).
 //!
 //! One in-memory owner of the notification queue and its history

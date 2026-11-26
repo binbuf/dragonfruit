@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Capture the live nested desktop for the T-17 premium-gate sign-off (T-17.6).
 
 This is the machine half of the T-17.6 sign-off report

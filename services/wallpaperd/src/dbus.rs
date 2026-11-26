@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The session-bus surface: `org.dragonfruit.Wallpaper1` (T-18.1a).
 //!
 //! One interface at `/org/dragonfruit/Wallpaper1`:

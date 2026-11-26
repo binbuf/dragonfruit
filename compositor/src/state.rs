@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Compositor state and the standard Wayland protocol surface (T-02).
 //!
 //! One [`DfState`] serves every backend (nested, DRM, headless); backends

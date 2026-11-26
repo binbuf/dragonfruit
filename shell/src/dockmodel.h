@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Pure Dock entry model (T-10, sections 4/7): merges the persisted pinned set
 // with the shell's running-window projection into the ordered entry list the
 // Dock renders. No Wayland, no QML, no state — unit-testable in isolation.

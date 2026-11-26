@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-10.1b acceptance: sorting is stable and incremental over a streamed
 //! listing, and the sanctioned fallback is exercised through the same seam.
 //! Headless — no display, no GIO, no daemon.

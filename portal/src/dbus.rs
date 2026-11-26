@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The session-bus service (T-13.1a).
 //!
 //! The backend owns one well-known name, [`DBUS_NAME`], and serves the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The fixed system menu (T-09) and the real-session return item (T-12.6b).
 //
 // The drag-on-fruit (system) menu is fixed for the session. This is the pure

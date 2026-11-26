@@ -1,14 +1,14 @@
 # Dragonfruit Licensing
 
-Dragonfruit is licensed under the **MIT License**. The license applies to
-every component in this repository — the compositor, portal, services,
-tools, protocols, design system, shell, and first-party apps, along with
-the scripts and build files.
+Dragonfruit is licensed under the **GNU General Public License, version 3
+only** (**GPL-3.0-only**). The license applies to every component in this
+repository — the compositor, portal, services, tools, protocols, design
+system, shell, and first-party apps, along with the scripts and build files.
 
-Full text: [LICENSES/MIT.txt](LICENSES/MIT.txt).
+Full text: [LICENSES/GPL-3.0-only.txt](LICENSES/GPL-3.0-only.txt).
 
-Every source file carries an `SPDX-License-Identifier: MIT` header, and
-every crate/package directory carries a `LICENSE` file. Third-party
+Every source file carries an `SPDX-License-Identifier: GPL-3.0-only` header,
+and every crate/package directory carries a `LICENSE` file. Third-party
 dependencies keep their own licenses — see [NOTICE](NOTICE) and
 [docs/design/licensing.md](docs/design/licensing.md).
 

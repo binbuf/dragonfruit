@@ -18,6 +18,17 @@ All notable user-visible changes are recorded here. The format follows
   or a click away cancels; leaving the dialog alone runs the action when the
   countdown reaches zero. Sleep stays a single click.
 
+### Changed
+
+- **Project license.** Dragonfruit is now licensed under the GNU General
+  Public License, version 3 only (GPL-3.0-only), replacing MIT across the
+  compositor, portal, services, tools, protocols, design system, shell, and
+  apps. Every source header, per-package `LICENSE`, package metadata, and
+  notice now uses `GPL-3.0-only`; third-party components and assets keep their
+  own licenses. Distributions must ship the GPL-3.0 text and the corresponding
+  source. Earlier releases remain available under their original MIT terms.
+  See [ADR 0366](docs/design/adr/0366-relicense-to-gpl-3.0-only.md).
+
 ### Fixed
 
 - **Display wake after idle blank.** Waking the panel after the idle blank no

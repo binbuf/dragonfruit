@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # T279 Privacy & Security / Biometrics & Password / Users & Groups / Online
 # Accounts headless visual check.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! `make demo` harness (T-01.6a): one command that builds, launches the
 //! nested session with the shell and two clients (a Qt/Wayland app and an
 //! X11 app), prints the demo checklist, and tears down deterministically.

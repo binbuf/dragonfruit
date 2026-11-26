@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Generate the QML brand-glyph registry from the brand SVGs.
 
 The files under ``assets/icons/brand/`` are the single source of truth for the
@@ -81,7 +81,7 @@ def render() -> str:
     dragonfruit_width, dragonfruit_height, dragonfruit_paths = _load("dragonfruit")
     tux_width, tux_height, tux_paths = _load("tux")
     tux_lines = ",\n        ".join(_qml_string(path) for path in tux_paths)
-    return f"""// SPDX-License-Identifier: MIT
+    return f"""// SPDX-License-Identifier: GPL-3.0-only
 // {HEADER}
 pragma Singleton
 import QtQuick

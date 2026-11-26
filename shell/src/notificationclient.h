@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Shell-side client for the T-11.1a notification service
 // (`org.freedesktop.Notifications`, services/notifications).
 //

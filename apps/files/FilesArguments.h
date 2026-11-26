@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The location a Files invocation should open (T-10.6b).
 //
 // The Dock launches Files with the target URI as a positional argument

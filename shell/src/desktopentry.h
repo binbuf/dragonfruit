@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Dock's application-entry cache and launcher.
 //
 // Identity is owned by `org.dragonfruit.AppIndex1` (T-14.1a, ADR 0086): the

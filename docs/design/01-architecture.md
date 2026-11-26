@@ -136,7 +136,8 @@ Smithay is a set of Rust building blocks for Wayland compositors rather than a
 complete desktop. It handles the low-level territory — Wayland, input,
 DRM/KMS/GBM, EGL, libseat, Xwayland — while leaving desktop policy to us.
 COSMIC and Niri demonstrate that Smithay can underpin a complete contemporary
-Linux desktop. It is MIT-licensed, which keeps our licensing options open.
+Linux desktop. It is MIT-licensed, which is compatible with our
+GPL-3.0-only code.
 
 The credible alternative is wlroots (composable C modules for KMS/DRM,
 libinput, Wayland, X11/headless backends, Xwayland, rendering), which would be
@@ -171,13 +172,13 @@ recurring fight against another desktop's design language.
 
 ### Licensing
 
-Smithay's MIT license keeps our options open, and we reciprocate: our code
+Smithay's permissive license is compatible with ours, and we license our code
 and original assets — compositor, services, private protocol XMLs, design
-system, shell, and apps — are MIT, so any third party may implement or reuse
-them freely. Bundled third-party assets keep their own licenses (Inter under
-OFL, Tabler/Phosphor under MIT, Capitaine cursors under LGPL); see
-[NOTICE](../../NOTICE) and [licensing.md](licensing.md). The final
-licensing call is a blocker for the first public release (see
+system, shell, and apps — under GPL-3.0-only, so the desktop and every
+improvement to it stay free software. Bundled third-party assets keep their
+own licenses (Inter under OFL, Tabler/Phosphor under MIT, Capitaine cursors
+under LGPL); see [NOTICE](../../NOTICE) and [licensing.md](licensing.md). The
+final licensing call is a blocker for the first public release (see
 [14-risks.md](14-risks.md)).
 
 ## Repository layout

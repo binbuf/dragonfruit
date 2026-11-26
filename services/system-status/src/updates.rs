@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The General, About, and Updates half of the bridge host (T-15.10b).
 //!
 //! The host stack is reached by the `dragonfruit-update-adapter`; the shell

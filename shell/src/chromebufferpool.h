@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Per-surface chrome buffer pool (T-21.1c).
 //
 // One pool belongs to one wl_surface. It tracks which slots are free, busy

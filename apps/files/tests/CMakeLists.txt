@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # Files shell tests (T-10.4a): the window opens on Home, the sidebar changes
 # the browsing model, toolbar history works, the view switch persists per
 # location, and the AT-SPI roles are present. `DF_FILES_FIXTURE` forces a

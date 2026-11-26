@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """T200 menu-bar no-blur veil fixture and model check.
 
 The compositor's veil model lives in ``compositor/src/window/menubar_veil.rs``;

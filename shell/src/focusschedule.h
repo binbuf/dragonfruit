@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Focus schedule (T229a).
 //
 // The Settings Focus pane stores `focus.schedule.*` keys in settingsd; this

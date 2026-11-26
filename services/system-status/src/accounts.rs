@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Users and Groups half of the bridge host (T-15.11b).
 //!
 //! The host stack is reached by the `dragonfruit-account-adapter`; the shell

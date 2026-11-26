@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Xwayland integration (T-06): lifecycle, X11 window management, identity,
 //! clipboard bridging, and Tier-2 decoration marking.
 //!

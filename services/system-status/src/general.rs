@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The General sub-panes' half of the bridge host (T226).
 //!
 //! The host owns one [`GeneralAdapter`] over `dragonfruit-general-adapter` and

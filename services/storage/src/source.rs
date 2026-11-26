@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The transport seam: the raw UDisks2 read and its mock.
 //!
 //! A [`StorageSource`] is the only thing that talks to the daemon. The real

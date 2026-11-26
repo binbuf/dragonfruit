@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Files desktop's process lifecycle (T339): one background layer, and a
 // fatal compositor loss that exits instead of spinning.
 //

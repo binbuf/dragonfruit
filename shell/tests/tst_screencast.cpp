@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // ScreenCast source picker bridge tests (T-13.4a): the pure request lifecycle
 // (options decode, selection modes, the chosen-source hand-off, cancellation)
 // and the live `ScreenCastBridge` against a fake `org.dragonfruit.Portal1`

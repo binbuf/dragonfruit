@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Bridge tests for the input half of the host (T-15.4b): the inventory view
 //! the Settings pane and Quick Settings tile decode. The adapter is
 //! read-only, so there is no write to exercise.

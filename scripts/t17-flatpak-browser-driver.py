@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Drive the live Flatpak browser portal flows on the nested session (T-17.1c).
 
 This is the machine half of the T-17.1c verification unit

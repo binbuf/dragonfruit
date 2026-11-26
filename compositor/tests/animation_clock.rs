@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-02.1a acceptance: the shared animation clock's frame discipline.
 //!
 //! The idle trace (`idle_trace.rs`) asserts the steady state renders nothing.

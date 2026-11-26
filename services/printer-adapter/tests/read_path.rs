@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.12a acceptance: the Printers and Scanners adapter reports state and
 //! events against a mock, and an absent host stack is a normal hidden state.
 //! No CUPS, SANE, or hardware is involved.

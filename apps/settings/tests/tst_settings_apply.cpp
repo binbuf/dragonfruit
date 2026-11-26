@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Settings common apply path tests (T224): client-side range/enum validation,
 // optimistic apply with revert on an owner failure, service disappearance, and
 // restart resync (including a write made while the daemon was away).

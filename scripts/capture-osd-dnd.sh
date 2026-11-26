@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # T-11.4b live capture of the OSD card and the menu-bar Focus/DND reflection.
 # Runs the nested demo with the status/notification fixtures (notification
 # fixture started in DND), drives a real Quick Settings volume drag to present

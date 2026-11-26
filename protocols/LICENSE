@@ -1,8 +1,13 @@
-SPDX-License-Identifier: MIT
+SPDX-License-Identifier: GPL-3.0-only
 
 Copyright (c) 2026 Dragonfruit contributors
 
-Every protocol XML in this directory is MIT-licensed so that any third
-party — including other compositors, toolkits, and client libraries —
-may implement these protocols freely. Full text: LICENSES/MIT.txt at the
-repository root. See docs/licensing.md for the licensing policy.
+Every Dragonfruit protocol XML in this directory is licensed under the GNU
+General Public License, version 3 only (GPL-3.0-only), like the rest of the
+repository. Third parties — including other compositors, toolkits, and client
+libraries — may implement and redistribute these protocols under the GPL-3.0
+terms. Full text: LICENSES/GPL-3.0-only.txt at the repository root. See
+docs/design/licensing.md for the licensing policy.
+
+Vendored upstream protocol XMLs under wayland-protocols/ keep their own
+upstream licenses and headers.

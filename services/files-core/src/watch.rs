@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The folder watcher: change events folded into the model (T-10.3b,
 //! [09-files.md]).
 //!

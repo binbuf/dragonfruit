@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.1a acceptance: the adapter reads a mocked BlueZ and reports adapter
 //! and device state, discovery/pairing writes are explicit, and an absent
 //! daemon is a normal hidden state. No bus and no daemon are involved.

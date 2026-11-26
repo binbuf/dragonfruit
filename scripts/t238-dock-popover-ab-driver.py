@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Drive and summarise the T238 chrome interaction comparison.
 
 The shell runs with ``DF_DOCK_POPOVER_AB=<cycles>`` (Dock chooser) or

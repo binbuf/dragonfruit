@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // GUI-thread watchdog heartbeat (T314).
 //
 // The shell unit is `Type=notify` with `WatchdogSec=30`. systemd kills and

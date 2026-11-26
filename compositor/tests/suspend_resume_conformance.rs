@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.5a acceptance: one suspend/resume cycle recovers outputs, input, and
 //! clients without a restart.
 //!

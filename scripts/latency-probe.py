@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Record input-to-photon latency from a running Dragonfruit compositor.
 
 Machine half of the T-03.1b latency capture. It talks to the compositor's

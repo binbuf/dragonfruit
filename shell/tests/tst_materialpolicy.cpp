@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T-21.2c: the shell's one application policy for the compositor's
 // role-keyed material state. Pure: no Wayland, QML, or compositor.
 #include <QtTest>

@@ -30,9 +30,10 @@ policy is in [docs/design/ipc-versioning.md](../docs/design/ipc-versioning.md).
 
 ## Rules
 
-- **MIT license** for every protocol XML, so any third party (including
-  other compositors and toolkits) may implement them freely
-  (docs/design/licensing.md).
+- **GPL-3.0-only** for every Dragonfruit protocol XML, matching the rest of
+  the repository. Third parties (including other compositors and toolkits) may
+  implement them under the GPL-3.0 terms (docs/design/licensing.md). Vendored
+  upstream XMLs under `wayland-protocols/` keep their own licenses.
 - **Lockstep set:** compositor, shell, and protocol XMLs ship together per
   release. Every XML carries a `dragonfruit lockstep-version: N` marker that
   must match `df_ipc::LOCKSTEP_VERSION` — enforced by the

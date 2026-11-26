@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Network advanced (VPN) adapter (T-15.15a).
 //!
 //! A VPN is not a second daemon: NetworkManager already owns every connection

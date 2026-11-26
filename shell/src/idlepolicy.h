@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The shell's view of the settingsd idle/power keys (T317). Pure: it maps
 // `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend`, and
 // `power.preventSleep` onto the compositor's `set_idle_policy` request and

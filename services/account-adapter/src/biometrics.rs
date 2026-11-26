@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Biometrics and Password half of the account adapter (T228).
 //!
 //! The host stack has three independent owners:

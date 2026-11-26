@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The required/recommended/optional dependency sets and their absence
 //! behaviour.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.4b acceptance: an inhibitor blocks the idle stage, and a wake restores
 //! the prior state.
 //!

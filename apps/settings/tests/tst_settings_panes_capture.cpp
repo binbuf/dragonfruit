@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // T227 headless capture runner (not part of ctest): `QUICK_TEST_MAIN` finds
 // the capture QML in this directory. Run through
 // `scripts/capture-t227-settings-panes.sh`.

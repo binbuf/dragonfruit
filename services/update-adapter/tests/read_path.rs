@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-15.10a acceptance: the adapter reports General, About, and Updates state
 //! and events against a mock, and an absent host stack is a normal hidden
 //! state. No package manager, provider, or hardware is involved.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # Settings shell tests (T-09.1a): the shell opens, local search filters the
 # pane list, keyboard navigation and history work, and the AT-SPI roles are
 # present. Headless offscreen + software scene graph, like every QML test.

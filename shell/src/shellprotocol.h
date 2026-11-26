@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Private-protocol client for the Dragonfruit shell (T-09).
 //
 // Connects to the compositor over the df_core/df_shell/df_toplevel_manager

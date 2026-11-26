@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The per-distribution command/API matrix.
 //!
 //! Every supported family has one [`BackendSpec`] per capability. The spec is

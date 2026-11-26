@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The adapter state contract: the three states and their menu-bar slot.
 
 use std::fmt;

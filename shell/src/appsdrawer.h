@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // The Applications drawer's pure list model (T-19.2).
 //
 // The drawer is the shell's launch surface: every launchable app the app-index

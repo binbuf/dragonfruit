@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Release assets: one staged install tree, published as a portable tar.gz,
 # a Debian binary package, a Fedora binary RPM, an Arch binary package, and a

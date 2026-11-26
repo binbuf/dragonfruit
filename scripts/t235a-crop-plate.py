@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Crop a T235a Dock plate capture into an edge strip and corner close-ups.
 
 The T235a capture is the nested compositor's own render, so the plate is

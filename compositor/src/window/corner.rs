@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Token-driven rounded-corner clipping geometry (T-04.1b).
 //!
 //! The compositor's flat renderer has no vector rasterizer and no shader, so a

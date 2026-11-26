@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The live host-stack source: the host identity read and the distribution
 //! update provider seam.
 //!

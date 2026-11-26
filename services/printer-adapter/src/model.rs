@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Printers and Scanners snapshot the pane renders, decoded from one raw
 //! read.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The wallpaper content provider (T-18.1a): the shipped original default
 //! wallpaper plus Wikimedia Commons Featured Pictures (ADRs 0055 / 0094).
 //!

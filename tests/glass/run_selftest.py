@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 """Deterministic self-test for the T194 glass comparison workflow.
 
 Run with ``make glass-selftest`` (or ``python3 tests/glass/run_selftest.py``).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Display-manager session selection and optional autologin (T-12.6a).
 //!
 //! The real-session round trip (T-12.6b) must point the *next* display-manager

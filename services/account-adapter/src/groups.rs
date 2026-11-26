@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The distribution group provider (T279).
 //!
 //! AccountsService owns the user list but has no group API, so the group half

@@ -196,24 +196,26 @@ That means:
 
 ### Assets, dependencies, and licensing
 
-First-party code is MIT-licensed ([`LICENSE.md`](LICENSE.md)). A contribution
-must be compatible with that.
+First-party code is GPL-3.0-only licensed ([`LICENSE.md`](LICENSE.md)). A
+contribution must be compatible with that.
 
 - Every new asset (icon, font, sound, cursor, wallpaper, illustration) needs a
   source, a license, and a license-text entry in
   [`docs/design/asset-manifest.json`](docs/design/asset-manifest.json). Run
   `make check-assets`.
-- GPL/AGPL code must never be linked into first-party code. Copyleft data
-  assets are allowed only when they are separable, loaded at runtime, and
-  recorded with the existing notice/provenance rules.
-- New Rust dependencies must be permissively licensed, justified in the PR,
+- AGPL, GPL-2.0-only, and other GPL-3.0-incompatible code must never be linked
+  into first-party code. GPL-3.0-compatible dependencies are allowed when they
+  are recorded in `NOTICE`. Copyleft data assets are allowed only when they are
+  separable, loaded at runtime, and recorded with the existing
+  notice/provenance rules.
+- New Rust dependencies must be GPL-3.0-only compatible, justified in the PR,
   and reflected in `Cargo.lock` and `NOTICE` where required. Do not hand-edit
   `Cargo.lock`.
 - Do not commit screenshots, captures, recordings, logs, build outputs, or
   downloaded binaries. See [Generated and local-only files](#generated-and-local-only-files).
 - By opening a pull request you confirm you have the right to submit the work
-  under the project's MIT license. No separate CLA or DCO sign-off is required
-  today.
+  under the project's GPL-3.0-only license. No separate CLA or DCO sign-off is
+  required today.
 
 ### Tests
 
@@ -372,7 +374,7 @@ Known gaps, `OPEN` rows, hardware not tested, or follow-up work.
 - [ ] `qsTr()` + `make i18n-update` for new strings
 - [ ] Tokens, icons, naming, and asset gates updated
 - [ ] No captures, logs, build outputs, or other local artifacts
-- [ ] Contribution is MIT-compatible and contains no proprietary assets
+- [ ] Contribution is GPL-3.0-only compatible and contains no proprietary assets
 ```
 
 Draft PRs are welcome for early direction. Mark the PR ready only when the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-12.2 acceptance: the display-manager session entry, its startup/logout
 //! script, and the install layout.
 //!

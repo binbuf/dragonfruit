@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # The desktop's system font (Inter, SIL OFL 1.1). One static library owns the
 # bundled faces and the process-wide application-font installation, so the
 # shell, Settings, Files, and the gallery cannot disagree about the desktop's

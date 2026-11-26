@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 // Dock core unit tests (T-10): the app-index entry cache and launcher,
 // `dock.pinned` persistence, and the pure pinned+running entry merge. The
 // interim `.desktop` resolver was retired in T-14.7 (app-index owns parsing).

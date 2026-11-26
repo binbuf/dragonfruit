@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! The Bluetooth snapshot the pane and status slot render, decoded from one
 //! raw read.
 //!

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T-10.3a acceptance: trash, restore, and empty round-trip against a temp
 //! tree through the sanctioned freedesktop-spec fallback, with the real
 //! `.trashinfo` store format. Headless: no display, no GIO, no daemon.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! T335a/T335b: frames cross the producer socket into the host tool.
 //!
 //! The compositor's producer feeds its frame socket only from the nested/DRM

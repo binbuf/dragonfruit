@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Print the T221 cross-distro capability probe.
 //!
 //! The probe never executes a distribution command: it reads

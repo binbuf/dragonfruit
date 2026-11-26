@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //! Dragonfruit compositor (T-02): one session, three backends.
 //!
 //! The compositor owns the seat, the scene graph, and the standard
