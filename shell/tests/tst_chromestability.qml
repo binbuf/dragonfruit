@@ -1309,5 +1309,264 @@ Item {
             Theme.reducedMotion = false;
         }
 
+        // --- T356: attached menu/submenu chain exit ------------------------
+
+        // A three-card chain (attached parent + two detached submenu cards)
+        // exercises the whole retained snapshot: the parent's square top
+        // corners, each submenu's own mask, the transparent inter-card gaps,
+        // and the one visual lifetime the compositor animates.
+        function makeNestedMenuBar(props) {
+            var base = {
+                width: 800,
+                outputWidth: 800,
+                outputHeight: 640,
+                appName: "Test",
+                appMenuModel: [
+                    { title: "File", items: [
+                        { label: "New" },
+                        { label: "Open With", type: "submenu", submenu: [
+                            { label: "Text Editor" },
+                            { label: "Share", type: "submenu", submenu: [
+                                { label: "Messages" }, { label: "Mail" } ] }
+                        ] }
+                    ] },
+                    { title: "Edit", items: [
+                        { label: "Replace", type: "submenu", submenu: [
+                            { label: "Find" }, { label: "Replace All" } ] },
+                        { label: "Find", type: "submenu", submenu: [
+                            { label: "Next" }, { label: "Previous" } ] }
+                    ] }
+                ]
+            };
+            for (var key in (props || {}))
+                base[key] = props[key];
+            return makeBar(base);
+        }
+
+        function openNestedChain(bar) {
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var menu = bar.appMenuAt(2);
+            menu.openSubmenu(1);
+            waitForRendering(stage);
+            menu.moveSubmenuHighlight(1);
+            menu.activateSubmenuHighlighted();
+            waitForRendering(stage);
+            // Let the QML open tokens settle so the fixture dismisses the
+            // accepted (fully visible) chain, as a user does.
+            wait(Theme.motion.menuOpen.duration + 80);
+            return menu;
+        }
+
+        function releaseClosingChain(bar) {
+            bar.popupClosingFrame = true;
+            bar.popupClosingFrame = false;
+            waitForRendering(stage);
+        }
+
+        function regionKeys(regions) {
+            var keys = [];
+            for (var i = 0; i < regions.length; ++i)
+                keys.push(regions[i].key);
+            return keys;
+        }
+
+        function test_menubar_attached_chain_keeps_nested_snapshot_through_exit() {
+            var bar = makeNestedMenuBar({ compositorPopupMotion: true });
+            var menu = openNestedChain(bar);
+            compare(menu.menuDepth, 3, "the nested chain is open");
+
+            var crop = bar.dropdownCropRect;
+            var regions = bar.dropdownRegions;
+            var surfaceRegions = bar.dropdownSurfaceRegions;
+            compare(regions.length, 3,
+                    "the parent and two submenu cards are separate regions");
+            compare(surfaceRegions.length, 3);
+            var keys = regionKeys(regions);
+            compare(keys.length, 3);
+            verify(keys[0] !== keys[1] && keys[1] !== keys[2] && keys[0] !== keys[2],
+                   "each card keeps its own material identity");
+            compare(regions[0].tl, 0, "the attached parent keeps a square top-left");
+            compare(regions[0].tr, 0, "the attached parent keeps a square top-right");
+            verify(regions[1].tl > 0 && regions[2].tl > 0,
+                   "detached submenu cards keep their rounded masks");
+
+            // The gap between the parent and the first submenu is inside the
+            // crop, outside every card, and never accepts input.
+            var gapX = regions[0].x + regions[0].w + menu.submenuGap / 2;
+            var gapY = regions[0].y + 20;
+            verify(pointInRect(crop, gapX, gapY), "the crop covers the card gap");
+            verify(!regionCoversPoint(regions, gapX, gapY),
+                   "no material region bridges the card gap");
+            verify(!inputContains(bar, gapX, gapY),
+                   "the card gap is click-through");
+
+            bar.closeMenus(false);
+            waitForRendering(stage);
+            compare(menu.closingFrame, true,
+                    "the whole-chain dismissal retains the accepted chain");
+            compare(menu.menuDepth, 3, "every level survives the logical close");
+            compare(menu.popup.opacity, 1.0,
+                    "the compositor owns the exit opacity, not QML");
+            compare(menu.popup.scale, 1.0,
+                    "the compositor owns the exit scale, not QML");
+            verify(menu.popup.visible, "the retained parent is still painted");
+            verify(!menu.popup.enabled,
+                   "the retained parent accepts no input after the logical close");
+            compare(bar.dropdownCropRect.x, crop.x, "the retained crop x is stable");
+            compare(bar.dropdownCropRect.y, crop.y, "the retained crop y is stable");
+            compare(bar.dropdownCropRect.w, crop.w, "the retained crop width is stable");
+            compare(bar.dropdownCropRect.h, crop.h, "the retained crop height is stable");
+            compare(bar.dropdownRegions.length, 3,
+                    "every card keeps its material through the exit");
+            compare(bar.dropdownSurfaceInputRects.length, 0,
+                    "the retained chain publishes no picking footprint");
+            var panel = findChild(menu, "submenuPanel");
+            verify(panel !== null && !panel.enabled,
+                   "the retained submenu card is inert");
+
+            releaseClosingChain(bar);
+            compare(menu.menuDepth, 1, "the release retires the accepted chain");
+            compare(bar.dropdownRegions.length, 0);
+            compare(bar.dropdownSurfaceInputRects.length, 0);
+            saveShot(stage, "t356-menubar-chain-closing.png");
+        }
+
+        function test_menubar_attached_chain_branch_swap_is_immediate() {
+            var bar = makeNestedMenuBar({ compositorPopupMotion: true });
+            var file = openNestedChain(bar);
+            compare(file.menuDepth, 3);
+
+            // A title switch is a deliberate navigation-driven swap: the old
+            // chain leaves at once and only the new title owns the footprint.
+            bar.openMenu(3);
+            waitForRendering(stage);
+            var edit = bar.appMenuAt(3);
+            compare(bar.openMenuIndex, 3);
+            compare(edit.open, true);
+            compare(file.open, false, "the old title closes immediately");
+            compare(file.menuDepth, 1, "the old chain is retired, not retained");
+            verify(bar.visualMenu === edit, "one chain owns the popup");
+            compare(bar.dropdownRegions.length, 1,
+                    "no duplicate glass survives the title switch");
+
+            // A hover branch swap inside the open menu is also immediate: the
+            // same submenu card retargets its rows instead of stacking cards.
+            edit.openSubmenu(0);
+            waitForRendering(stage);
+            compare(edit.menuDepth, 2);
+            edit.openSubmenu(1);
+            waitForRendering(stage);
+            compare(edit.menuDepth, 2);
+            compare(bar.dropdownRegions.length, 2,
+                    "the branch swap keeps exactly two cards");
+            var keys = regionKeys(bar.dropdownRegions);
+            verify(keys[0] !== keys[1], "the swapped submenu keeps one identity");
+            bar.closeMenus(true);
+            compare(edit.menuDepth, 1);
+            compare(bar.dropdownRegions.length, 0);
+        }
+
+        function test_menubar_attached_chain_survives_provider_refresh_during_exit() {
+            var bar = makeNestedMenuBar({ compositorPopupMotion: true });
+            var menu = openNestedChain(bar);
+            var crop = bar.dropdownCropRect;
+            var regionCount = bar.dropdownRegions.length;
+            bar.closeMenus(false);
+            waitForRendering(stage);
+            compare(menu.menuDepth, 3);
+
+            // A delayed provider reply lands after the logical close. The
+            // retained snapshot must not re-label, truncate or resize the
+            // departing cards; the next generation owns the new model.
+            bar.appMenuModel = [
+                { title: "File", items: [ { label: "Changed" } ] },
+                { title: "Edit", items: [ { label: "Undo" } ] }
+            ];
+            waitForRendering(stage);
+            compare(menu.menuDepth, 3, "the refresh cannot truncate the exit");
+            compare(bar.dropdownCropRect.w, crop.w,
+                    "the refresh cannot resize the exit");
+            compare(bar.dropdownCropRect.h, crop.h);
+            compare(bar.dropdownRegions.length, regionCount,
+                    "the refresh cannot drop a card from the exit");
+            compare(bar.dropdownSurfaceInputRects.length, 0);
+
+            releaseClosingChain(bar);
+            compare(bar.dropdownRegions.length, 0, "the release takes the new generation");
+            compare(bar.dropdownRegions.length, 0);
+            bar.appMenuModel = [];
+        }
+
+        function test_menubar_attached_chain_rapid_reopen_during_exit() {
+            var bar = makeNestedMenuBar({ compositorPopupMotion: true });
+            var menu = openNestedChain(bar);
+            bar.closeMenus(false);
+            waitForRendering(stage);
+            compare(menu.closingFrame, true);
+
+            // Reopen during the compositor-owned tail: the same accepted
+            // surface retargets instead of waiting for the unmap.
+            bar.popupClosingFrame = true;
+            bar.openMenu(2);
+            waitForRendering(stage);
+            bar.popupClosingFrame = false;
+            waitForRendering(stage);
+            compare(menu.closingFrame, false, "the reopen clears the exit latch");
+            compare(menu.open, true, "the chain is live again");
+            compare(menu.menuDepth, 1, "the reopen rebuilds the live chain");
+            verify(bar.dropdownWidth > 0 && bar.dropdownHeight > 0,
+                   "the reopened chain keeps a valid footprint");
+            verify(bar.dropdownSurfaceInputRects.length > 0,
+                   "the reopen restores the picking footprint");
+            bar.closeMenus(true);
+        }
+
+        function test_menubar_attached_chain_reduced_motion_exit_is_immediate() {
+            Theme.reducedMotion = true;
+            var bar = makeNestedMenuBar({ compositorPopupMotion: true });
+            compare(bar.popupExitDuration, 0,
+                    "reduced motion uses the zero-duration exit token");
+            var menu = openNestedChain(bar);
+            compare(menu.popup.opacity, 1.0);
+            bar.closeMenus(false);
+            waitForRendering(stage);
+            compare(menu.closingFrame, true,
+                    "the zero-duration close still has one accepted frame");
+            releaseClosingChain(bar);
+            compare(menu.menuDepth, 1, "the zero-duration release is immediate");
+            compare(bar.dropdownRegions.length, 0);
+            Theme.reducedMotion = false;
+        }
+
+        function test_menubar_attached_chain_dismissal_paths_share_the_exit() {
+            // Focus loss, pointer click-away/Escape, lock and output removal all
+            // route through the same close entry point. A non-immediate path
+            // retains the chain; the output-removal/immediate path retires it.
+            var bar = makeNestedMenuBar({ compositorPopupMotion: true });
+            var menu = openNestedChain(bar);
+            bar.shellFocused = false;
+            waitForRendering(stage);
+            compare(menu.closingFrame, true, "focus loss keeps the accepted chain");
+            compare(bar.dropdownRegions.length, 3);
+            releaseClosingChain(bar);
+            compare(menu.menuDepth, 1);
+
+            bar.shellFocused = true;
+            menu = openNestedChain(bar);
+            bar.closeMenus(false);
+            waitForRendering(stage);
+            compare(menu.closingFrame, true, "click-away keeps the accepted chain");
+            releaseClosingChain(bar);
+
+            menu = openNestedChain(bar);
+            bar.closeMenus(true);
+            waitForRendering(stage);
+            compare(menu.closingFrame, false,
+                    "an immediate owner change retires the chain at once");
+            compare(menu.menuDepth, 1);
+            compare(bar.dropdownRegions.length, 0);
+        }
+
     }
 }

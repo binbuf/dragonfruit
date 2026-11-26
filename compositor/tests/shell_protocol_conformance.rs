@@ -10672,8 +10672,8 @@ fn popup_transaction_fences_frames_and_retains_the_exit() {
 fn popup_motion_completes_without_further_client_commits() {
     let token = "f4".repeat(32);
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
-    let synthetic_path =
-        PathBuf::from(&runtime_dir).join(format!("dragonfruit-popup-motion-{}", std::process::id()));
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-popup-motion-{}", std::process::id()));
     let proc = CompositorProcess::start_with_synthetic_trace(
         "dragonfruit-conformance-popup-motion",
         std::slice::from_ref(&token),
@@ -10782,9 +10782,7 @@ fn popup_motion_completes_without_further_client_commits() {
         .lines()
         .rev()
         .find(|line| {
-            line.contains("popup-motion")
-                && line.contains("gen=3")
-                && line.contains("kind=open")
+            line.contains("popup-motion") && line.contains("gen=3") && line.contains("kind=open")
         })
         .unwrap_or_default();
     assert!(
@@ -10821,13 +10819,142 @@ fn popup_motion_completes_without_further_client_commits() {
         Duration::from_secs(5),
     );
     assert!(
-        done.lines()
-            .any(|line| line.contains("popup-motion")
-                && line.contains("gen=4")
-                && line.contains("kind=close")
-                && line.contains("done=1")
-                && line.contains("alpha=0.000")),
+        done.lines().any(|line| line.contains("popup-motion")
+            && line.contains("gen=4")
+            && line.contains("kind=close")
+            && line.contains("done=1")
+            && line.contains("alpha=0.000")),
         "the closing group must reach zero alpha without another client commit: {done}"
+    );
+
+    drop(buffer);
+    drop(popup);
+    drop(popup_surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T356: the attached menu chain opts its closing commit into the compositor
+/// group. The accepted texture is the whole parent/submenu chain (one popup
+/// surface), and its transform anchor is the top edge so it leaves the bar
+/// coherently. No further client commit is needed to finish the exit.
+#[test]
+fn menubar_attached_chain_motion_leaves_from_the_top_edge() {
+    let token = "f6".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-menubar-popup-motion-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic_trace(
+        "dragonfruit-conformance-menubar-popup-motion",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    assert!(
+        shell_version >= 6,
+        "T356 needs v6, advertised {shell_version}"
+    );
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "menubar-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(240, 320);
+    popup.set_margin(28, 0, 0, 40);
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let (buffer, _file) = shm_buffer(&state, &qh, 240, 320);
+
+    // The open keeps the shell-owned immediate motion.
+    popup.set_popup_transaction(
+        1,
+        1,
+        df_layer_surface::PopupPhase::Open,
+        df_layer_surface::PopupTransport::Shm,
+        1,
+        0,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    let _ = queue.roundtrip(&mut state);
+    proc.wait_for_trace(
+        "popup-transaction surface=menubar-popup gen=1 serial=1 phase=open",
+        Duration::from_secs(5),
+    );
+
+    // The whole-chain dismissal: one settled closing frame, input released,
+    // and the compositor's clock owns the rest.
+    popup.set_popup_motion(1);
+    popup.set_popup_transaction(
+        2,
+        2,
+        df_layer_surface::PopupPhase::Closing,
+        df_layer_surface::PopupTransport::Shm,
+        0,
+        400,
+    );
+    popup_surface.attach(Some(&buffer), 0, 0);
+    popup_surface.commit();
+    let _ = conn.flush();
+    proc.wait_for_trace(
+        "gen=2 serial=2 phase=closing declared=shm actual=shm switch=0 input=0",
+        Duration::from_secs(5),
+    );
+    let started = proc.wait_for_trace(
+        "popup-motion surface=menubar-popup gen=2 kind=close path=compositor",
+        Duration::from_secs(5),
+    );
+    assert!(
+        started.lines().any(|line| line.contains("popup-motion")
+            && line.contains("surface=menubar-popup")
+            && line.contains("origin=top")
+            && line.contains("token_ms=183")),
+        "the attached chain must anchor at the top and keep the menu close token: {started}"
+    );
+    let done = proc.wait_for_trace(
+        "popup-motion surface=menubar-popup gen=2 kind=close path=compositor done=1",
+        Duration::from_secs(5),
+    );
+    assert!(
+        done.lines().any(|line| line.contains("popup-motion")
+            && line.contains("surface=menubar-popup")
+            && line.contains("done=1")
+            && line.contains("alpha=0.000")),
+        "the menu group must reach zero alpha without another client commit: {done}"
     );
 
     drop(buffer);

@@ -34,6 +34,10 @@ Item {
     property color fill: Theme.color.surfaceElevated
     property real cornerRadius: Theme.controls.contextMenu.radius
     property string accessibleName: ""
+    // T356: a retained closing chain keeps its cards painted but must not
+    // accept hover, presses or keyboard focus. `enabled` propagates to the
+    // row delegates and their handlers.
+    property bool interactive: true
 
     readonly property var entries: levels && levels.levelEntries.length > level
                                    ? levels.levelEntries[level] : []
@@ -122,6 +126,7 @@ Item {
         : 0
     width: Math.min(panel.desiredWidth, panel.maxWidth)
     height: Math.min(panel.desiredHeight, panel.maxHeight)
+    enabled: panel.interactive
     visible: opacity > 0
     opacity: panel.open ? 1.0 : 0.0
     scale: panel.open ? 1.0 : 0.97
@@ -192,7 +197,7 @@ Item {
     }
 
     HoverHandler {
-        enabled: panel.open
+        enabled: panel.open && panel.interactive
         onHoveredChanged: {
             if (!panel.levels)
                 return;
@@ -313,6 +318,9 @@ Item {
             });
             child.accessibleName = Qt.binding(function() {
                 return panel.accessibleName;
+            });
+            child.interactive = Qt.binding(function() {
+                return panel.interactive;
             });
             child.x = Qt.binding(function() {
                 return panel.flips ? -child.width - panel.gap

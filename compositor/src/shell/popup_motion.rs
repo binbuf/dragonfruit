@@ -42,7 +42,38 @@ pub const POPUP_MIN_SCALE: f64 = 0.97;
 /// pilot. The Dock chooser is T355; the attached menu chain is T356 and the
 /// remaining families are T361.
 pub fn namespace_piloted(namespace: &str) -> bool {
-    namespace == "dock-popup"
+    matches!(namespace, "dock-popup" | "menubar-popup")
+}
+
+/// Where a popup group's transform is anchored.
+///
+/// The anchor is part of the accepted visual, not a per-frame choice: a Dock
+/// chooser grows out of and shrinks back into its arrow tip (bottom-centre),
+/// while an attached menu keeps its top edge under the bar (top-centre).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupMotionOrigin {
+    /// Scale about the bottom-centre of the accepted paint extent.
+    BottomCenter,
+    /// Scale about the top-centre of the accepted paint extent.
+    TopCenter,
+}
+
+impl PopupMotionOrigin {
+    pub const fn name(self) -> &'static str {
+        match self {
+            PopupMotionOrigin::BottomCenter => "bottom",
+            PopupMotionOrigin::TopCenter => "top",
+        }
+    }
+
+    /// The origin a popup namespace's accepted visual uses.
+    pub fn for_namespace(namespace: &str) -> Self {
+        if namespace == "menubar-popup" {
+            PopupMotionOrigin::TopCenter
+        } else {
+            PopupMotionOrigin::BottomCenter
+        }
+    }
 }
 
 /// Local A/B diagnostic: `compositor` (default) animates the accepted popup
@@ -89,6 +120,17 @@ impl PopupMotionKind {
             PopupMotionKind::Close => motion::POPUP_CLOSE,
         }
     }
+
+    /// The motion token for a popup namespace. The attached menu chain keeps
+    /// its measured menu tokens; the Dock chooser and the remaining families
+    /// use the popup tokens.
+    pub fn token_for(self, namespace: &str) -> Motion {
+        match (self, namespace) {
+            (PopupMotionKind::Open, "menubar-popup") => motion::MENU_OPEN,
+            (PopupMotionKind::Close, "menubar-popup") => motion::MENU_CLOSE,
+            _ => self.token(),
+        }
+    }
 }
 
 /// One popup's outer transition on the shared output clock.
@@ -104,6 +146,9 @@ pub struct PopupMotion {
     pub to_alpha: f32,
     pub from_scale: f64,
     pub to_scale: f64,
+    /// The transform anchor. The whole group shares it, so the content and
+    /// its material panels never drift apart.
+    pub origin: PopupMotionOrigin,
     /// The visual rect at the previous sample, for the damage union.
     pub last_rect: Rectangle<i32, Logical>,
     /// Frames this motion has been advanced for. The reduced-motion
@@ -120,8 +165,10 @@ pub struct PopupMotionFrame {
     pub kind: PopupMotionKind,
     /// The transformed visual rect in output-local logical coordinates.
     pub rect: Rectangle<i32, Logical>,
-    /// The uniform scale applied about the bottom edge.
+    /// The uniform scale applied about the origin.
     pub scale: f64,
+    /// The group's transform anchor.
+    pub origin: PopupMotionOrigin,
     /// The one group alpha for the whole contribution.
     pub alpha: f32,
     /// Eased progress in `0.0..=1.0`.
@@ -136,10 +183,34 @@ pub struct PopupMotionFrame {
 
 impl PopupMotion {
     /// An opening motion into `target`.
-    pub fn open(target: Rectangle<i32, Logical>, now_ms: u64, reduced_motion: bool) -> Self {
+    pub fn open(
+        target: Rectangle<i32, Logical>,
+        origin: PopupMotionOrigin,
+        now_ms: u64,
+        reduced_motion: bool,
+    ) -> Self {
+        Self::open_for(
+            target,
+            origin,
+            PopupMotionKind::Open.token(),
+            now_ms,
+            reduced_motion,
+        )
+    }
+
+    /// An opening motion into `target` using a namespace's token.
+    pub fn open_for(
+        target: Rectangle<i32, Logical>,
+        origin: PopupMotionOrigin,
+        token: Motion,
+        now_ms: u64,
+        reduced_motion: bool,
+    ) -> Self {
         Self::new(
             PopupMotionKind::Open,
             target,
+            origin,
+            token,
             now_ms,
             reduced_motion,
             0.0,
@@ -150,10 +221,34 @@ impl PopupMotion {
     }
 
     /// A closing motion out of `target`.
-    pub fn close(target: Rectangle<i32, Logical>, now_ms: u64, reduced_motion: bool) -> Self {
+    pub fn close(
+        target: Rectangle<i32, Logical>,
+        origin: PopupMotionOrigin,
+        now_ms: u64,
+        reduced_motion: bool,
+    ) -> Self {
+        Self::close_for(
+            target,
+            origin,
+            PopupMotionKind::Close.token(),
+            now_ms,
+            reduced_motion,
+        )
+    }
+
+    /// A closing motion out of `target` using a namespace's token.
+    pub fn close_for(
+        target: Rectangle<i32, Logical>,
+        origin: PopupMotionOrigin,
+        token: Motion,
+        now_ms: u64,
+        reduced_motion: bool,
+    ) -> Self {
         Self::new(
             PopupMotionKind::Close,
             target,
+            origin,
+            token,
             now_ms,
             reduced_motion,
             1.0,
@@ -172,6 +267,19 @@ impl PopupMotion {
     pub fn retarget(
         previous: &PopupMotion,
         kind: PopupMotionKind,
+        origin: PopupMotionOrigin,
+        now_ms: u64,
+        reduced_motion: bool,
+    ) -> Self {
+        Self::retarget_for(previous, kind, origin, kind.token(), now_ms, reduced_motion)
+    }
+
+    /// Retarget using a namespace's token.
+    pub fn retarget_for(
+        previous: &PopupMotion,
+        kind: PopupMotionKind,
+        origin: PopupMotionOrigin,
+        token: Motion,
         now_ms: u64,
         reduced_motion: bool,
     ) -> Self {
@@ -183,6 +291,8 @@ impl PopupMotion {
         Self::new(
             kind,
             previous.target,
+            origin,
+            token,
             now_ms,
             reduced_motion,
             from_alpha,
@@ -196,6 +306,8 @@ impl PopupMotion {
     fn new(
         kind: PopupMotionKind,
         target: Rectangle<i32, Logical>,
+        origin: PopupMotionOrigin,
+        token: Motion,
         now_ms: u64,
         reduced_motion: bool,
         from_alpha: f32,
@@ -205,13 +317,14 @@ impl PopupMotion {
     ) -> Self {
         PopupMotion {
             kind,
-            tween: Tween::from_motion(now_ms, kind.token(), reduced_motion),
+            tween: Tween::from_motion(now_ms, token, reduced_motion),
             target,
             from_alpha,
             to_alpha,
             from_scale,
             to_scale,
-            last_rect: scale_about_bottom(target, from_scale),
+            origin,
+            last_rect: scale_about_origin(target, from_scale, origin),
             frames: 0,
             completed: false,
         }
@@ -230,19 +343,21 @@ impl PopupMotion {
     /// Resolve the transition at `now_ms`.
     ///
     /// The visual rectangle is the accepted paint extent scaled about its
-    /// bottom-centre. That is the QML `transformOrigin: Item.Bottom` mapping
-    /// the chooser already used, so the arrow and the QML shadow stay attached
-    /// to the card while the whole group shrinks.
+    /// origin: the bottom-centre for a Dock chooser (the arrow stays attached)
+    /// and the top-centre for an attached menu (its top edge stays under the
+    /// bar). The whole group shares the transform, so the content and its
+    /// material panels never drift apart.
     pub fn frame(&self, now_ms: u64) -> PopupMotionFrame {
         let progress = self.progress(now_ms);
         let alpha = lerp_f32(self.from_alpha, self.to_alpha, progress).clamp(0.0, 1.0);
         let scale = lerp_f64(self.from_scale, self.to_scale, progress).max(0.0);
-        let rect = scale_about_bottom(self.target, scale);
+        let rect = scale_about_origin(self.target, scale, self.origin);
         let damage = self.last_rect.merge(rect);
         PopupMotionFrame {
             kind: self.kind,
             rect,
             scale,
+            origin: self.origin,
             alpha,
             progress,
             damage,
@@ -274,38 +389,80 @@ impl PopupMotion {
     /// Whether the visual contribution is empty at `now_ms` (a completed
     /// close, or a zero-duration close).
     pub fn draws_nothing(&self, now_ms: u64) -> bool {
-        self.kind == PopupMotionKind::Close
-            && self.frame(now_ms).alpha <= f32::EPSILON
+        self.kind == PopupMotionKind::Close && self.frame(now_ms).alpha <= f32::EPSILON
     }
 }
 
-/// Scale `target` about its bottom-centre, preserving the arrow and shadow
-/// attachment point.
-pub fn scale_about_bottom(target: Rectangle<i32, Logical>, scale: f64) -> Rectangle<i32, Logical> {
+/// Scale `target` about its origin, preserving the anchor point.
+pub fn scale_about_origin(
+    target: Rectangle<i32, Logical>,
+    scale: f64,
+    origin: PopupMotionOrigin,
+) -> Rectangle<i32, Logical> {
     let scale = scale.max(0.0);
     let w = (f64::from(target.size.w.max(1)) * scale).round().max(1.0) as i32;
     let h = (f64::from(target.size.h.max(1)) * scale).round().max(1.0) as i32;
-    let bottom = target.loc.y + target.size.h;
     let center_x = target.loc.x + target.size.w / 2;
-    Rectangle::new((center_x - w / 2, bottom - h).into(), (w, h).into())
+    let x = center_x - w / 2;
+    let y = match origin {
+        PopupMotionOrigin::BottomCenter => target.loc.y + target.size.h - h,
+        PopupMotionOrigin::TopCenter => target.loc.y,
+    };
+    Rectangle::new((x, y).into(), (w, h).into())
 }
 
-/// Scale a rectangle about `target`'s bottom-centre. Used for a material
-/// region so the sampled card shrinks with the accepted content instead of
-/// staying at full size behind a fading card.
+/// Scale `target` about its bottom-centre, preserving the arrow and shadow
+/// attachment point (the Dock chooser's origin).
+pub fn scale_about_bottom(target: Rectangle<i32, Logical>, scale: f64) -> Rectangle<i32, Logical> {
+    scale_about_origin(target, scale, PopupMotionOrigin::BottomCenter)
+}
+
+/// Scale a rectangle about `target`'s origin. Used for a material region so
+/// the sampled card shrinks with the accepted content instead of staying at
+/// full size behind a fading card.
+pub fn scale_rect_about_origin(
+    rect: Rectangle<i32, Logical>,
+    target: Rectangle<i32, Logical>,
+    scale: f64,
+    origin: PopupMotionOrigin,
+) -> Rectangle<i32, Logical> {
+    let scale = scale.max(0.0);
+    let center_x = target.loc.x + target.size.w / 2;
+    let anchor_y = match origin {
+        PopupMotionOrigin::BottomCenter => target.loc.y + target.size.h,
+        PopupMotionOrigin::TopCenter => target.loc.y,
+    };
+    let x = center_x + ((f64::from(rect.loc.x - center_x)) * scale).round() as i32;
+    let y = anchor_y + ((f64::from(rect.loc.y - anchor_y)) * scale).round() as i32;
+    let w = (f64::from(rect.size.w.max(1)) * scale).round().max(1.0) as i32;
+    let h = (f64::from(rect.size.h.max(1)) * scale).round().max(1.0) as i32;
+    Rectangle::new((x, y).into(), (w, h).into())
+}
+
+/// Scale a rectangle about `target`'s bottom-centre.
 pub fn scale_rect_about_bottom(
     rect: Rectangle<i32, Logical>,
     target: Rectangle<i32, Logical>,
     scale: f64,
 ) -> Rectangle<i32, Logical> {
-    let scale = scale.max(0.0);
-    let bottom = target.loc.y + target.size.h;
-    let center_x = target.loc.x + target.size.w / 2;
-    let x = center_x + ((f64::from(rect.loc.x - center_x)) * scale).round() as i32;
-    let y = bottom + ((f64::from(rect.loc.y - bottom)) * scale).round() as i32;
-    let w = (f64::from(rect.size.w.max(1)) * scale).round().max(1.0) as i32;
-    let h = (f64::from(rect.size.h.max(1)) * scale).round().max(1.0) as i32;
-    Rectangle::new((x, y).into(), (w, h).into())
+    scale_rect_about_origin(rect, target, scale, PopupMotionOrigin::BottomCenter)
+}
+
+/// The physical origin used by `RescaleRenderElement`.
+pub fn origin_physical(
+    target: Rectangle<i32, Logical>,
+    scale: Scale<f64>,
+    origin: PopupMotionOrigin,
+) -> Point<i32, smithay::utils::Physical> {
+    let physical: Rectangle<i32, smithay::utils::Physical> =
+        target.to_physical_precise_round(scale);
+    Point::from((
+        physical.loc.x + physical.size.w / 2,
+        match origin {
+            PopupMotionOrigin::BottomCenter => physical.loc.y + physical.size.h,
+            PopupMotionOrigin::TopCenter => physical.loc.y,
+        },
+    ))
 }
 
 /// The physical bottom-centre origin used by `RescaleRenderElement`.
@@ -313,12 +470,7 @@ pub fn bottom_center_physical(
     target: Rectangle<i32, Logical>,
     scale: Scale<f64>,
 ) -> Point<i32, smithay::utils::Physical> {
-    let physical: Rectangle<i32, smithay::utils::Physical> =
-        target.to_physical_precise_round(scale);
-    Point::from((
-        physical.loc.x + physical.size.w / 2,
-        physical.loc.y + physical.size.h,
-    ))
+    origin_physical(target, scale, PopupMotionOrigin::BottomCenter)
 }
 
 fn lerp_f32(from: f32, to: f32, t: f64) -> f32 {
@@ -403,7 +555,7 @@ mod tests {
     #[test]
     fn open_starts_transparent_and_ends_settled() {
         let target = rect(100, 200, 240, 320);
-        let motion = PopupMotion::open(target, 1_000, false);
+        let motion = PopupMotion::open(target, PopupMotionOrigin::BottomCenter, 1_000, false);
         let start = motion.frame(1_000);
         assert_eq!(start.alpha, 0.0);
         assert!((start.scale - POPUP_MIN_SCALE).abs() < 1e-9);
@@ -424,7 +576,7 @@ mod tests {
     #[test]
     fn close_starts_settled_and_ends_transparent() {
         let target = rect(100, 200, 240, 320);
-        let motion = PopupMotion::close(target, 2_000, false);
+        let motion = PopupMotion::close(target, PopupMotionOrigin::BottomCenter, 2_000, false);
         let start = motion.frame(2_000);
         assert_eq!(start.alpha, 1.0);
         assert_eq!(start.rect, target);
@@ -438,7 +590,7 @@ mod tests {
     #[test]
     fn midpoint_is_between_the_endpoints_and_the_damage_unions_them() {
         let target = rect(40, 60, 200, 260);
-        let motion = PopupMotion::close(target, 0, false);
+        let motion = PopupMotion::close(target, PopupMotionOrigin::BottomCenter, 0, false);
         let end_ms = token_ms(PopupMotionKind::Close);
         let mid = motion.frame(end_ms / 2);
         assert!(mid.alpha > 0.0 && mid.alpha < 1.0);
@@ -453,8 +605,12 @@ mod tests {
         let target = rect(0, 0, 100, 100);
         for kind in [PopupMotionKind::Open, PopupMotionKind::Close] {
             let motion = match kind {
-                PopupMotionKind::Open => PopupMotion::open(target, 500, true),
-                PopupMotionKind::Close => PopupMotion::close(target, 500, true),
+                PopupMotionKind::Open => {
+                    PopupMotion::open(target, PopupMotionOrigin::BottomCenter, 500, true)
+                }
+                PopupMotionKind::Close => {
+                    PopupMotion::close(target, PopupMotionOrigin::BottomCenter, 500, true)
+                }
             };
             assert!(motion.is_done(500));
             assert_eq!(motion.frames, 0);
@@ -471,12 +627,18 @@ mod tests {
     #[test]
     fn a_quick_reopen_retargets_from_the_current_alpha_and_scale() {
         let target = rect(20, 30, 220, 300);
-        let close = PopupMotion::close(target, 0, false);
+        let close = PopupMotion::close(target, PopupMotionOrigin::BottomCenter, 0, false);
         let close_ms = token_ms(PopupMotionKind::Close);
         let partial = close.frame(close_ms / 2);
         assert!(partial.alpha < 1.0 && partial.scale < 1.0);
 
-        let reopen = PopupMotion::retarget(&close, PopupMotionKind::Open, close_ms / 2, false);
+        let reopen = PopupMotion::retarget(
+            &close,
+            PopupMotionKind::Open,
+            PopupMotionOrigin::BottomCenter,
+            close_ms / 2,
+            false,
+        );
         let start = reopen.frame(close_ms / 2);
         assert!((start.alpha - partial.alpha).abs() < 1e-6);
         assert!((start.scale - partial.scale).abs() < 1e-6);
@@ -492,10 +654,16 @@ mod tests {
     #[test]
     fn a_close_during_open_retargets_from_the_current_alpha() {
         let target = rect(10, 10, 180, 240);
-        let open = PopupMotion::open(target, 0, false);
+        let open = PopupMotion::open(target, PopupMotionOrigin::BottomCenter, 0, false);
         let open_ms = token_ms(PopupMotionKind::Open);
         let partial = open.frame(open_ms / 2);
-        let close = PopupMotion::retarget(&open, PopupMotionKind::Close, open_ms / 2, false);
+        let close = PopupMotion::retarget(
+            &open,
+            PopupMotionKind::Close,
+            PopupMotionOrigin::BottomCenter,
+            open_ms / 2,
+            false,
+        );
         let start = close.frame(open_ms / 2);
         assert!((start.alpha - partial.alpha).abs() < 1e-6);
         assert_eq!(start.rect, partial.rect);
@@ -509,7 +677,7 @@ mod tests {
         // ring plus the rotated arrow tip. The transform is applied to that
         // whole rectangle, never to the card alone.
         let paint = rect(30, 40, 260, 340);
-        let motion = PopupMotion::close(paint, 0, false);
+        let motion = PopupMotion::close(paint, PopupMotionOrigin::BottomCenter, 0, false);
         let mid = motion.frame(token_ms(PopupMotionKind::Close) / 2);
         assert!(
             mid.rect.loc.x > paint.loc.x,
@@ -527,11 +695,81 @@ mod tests {
     }
 
     #[test]
+    fn the_top_center_origin_keeps_the_attached_menu_edge() {
+        // An attached menu hangs from the bar. Its accepted paint extent grows
+        // downward, so the whole group must shrink toward the top edge: the
+        // card stays attached while the shadow and the submenu chain leave
+        // with it.
+        let paint = rect(100, 28, 300, 360);
+        let motion = PopupMotion::close(paint, PopupMotionOrigin::TopCenter, 0, false);
+        let mid = motion.frame(token_ms(PopupMotionKind::Close) / 2);
+        assert_eq!(
+            mid.rect.loc.y, paint.loc.y,
+            "the attached top edge stays under the bar"
+        );
+        assert!(mid.rect.loc.x > paint.loc.x);
+        assert!(mid.rect.loc.x + mid.rect.size.w < paint.loc.x + paint.size.w);
+        assert_eq!(mid.origin, PopupMotionOrigin::TopCenter);
+        // A material card in the chain follows the same anchor, so its top
+        // edge cannot detach from the accepted card while the group shrinks.
+        let card = rect(104, 32, 120, 200);
+        let scaled = scale_rect_about_origin(card, paint, mid.scale, mid.origin);
+        assert_eq!(
+            scaled.loc.y,
+            paint.loc.y + ((card.loc.y - paint.loc.y) as f64 * mid.scale).round() as i32
+        );
+        assert!(scaled.size.w < card.size.w);
+    }
+
+    #[test]
+    fn the_menu_bar_popup_is_piloted_and_the_dock_keeps_its_anchor() {
+        assert!(namespace_piloted("menubar-popup"));
+        assert!(namespace_piloted("dock-popup"));
+        assert!(!namespace_piloted("menubar"));
+        assert_eq!(
+            PopupMotionOrigin::for_namespace("menubar-popup"),
+            PopupMotionOrigin::TopCenter
+        );
+        assert_eq!(
+            PopupMotionOrigin::for_namespace("dock-popup"),
+            PopupMotionOrigin::BottomCenter
+        );
+    }
+
+    #[test]
+    fn the_attached_menu_uses_the_measured_menu_tokens() {
+        assert_eq!(
+            PopupMotionKind::Close
+                .token_for("menubar-popup")
+                .duration_ms,
+            motion::MENU_CLOSE.duration_ms
+        );
+        assert_eq!(
+            PopupMotionKind::Open.token_for("menubar-popup").duration_ms,
+            motion::MENU_OPEN.duration_ms
+        );
+        assert_eq!(
+            PopupMotionKind::Close.token_for("dock-popup").duration_ms,
+            motion::POPUP_CLOSE.duration_ms
+        );
+        let target = rect(0, 20, 240, 320);
+        let menu = PopupMotion::close_for(
+            target,
+            PopupMotionOrigin::TopCenter,
+            PopupMotionKind::Close.token_for("menubar-popup"),
+            0,
+            false,
+        );
+        assert!(!menu.is_done(u64::from(motion::MENU_CLOSE.duration_ms) - 1));
+        assert!(menu.is_done(u64::from(motion::MENU_CLOSE.duration_ms)));
+    }
+
+    #[test]
     fn a_zero_duration_tween_is_immediately_complete() {
         let target = rect(0, 0, 64, 64);
         let motion = PopupMotion {
             tween: Tween::new(100, 0, motion::POPUP_CLOSE.curve),
-            ..PopupMotion::close(target, 100, false)
+            ..PopupMotion::close(target, PopupMotionOrigin::BottomCenter, 100, false)
         };
         assert!(motion.is_done(100));
         assert!(motion.draws_nothing(100));
@@ -625,17 +863,25 @@ mod tests {
                     let dy = y as i32 - cy as i32;
                     (dx * dx + dy * dy) as f64 <= (radius * radius) as f64
                 };
-                let in_corner = (x < 2 + radius && y < 2 + radius && !corner(2 + radius, 2 + radius))
-                    || (x + 2 + radius >= w && y < 2 + radius
-                        && !corner(w - 2 - radius - 1, 2 + radius))
-                    || (x < 2 + radius && y + 2 + radius >= card_h
-                        && !corner(2 + radius, card_h - 2 - radius - 1))
-                    || (x + 2 + radius >= w && y + 2 + radius >= card_h
-                        && !corner(w - 2 - radius - 1, card_h - 2 - radius - 1));
+                let in_corner =
+                    (x < 2 + radius && y < 2 + radius && !corner(2 + radius, 2 + radius))
+                        || (x + 2 + radius >= w
+                            && y < 2 + radius
+                            && !corner(w - 2 - radius - 1, 2 + radius))
+                        || (x < 2 + radius
+                            && y + 2 + radius >= card_h
+                            && !corner(2 + radius, card_h - 2 - radius - 1))
+                        || (x + 2 + radius >= w
+                            && y + 2 + radius >= card_h
+                            && !corner(w - 2 - radius - 1, card_h - 2 - radius - 1));
                 if in_corner {
                     continue;
                 }
-                raster.set(x, y, [tint[0] * alpha, tint[1] * alpha, tint[2] * alpha, alpha]);
+                raster.set(
+                    x,
+                    y,
+                    [tint[0] * alpha, tint[1] * alpha, tint[2] * alpha, alpha],
+                );
             }
         }
         // A bottom-centre arrow, three rows tall and one quarter wide.
@@ -657,10 +903,7 @@ mod tests {
                 if raster.get(x, y)[3] > 0.0 {
                     continue;
                 }
-                let near_card = x >= 1
-                    && x + 1 < w
-                    && y >= 1
-                    && y < card_h + 1;
+                let near_card = x >= 1 && x + 1 < w && y >= 1 && y < card_h + 1;
                 if near_card {
                     raster.set(x, y, [0.0, 0.0, 0.0, 0.12]);
                 }
@@ -747,9 +990,7 @@ mod tests {
                 let u = underlay.get(x, y);
                 let e = exact.get(x, y);
                 let n = naive.get(x, y);
-                exact_max = exact_max
-                    .max((e[0] - u[0]).abs())
-                    .max((e[3] - u[3]).abs());
+                exact_max = exact_max.max((e[0] - u[0]).abs()).max((e[3] - u[3]).abs());
                 let error = (n[0] - u[0]).abs().max((n[3] - u[3]).abs());
                 naive_max = naive_max.max(error);
                 if error > 0.01 {
@@ -778,7 +1019,12 @@ mod tests {
         let underlay = checker(64, 80);
         let content = chooser_group(64, 80, [0.2, 0.3, 0.4], 0.9);
         let material = material(64, 80, &underlay);
-        let motion = PopupMotion::close(rect(0, 0, 64, 80), 0, false);
+        let motion = PopupMotion::close(
+            rect(0, 0, 64, 80),
+            PopupMotionOrigin::BottomCenter,
+            0,
+            false,
+        );
         let end_ms = token_ms(PopupMotionKind::Close);
         let phases = [
             ("settled", 0u64),

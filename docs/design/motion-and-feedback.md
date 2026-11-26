@@ -348,6 +348,10 @@ The reduced-motion path is tested for every animation, not just the big ones.
   the accepted texture's transform and group alpha on the output clock, and QML
   owns only layout, content, selection and accessibility
   ([ADR 0367](adr/0367-compositor-popup-group-motion.md)).
+- The attached menu chain's whole-chain dismissal is T356: the parent and every
+  open submenu card share one accepted texture, one top-anchored transform and
+  one group alpha; a deliberate title/branch swap stays immediate
+  ([ADR 0368](adr/0368-attached-menu-chain-exit.md)).
 - No animation runs on a private 16 ms timer.
 - A settled surface produces zero wakeups.
 - The compositor and shell each do at most one frame of work per presented

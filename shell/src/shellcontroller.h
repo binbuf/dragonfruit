@@ -1101,7 +1101,7 @@ private:
     // it, so the first visible frame is not a transient highlight.
     void settleInitialState();
     // Stage the open dropdown's geometry for its next rendered frame.
-    void applyPopupGeometry();
+    void applyPopupGeometry(bool closing = false);
     // T354: one owner for the popup's accepted visual transaction. The
     // helpers fence a frame, send the wire transaction before the matching
     // content commit, and release retained snapshots on close/cancel.
@@ -1742,6 +1742,14 @@ private:
     bool m_dockPopupClosingCommitted = false;
     bool m_dockPopupCompositorMotionRequested = true;
     bool m_dockPopupCompositorMotion = true;
+    // T356: the same ownership for the attached Menu Bar chain. The shell
+    // stages the retained crop, commits one settled closing frame, then stops
+    // submitting popup frames; `popupClosingFrame` keeps the QML chain (parent
+    // and submenus) painted until the compositor's token finishes.
+    bool m_menuBarPopupClosing = false;
+    bool m_menuBarPopupClosingCommitted = false;
+    bool m_menuBarPopupCompositorMotionRequested = true;
+    bool m_menuBarPopupCompositorMotion = false;
     // The pilot surface is the window chooser; other Dock popovers keep their
     // QML motion. Retained across the close edge so the closing commit still
     // opts in.

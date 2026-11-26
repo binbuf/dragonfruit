@@ -95,3 +95,7 @@ progress note.
 [Protocol](../../../protocols/dragonfruit-shell.xml) ·
 [Compositor motion](../../../compositor/src/shell/popup_motion.rs) ·
 [Shell chooser](../../../shell/dock/DockWindowChooser.qml)
+
+T356 extended the same compositor-owned path to the attached menu chain with a
+top-edge origin and the measured menu close token; see
+[ADR 0368](0368-attached-menu-chain-exit.md).

@@ -101,6 +101,15 @@ qint64 monotonicMs()
     return monotonicNs() / 1'000'000;
 }
 
+// The local A/B diagnostic shared by every popup family: `qml`/`shell`/
+// `legacy`/`0`/`false`/`off` keeps the pre-T355 QML opacity/scale path.
+bool popupMotionCompositorRequested()
+{
+    const QByteArray mode = qgetenv("DRAGONFRUIT_POPUP_MOTION").trimmed().toLower();
+    return !(mode == "qml" || mode == "shell" || mode == "legacy" || mode == "0"
+             || mode == "false" || mode == "off");
+}
+
 // How long a launch may take to map its first window before the Dock treats
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
@@ -972,6 +981,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // transient Popup role before the first commit (T-21.2c).
     setMaterialProperties(m_item, m_materialPolicy.applied(MaterialPolicy::Popup),
                           "popupMaterial");
+    // T356: the attached menu chain opts into the compositor-owned exit when
+    // the v6 capability is present. The env diagnostic keeps the QML path.
+    m_menuBarPopupCompositorMotionRequested = popupMotionCompositorRequested();
+    m_menuBarPopupCompositorMotion = m_menuBarPopupCompositorMotionRequested
+        && m_protocol && m_protocol->popupMotionSupported();
+    m_item->setProperty("compositorPopupMotion", m_menuBarPopupCompositorMotion);
+    m_item->setProperty("popupClosingFrame", false);
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     // T231: the clock opens the Date & Time panel in QML; Notifications is the
@@ -1337,14 +1353,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // T355: the Dock chooser's outer transition is compositor-owned by
     // default. `DRAGONFRUIT_POPUP_MOTION=qml` is the local A/B diagnostic
     // that keeps the pre-T355 QML opacity/scale path.
-    const QByteArray popupMotionMode =
-        qgetenv("DRAGONFRUIT_POPUP_MOTION").trimmed().toLower();
-    m_dockPopupCompositorMotionRequested = !(popupMotionMode == "qml"
-                                             || popupMotionMode == "shell"
-                                             || popupMotionMode == "legacy"
-                                             || popupMotionMode == "0"
-                                             || popupMotionMode == "false"
-                                             || popupMotionMode == "off");
+    m_dockPopupCompositorMotionRequested = popupMotionCompositorRequested();
     m_dockPopupCompositorMotion = m_dockPopupCompositorMotionRequested
         && m_protocol && m_protocol->popupMotionSupported();
     if (m_dockItem)
@@ -7735,8 +7744,21 @@ void ShellController::onClockTick()
 void ShellController::onMenuBarPopupOpened()
 {
     ++m_menuBarPopupGeneration;
+    // T356: a reopen during the compositor-owned exit retargets the same
+    // accepted surface. Stop the exit timer and release the retained QML
+    // chain before the new generation's first commit.
+    if (m_menuBarPopupExitTimer)
+        m_menuBarPopupExitTimer->stop();
+    m_menuBarPopupClosing = false;
+    m_menuBarPopupClosingCommitted = false;
+    m_menuBarPopupCompositorMotion = m_menuBarPopupCompositorMotionRequested
+        && m_protocol && m_protocol->popupMotionSupported();
+    if (m_item) {
+        m_item->setProperty("compositorPopupMotion",
+                            m_menuBarPopupCompositorMotion);
+        m_item->setProperty("popupClosingFrame", false);
+    }
     openMenuBarPopupTransaction();
-    m_menuBarPopupExitTimer->stop();
     m_menuOpen = true;
     m_protocol->dismissPopupInput();
     schedulePopupGeometry();
@@ -7776,12 +7798,25 @@ void ShellController::onMenuBarPopupClosed()
     ++m_menuBarPopupGeneration;
     m_menuOpen = false;
     m_popupGeometryPending = false;
-    // T352: keep the surface mapped only for the visual tail the QML motion
-    // token actually uses. A reduced-motion (or otherwise zero-duration) exit
-    // unmaps immediately instead of leaving a stale frosted surface for a
-    // fixed interval. One frame of slack covers the animation's final tick.
+    // T352: keep the surface mapped only for the visual tail the motion token
+    // actually uses. A reduced-motion (or otherwise zero-duration) exit unmaps
+    // immediately instead of leaving a stale frosted surface for a fixed
+    // interval. One frame of slack covers the animation's final tick.
     const int exitDuration =
         m_item ? qMax(0, m_item->property("popupExitDuration").toInt()) : 0;
+    // T356: the attached chain is one visual group. Only the attached menu
+    // chain opts into the compositor-owned motion; status, tray and overflow
+    // popups keep their own family path (T361). The retained crop, cards and
+    // an empty input footprint are staged before the closing transaction edge,
+    // so the one accepted closing frame is the whole parent/submenu chain.
+    const bool attachedMenu =
+        m_item && m_item->property("popupClosedAttachedMenu").toBool();
+    const bool immediate =
+        m_item && m_item->property("popupClosedImmediate").toBool();
+    const bool compositorMotion = m_menuBarPopupCompositorMotion && attachedMenu
+        && !immediate;
+    if (compositorMotion)
+        applyPopupGeometry(true);
     // T354: the closing transaction releases input immediately and starts the
     // bounded retained-snapshot lifetime. It is latched by the input-only
     // commit below, before any exit frame.
@@ -7795,6 +7830,30 @@ void ShellController::onMenuBarPopupClosed()
         m_menuBarMenuTraceId = 0;
         m_menuBarMenuTraceCommitted = false;
     }
+    if (compositorMotion) {
+        // T356: the QML owner keeps the accepted chain painted (inert) until
+        // `finishMenuBarPopupExit`. The render commits exactly one closing
+        // frame and then stops submitting popup content, so the compositor's
+        // clock alone finishes the exit.
+        m_menuBarPopupClosing = true;
+        m_menuBarPopupClosingCommitted = false;
+        if (m_item)
+            m_item->setProperty("popupClosingFrame", true);
+        if (exitDuration <= 0) {
+            finishMenuBarPopupExit();
+            return;
+        }
+        m_menuBarPopupExitTimer->setInterval(exitDuration + 16);
+        m_menuBarPopupExitTimer->start();
+        scheduleRender();
+        return;
+    }
+    if (immediate) {
+        // A deliberate navigation-driven swap retires the old chain at once;
+        // there is no visual tail to keep mapped.
+        finishMenuBarPopupExit();
+        return;
+    }
     if (exitDuration <= 0) {
         finishMenuBarPopupExit();
         return;
@@ -7807,6 +7866,14 @@ void ShellController::onMenuBarPopupClosed()
 void ShellController::finishMenuBarPopupExit()
 {
     ++m_menuBarPopupGeneration;
+    if (m_menuBarPopupExitTimer)
+        m_menuBarPopupExitTimer->stop();
+    m_menuBarPopupClosing = false;
+    m_menuBarPopupClosingCommitted = false;
+    // Release the retained QML chain (parent and submenus) now that the
+    // compositor's token has finished or the exit was reduced to zero.
+    if (m_item)
+        m_item->setProperty("popupClosingFrame", false);
     m_popupWidth = 0;
     m_popupHeight = 0;
     if (m_protocol) {
@@ -8233,10 +8300,16 @@ void ShellController::cancelPopupTransactions(const QString &reason)
 {
     if (m_dockPopupExitTimer)
         m_dockPopupExitTimer->stop();
+    if (m_menuBarPopupExitTimer)
+        m_menuBarPopupExitTimer->stop();
     m_dockPopupClosing = false;
     m_dockPopupClosingCommitted = false;
+    m_menuBarPopupClosing = false;
+    m_menuBarPopupClosingCommitted = false;
     if (m_dockItem)
         m_dockItem->setProperty("popupClosingFrame", false);
+    if (m_item)
+        m_item->setProperty("popupClosingFrame", false);
     const qint64 now = monotonicMs();
     if (m_protocol && m_menuBarPopupTransaction.active()) {
         m_menuBarPopupTransaction.cancel(
@@ -8255,6 +8328,20 @@ void ShellController::cancelPopupTransactions(const QString &reason)
     m_popupWidth = 0;
     m_popupHeight = 0;
     m_menuOpen = false;
+    // T356: output removal/lock/cancel also retires the QML chain instead of
+    // leaving an invisible open menu in the bar scene. Use the immediate close
+    // path so no exit tail is armed after the transaction was cancelled.
+    if (m_item) {
+        const bool compositorMotion = m_menuBarPopupCompositorMotion;
+        m_menuBarPopupCompositorMotion = false;
+        QMetaObject::invokeMethod(m_item, "closeMenus", Q_ARG(QVariant, true));
+        m_menuBarPopupCompositorMotion = compositorMotion;
+        if (m_menuBarPopupExitTimer)
+            m_menuBarPopupExitTimer->stop();
+        m_menuBarPopupClosing = false;
+        m_menuBarPopupClosingCommitted = false;
+        m_item->setProperty("popupClosingFrame", false);
+    }
     armPopupSnapshotRelease();
 }
 
@@ -8358,9 +8445,9 @@ quint32 ShellController::nextPopupContentSerial(
     return 0;
 }
 
-void ShellController::applyPopupGeometry()
+void ShellController::applyPopupGeometry(bool closing)
 {
-    if (!m_item || !m_menuOpen)
+    if (!m_item || (!m_menuOpen && !closing))
         return;
     // T352: the QML snapshot publishes the committed crop (card + shadow
     // reach, clamped to the visible output), the card material regions and the
@@ -8404,16 +8491,18 @@ void ShellController::applyPopupGeometry()
                   qCeil(rect.value(QStringLiteral("h")).toReal())));
     }
     m_protocol->setPopupInputRects(popupInputRects);
-    m_protocol->setPopupInputActive(true);
+    m_protocol->setPopupInputActive(!closing);
     // T354: the same staged state is the accepted transaction's geometry,
     // material coverage and input policy. It is committed with the next
-    // popup content frame.
+    // popup content frame. T356: the closing call runs before the transaction's
+    // `closing` edge, so the retained chain's crop and cards are the accepted
+    // geometry the compositor animates.
     m_menuBarPopupTransaction.retarget(
         static_cast<quint32>(m_menuBarPopupGeneration),
         m_protocol->primaryOutputName(), QRect(x, y, width, height),
         QRect(x, y, width, height),
         m_item->property("dropdownSurfaceRegions").toList(), popupInputRects,
-        true, monotonicMs());
+        !closing, monotonicMs());
 }
 
 void ShellController::onPointerMoved(qreal x, qreal y)
@@ -13390,6 +13479,10 @@ void ShellController::onChromeScaleChanged(qreal scale)
     m_chromeScale = safe;
     ++m_dockPopupGeneration;
     ++m_menuBarPopupGeneration;
+    // A scale change during the accepted menu exit retires the retained
+    // texture immediately: the buffer was captured at the old scale.
+    if (m_menuBarPopupClosing)
+        finishMenuBarPopupExit();
     // A new scale retires the ring and remaps the viewport: the strip has no
     // partial-damage baseline at the new size.
     invalidateDockDamage();
@@ -13907,6 +14000,11 @@ void ShellController::render()
     // The bar item itself stays bar-height; an open dropdown overflows it and
     // is committed to the separate overlay surface.
     const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
+    // T356: one accepted closing frame. The retained QML chain is the input;
+    // after the frame commits the shell stops submitting popup content and
+    // keeps the surface mapped for the compositor's token.
+    const bool closingFrame =
+        m_menuBarPopupClosing && !m_menuBarPopupClosingCommitted;
     // T354: a generation change without a geometry request (scale/hotplug)
     // still retargets the open transaction so its frames are not fenced out.
     if (popupShown && m_menuOpen
@@ -13961,7 +14059,14 @@ void ShellController::render()
                                                        barSource);
                     }});
     QSize popupTargetSize;
-    if (popupShown && independentPopup) {
+    if (popupShown && !m_menuBarPopupClosingCommitted) {
+        // T356: only the closing commit opts into the compositor group. The
+        // open keeps its immediate QML motion, so the two owners never animate
+        // the same frame. The request is one-shot and latched with this
+        // commit.
+        m_protocol->setPopupMotion(closingFrame && m_menuBarPopupCompositorMotion);
+    }
+    if (popupShown && !m_menuBarPopupClosingCommitted && independentPopup) {
         const qint64 nowMs = monotonicNs() / 1'000'000;
         popupTargetSize = m_menuBarPopupBudget.update(
             QSize(m_popupWidth, m_popupHeight), outputSize, true, nowMs);
@@ -13975,7 +14080,7 @@ void ShellController::render()
         }
         if (m_menuBarPopupReleaseTimer)
             m_menuBarPopupReleaseTimer->stop();
-    } else if (popupShown) {
+    } else if (popupShown && !m_menuBarPopupClosingCommitted) {
         const QRect popupRect(m_popupX, m_popupY, m_popupWidth, m_popupHeight);
         const QRect popupSource = chromeBufferRect(popupRect);
         targets.append({QStringLiteral("menubar-popup"),
@@ -13986,23 +14091,28 @@ void ShellController::render()
                         }, 0, popupIsCurrent, ChromeSceneTarget::PopupOwner::MenuBar,
                         static_cast<quint32>(m_menuBarPopupGeneration),
                         ++m_menuBarPopupContentSerial, !m_menuOpen});
-    } else if (independentPopup) {
-        m_menuBarPopupBudget.update(QSize(), outputSize, false,
-                                    monotonicNs() / 1'000'000);
-        if (!m_menuBarPopupBudget.empty() && m_menuBarPopupReleaseTimer
-            && !m_menuBarPopupReleaseTimer->isActive()) {
-            m_menuBarPopupReleaseTimer->start();
+    } else if (!m_menuBarPopupClosing) {
+        if (independentPopup) {
+            m_menuBarPopupBudget.update(QSize(), outputSize, false,
+                                        monotonicNs() / 1'000'000);
+            if (!m_menuBarPopupBudget.empty() && m_menuBarPopupReleaseTimer
+                && !m_menuBarPopupReleaseTimer->isActive()) {
+                m_menuBarPopupReleaseTimer->start();
+            }
+        } else {
+            if (!m_menuBarPopupTargetSize.isEmpty() && gpuProducer)
+                discardChromeView(gpuProducer, GpuChromeFrameProducer::PopupView);
+            m_menuBarPopupBudget.reset();
+            m_menuBarPopupTargetSize = QSize();
         }
-    } else {
-        if (!m_menuBarPopupTargetSize.isEmpty() && gpuProducer)
-            discardChromeView(gpuProducer, GpuChromeFrameProducer::PopupView);
-        m_menuBarPopupBudget.reset();
-        m_menuBarPopupTargetSize = QSize();
     }
 
     bool deferred = false;
     const bool committed = commitChromeScene(m_window, targets, &deferred);
-    if (independentPopup && popupShown && gpuProducer) {
+    if (!independentPopup && closingFrame && !deferred && committed)
+        m_menuBarPopupClosingCommitted = true;
+    if (independentPopup && popupShown && !m_menuBarPopupClosingCommitted
+        && gpuProducer) {
         const QPointF popupOrigin(m_popupX, m_popupY);
         m_item->setX(-popupOrigin.x());
         m_item->setY(-popupOrigin.y());
@@ -14035,8 +14145,12 @@ void ShellController::render()
              }, 0, popupIsCurrent, ChromeSceneTarget::PopupOwner::MenuBar,
              static_cast<quint32>(m_menuBarPopupGeneration),
              ++m_menuBarPopupContentSerial, !m_menuOpen});
-        commitChromeScene(m_window, popupTargets, nullptr,
-                          GpuChromeFrameProducer::PopupView);
+        bool popupDeferred = false;
+        const bool popupCommitted = commitChromeScene(
+            m_window, popupTargets, &popupDeferred,
+            GpuChromeFrameProducer::PopupView);
+        if (closingFrame && !popupDeferred && popupCommitted)
+            m_menuBarPopupClosingCommitted = true;
         m_item->setX(0);
         m_item->setY(0);
         // Restore the pointer to the untranslated tree before the window is

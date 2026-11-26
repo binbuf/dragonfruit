@@ -242,6 +242,54 @@
       "setup": "MenuBar width 800 with File/Edit menus and Wi-Fi/Volume status popovers; switch titles, switch status popups, close, and repeat under reduced motion",
       "symptom": "one popup owner follows the live title/status card, a logical close publishes no material or picking region, and reduced motion uses a zero-duration exit",
       "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_attached_chain_keeps_nested_snapshot_through_exit",
+      "expected": "pass",
+      "owner": "T356",
+      "setup": "MenuBar width 800, output 800x640, File menu with a nested submenu, compositorPopupMotion on; open the chain and dismiss it by click-away",
+      "symptom": "the parent and both submenu cards keep their own masks, placement, material regions and one visual lifetime; the retained chain is inert and the inter-card gap stays click-through",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_attached_chain_branch_swap_is_immediate",
+      "expected": "pass",
+      "owner": "T356",
+      "setup": "MenuBar width 800 with File/Edit menus and two Edit submenus, compositorPopupMotion on; switch titles and swap the open submenu branch",
+      "symptom": "a deliberate title or branch swap retires the old chain immediately and never leaves duplicate glass",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_attached_chain_survives_provider_refresh_during_exit",
+      "expected": "pass",
+      "owner": "T356",
+      "setup": "MenuBar width 800, nested File menu, compositorPopupMotion on; dismiss the chain then replace the model",
+      "symptom": "a delayed provider reply cannot re-label, resize or truncate the retained exit snapshot",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_attached_chain_rapid_reopen_during_exit",
+      "expected": "pass",
+      "owner": "T356",
+      "setup": "MenuBar width 800, nested File menu, compositorPopupMotion on; dismiss then reopen during the closing tail",
+      "symptom": "the reopen clears the exit latch, rebuilds the live chain and restores the picking footprint on the same accepted surface",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_attached_chain_reduced_motion_exit_is_immediate",
+      "expected": "pass",
+      "owner": "T356",
+      "setup": "MenuBar width 800, nested File menu, compositorPopupMotion on, Theme.reducedMotion on",
+      "symptom": "the zero-duration token releases the retained chain immediately with no stale cards",
+      "scales": [1, 1.5, 2]
+    },
+    {
+      "test": "test_menubar_attached_chain_dismissal_paths_share_the_exit",
+      "expected": "pass",
+      "owner": "T356",
+      "setup": "MenuBar width 800, nested File menu, compositorPopupMotion on; dismiss by focus loss, click-away and the immediate owner path",
+      "symptom": "every dismissal route shares one exit; non-immediate routes retain the chain and the immediate route retires it",
+      "scales": [1, 1.5, 2]
     }
   ]
 }

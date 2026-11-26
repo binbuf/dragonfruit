@@ -299,15 +299,9 @@ impl ShellProtocolState {
             // `motion_active` already reports false once the tween's end time
             // has passed, so completion is the transition from the stored
             // `completed` flag, not a second time comparison.
-            let was_completed = entry
-                .popup
-                .motion()
-                .map_or(true, |motion| motion.completed);
+            let was_completed = entry.popup.motion().map_or(true, |motion| motion.completed);
             let still_live = entry.popup.step_motion(now_ms);
-            let now_completed = entry
-                .popup
-                .motion()
-                .is_some_and(|motion| motion.completed);
+            let now_completed = entry.popup.motion().is_some_and(|motion| motion.completed);
             if !was_completed && now_completed {
                 if let Some(frame) = entry.popup.motion_frame(now_ms) {
                     crate::trace::log(
@@ -830,31 +824,35 @@ impl DfState {
                     let motion_kind = match request.phase {
                         PopupPhase::Open => Some(popup_motion::PopupMotionKind::Open),
                         PopupPhase::Closing => Some(popup_motion::PopupMotionKind::Close),
-                        PopupPhase::Retarget
-                            if entry.popup.motion_active(motion_now_ms) =>
-                        {
+                        PopupPhase::Retarget if entry.popup.motion_active(motion_now_ms) => {
                             Some(popup_motion::PopupMotionKind::Open)
                         }
                         _ => None,
                     };
                     if let Some(kind) = motion_kind {
-                        if entry.popup.start_motion(kind, motion_now_ms, reduced_motion) {
+                        let origin =
+                            popup_motion::PopupMotionOrigin::for_namespace(&entry.state.namespace);
+                        let token = kind.token_for(&entry.state.namespace);
+                        if entry.popup.start_motion(
+                            kind,
+                            origin,
+                            token,
+                            motion_now_ms,
+                            reduced_motion,
+                        ) {
                             if let Some(frame) = entry.popup.motion_frame(motion_now_ms) {
                                 crate::trace::log(
                                     "popup-motion",
                                     &format!(
                                         "surface={} gen={} kind={} path=compositor token_ms={} \
-                                         reduced={} alpha={:.3} scale={:.3} \
+                                         reduced={} origin={} alpha={:.3} scale={:.3} \
                                          rect={},{},{},{} damage={},{},{},{}",
                                         entry.state.namespace,
                                         request.generation,
                                         kind.name(),
-                                        if reduced_motion {
-                                            0
-                                        } else {
-                                            kind.token().duration_ms
-                                        },
+                                        if reduced_motion { 0 } else { token.duration_ms },
                                         u8::from(reduced_motion),
+                                        origin.name(),
                                         frame.alpha,
                                         frame.scale,
                                         frame.rect.loc.x,

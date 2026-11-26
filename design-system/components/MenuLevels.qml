@@ -79,7 +79,7 @@ QtObject {
     // Every entry carries its stable key, its level, and the ancestor path of
     // stable keys that opened it, so a press or a late update can name the
     // exact command rather than a numeric row.
-    readonly property var levelEntries: {
+    readonly property var liveLevelEntries: {
         var models = root.levelModels;
         var out = [];
         var ancestors = [];
@@ -94,6 +94,33 @@ QtObject {
                 ancestors = ancestors.concat([root.openPath[level]]);
         }
         return out;
+    }
+    // T356: a whole-chain dismissal retains the accepted visual snapshot.
+    // `freeze()` captures the visible levels so a provider refresh that lands
+    // during the exit cannot truncate or re-label the departing cards; the
+    // render bindings keep reading the captured rows until `thaw()`.
+    property bool frozen: false
+    property var frozenEntries: null
+    readonly property var levelEntries:
+        root.frozen && root.frozenEntries ? root.frozenEntries
+                                          : root.liveLevelEntries
+    function freeze() {
+        if (root.frozen)
+            return;
+        var live = root.liveLevelEntries;
+        var copy = [];
+        for (var level = 0; level < live.length; ++level) {
+            var rows = [];
+            for (var i = 0; i < live[level].length; ++i)
+                rows.push(Object.assign({}, live[level][i]));
+            copy.push(rows);
+        }
+        root.frozenEntries = copy;
+        root.frozen = true;
+    }
+    function thaw() {
+        root.frozen = false;
+        root.frozenEntries = null;
     }
     readonly property int levelCount: root.levelEntries.length
     // The deepest visible level: where keyboard navigation and type-ahead act.
@@ -532,7 +559,7 @@ QtObject {
     // command.
     property bool reconciling: false
     function reconcile(deferInvalidPath) {
-        if (root.reconciling)
+        if (root.reconciling || root.frozen)
             return;
         root.reconciling = true;
         var entries = root.levelEntries;

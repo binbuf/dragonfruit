@@ -644,9 +644,22 @@ footprints. A live motion joins `animations_active` and
 stops submitting popup frames; the shell keeps the surface mapped for the
 closing commit and unmaps after the token (zero duration under reduced motion).
 The persistent Dock plate is a separate surface and never joins the motion.
-The attached menu chain is T356 and the remaining families are T361; the exact
-single-texture group composite for the sampled backdrop is the native rollout
-item. See [ADR 0367](adr/0367-compositor-popup-group-motion.md).
+The attached menu chain is T356 (below) and the remaining families are T361;
+the exact single-texture group composite for the sampled backdrop is the
+native rollout item. See
+[ADR 0367](adr/0367-compositor-popup-group-motion.md).
+
+**Attached menu chain motion (T356).** The `menubar-popup` namespace opts its
+closing commit into the same group. Its origin is `TopCenter`: the accepted
+paint extent (attached parent, detached submenu cards, transparent gaps and
+shadow reach) scales about its top edge, so the parent stays under the bar
+while the chain leaves. The Dock chooser keeps `BottomCenter` (its arrow tip).
+The chain uses the measured `menuClose` token (183 ms) rather than the Dock's
+popup token. One `popupClose` sample drives the content and every per-card
+material panel; the shell freezes the accepted chain and submits one closing
+frame, then the clock finishes the exit. A deliberate title/hover branch swap
+does not opt in and releases the old chain immediately. See
+[ADR 0368](adr/0368-attached-menu-chain-exit.md).
 
 `DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;`Reduced` = blur + specular + tint with the generic edge lens dropped and the
 blur radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the

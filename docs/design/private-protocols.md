@@ -149,13 +149,16 @@ region is the only input policy and nothing is retained. See
 `df_layer_surface.set_popup_motion(enabled)` opts the next popup content commit
 into the compositor-owned outer transition. The request is commit-latched with
 the pixels and the popup transaction it applies to; `enabled` is 0 or 1. The
-compositor samples one `popupOpen`/`popupClose` token on the owning output's
-clock, applies one scale about the accepted paint extent's bottom edge and one
-group alpha to the accepted content and its material panels, and finishes the
-exit without further client commits. A client that never sends the request
-keeps the shell-owned QML motion. The Dock chooser is the pilot; the attached
-menu chain is T356 and the remaining families are T361. See
-[ADR 0367](adr/0367-compositor-popup-group-motion.md).
+compositor samples one token on the owning output's clock (`popupClose` for
+the Dock chooser, the measured `menuClose` for the attached menu chain),
+applies one scale about the accepted paint extent's namespace origin (bottom
+edge for the Dock chooser, top edge for the attached menu chain) and one group
+alpha to the accepted content and its material panels, and finishes the exit
+without further client commits. A client that never sends the request
+keeps the shell-owned QML motion. The Dock chooser and the attached
+`menubar-popup` chain opt in; the remaining families are T361. See
+[ADR 0367](adr/0367-compositor-popup-group-motion.md) and
+[ADR 0368](adr/0368-attached-menu-chain-exit.md).
 - Region identity is `(namespace, layer, surface object, region key)`, so a
   stable key keeps its element id and cached filtered texture across unrelated
   scene damage and tint-only changes. Removed regions and surfaces drop their

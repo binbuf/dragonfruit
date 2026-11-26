@@ -31,9 +31,9 @@ use smithay::wayland::fractional_scale::with_fractional_scale;
 use wayland_server::Resource;
 
 use crate::material_preset::{Preset, RenderMode, Rollout};
+use crate::shell::popup_motion;
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
-use crate::shell::popup_motion;
 use crate::window::{
     backdrop_elements_with_corners, is_backdrop_panel, shadow_elements_outside_bounds, BlurSpec,
     CornerRadii, DegradeTier, DockOptics, GlassSpec, MaterialRole, PanelKey, RegionFilter,
@@ -181,17 +181,19 @@ where
         // T233: the menu bar's measured reveal slides the whole surface
         // (including its veil) while input stays on the top strip.
         let location = (chrome.location + chrome.render_offset).to_physical_precise_round(scale);
-        // T355: the accepted popup contribution is transformed and faded as
-        // one group. The scale is about the committed paint extent's bottom
-        // edge, so the card, arrow, mask, rim and QML shadow stay rigid. The
-        // material panels below use the same frame and alpha
+        // T355/T356: the accepted popup contribution is transformed and faded
+        // as one group. The scale is about the committed paint extent's
+        // namespace origin: the bottom edge for a Dock chooser (the arrow tip
+        // stays attached) and the top edge for an attached menu (its top stays
+        // under the bar). The card, arrow, mask, rim and QML shadow stay rigid.
+        // The material panels below use the same frame and alpha
         // (`chrome_blur_panels`), so content and backdrop cannot fade
         // independently.
         if let Some(motion) = chrome.popup_motion {
             if motion.completed && motion.alpha <= f32::EPSILON {
                 continue;
             }
-            let origin = popup_motion::bottom_center_physical(chrome.geometry, scale);
+            let origin = popup_motion::origin_physical(chrome.geometry, scale, motion.origin);
             let group_scale = smithay::utils::Scale::from((motion.scale, motion.scale));
             let surface_elements: Vec<WaylandSurfaceRenderElement<R>> =
                 render_elements_from_surface_tree::<R, WaylandSurfaceRenderElement<R>>(
@@ -349,19 +351,20 @@ pub fn chrome_backdrop_render_elements(
                     let corners = region.corners.unwrap_or_else(|| {
                         CornerRadii::uniform(spec.radius.round().max(0.0) as i32)
                     });
-                    // T355: the feather backdrop is part of the same popup
-                    // group. Scale its rect and rim radii about the paint
-                    // extent's bottom edge and fade it with the one group
-                    // alpha, so the material cannot outlive a shrinking card.
+                    // T355/T356: the feather backdrop is part of the same
+                    // popup group. Scale its rect and rim radii about the
+                    // paint extent's namespace origin and fade it with the one
+                    // group alpha, so the material cannot outlive a shrinking
+                    // card.
                     if let Some(motion) = chrome.popup_motion {
-                        let rect = popup_motion::scale_rect_about_bottom(
+                        let rect = popup_motion::scale_rect_about_origin(
                             region.rect,
                             chrome.geometry,
                             motion.scale,
+                            motion.origin,
                         );
-                        let radius = |value: i32| {
-                            (f64::from(value.max(0)) * motion.scale).round() as i32
-                        };
+                        let radius =
+                            |value: i32| (f64::from(value.max(0)) * motion.scale).round() as i32;
                         let corners = CornerRadii {
                             top_left: radius(corners.top_left),
                             top_right: radius(corners.top_right),
@@ -745,35 +748,34 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
             } else {
                 PanelKey::for_region(&chrome.namespace, chrome.layer, surface_id, &region.key)
             };
-            // T355: a popup's sampled material is part of the same group as
-            // its accepted content. The visible card rect and its rim radii
-            // scale about the paint extent's bottom edge and the paint alpha
-            // is the group alpha. The *source* stays at the committed card
-            // rect so the filtered texture survives the transition; the
+            // T355/T356: a popup's sampled material is part of the same group
+            // as its accepted content. The visible card rect and its rim radii
+            // scale about the paint extent's namespace origin and the paint
+            // alpha is the group alpha. The *source* stays at the committed
+            // card rect so the filtered texture survives the transition; the
             // element stretches that stable source over the scaled card.
-            let (panel_rect, panel_corners, group_alpha) =
-                if let Some(motion) = chrome.popup_motion {
-                    let scaled = popup_motion::scale_rect_about_bottom(
-                        region.rect,
-                        chrome.geometry,
-                        motion.scale,
-                    );
-                    let radius = |value: i32| {
-                        (f64::from(value.max(0)) * motion.scale).round() as i32
-                    };
-                    (
-                        scaled,
-                        CornerRadii {
-                            top_left: radius(corners.top_left),
-                            top_right: radius(corners.top_right),
-                            bottom_right: radius(corners.bottom_right),
-                            bottom_left: radius(corners.bottom_left),
-                        },
-                        motion.alpha,
-                    )
-                } else {
-                    (region.rect, corners, 1.0)
-                };
+            let (panel_rect, panel_corners, group_alpha) = if let Some(motion) = chrome.popup_motion
+            {
+                let scaled = popup_motion::scale_rect_about_origin(
+                    region.rect,
+                    chrome.geometry,
+                    motion.scale,
+                    motion.origin,
+                );
+                let radius = |value: i32| (f64::from(value.max(0)) * motion.scale).round() as i32;
+                (
+                    scaled,
+                    CornerRadii {
+                        top_left: radius(corners.top_left),
+                        top_right: radius(corners.top_right),
+                        bottom_right: radius(corners.bottom_right),
+                        bottom_left: radius(corners.bottom_left),
+                    },
+                    motion.alpha,
+                )
+            } else {
+                (region.rect, corners, 1.0)
+            };
             if panel_rect.size.w <= 0 || panel_rect.size.h <= 0 {
                 continue;
             }

@@ -79,7 +79,10 @@ the fixed menus only.
 
 Menus follow macOS interaction conventions: click to open, drag through
 submenus with delayed hover, Escape or focus loss dismisses, and an open menu
-tracks the focused window switching underneath.
+tracks the focused window switching underneath. A whole-chain dismissal keeps
+the parent and its open submenu cards on one visual lifetime while input is
+retired immediately; a title switch or hover branch swap replaces the chain at
+once ([ADR 0368](adr/0368-attached-menu-chain-exit.md)).
 
 Shortcuts are **dispatched, not merely displayed**:
 

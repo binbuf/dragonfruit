@@ -147,6 +147,19 @@ Rectangle {
     // The compositor reports when the shell/menu surface holds focus; when
     // it is lost the open menu dismisses (FR-3).
     property bool shellFocused: true
+    // T356: the shell pushes the v6 capability and the exit latch. While
+    // `popupClosingFrame` is set the one closing menu keeps its accepted
+    // chain painted (but inert); `closingMenu` is the QML side's reference to
+    // that delegate so the release edge can retire it.
+    property bool compositorPopupMotion: false
+    property bool popupClosingFrame: false
+    property var closingMenu: null
+    // The Repeater model is frozen at the accepted title count while a chain
+    // is retained, so a provider reply that removes the title cannot destroy
+    // the departing snapshot mid-exit.
+    property int retainedMenuCount: 0
+    readonly property int menuCount:
+        closingMenu !== null ? retainedMenuCount : topLevelMenus.length
     // T-09 keyboard entry: Ctrl+F2 (compositor `FocusMenuBar`) hands the bar
     // the keyboard. `keyboardMenuIndex` is the title ring, `keyboardStatusIndex`
     // the status ring; -1 means that family is not focused.
@@ -330,6 +343,39 @@ Rectangle {
         : openStatusItem === "bluetooth" ? bluetoothMenuPopup
         : openStatusItem === "clock" ? dateTimePanel : null
 
+    // T356: the one menu chain that owns the popup footprint. While a menu is
+    // open it is the live title. During a whole-chain dismissal the logical
+    // index is already -1, so the retained delegate is the accepted visual
+    // until the shell releases the closing latch. A deliberate branch swap
+    // releases it before the new title opens, so two chains never coexist.
+    readonly property var visualMenu: {
+        if (openMenuIndex >= 0)
+            return menuRepeater.itemAt(openMenuIndex);
+        if (closingMenu && closingMenu.popup && closingMenu.popup.visible)
+            return closingMenu;
+        return null;
+    }
+    function retainClosingMenu(item) {
+        if (compositorPopupMotion && item) {
+            if (closingMenu === null)
+                retainedMenuCount = menuRepeater.count;
+            closingMenu = item;
+        }
+    }
+    function releaseClosingMenu() {
+        var item = closingMenu;
+        closingMenu = null;
+        retainedMenuCount = 0;
+        // A provider refresh may have retired the delegate after the accepted
+        // frame; the release must still clear the bar state.
+        if (item && typeof item.releaseClosingFrame === "function")
+            item.releaseClosingFrame();
+    }
+    onPopupClosingFrameChanged: {
+        if (!popupClosingFrame)
+            releaseClosingMenu();
+    }
+
     // Geometry of the open dropdown in window coordinates. The shell process
     // renders the popup into a separate `overlay` chrome surface placed at
     // this rectangle, so the transient menu composites above fullscreen
@@ -359,9 +405,9 @@ Rectangle {
             var trayOrigin = trayContextMenu.mapToItem(null, trayRect.x, trayRect.y);
             return { x: trayOrigin.x, y: trayOrigin.y, w: trayRect.w, h: trayRect.h };
         }
-        if (openMenuIndex < 0)
+        if (openMenuIndex < 0 && !closingMenu)
             return { x: 0, y: 0, w: 0, h: 0 };
-        var item = menuRepeater.itemAt(openMenuIndex);
+        var item = menuBar.visualMenu;
         if (!item || !item.popup)
             return { x: 0, y: 0, w: 0, h: 0 };
         // `contentRect` is the dropdown unioned with any open submenu, so the
@@ -429,8 +475,17 @@ Rectangle {
     // Ordinary menus use the 183 ms close token; status popovers use the
     // shorter popup token. Reduced motion is an immediate, coherent unmap.
     property int popupExitDuration: Theme.motion.menuClose.duration
-    function notifyPopupClosed(duration) {
+    // T356: whether the popup that just closed is the attached application
+    // menu chain, and whether it was a deliberate immediate swap rather than a
+    // whole-chain dismissal. Status, tray and overflow popups keep their own
+    // family path (T361), so the shell must not apply the attached-chain exit
+    // to them.
+    property bool popupClosedAttachedMenu: false
+    property bool popupClosedImmediate: false
+    function notifyPopupClosed(duration, attachedMenu, immediate) {
         popupExitDuration = Math.max(0, duration);
+        popupClosedAttachedMenu = attachedMenu === true;
+        popupClosedImmediate = immediate === true;
         popupClosed();
     }
 
@@ -496,8 +551,8 @@ Rectangle {
             }
             return out;
         }
-        if (openMenuIndex >= 0) {
-            var item = menuRepeater.itemAt(openMenuIndex);
+        if (openMenuIndex >= 0 || closingMenu) {
+            var item = menuBar.visualMenu;
             if (item) {
                 var itemParent = item.parent;
                 var itemOrigin = itemParent
@@ -593,6 +648,11 @@ Rectangle {
         return out;
     }
     readonly property var dropdownSurfaceInputRects: {
+        // A retained closing chain is painted for the compositor's exit but is
+        // not a live target: its picking footprint is empty from the logical
+        // close, independently of the visual lifetime.
+        if (closingMenu !== null || popupClosingFrame)
+            return [];
         var dx = Math.max(0, Math.floor(dropdownCropX));
         var dy = Math.max(0, Math.floor(dropdownCropY));
         var out = [];
@@ -812,12 +872,17 @@ Rectangle {
     function openMenu(index) {
         if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)
             return;
+        // A deliberate navigation-driven swap retires any retained exit chain
+        // immediately; only one menu chain may own the popup footprint.
+        releaseClosingMenu();
         var item = menuRepeater.itemAt(index);
         if (item)
             item.openMenu();
     }
 
     function closeMenus(immediate) {
+        if (immediate === true)
+            releaseClosingMenu();
         closeTrayMenu(immediate);
         closeOverflowMenu(immediate);
         var index = openMenuIndex;
@@ -829,10 +894,16 @@ Rectangle {
         // handler runs afterwards; emitting twice made the dismissal janky.
         if (index >= 0) {
             var item = menuRepeater.itemAt(index);
-            if (item)
+            if (item) {
+                // Retain the accepted chain before the logical close so the
+                // geometry/region bindings never observe an empty frame.
+                if (immediate !== true && compositorPopupMotion)
+                    retainClosingMenu(item);
                 item.closeMenu(immediate === true);
+            }
             appMenuClosed();
-            notifyPopupClosed(Theme.motion.menuClose.duration);
+            notifyPopupClosed(Theme.motion.menuClose.duration, true,
+                              immediate === true);
         }
     }
 
@@ -1244,6 +1315,9 @@ Rectangle {
     // Live focus-switch tracking: the open menu follows the newly focused
     // application, and closes if that application exports no menu (FR-3).
     function setFocusedApp(name, id, menuModel) {
+        // A focus switch is a deliberate owner change, not a whole-chain
+        // dismissal: retire any retained exit chain before the model swap.
+        releaseClosingMenu();
         var wasOpen = openMenuIndex;
         var previous = appMenuAt(wasOpen);
         openMenuIndex = -1;
@@ -1257,7 +1331,7 @@ Rectangle {
                 openMenu(wasOpen);
             else {
                 appMenuClosed();
-                notifyPopupClosed(Theme.motion.menuClose.duration);
+                notifyPopupClosed(Theme.motion.menuClose.duration, true, true);
             }
         }
     }
@@ -1383,8 +1457,10 @@ Rectangle {
             id: menuRepeater
             objectName: "menuRepeater"
             // Keep the title and popup alive when its rows refresh. An array
-            // model resets every delegate even for a single changed row.
-            model: menuBar.topLevelMenus.length
+            // model resets every delegate even for a single changed row. While
+            // a chain is retained the count is frozen so the departing
+            // snapshot survives a provider reply that removes its title.
+            model: menuBar.menuCount
             onItemRemoved: (index, item) => {
                 if (menuBar.openMenuIndex === index)
                     menuBar.closeMenus();
@@ -1412,6 +1488,7 @@ Rectangle {
                 materialBlurActive: menuBar.popupMaterialBlurActive
                 materialTier: menuBar.popupMaterialTier
                 materialFallback: menuBar.popupMaterialFallback
+                compositorPopupMotion: menuBar.compositorPopupMotion
 
                 onTriggered: (itemIndex, item) => menuBar.appMenuTriggered(index, itemIndex, item)
                 onMenuSwitchRequested: (delta) => menuBar.moveMenuSelection(index, delta)
@@ -1429,11 +1506,17 @@ Rectangle {
                     menuBar.popupOpened();
                 }
                 onClosed: {
+                    // A whole-chain dismissal retains the accepted parent and
+                    // submenu cards for the compositor's one closing commit.
+                    if (menuTitle.compositorPopupMotion
+                            && menuTitle.closingFrame)
+                        menuBar.retainClosingMenu(menuTitle);
                     if (menuBar.openMenuIndex === index) {
                         menuBar.openMenuIndex = -1;
                         menuBar.appMenuClosed();
                         menuBar.notifyPopupClosed(
-                            Theme.motion.menuClose.duration);
+                            Theme.motion.menuClose.duration, true,
+                            !menuTitle.closingFrame);
                         if (menuBar.keyboardFocused)
                             menuBar.focusTitle(index);
                     }

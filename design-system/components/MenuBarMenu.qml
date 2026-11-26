@@ -78,6 +78,15 @@ Item {
     property bool materialBlurActive: true
     property int materialTier: 0
     property int materialFallback: 0
+    // T356: the compositor owns the whole attached chain's outer exit. The
+    // shell pushes this from the v6 capability; `closingFrame` is this menu's
+    // own logical-close latch. While it is set the parent dropdown and every
+    // open submenu card keep their accepted layout, material regions and
+    // pixels, but the chain is inert: input, hover and keyboard traversal stop
+    // immediately. The shell releases the latch after the one accepted closing
+    // commit (or at once under reduced motion).
+    property bool compositorPopupMotion: false
+    property bool closingFrame: false
     readonly property string materialFallbackReason:
         Material.fallbackReason(materialFallback, materialBlurActive, materialTier)
     // T202: the top-level dropdown is the attached preset; nested panels are
@@ -308,14 +317,70 @@ Item {
                 !== root.submenuHighlightedIndex)
             levels.setHighlight(1, root.submenuHighlightedIndex);
     }
-    onEntriesChanged: levels.reconcile(true)
+    // A live model update reconciles the visible rows. During a whole-chain
+    // dismissal the accepted snapshot is frozen, so a delayed provider reply
+    // cannot re-label or truncate the departing cards.
+    onEntriesChanged: {
+        if (!root.closingFrame)
+            levels.reconcile(true);
+    }
 
     function openMenu() {
+        // A reopen during the compositor-owned exit is the same accepted
+        // surface: clear the latch, rebuild the live chain, and let the
+        // compositor retarget its open from the visible alpha.
+        root.closingFrame = false;
+        popup.retainForCompositor = false;
+        levels.thaw();
         popup.show();
+        // Re-establish the declarative open/close opacity/scale bindings after
+        // the retained frame's frozen values. Doing it after `show()` keeps
+        // the first live frame at full strength instead of replaying a fade.
+        popup.restoreOpenCloseBindings();
     }
 
     function closeMenu(immediate) {
-        popup.hide(immediate);
+        // T356: a whole-chain dismissal (pointer, keyboard, focus loss, lock,
+        // output removal) keeps the accepted chain for one closing commit. A
+        // deliberate navigation-driven swap (title switch, hover branch swap)
+        // passes `immediate` and retires the old chain at once. The existing
+        // menu close token still bounds the shell's unmap.
+        var retain = root.compositorPopupMotion && immediate !== true;
+        root.closingFrame = retain;
+        if (retain)
+            levels.freeze();
+        // Disable the QML Behaviors before forcing the settled values, so the
+        // retained frame is the fully visible chain and not a partial tween.
+        popup.retainForCompositor = retain;
+        if (retain) {
+            popup.freezeSettledVisual();
+        } else {
+            // An immediate close may follow a retained one; re-establish the
+            // declarative bindings so `hide(true)` actually settles to zero.
+            popup.restoreOpenCloseBindings();
+        }
+        popup.hide(immediate === true);
+    }
+
+    // The shell's exit completed (or was cancelled/reduced to zero): release
+    // the retained chain and return to the empty closed state. Called by the
+    // bar owner, which tracks the one closing menu.
+    function releaseClosingFrame() {
+        if (root.closingFrame) {
+            root.closingFrame = false;
+            popup.retainForCompositor = false;
+            if (!popup.open)
+                root.finalizeClose();
+        }
+    }
+
+    function finalizeClose() {
+        popup.retainForCompositor = false;
+        popup.restoreOpenCloseBindings();
+        levels.thaw();
+        levels.reset();
+        root.syncFromLevels();
+        root.clearTypeAhead();
     }
 
     function activate(index) {
@@ -558,9 +623,10 @@ Item {
             root.opened();
         }
         onClosed: {
-            levels.reset();
-            root.syncFromLevels();
-            root.clearTypeAhead();
+            // The retained chain keeps its levels until the shell releases the
+            // closing latch; the logical close only retires input/focus.
+            if (!root.closingFrame)
+                root.finalizeClose();
             root.closed();
         }
         onEscapePressed: {
@@ -705,6 +771,7 @@ Item {
         fill: root.submenuFill
         cornerRadius: Theme.controls.contextMenu.radius
         accessibleName: root.title
+        interactive: !root.closingFrame
         x: popup.x + (root.submenuFlips
                       ? -submenuPanel.width - root.submenuGap
                       : popup.width + root.submenuGap)

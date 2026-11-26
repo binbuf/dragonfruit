@@ -89,13 +89,43 @@ Item {
     signal closed()
     signal escapePressed()
 
+    // T356: the compositor owns the attached menu's exit. When this flag is
+    // set the popup keeps its settled opacity/scale/position for the one
+    // accepted closing commit; the compositor's group transition takes it from
+    // there. It is never set for a legacy/pre-v6 compositor or the QML
+    // diagnostic, so the opacity/scale path below remains the fallback.
+    property bool retainForCompositor: false
+
     function show() { root.adoptOverlay(); root.open = true; }
     function hide(immediate) {
         root.open = false;
-        if (immediate === true) {
-            opacityAnimation.complete();
-            scaleAnimation.complete();
-        }
+        if (immediate === true)
+            root.settleMotion();
+    }
+    // Finish an in-flight open/close tween at its target. The attached-menu
+    // exit uses this to freeze the settled accepted texture before the
+    // compositor takes over, even when the user dismisses during the open.
+    function settleMotion() {
+        opacityAnimation.complete();
+        scaleAnimation.complete();
+    }
+    // Freeze the settled accepted visual. A Behavior may be holding an
+    // in-flight open tween, so assigning the settled values is the one way to
+    // guarantee the retained frame is the fully visible chain. The bindings
+    // are restored before the next open.
+    function freezeSettledVisual() {
+        opacityAnimation.stop();
+        scaleAnimation.stop();
+        root.opacity = 1.0;
+        root.scale = 1.0;
+    }
+    function restoreOpenCloseBindings() {
+        root.opacity = Qt.binding(function() {
+            return root.retainForCompositor ? 1.0 : (root.open ? 1.0 : 0.0);
+        });
+        root.scale = Qt.binding(function() {
+            return root.retainForCompositor ? 1.0 : (root.open ? 1.0 : closeScale);
+        });
     }
     function toggle() { root.open = !root.open; }
     function adoptOverlay() {
@@ -113,7 +143,7 @@ Item {
     // A popup is a focus scope, not a Tab stop. Its owner focuses it; making
     // it a Tab stop would add an invisible stop with no ring (T267).
     activeFocusOnTab: false
-    visible: opacity > 0
+    visible: root.retainForCompositor ? true : opacity > 0
     z: 1000
 
     readonly property point anchorPoint: {
@@ -173,13 +203,13 @@ Item {
        : (root.parent && root.localParent !== null
           ? Math.max(0, Math.min(root.parent.height - height, root.anchorPoint.y))
           : root.anchorPoint.y)
-    scale: open ? 1.0 : closeScale
+    scale: root.retainForCompositor ? 1.0 : (root.open ? 1.0 : closeScale)
     transformOrigin: Item.TopLeft
     transform: Translate {
-        x: root.open ? 0 : root.exitTranslateX
-        y: root.open ? 0 : root.exitTranslateY
+        x: root.retainForCompositor ? 0 : (root.open ? 0 : root.exitTranslateX)
+        y: root.retainForCompositor ? 0 : (root.open ? 0 : root.exitTranslateY)
     }
-    opacity: open ? 1.0 : 0.0
+    opacity: root.retainForCompositor ? 1.0 : (root.open ? 1.0 : 0.0)
 
     onOpenChanged: {
         if (open) {
@@ -205,7 +235,7 @@ Item {
     }
 
     Behavior on opacity {
-        enabled: !Theme.reducedMotion
+        enabled: !Theme.reducedMotion && !root.retainForCompositor
         NumberAnimation {
             id: opacityAnimation
             duration: root.open ? root.openMotion.duration : root.closeMotion.duration
@@ -214,7 +244,7 @@ Item {
         }
     }
     Behavior on scale {
-        enabled: !Theme.reducedMotion
+        enabled: !Theme.reducedMotion && !root.retainForCompositor
         NumberAnimation {
             id: scaleAnimation
             duration: root.open ? root.openMotion.duration : root.closeMotion.duration

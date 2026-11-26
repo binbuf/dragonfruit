@@ -240,6 +240,22 @@ Dock plate is a separate surface and is not part of the popup or its motion.
 `DRAGONFRUIT_POPUP_MOTION=qml` selects the old QML path as a local A/B
 diagnostic. See [ADR 0367](adr/0367-compositor-popup-group-motion.md).
 
+**Attached menu chain exit (T356).** The attached application menu and its
+submenu cards are one popup surface and one visual transaction. A whole-chain
+dismissal (mouse, keyboard, focus loss, lock, output removal) freezes the
+accepted `MenuLevels` snapshot, keeps the parent and every submenu card painted
+but inert, and stages the retained crop, per-card material regions and an
+empty picking footprint. The shell commits one settled closing frame with
+`set_popup_motion(1)`, stops submitting popup content, and unmaps after the
+compositor token (immediately under reduced motion). `PopupMotion` anchors the
+`menubar-popup` group at its top edge, so the attached parent stays under the
+bar while the whole chain leaves on one clock. A deliberate navigation-driven
+swap (title switch, hover branch swap, focus-owner change) is immediate: the
+old chain is released before the new one opens. A reopen during the tail
+clears the latch and retargets from the visible alpha. Status, tray, overflow
+and Dock families remain T361. See
+[ADR 0368](adr/0368-attached-menu-chain-exit.md).
+
 **Menu Bar popup footprints (T352).** The menu-bar popup publishes one settled
 snapshot. `dropdownX/Y/Width/Height` is the card coverage used for placement;
 `dropdownPaintRect` adds the full QML `Shadow` reach; `dropdownCropRect` clamps

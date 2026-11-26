@@ -15,7 +15,7 @@
 
 use smithay::utils::{Logical, Rectangle};
 
-use super::popup_motion::{PopupMotion, PopupMotionFrame, PopupMotionKind};
+use super::popup_motion::{PopupMotion, PopupMotionFrame, PopupMotionKind, PopupMotionOrigin};
 
 /// Upper bound on a client-declared retained snapshot lifetime. A shell may
 /// ask for a longer visual tail, but a bug or a hostile trusted client must
@@ -204,6 +204,8 @@ impl PopupTransaction {
     pub fn start_motion(
         &mut self,
         kind: PopupMotionKind,
+        origin: PopupMotionOrigin,
+        token: crate::design_tokens::Motion,
         now_ms: u64,
         reduced_motion: bool,
     ) -> bool {
@@ -220,16 +222,26 @@ impl PopupTransaction {
         }
         let next = match self.motion.as_ref() {
             Some(previous) => {
-                let mut retargeted =
-                    PopupMotion::retarget(previous, kind, now_ms, reduced_motion);
+                let mut retargeted = PopupMotion::retarget_for(
+                    previous,
+                    kind,
+                    origin,
+                    token,
+                    now_ms,
+                    reduced_motion,
+                );
                 // A retarget keeps the accepted visual's new geometry when a
                 // reopen lands on a different anchor.
                 retargeted.target = target;
                 retargeted
             }
             None => match kind {
-                PopupMotionKind::Open => PopupMotion::open(target, now_ms, reduced_motion),
-                PopupMotionKind::Close => PopupMotion::close(target, now_ms, reduced_motion),
+                PopupMotionKind::Open => {
+                    PopupMotion::open_for(target, origin, token, now_ms, reduced_motion)
+                }
+                PopupMotionKind::Close => {
+                    PopupMotion::close_for(target, origin, token, now_ms, reduced_motion)
+                }
             },
         };
         self.motion = Some(next);
@@ -747,21 +759,20 @@ mod tests {
     fn a_reopen_during_the_closing_tail_keeps_the_visible_motion() {
         let mut transaction = PopupTransaction::default();
         open(&mut transaction, 1, 1, 0);
-        assert!(transaction.start_motion(PopupMotionKind::Close, 100, false));
+        assert!(transaction.start_motion(
+            PopupMotionKind::Close,
+            PopupMotionOrigin::BottomCenter,
+            PopupMotionKind::Close.token(),
+            100,
+            false,
+        ));
         let closing = transaction.motion_frame(150).expect("close motion");
         assert!(closing.alpha > 0.0 && closing.alpha < 1.0);
 
         // A new generation supersedes the retained snapshot but must keep the
         // visible transition so the open retargets from where the close was.
         let outcome = transaction.apply(
-            request(
-                2,
-                2,
-                PopupPhase::Open,
-                PopupTransport::Shm,
-                true,
-                0,
-            ),
+            request(2, 2, PopupPhase::Open, PopupTransport::Shm, true, 0),
             PopupTransport::Shm,
             150,
         );
@@ -772,7 +783,13 @@ mod tests {
             Rectangle::new(Point::from((10, 20)), Size::from((220, 320))),
             2,
         );
-        assert!(transaction.start_motion(PopupMotionKind::Open, 150, false));
+        assert!(transaction.start_motion(
+            PopupMotionKind::Open,
+            PopupMotionOrigin::BottomCenter,
+            PopupMotionKind::Open.token(),
+            150,
+            false,
+        ));
         let reopening = transaction.motion_frame(150).expect("open motion");
         assert!(
             (reopening.alpha - closing.alpha).abs() < 1e-6,
@@ -794,7 +811,13 @@ mod tests {
             PopupTransport::Shm,
             100,
         );
-        assert!(transaction.start_motion(PopupMotionKind::Close, 100, false));
+        assert!(transaction.start_motion(
+            PopupMotionKind::Close,
+            PopupMotionOrigin::BottomCenter,
+            PopupMotionKind::Close.token(),
+            100,
+            false,
+        ));
         // The close token is 100 ms; the snapshot remains valid until the
         // transaction's retained deadline even after the motion completes.
         assert!(!transaction.step_motion(100 + 100));
